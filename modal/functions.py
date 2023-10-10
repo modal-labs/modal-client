@@ -1439,13 +1439,6 @@ def _web_endpoint(
 
     To learn how to use Modal with popular web frameworks, see the
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
-
-    All webhook requests have a 150s maximum request time for the HTTP request itself. However, the underlying functions can
-    run for longer and return results to the caller on completion.
-
-    The two `wait_for_response` modes for webhooks are as follows:
-    * `wait_for_response=True` - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=...` query parameter)
-    * `wait_for_response=False` - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" URL from above (which in turn redirects to itself every ~150s)
     """
     if isinstance(_warn_parentheses_missing, str):
         # Probably passing the method string as a positional argument.
@@ -1513,10 +1506,6 @@ def _asgi_app(
 
     To learn how to use Modal with popular web frameworks, see the
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
-
-    The two `wait_for_response` modes for webhooks are as follows:
-    * wait_for_response=True - tries to fulfill the request on the original URL, but returns a 302 redirect after ~150s to a result URL (original URL with an added `__modal_function_id=fc-1234abcd` query parameter)
-    * wait_for_response=False - immediately returns a 202 ACCEPTED response with a JSON payload: `{"result_url": "..."}` containing the result "redirect" url from above (which in turn redirects to itself every 150s)
     """
     if isinstance(_warn_parentheses_missing, str):
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@asgi_app(label="foo")`.')
@@ -1573,8 +1562,6 @@ def _wsgi_app(
 
     To learn how to use this decorator with popular web frameworks, see the
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
-
-    For documentation on this decorator's arguments see [`asgi_app`](/docs/reference/modal.asgi_app).
     """
     if isinstance(_warn_parentheses_missing, str):
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@wsgi_app(label="foo")`.')

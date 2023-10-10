@@ -23,35 +23,12 @@ else:
     Tree = TypeVar("Tree")
 
 
-class _App:
-    """Apps are the user representation of an actively running Modal process.
-
-    You can obtain an `App` from the `Stub.run()` context manager. While the app
-    is running, you can get its `app_id`, `client`, and other useful properties
-    from this object.
-
-    ```python
-    import modal
-
-    stub = modal.Stub()
-    stub.my_secret_object = modal.Secret.from_name("my-secret")
-
-    if __name__ == "__main__":
-        with stub.run() as app:
-            print(app.client)
-            print(app.app_id)
-            print(app.my_secret_object)
-    ```
-    """
-
+class _LocalApp:
     _tag_to_object_id: Dict[str, str]
-    _tag_to_handle_metadata: Dict[str, Optional[Message]]
-
     _client: _Client
     _app_id: str
     _app_page_url: str
     _environment_name: str
-    _associated_stub: Optional[Any]  # TODO(erikbern): type
 
     def __init__(
         self,
@@ -67,10 +44,8 @@ class _App:
         self._app_page_url = app_page_url
         self._client = client
         self._tag_to_object_id = tag_to_object_id or {}
-        self._tag_to_handle_metadata = {}
         self._stub_name = stub_name
         self._environment_name = environment_name
-        self._associated_stub = None
 
     @property
     def client(self) -> _Client:
@@ -81,29 +56,6 @@ class _App:
     def app_id(self) -> str:
         """A unique identifier for this running App."""
         return self._app_id
-
-    def _associate_stub_container(self, stub):
-        if self._associated_stub:
-            if self._stub_name:
-                warning_sub_message = f"stub with the same name ('{self._stub_name}')"
-            else:
-                warning_sub_message = "unnamed stub"
-            logger.warning(
-                f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
-            )
-        self._associated_stub = stub
-
-        if stub:
-            # Initialize objects on stub
-            stub_objects: dict[str, _Object] = dict(stub.get_objects())
-            for tag, object_id in self._tag_to_object_id.items():
-                obj = stub_objects.get(tag)
-                if obj is not None:
-                    handle_metadata = self._tag_to_handle_metadata[tag]
-                    obj._hydrate(object_id, self._client, handle_metadata)
-
-    def _associate_stub_local(self, stub):
-        self._associated_stub = stub
 
     async def _create_all_objects(
         self,
@@ -198,41 +150,14 @@ class _App:
             raise AttributeError(f"No such attribute `{tag}`")  # Dumb workaround for doc thing
         deprecation_error(date(2023, 8, 10), "`app.obj` is no longer supported. Use the stub to get objects instead.")
 
-    def _has_object(self, tag: str) -> bool:
-        return tag in self._tag_to_object_id
-
-    def _hydrate_object(self, obj, tag: str):
-        object_id: str = self._tag_to_object_id[tag]
-        metadata: Message = self._tag_to_handle_metadata[tag]
-        obj._hydrate(object_id, self._client, metadata)
-
-    async def _init_container(self, client: _Client, app_id: str, stub_name: str):
-        self._client = client
-        self._app_id = app_id
-        self._stub_name = stub_name
-        req = api_pb2.AppGetObjectsRequest(app_id=self._app_id)
-        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
-        for item in resp.items:
-            self._tag_to_object_id[item.tag] = item.object.object_id
-            handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-            self._tag_to_handle_metadata[item.tag] = handle_metadata
-
     @staticmethod
-    async def init_container(client: _Client, app_id: str, stub_name: str = "") -> "_App":
-        """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
-        global _container_app, _is_container_app
-        _is_container_app = True
-        await _container_app._init_container(client, app_id, stub_name)
-        return _container_app
-
-    @staticmethod
-    async def _init_existing(client: _Client, existing_app_id: str) -> "_App":
+    async def _init_existing(client: _Client, existing_app_id: str) -> "_LocalApp":
         # Get all the objects first
         obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
         obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
         app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
         object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
-        return _App(client, existing_app_id, app_page_url, tag_to_object_id=object_ids)
+        return _LocalApp(client, existing_app_id, app_page_url, tag_to_object_id=object_ids)
 
     @staticmethod
     async def _init_new(
@@ -241,7 +166,7 @@ class _App:
         detach: bool = False,
         deploying: bool = False,
         environment_name: str = "",
-    ) -> "_App":
+    ) -> "_LocalApp":
         # Start app
         # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(
@@ -253,7 +178,7 @@ class _App:
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _App(client, app_resp.app_id, app_page_url, environment_name=environment_name)
+        return _LocalApp(client, app_resp.app_id, app_page_url, environment_name=environment_name)
 
     @staticmethod
     async def _init_from_name(
@@ -271,9 +196,11 @@ class _App:
 
         # Grab the app
         if existing_app_id is not None:
-            return await _App._init_existing(client, existing_app_id)
+            return await _LocalApp._init_existing(client, existing_app_id)
         else:
-            return await _App._init_new(client, name, detach=False, deploying=True, environment_name=environment_name)
+            return await _LocalApp._init_new(
+                client, name, detach=False, deploying=True, environment_name=environment_name
+            )
 
     async def deploy(self, name: str, namespace, object_entity: str) -> str:
         """`App.deploy` is deprecated in favor of `modal.runner.deploy_stub`."""
@@ -299,14 +226,14 @@ class _App:
         **kwargs,
     ):
         """Deprecated. Use `Stub.spawn_sandbox` instead."""
-        deprecation_error(date(2023, 9, 11), _App.spawn_sandbox.__doc__)
+        deprecation_error(date(2023, 9, 11), _LocalApp.spawn_sandbox.__doc__)
 
     @staticmethod
     async def _deploy_single_object(
         obj: _Object, type_prefix: str, client: _Client, label: str, namespace: int, environment_name: int
     ):
         """mdmd:hidden"""
-        app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
+        app = await _LocalApp._init_from_name(client, label, namespace, environment_name=environment_name)
         existing_object_id: Optional[str] = app._tag_to_object_id.get("_object")
         resolver = Resolver(app._client, environment_name=environment_name, app_id=app.app_id)
         await resolver.load(obj, existing_object_id)
@@ -321,20 +248,135 @@ class _App:
         await retry_transient_errors(client.stub.AppSetObjects, req_set)
         await app.deploy(label, namespace, type_prefix)  # TODO(erikbern): not needed if the app already existed
 
+
+class _ContainerApp:
+    _client: Optional[_Client]
+    _app_id: str
+    _associated_stub: Optional[Any]  # TODO(erikbern): type
+    _environment_name: Optional[str]
+    _tag_to_object_id: Dict[str, str]
+    _tag_to_handle_metadata: Dict[str, Optional[Message]]
+
+    def __init__(
+        self,
+        client: _Client,
+        app_id: str,
+        stub_name: str,
+        environment_name: str,
+        tag_to_object_id: Dict[str, str],
+        tag_to_handle_metadata: Dict[str, Optional[Message]],
+    ):
+        self._client = client
+        self._app_id = app_id
+        self._tag_to_object_id = {}
+        self._tag_to_handle_metadata = {}
+        self._associated_stub = None
+        self._stub_name = stub_name
+        self._environment_name = environment_name
+        self._tag_to_object_id = tag_to_object_id
+        self._tag_to_handle_metadata = tag_to_handle_metadata
+
+    @property
+    def client(self) -> _Client:
+        """A reference to the running App's server client."""
+        return self._client
+
+    @property
+    def app_id(self) -> str:
+        """A unique identifier for this running App."""
+        return self._app_id
+
+    def _associate_stub_container(self, stub):
+        if self._associated_stub:
+            if self._stub_name:
+                warning_sub_message = f"stub with the same name ('{self._stub_name}')"
+            else:
+                warning_sub_message = "unnamed stub"
+            logger.warning(
+                f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
+            )
+        self._associated_stub = stub
+
+        if stub:
+            # Initialize objects on stub
+            stub_objects: dict[str, _Object] = dict(stub.get_objects())
+            for tag, object_id in self._tag_to_object_id.items():
+                obj = stub_objects.get(tag)
+                if obj is not None:
+                    handle_metadata = self._tag_to_handle_metadata[tag]
+                    obj._hydrate(object_id, self._client, handle_metadata)
+
+    def __getitem__(self, tag: str) -> _Object:
+        deprecation_error(date(2023, 8, 10), "`app[...]` is no longer supported. Use the stub to get objects instead.")
+
+    def __contains__(self, tag: str) -> bool:
+        deprecation_error(
+            date(2023, 8, 10), "`obj in app` is no longer supported. Use the stub to get objects instead."
+        )
+
+    def __getattr__(self, tag: str) -> _Object:
+        if tag.startswith("__"):
+            raise AttributeError(f"No such attribute `{tag}`")  # Dumb workaround for doc thing
+        deprecation_error(date(2023, 8, 10), "`app.obj` is no longer supported. Use the stub to get objects instead.")
+
+    def _has_object(self, tag: str) -> bool:
+        return tag in self._tag_to_object_id
+
+    def _hydrate_object(self, obj, tag: str):
+        object_id: str = self._tag_to_object_id[tag]
+        metadata: Message = self._tag_to_handle_metadata[tag]
+        obj._hydrate(object_id, self._client, metadata)
+
+    def _get_pty(self) -> _Object:
+        # TOOD(erikbern): This method has zero tests. It's used in _container_entrypoint
+        # Let's try to clean this up ASAP
+        object_id = self._tag_to_object_id["_pty_input_stream"]
+        metadata = self._tag_to_handle_metadata["_pty_input_stream"]
+        return _Object._new_hydrated(object_id, self._client, metadata)
+
+    @staticmethod
+    async def init_container(
+        client: _Client, app_id: str, stub_name: str = "", environment_name: str = ""
+    ) -> "_ContainerApp":
+        """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
+        global _container_app, _is_container_app
+        _is_container_app = True
+
+        tag_to_object_id = {}
+        tag_to_handle_metadata = {}
+        req = api_pb2.AppGetObjectsRequest(app_id=app_id)
+        resp = await retry_transient_errors(client.stub.AppGetObjects, req)
+        for item in resp.items:
+            tag_to_object_id[item.tag] = item.object.object_id
+            handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
+            tag_to_handle_metadata[item.tag] = handle_metadata
+
+        _container_app.__init__(client, app_id, stub_name, environment_name, tag_to_object_id, tag_to_handle_metadata)
+        return _container_app
+
+    async def spawn_sandbox(
+        self,
+        *args,
+        **kwargs,
+    ):
+        """Deprecated. Use `Stub.spawn_sandbox` instead."""
+        deprecation_error(date(2023, 9, 11), _ContainerApp.spawn_sandbox.__doc__)
+
     @staticmethod
     def _reset_container():
         # Just used for tests
         global _is_container_app, _container_app
         _is_container_app = False
-        _container_app.__init__(None, None, None, None)  # type: ignore
+        _container_app.__init__(None, "", "", "", {}, {})  # type: ignore
 
 
-App = synchronize_api(_App)
+LocalApp = synchronize_api(_LocalApp)
+ContainerApp = synchronize_api(_ContainerApp)
 
 _is_container_app = False
-_container_app = _App(None, None, None, None)
+_container_app = _ContainerApp(None, "", "", "", {}, {})
 container_app = synchronize_api(_container_app)
-assert isinstance(container_app, App)
+assert isinstance(container_app, ContainerApp)
 
 
 def is_local() -> bool:

@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional, Type
 
 from grpclib import Status
-from synchronicity.interface import Interface
 
 from modal.stub import _Stub
 from modal_proto import api_pb2
@@ -38,7 +37,7 @@ from ._pty import run_in_pty
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
-from .app import _App
+from .app import _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import logger
@@ -124,14 +123,17 @@ class _FunctionIOManager:
         self._input_concurrency: Optional[int] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._output_queue: Optional[asyncio.Queue] = None
-        self._container_app: Optional[_App] = None
+        self._container_app: Optional[_ContainerApp] = None
+        self._environment_name = container_args.environment_name
 
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
 
     @wrap()
-    async def initialize_app(self) -> _App:
-        self._container_app = await _App.init_container(self._client, self.app_id, self._stub_name)
+    async def initialize_app(self) -> _ContainerApp:
+        self._container_app = await _ContainerApp.init_container(
+            self._client, self.app_id, self._stub_name, self._environment_name
+        )
         return self._container_app
 
     async def _heartbeat(self):
@@ -726,9 +728,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         if pty_info.pty_type or pty_info.enabled:
             # TODO(erikbern): the second condition is for legacy compatibility, remove soon
             # TODO(erikbern): there is no client test for this branch
-            input_stream_unwrapped = synchronizer._translate_in(container_app._get_object("_pty_input_stream"))
-            input_stream_blocking = synchronizer._translate_out(input_stream_unwrapped, Interface.BLOCKING)
-            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream_blocking, pty_info)
+            input_stream = container_app._get_pty()
+            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream, pty_info)
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)

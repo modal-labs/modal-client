@@ -27,7 +27,7 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 from modal import __version__
-from modal.app import _App
+from modal.app import _ContainerApp
 from modal.client import Client
 from modal.image import _dockerhub_python_version
 from modal.mount import client_mount_name
@@ -958,7 +958,7 @@ def reset_container_app():
     try:
         yield
     finally:
-        _App._reset_container()
+        _ContainerApp._reset_container()
 
 
 @pytest.fixture(scope="module")

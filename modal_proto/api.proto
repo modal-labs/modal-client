@@ -412,6 +412,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   map<string, string> tracing_context = 9;
   bytes serialized_params = 10;
   string runtime = 11;
+  string environment_name = 13;
 }
 
 message ContainerHeartbeatRequest {

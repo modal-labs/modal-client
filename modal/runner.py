@@ -12,7 +12,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from . import _pty
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
-from .app import _App, is_local
+from .app import _LocalApp, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
@@ -64,7 +64,7 @@ async def _run_stub(
     if output_mgr is None:
         output_mgr = OutputManager(stdout, show_progress, "Running app...")
     post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
-    app = await _App._init_new(
+    app = await _LocalApp._init_new(
         client,
         stub.description,
         detach=detach,
@@ -143,7 +143,7 @@ async def _serve_update(
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        app = await _App._init_existing(client, existing_app_id)
+        app = await _LocalApp._init_existing(client, existing_app_id)
 
         # Create objects
         output_mgr = OutputManager(None, True)
@@ -221,7 +221,7 @@ async def _deploy_stub(
 
     output_mgr = OutputManager(stdout, show_progress)
 
-    app = await _App._init_from_name(client, name, namespace, environment_name=environment_name)
+    app = await _LocalApp._init_from_name(client, name, namespace, environment_name=environment_name)
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
