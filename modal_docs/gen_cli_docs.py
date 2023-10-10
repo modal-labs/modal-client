@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import inspect
 import sys
 from pathlib import Path
 from typing import Optional, cast
@@ -25,7 +26,7 @@ def get_docs_for_click(
     title = f"`{command_name}`" if command_name else "CLI"
     docs += f" {title}\n\n"
     if obj.help:
-        docs += f"{obj.help}\n\n"
+        docs += f"{inspect.cleandoc(obj.help)}\n\n"
     usage_pieces = obj.collect_usage_pieces(ctx)
     if usage_pieces:
         docs += "**Usage**:\n\n"

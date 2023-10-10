@@ -180,7 +180,7 @@ class RunGroup(click.Group):
 @click.option("-e", "--env", help=ENV_OPTION_HELP, default=None, hidden=True)
 @click.pass_context
 def run(ctx, detach, quiet, env):
-    """Run a Modal function or local entrypoint
+    """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
     Alternatively, you can refer to the function via the stub:
