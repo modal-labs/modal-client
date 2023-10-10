@@ -444,9 +444,9 @@ class _FunctionIOManager:
         """Message server indicating that function is ready to be checkpointed.
         This message is intercepted by Modal runtime, triggering the checkpointing
         routine."""
-        logger.debug("initialization complete; sending checkpointing signal ...")
-        request = api_pb2.ContainerCheckpointRequest(runtime="gvisor")
-        await self.client.stub.FunctionGetSerialized(request)
+        logger.info("initialization complete; sending checkpointing signal to modal-worker")
+        request = api_pb2.ContainerCheckpointRequest(runtime="gvisor", task_id=self.task_id)
+        await self.client.stub.ContainerCheckpoint(request)
 
         # Busy-wait for the an eventual restore. `MODAL_CONTAINER_RESTORED` is
         # only populated when a container is restored. A checkpointed container
