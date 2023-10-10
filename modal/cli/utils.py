@@ -45,9 +45,9 @@ def display_selection(choices: List[str], active: str, json: bool):
             console.print(text)
 
 
-ENV_OPTION_HELP = """Environment to interact with
+ENV_OPTION_HELP = """Environment to interact with.
 
-If none is specified, Modal will use the default environment of your current profile (can also be specified via the environment variable MODAL_ENVIRONMENT).
-If neither is set, Modal will assume there is only one environment in the active workspace and use that one, or raise an error if there are multiple environments.
+If not specified, Modal will use the default environment of your current profile, or the `MODAL_ENVIRONMENT` variable.
+Otherwise, raises an error if the workspace has multiple environments.
 """
 ENV_OPTION = typer.Option(default=None, help=ENV_OPTION_HELP)

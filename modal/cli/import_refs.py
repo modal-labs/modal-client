@@ -181,7 +181,7 @@ def import_stub(stub_ref: str) -> Stub:
     return stub
 
 
-def _show_function_ref_help(stub_ref: ImportRef, base_cmd) -> None:
+def _show_function_ref_help(stub_ref: ImportRef, base_cmd: str) -> None:
     object_path = stub_ref.object_path
     import_path = stub_ref.file_or_module
     error_console = Console(stderr=True)
