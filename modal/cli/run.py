@@ -15,6 +15,7 @@ from ..config import config
 from ..environments import ensure_env
 from ..exception import InvalidError
 from ..functions import Function
+from ..image import Image
 from ..runner import deploy_stub, interactive_shell, run_stub
 from ..serving import serve_stub
 from ..stub import LocalEntrypoint, Stub
@@ -262,15 +263,37 @@ def serve(
 
 
 def shell(
-    func_ref: str = typer.Argument(
-        ..., help="Path to a Python file with a Stub or Modal function whose container to run.", metavar="FUNC_REF"
+    func_ref: Optional[str] = typer.Argument(
+        default=None,
+        help="Path to a Python file with a Stub or Modal function whose container to run.",
+        metavar="FUNC_REF",
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
     env: str = ENV_OPTION,
+    image: Optional[str] = typer.Option(
+        default=None, help="Container image tag for inside the shell (if not using FUNC_REF)."
+    ),
+    add_python: Optional[str] = typer.Option(default=None, help="Add Python to the image (if not using FUNC_REF)."),
+    cpu: Optional[int] = typer.Option(
+        default=None, help="Number of CPUs to allocate to the shell (if not using FUNC_REF)."
+    ),
+    memory: Optional[int] = typer.Option(
+        default=None, help="Memory to allocate for the shell, in MiB (if not using FUNC_REF)."
+    ),
+    gpu: Optional[str] = typer.Option(
+        default=None,
+        help="GPUs to request for the shell, if any. Examples are `any`, `a10g`, `a100:4` (if not using FUNC_REF).",
+    ),
 ):
     """Run an interactive shell inside a Modal image.
 
     **Examples:**
+
+    Start a shell inside the default Debian-based image:
+
+    ```bash
+    modal shell
+    ```
 
     Start a bash shell using the spec for `my_function` in your stub:
 
@@ -292,8 +315,21 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
+    if func_ref is not None:
+        function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
+    else:
+        stub = Stub("modal shell")
+        if image:
+            stub.image = Image.from_registry(image, add_python=add_python)
+        function = stub.function(
+            serialized=True,
+            cpu=cpu,
+            memory=memory,
+            gpu=gpu,
+        )(lambda: None)
+
     assert isinstance(function, Function)  # ensured by accept_local_entrypoint=False
+
     interactive_shell(
         function,
         cmd,
