@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import platform
 import warnings
 from typing import Awaitable, Callable, Dict, Optional, Tuple
 
@@ -28,6 +29,9 @@ def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], vers
     metadata = {
         "x-modal-client-version": version,
         "x-modal-client-type": str(client_type),
+        "x-modal-python-version": platform.python_version(),
+        "x-modal-node": platform.node(),
+        "x-modal-platform": platform.platform(),
     }
     if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
         token_id, token_secret = credentials
