@@ -621,6 +621,8 @@ message Function {
   // TODO: combine into enum?
   bool is_builder_function = 32;
   bool is_auto_snapshot = 38;
+
+  bool is_method = 39;
 }
 
 message FunctionHandleMetadata {
@@ -632,6 +634,7 @@ message FunctionHandleMetadata {
   string function_name = 2;
   Function.FunctionType function_type = 8;
   string web_url = 28;
+  bool is_method = 39;
 }
 
 message FunctionCreateRequest {

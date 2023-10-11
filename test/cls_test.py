@@ -183,10 +183,12 @@ class FooLocal:
         return self.bar.local(y + 1)
 
 
-def test_can_call_locally():
+def test_can_call_locally(client):
     foo = FooLocal()
     assert foo.bar.local(4) == 64
     assert foo.baz.local(4) == 125
+    with stub_local.run(client=client):
+        assert foo.baz.local(2) == 27
 
 
 def test_can_call_remotely_from_local(client):
