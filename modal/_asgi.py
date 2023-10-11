@@ -22,7 +22,7 @@ def asgi_app_wrapper(asgi_app):
             # prevent them from being uploaded to S3.
             if msg["type"] == "http.response.body":
                 body_chunk_size = MAX_OBJECT_SIZE_BYTES - 1024  # reserve 1 KiB for framing
-                body_chunk_limit = 100 * body_chunk_size
+                body_chunk_limit = 20 * body_chunk_size
                 s3_chunk_size = 150 * body_chunk_size
 
                 size = len(msg.get("body", b""))
