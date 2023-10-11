@@ -290,22 +290,43 @@ def get_thread_id():
 @cls_with_enter_stub.cls()
 class ClsWithEnter:
     def __init__(self, thread_id):
-        self.x = 0
+        self.inited = True
+        self.entered = False
         self.thread_id = thread_id
         assert get_thread_id() == self.thread_id
 
     def __enter__(self):
-        self.x = 42
+        self.entered = True
         assert get_thread_id() == self.thread_id
 
-    def f(self, y):
-        assert get_thread_id() == self.thread_id
-        return self.x * y
+    def not_modal_method(self, y: int) -> int:
+        return y**2
+
+    @method()
+    def modal_method(self, y: int) -> int:
+        return y**2
 
 
-def test_local_enter():
+def test_dont_enter_on_local_access():
     obj = ClsWithEnter(get_thread_id())
-    assert obj.f(10) == 420
+    with pytest.raises(AttributeError):
+        obj.doesnt_exist  # type: ignore
+    assert obj.inited
+    assert not obj.entered
+
+
+def test_dont_enter_on_local_non_modal_call():
+    obj = ClsWithEnter(get_thread_id())
+    assert obj.not_modal_method(7) == 49
+    assert obj.inited
+    assert not obj.entered
+
+
+def test_enter_on_local_modal_call():
+    obj = ClsWithEnter(get_thread_id())
+    assert obj.modal_method.local(7) == 49
+    assert obj.inited
+    assert obj.entered
 
 
 inheritance_stub = Stub()
