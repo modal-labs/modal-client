@@ -153,6 +153,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function_name=definition.function_name,
             function_type=definition.function_type,
             web_url=definition.web_url,
+            is_method=definition.is_method,
         )
 
     def get_class_metadata(self, object_id: str) -> api_pb2.ClassHandleMetadata:

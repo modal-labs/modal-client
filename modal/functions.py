@@ -504,8 +504,9 @@ class _Function(_Object, type_prefix="fu"):
     _stub: "modal.stub._Stub"
     _obj: Any
     _web_url: Optional[str]
-    _is_remote_cls_method: bool = False
+    _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
     _function_name: Optional[str]
+    _is_method: bool
 
     @staticmethod
     def from_args(
@@ -794,6 +795,7 @@ class _Function(_Object, type_prefix="fu"):
                 allow_concurrent_inputs=allow_concurrent_inputs,
                 worker_id=config.get("worker_id"),
                 is_auto_snapshot=is_auto_snapshot,
+                is_method=bool(cls),
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -849,6 +851,7 @@ class _Function(_Object, type_prefix="fu"):
         obj._stub = stub  # Needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
+        obj._is_method = bool(cls)
 
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
@@ -880,6 +883,9 @@ class _Function(_Object, type_prefix="fu"):
         provider._is_remote_cls_method = True  # TODO(erikbern): deprecated
         provider._info = self._info
         provider._obj = obj
+        provider._is_generator = self._is_generator
+        provider._is_method = True
+
         return provider
 
     @property
@@ -919,6 +925,7 @@ class _Function(_Object, type_prefix="fu"):
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
+        self._is_method = metadata.is_method
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1148,10 +1155,12 @@ class _Function(_Object, type_prefix="fu"):
         return self._info
 
     def _get_self_obj(self):
-        # TODO(erikbern): See https://github.com/modal-labs/modal-client/pull/864
-        # We should keep track of "has a self object" separately from "needs a self object",
-        # and raise an exception here if a self object should be present but isn't.
-        return self._obj.get_local_obj() if self._obj else None
+        if not self._is_method:
+            return None
+        elif not self._obj:
+            raise ExecutionError("Method has no local object")
+        else:
+            return self._obj.get_local_obj()
 
     @synchronizer.nowrap
     def local(self, *args, **kwargs) -> Any:
