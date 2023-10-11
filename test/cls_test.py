@@ -329,6 +329,28 @@ def test_enter_on_local_modal_call():
     assert obj.entered
 
 
+@cls_with_enter_stub.cls()
+class ClsWithAenter:
+    def __init__(self):
+        self.inited = True
+        self.entered = False
+
+    async def __aenter__(self):
+        self.entered = True
+
+    @method()
+    async def modal_method(self, y: int) -> int:
+        return y**2
+
+
+@pytest.mark.asyncio
+async def test_aenter_on_local_modal_call():
+    obj = ClsWithAenter()
+    assert await obj.modal_method.local(7) == 49
+    assert obj.inited
+    assert obj.entered
+
+
 inheritance_stub = Stub()
 
 
