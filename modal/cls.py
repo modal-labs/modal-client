@@ -47,7 +47,8 @@ class _Obj:
     All this class does is to return `Function` objects."""
 
     _functions: Dict[str, _Function]
-    _has_local_obj: bool
+    _inited: bool
+    _entered: bool
     _local_obj: Any
     _local_obj_constr: Optional[Callable[[], Any]]
 
@@ -65,7 +66,8 @@ class _Obj:
             self._functions[k]._set_output_mgr(output_mgr)
 
         # Used for construction local object lazily
-        self._has_local_obj = False
+        self._inited = False
+        self._entered = False
         self._local_obj = None
         if user_cls:
             self._local_obj_constr = lambda: user_cls(*args, **kwargs)
@@ -80,13 +82,13 @@ class _Obj:
 
     def get_local_obj(self):
         """Construct local object lazily. Used for .local() calls."""
-        if not self._has_local_obj:
+        if not self._inited:
             self.get_obj()  # Instantiate object
-            if hasattr(self._local_obj, "__enter__"):
-                self._local_obj.__enter__()
-            elif hasattr(self._local_obj, "__aenter__"):
-                warnings.warn("Not running asynchronous enter handlers on local objects")
-            self._has_local_obj = True
+            #if hasattr(self._local_obj, "__enter__"):
+            #    self._local_obj.__enter__()
+            #elif hasattr(self._local_obj, "__aenter__"):
+            #    warnings.warn("Not running asynchronous enter handlers on local objects")
+            self._inited = True
 
         return self._local_obj
 
