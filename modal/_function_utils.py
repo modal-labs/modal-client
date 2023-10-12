@@ -78,6 +78,21 @@ def is_global_function(function_qual_name):
     return "<locals>" not in function_qual_name.split(".")
 
 
+def is_async(function):
+    # TODO: this is somewhat hacky. We need to know whether the function is async or not in order to
+    # coerce the input arguments to the right type. The proper way to do is to call the function and
+    # see if you get a coroutine (or async generator) back. However at this point, it's too late to
+    # coerce the type. For now let's make a determination based on inspecting the function definition.
+    # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
+    # wraps async code or similar. Let's revisit this shortly.
+    if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
+        return True
+    elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
+        return False
+    else:
+        raise RuntimeError(f"Function {function} is a strange type {type(function)}")
+
+
 class FunctionInfo:
     """Class the helps us extract a bunch of information about a function."""
 

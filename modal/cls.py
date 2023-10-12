@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import pickle
-import warnings
 from datetime import date
 from typing import Any, Callable, Dict, Optional, Type, TypeVar
 

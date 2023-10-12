@@ -30,7 +30,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._function_utils import LocalFunctionError, is_global_function
+from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function
 from ._proxy_tunnel import proxy_tunnel
 from ._pty import run_in_pty
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
@@ -66,21 +66,6 @@ class SequenceNumber:
     @property
     def value(self) -> int:
         return self._value
-
-
-def get_is_async(function):
-    # TODO: this is somewhat hacky. We need to know whether the function is async or not in order to
-    # coerce the input arguments to the right type. The proper way to do is to call the function and
-    # see if you get a coroutine (or async generator) back. However at this point, it's too late to
-    # coerce the type. For now let's make a determination based on inspecting the function definition.
-    # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
-    # wraps async code or similar. Let's revisit this shortly.
-    if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
-        return True
-    elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
-        return False
-    else:
-        raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
 
 def run_with_signal_handler(coro):
