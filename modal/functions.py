@@ -46,7 +46,7 @@ from ._blob_utils import (
     blob_download,
     blob_upload,
 )
-from ._function_utils import FunctionInfo
+from ._function_utils import FunctionInfo, is_async
 from ._location import parse_cloud_provider
 from ._mount_utils import validate_mount_points
 from ._output import OutputManager
@@ -1154,13 +1154,13 @@ class _Function(_Object, type_prefix="fu"):
     def _get_info(self):
         return self._info
 
-    def _get_self_obj(self):
+    def _get_obj(self):
         if not self._is_method:
             return None
         elif not self._obj:
             raise ExecutionError("Method has no local object")
         else:
-            return self._obj.get_local_obj()
+            return self._obj
 
     @synchronizer.nowrap
     def local(self, *args, **kwargs) -> Any:
@@ -1174,13 +1174,26 @@ class _Function(_Object, type_prefix="fu"):
             )
             raise ExecutionError(msg)
 
-        self_obj = self._get_self_obj()
-        if self_obj:
-            # This is a method on a class, so bind the self to the function
-            fun = info.raw_f.__get__(self_obj)
-        else:
+        obj = self._get_obj()
+
+        if not obj:
             fun = info.raw_f
-        return fun(*args, **kwargs)
+            return fun(*args, **kwargs)
+        else:
+            # This is a method on a class, so bind the self to the function
+            local_obj = obj.get_local_obj()
+            fun = info.raw_f.__get__(local_obj)
+
+            if is_async(info.raw_f):
+                # We want to run __aenter__ and fun in the same coroutine
+                async def coro():
+                    await obj.aenter()
+                    return await fun(*args, **kwargs)
+
+                return coro()
+            else:
+                obj.enter()
+                return fun(*args, **kwargs)
 
     @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars

@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Optional, Type, TypeVar
 from google.protobuf.message import Message
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
+from modal_utils.async_utils import synchronize_api, synchronizer
 
 from ._output import OutputManager
 from ._resolver import Resolver
@@ -83,13 +83,34 @@ class _Obj:
         """Construct local object lazily. Used for .local() calls."""
         if not self._inited:
             self.get_obj()  # Instantiate object
-            #if hasattr(self._local_obj, "__enter__"):
-            #    self._local_obj.__enter__()
-            #elif hasattr(self._local_obj, "__aenter__"):
-            #    warnings.warn("Not running asynchronous enter handlers on local objects")
             self._inited = True
 
         return self._local_obj
+
+    def enter(self):
+        if not self._entered:
+            if hasattr(self._local_obj, "__enter__"):
+                self._local_obj.__enter__()
+        self._entered = True
+
+    @property
+    def entered(self):
+        # needed because aenter is nowrap
+        return self._entered
+
+    @entered.setter
+    def entered(self, val):
+        self._entered = val
+
+    @synchronizer.nowrap
+    async def aenter(self):
+        if not self.entered:
+            local_obj = self.get_local_obj()
+            if hasattr(local_obj, "__aenter__"):
+                await local_obj.__aenter__()
+            elif hasattr(local_obj, "__enter__"):
+                local_obj.__enter__()
+        self.entered = True
 
     def __getattr__(self, k):
         if k in self._functions:
