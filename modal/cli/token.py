@@ -52,7 +52,8 @@ def _open_url(url: str) -> bool:
         return False
     try:
         browser = webbrowser.get()
-        if isinstance(browser, webbrowser.GenericBrowser):
+        # zpresto defines `BROWSER=open` by default on macOS, which causes `webbrowser` to return `GenericBrowser`.
+        if isinstance(browser, webbrowser.GenericBrowser) and browser.name != "open":
             return False
         else:
             return browser.open_new_tab(url)
