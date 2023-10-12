@@ -204,7 +204,7 @@ class _Object:
         """mdmd:hidden"""
         return self._is_hydrated
 
-    async def resolve(self):
+    async def resolve(self: O):
         if self._is_hydrated:
             return
         elif not self._hydrate_lazily:
@@ -215,7 +215,7 @@ class _Object:
                 " wasn't defined in global scope."
             )
         else:
-            resolver = Resolver()
+            resolver = Resolver(client=self._client)
             await resolver.load(self)
 
     async def _deploy(
@@ -305,7 +305,7 @@ class _Object:
             )
 
         rep = f"Ref({app_name})"
-        return cls._from_loader(_load_remote, rep)
+        return cls._from_loader(_load_remote, rep, hydrate_lazily=True)
 
     @classmethod
     async def lookup(
@@ -336,11 +336,8 @@ class _Object:
         my_dict = Dict.lookup("my-dict")
         ```
         """
-        # TODO(erikbern): this code is very duplicated. Clean up once handles are gone.
-        rep = f"Object({app_name})"  # TODO(erikbern): dumb
-        obj = _Object.__new__(cls)
-        obj._init(rep)
-        await obj._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
+        obj = cls.from_name(app_name, tag, namespace, environment_name)
+        obj._client = client
         return obj
 
     @classmethod
