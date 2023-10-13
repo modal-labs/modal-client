@@ -211,8 +211,8 @@ class _Object:
             raise ExecutionError(
                 "Object has not been hydrated and doesn't support lazy hydration."
                 " This might happen if an object is defined on a different stub,"
-                " or if it's on the same stub but it didn't get created because it was"
-                " in a different module."
+                " or if it's on the same stub but it didn't get created because it"
+                " wasn't defined in global scope."
             )
         else:
             resolver = Resolver()
