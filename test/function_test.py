@@ -640,3 +640,8 @@ def test_invalid_large_serialization(client):
         stub.function(serialized=True)(g)
         with stub.run(client=client):
             pass
+
+
+def test_call_unhydrated_function():
+    with pytest.raises(ExecutionError, match="hydrated"):
+        foo.remote(123)
