@@ -860,6 +860,7 @@ class _Function(_Object, type_prefix="fu"):
 
         obj._raw_f = raw_f
         obj._info = info
+        obj._function_name = info.function_name
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
         obj._stub = stub  # Needed for CLI right now
@@ -968,7 +969,7 @@ class _Function(_Object, type_prefix="fu"):
 
     @property
     def name(self) -> bool:
-        return self._info.function_name
+        return self._function_name
 
     async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
         if self._web_url:
