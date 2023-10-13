@@ -134,7 +134,6 @@ def test_run_function_without_app_error():
         dummy_modal.remote()
 
     assert "hydrated" in str(excinfo.value)
-    assert "remote" in str(excinfo.value)
 
 
 def test_is_inside_basic():

@@ -208,7 +208,7 @@ class _Object:
         if self._is_hydrated:
             return
         elif not self._hydrate_lazily:
-            raise ExecutionError("Cannot resolve object: it doesn't support lazy hydration")
+            raise ExecutionError("Object has not been hydrated and doesn't support lazy hydration.")
         else:
             resolver = Resolver()
             await resolver.load(self)
