@@ -177,6 +177,13 @@ class _OutputValue:
     value: Any
 
 
+def _raise_fn_not_hydrated(function_name: str):
+    raise InvalidError(
+        f"Function {function_name} not initialized.\n"
+        + "This can happen if you forget to import the function or cls in global scope."
+    )
+
+
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
@@ -186,7 +193,10 @@ class _Invocation:
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(function_id: str, args, kwargs, client: _Client):
+    async def create(function_id: str, function_name: str, args, kwargs, client: _Client):
+        if client is None:
+            _raise_fn_not_hydrated(function_name)
+
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
             parent_input_id=current_input_id(),
@@ -304,6 +314,7 @@ MAP_INVOCATION_CHUNK_SIZE = 49
 
 async def _map_invocation(
     function_id: str,
+    function_name: str,
     input_stream: AsyncIterable[Any],
     kwargs: Dict[str, Any],
     client: _Client,
@@ -312,6 +323,9 @@ async def _map_invocation(
     return_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
 ):
+    if client is None:
+        _raise_fn_not_hydrated(function_name)
+
     request = api_pb2.FunctionMapRequest(
         function_id=function_id,
         parent_input_id=current_input_id(),
@@ -952,6 +966,10 @@ class _Function(_Object, type_prefix="fu"):
     def is_generator(self) -> bool:
         return self._is_generator
 
+    @property
+    def name(self) -> bool:
+        return self._info.function_name
+
     async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
         if self._web_url:
             raise InvalidError(
@@ -968,6 +986,7 @@ class _Function(_Object, type_prefix="fu"):
 
         async for item in _map_invocation(
             self.object_id,
+            self.name,
             input_stream,
             kwargs,
             self._client,
@@ -979,7 +998,7 @@ class _Function(_Object, type_prefix="fu"):
             yield item
 
     async def _call_function(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
+        invocation = await _Invocation.create(self.object_id, self.name, args, kwargs, self._client)
         try:
             return await invocation.run_function()
         except asyncio.CancelledError:
@@ -988,17 +1007,17 @@ class _Function(_Object, type_prefix="fu"):
                 raise
 
     async def _call_function_nowait(self, args, kwargs):
-        return await _Invocation.create(self.object_id, args, kwargs, self._client)
+        return await _Invocation.create(self.object_id, self.name, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
     async def _call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
+        invocation = await _Invocation.create(self.object_id, self.name, args, kwargs, self._client)
         async for res in invocation.run_generator():
             yield res
 
     async def _call_generator_nowait(self, args, kwargs):
-        return await _Invocation.create(self.object_id, args, kwargs, self._client)
+        return await _Invocation.create(self.object_id, self.name, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
