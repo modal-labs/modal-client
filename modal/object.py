@@ -76,6 +76,7 @@ class _Object:
         pass
 
     def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
+        assert isinstance(object_id, str)
         self._object_id = object_id
         self._client = client
         self._hydrate_metadata(metadata)
