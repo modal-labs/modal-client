@@ -292,12 +292,12 @@ def test_redeploy_delete_objects(servicer, client):
 async def test_unhydrate(servicer, client):
     stub = Stub()
     stub.d = Dict.new()
-    assert not stub.d.is_hydrated()
+    assert not stub.d.is_hydrated
     async with stub.run(client=client):
-        assert stub.d.is_hydrated()
+        assert stub.d.is_hydrated
 
     # After app finishes, it should unhydrate
-    assert not stub.d.is_hydrated()
+    assert not stub.d.is_hydrated
 
 
 def test_keyboard_interrupt(servicer, client):
