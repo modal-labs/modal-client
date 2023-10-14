@@ -407,3 +407,19 @@ def test_rehydrate(client, servicer):
     # Hydration shouldn't overwrite local function definition
     obj = Foo()
     assert obj.bar.local(7) == 343
+
+
+stub_unhydrated = Stub()
+
+
+@stub_unhydrated.cls()
+class FooUnhydrated:
+    @method()
+    def bar(self):
+        ...
+
+
+def test_unhydrated():
+    foo = FooUnhydrated()
+    with pytest.raises(ExecutionError, match="hydrated"):
+        foo.bar.remote(42)
