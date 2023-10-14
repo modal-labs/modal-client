@@ -198,6 +198,7 @@ class _Object:
         """mdmd:hidden"""
         return self._object_id
 
+    @property
     def is_hydrated(self) -> bool:
         """mdmd:hidden"""
         return self._is_hydrated
