@@ -204,12 +204,19 @@ class _Object:
         """mdmd:hidden"""
         return self._is_hydrated
 
-    async def _try_hydrate(self) -> bool:
-        if not self._is_hydrated and self._hydrate_lazily:
+    async def resolve(self):
+        if self._is_hydrated:
+            return
+        elif not self._hydrate_lazily:
+            raise ExecutionError(
+                "Object has not been hydrated and doesn't support lazy hydration."
+                " This might happen if an object is defined on a different stub,"
+                " or if it's on the same stub but it didn't get created because it"
+                " wasn't defined in global scope."
+            )
+        else:
             resolver = Resolver()
             await resolver.load(self)
-
-        return self._is_hydrated
 
     async def _deploy(
         self,
@@ -373,8 +380,7 @@ Object = synchronize_api(_Object, target_module=__name__)
 def live_method(method):
     @wraps(method)
     async def wrapped(self, *args, **kwargs):
-        if not await self._try_hydrate():
-            raise ExecutionError(f"Calling method `{method.__name__}` requires the object to be hydrated.")
+        await self.resolve()
         return await method(self, *args, **kwargs)
 
     return wrapped
@@ -383,8 +389,7 @@ def live_method(method):
 def live_method_gen(method):
     @wraps(method)
     async def wrapped(self, *args, **kwargs):
-        if not await self._try_hydrate():
-            raise ExecutionError(f"Calling method `{method.__name__}` requires the object to be hydrated.")
+        await self.resolve()
         async for item in method(self, *args, **kwargs):
             yield item
 
