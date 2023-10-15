@@ -867,7 +867,12 @@ class _Function(_Object, type_prefix="fu"):
 
     def from_parametrized(self, obj, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_Function":
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            assert self._is_hydrated, "Cannot make bound function handle from unhydrated handle."
+            if not self.is_hydrated:
+                raise ExecutionError(
+                    "Base function in class has not been hydrated. This might happen if an object is"
+                    " defined on a different stub, or if it's on the same stub but it didn't get"
+                    " created because it wasn't defined in global scope."
+                )
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=self._object_id,
@@ -877,7 +882,7 @@ class _Function(_Object, type_prefix="fu"):
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
 
         provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
-        if len(args) + len(kwargs) == 0:
+        if len(args) + len(kwargs) == 0 and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
             provider._hydrate_from_other(self)
         provider._is_remote_cls_method = True  # TODO(erikbern): deprecated
