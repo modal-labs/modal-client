@@ -230,14 +230,19 @@ async def _deploy_stub(
         # Don't change the app state - deploy state is set by AppDeploy
         post_init_state = api_pb2.APP_STATE_UNSPECIFIED
 
-        # Create all members
-        await app._create_all_objects(
-            stub._blueprint, post_init_state, environment_name=environment_name, output_mgr=output_mgr
-        )
+        try:
+            # Create all members
+            await app._create_all_objects(
+                stub._blueprint, post_init_state, environment_name=environment_name, output_mgr=output_mgr
+            )
 
-        # Deploy app
-        # TODO(erikbern): not needed if the app already existed
-        url = await app.deploy(name, namespace, object_entity)
+            # Deploy app
+            # TODO(erikbern): not needed if the app already existed
+            url = await app.deploy(name, namespace, object_entity)
+        except Exception as e:
+            # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
+            await app.disconnect()
+            raise e
 
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
     output_mgr.print_if_visible(f"\nView Deployment: [magenta]{url}[/magenta]")
