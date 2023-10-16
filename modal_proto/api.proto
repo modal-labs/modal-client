@@ -593,7 +593,7 @@ message Function {
 
   PTYInfo pty_info = 22;
   bytes class_serialized = 23;
-  
+
   uint32 task_idle_timeout_secs = 25;
 
   CloudProvider cloud_provider = 26;
@@ -852,7 +852,7 @@ message FunctionCallListResponse {
 
 
 message FunctionGetCurrentStatsRequest {
-  string function_id = 1; 
+  string function_id = 1;
 }
 
 message FunctionStats {
@@ -896,7 +896,7 @@ message GenericResult {  // Used for both tasks and function outputs
 
 message RelayListResponse {
   repeated string hostnames = 1; // A subset of online relays to attempt connection with.
-} 
+}
 
 message Sandbox {
   repeated string entrypoint_args = 1;
@@ -1120,7 +1120,7 @@ enum GPUType {
   GPU_TYPE_A100 = 2;
   GPU_TYPE_A10G = 3;
   GPU_TYPE_ANY = 4;
-  GPU_TYPE_A100_20G = 5;
+  GPU_TYPE_A100_20G = 5 [deprecated=true];
   GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
   GPU_TYPE_INFERENTIA2 = 7;
   GPU_TYPE_A100_80GB = 8;
