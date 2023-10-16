@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import contextlib
 import pytest
 
 from modal import Stub
@@ -103,7 +102,7 @@ def test_cloud_provider_selection(client, servicer):
         stub.function(cloud="foo")(dummy)
 
 
-A100_GPU_MEMORY_MAPPING = {0: api_pb2.GPU_TYPE_A100, 20: api_pb2.GPU_TYPE_A100_20G, 40: api_pb2.GPU_TYPE_A100}
+A100_GPU_MEMORY_MAPPING = {0: api_pb2.GPU_TYPE_A100, 40: api_pb2.GPU_TYPE_A100}
 
 
 @pytest.mark.parametrize("memory,gpu_type", A100_GPU_MEMORY_MAPPING.items())
@@ -111,10 +110,8 @@ def test_memory_selection_gpu_variant(client, servicer, memory, gpu_type):
     import modal
 
     stub = Stub()
+    stub.function(gpu=modal.gpu.A100(memory=memory))(dummy)
 
-    ctx_mgr = pytest.warns(DeprecationError) if memory == 20 else contextlib.nullcontext()
-    with ctx_mgr:  # type: ignore
-        stub.function(gpu=modal.gpu.A100(memory=memory))(dummy)
     with stub.run(client=client):
         pass
 
@@ -123,6 +120,16 @@ def test_memory_selection_gpu_variant(client, servicer, memory, gpu_type):
     assert func_def.resources.gpu_config.count == 1
     assert func_def.resources.gpu_config.type == gpu_type
     assert func_def.resources.gpu_config.memory == memory
+
+
+def test_a100_20gb_gpu_unsupported():
+    import modal
+
+    stub = Stub()
+
+    with pytest.raises(ValueError) as err:
+        stub.function(gpu=modal.gpu.A100(memory=20))(dummy)
+    assert err.value.args == ("A100 20GB is unsupported, consider A10 or A100 40GB instead",)
 
 
 A100_GPU_COUNT_MAPPING = {1: api_pb2.GPU_TYPE_A100, **{i: api_pb2.GPU_TYPE_A100 for i in range(2, 5)}}
