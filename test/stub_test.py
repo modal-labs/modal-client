@@ -8,7 +8,7 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Dict, Image, Queue, Stub, web_endpoint
-from modal.exception import DeprecationError, ExecutionError, InvalidError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
@@ -318,3 +318,17 @@ def test_function_image_positional():
             pass
 
     assert "function(image=image)" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_deploy_disconnect(servicer, client):
+    stub = Stub()
+    stub.function(secret=modal.Secret.from_name("nonexistent-secret"))(square)
+
+    with pytest.raises(NotFoundError):
+        await deploy_stub.aio(stub, "my-app", client=client)
+
+    assert servicer.app_state_history["ap-1"] == [
+        api_pb2.APP_STATE_INITIALIZING,
+        api_pb2.APP_STATE_STOPPED,
+    ]
