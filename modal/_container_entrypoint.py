@@ -36,7 +36,7 @@ from ._pty import run_in_pty
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
-from .app import _ContainerApp
+from .app import _container_app, _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import logger
@@ -106,7 +106,6 @@ class _FunctionIOManager:
         self._input_concurrency: Optional[int] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._output_queue: Optional[asyncio.Queue] = None
-        self._container_app: Optional[_ContainerApp] = None
         self._environment_name = container_args.environment_name
 
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
@@ -114,10 +113,8 @@ class _FunctionIOManager:
 
     @wrap()
     async def initialize_app(self) -> _ContainerApp:
-        self._container_app = await _ContainerApp.init_container(
-            self._client, self.app_id, self._stub_name, self._environment_name
-        )
-        return self._container_app
+        await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name)
+        return _container_app
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()

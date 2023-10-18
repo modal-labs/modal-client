@@ -399,7 +399,8 @@ def test_rehydrate(client, servicer):
     app_id = deploy_stub(stub, "my-cls-app", client=client).app_id
 
     # Initialize a container
-    app = ContainerApp.init_container(client, app_id, "stub")
+    app = ContainerApp()
+    app.init(client, app_id, "stub")
 
     # Associate app with stub
     app._associate_stub_container(stub)
