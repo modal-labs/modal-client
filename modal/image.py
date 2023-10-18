@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import contextlib
 import os
 import shlex
 import sys
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import toml
+from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal._types import typechecked
@@ -125,7 +127,17 @@ class _Image(_Object, type_prefix="im"):
     such as `modal.Image.debian_slim`, `modal.Image.from_registry`, or `modal.Image.conda`.
     """
 
-    force_build: bool = False
+    force_build: bool
+    inside_exceptions: List[Exception]
+
+    def _initialize_from_empty(self):
+        self.inside_exceptions = []
+
+    def _hydrate_metadata(self, message: Optional[Message]):
+        env_image_id = config.get("image_id")
+        if env_image_id == self.object_id:
+            for exc in self.inside_exceptions:
+                raise exc
 
     @staticmethod
     @typechecked
@@ -1306,6 +1318,20 @@ class _Image(_Object, type_prefix="im"):
         env_image_id = config.get("image_id")
         logger.debug(f"Image._is_inside(): env_image_id={env_image_id} self.object_id={self.object_id}")
         return self.object_id == env_image_id
+
+    @contextlib.contextmanager
+    def run_inside(self):
+        env_image_id = config.get("image_id")
+        try:
+            yield
+        except Exception as exc:
+            if self.object_id is None:
+                # Might be initialized later
+                self.inside_exceptions.append(exc)
+            elif env_image_id == self.object_id:
+                # Image is already initialized (we can remove this case later
+                # when we don't hydrate objects so early)
+                raise
 
 
 Image = synchronize_api(_Image)
