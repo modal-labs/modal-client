@@ -36,7 +36,8 @@ async def test_webhook(servicer, client):
         assert await f.local(100) == {"square": 10000}
 
         # Make sure the container gets the app id as well
-        container_app = await ContainerApp.init_container.aio(client, stub.app_id)
+        container_app = ContainerApp()
+        await ContainerApp.init.aio(client, stub.app_id)
         container_app._associate_stub_container(stub)
         f_c = stub["f"]
         assert isinstance(f_c, Function)
