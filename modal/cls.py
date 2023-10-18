@@ -2,7 +2,7 @@
 import asyncio
 import pickle
 from datetime import date
-from typing import Any, Callable, Dict, Optional, Type, TypeVar
+from typing import Any, Callable, Dict, Optional, TypeVar
 
 from google.protobuf.message import Message
 
@@ -11,7 +11,7 @@ from modal_utils.async_utils import synchronize_api, synchronizer
 
 from ._output import OutputManager
 from ._resolver import Resolver
-from .exception import deprecation_warning
+from .exception import deprecation_error
 from .functions import _Function
 from .object import _Object
 
@@ -20,15 +20,7 @@ T = TypeVar("T")
 
 class ClsMixin:
     def __init_subclass__(cls):
-        deprecation_warning(date(2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
-
-    @classmethod
-    def remote(cls: Type[T], *args, **kwargs) -> T:
-        ...
-
-    @classmethod
-    async def aio_remote(cls: Type[T], *args, **kwargs) -> T:
-        ...
+        deprecation_error(date(2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
 
 
 def check_picklability(key, arg):
@@ -189,11 +181,10 @@ class _Cls(_Object, type_prefix="cs"):
         """This acts as the class constructor."""
         return _Obj(self._user_cls, self._output_mgr, self._base_functions, args, kwargs)
 
-    async def remote(self, *args, **kwargs) -> _Obj:
-        deprecation_warning(
+    async def remote(self, *args, **kwargs):
+        deprecation_error(
             date(2023, 9, 1), "`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`."
         )
-        return self(*args, **kwargs)
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint
