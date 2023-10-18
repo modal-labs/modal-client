@@ -9,8 +9,7 @@ import time
 import webbrowser
 from typing import Any
 
-from modal import Image, Queue, Stub
-from modal._relay_client import forward
+from modal import Image, Queue, Stub, forward
 
 args: Any = {}
 
