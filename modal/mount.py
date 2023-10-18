@@ -493,14 +493,12 @@ _create_package_mounts_deprecation_msg = (
 
 
 @typechecked
-def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
+def _create_package_mounts(module_names: Sequence[str]):
     f"""{_create_package_mounts_deprecation_msg}"""
-    modal.exception.deprecation_warning(
+    modal.exception.deprecation_error(
         date(2023, 7, 19),
         _create_package_mounts_deprecation_msg,
-        pending=True,
     )
-    return [_Mount.from_local_python_packages(*module_names)]
 
 
 create_package_mounts = synchronize_api(_create_package_mounts)

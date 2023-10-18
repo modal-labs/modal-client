@@ -53,10 +53,8 @@ def test_lookup_function(servicer, client):
         assert f.local(2, 4) == 20
 
     # Make sure the old-style local calls raise an error
-    with pytest.raises(ExecutionError):
-        # It also throws a deprecation warning, so let's ignore that
-        with pytest.warns(DeprecationError):
-            assert f(2, 4) == 20
+    with pytest.raises(DeprecationError):
+        assert f(2, 4)
 
 
 def test_webhook_lookup(servicer, client):
