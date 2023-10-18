@@ -61,7 +61,7 @@ from .exception import (
     FunctionTimeoutError,
     InvalidError,
     RemoteError,
-    deprecation_warning,
+    deprecation_error,
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
@@ -1135,15 +1135,11 @@ class _Function(_Object, type_prefix="fu"):
 
     def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
         if self._is_generator:
-            deprecation_warning(
+            deprecation_error(
                 date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`"
             )
-            return self.remote_gen(*args, **kwargs)
         else:
-            deprecation_warning(
-                date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`"
-            )
-            return self.remote(*args, **kwargs)
+            deprecation_error(date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
 
     @live_method
     async def shell(self, *args, **kwargs) -> None:
@@ -1203,20 +1199,18 @@ class _Function(_Object, type_prefix="fu"):
     @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if self._get_is_remote_cls_method():
-            deprecation_warning(
+            deprecation_error(
                 date(2023, 9, 1),
                 "Calling remote class methods like `obj.f(...)` is deprecated. Use `obj.f.remote(...)` for remote calls"
                 " and `obj.f.local(...)` for local calls",
             )
-            return self.remote(*args, **kwargs)
         else:
-            deprecation_warning(
+            deprecation_error(
                 date(2023, 8, 16),
                 "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
                 " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
                 " a Modal container in the cloud",
             )
-            return self.local(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
