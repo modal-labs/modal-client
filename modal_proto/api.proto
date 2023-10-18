@@ -897,10 +897,6 @@ message GenericResult {  // Used for both tasks and function outputs
   string propagation_reason = 13;
 }
 
-message RelayListResponse {
-  repeated string hostnames = 1; // A subset of online relays to attempt connection with.
-}
-
 message Sandbox {
   repeated string entrypoint_args = 1;
   repeated string mount_ids = 2;
@@ -1347,6 +1343,22 @@ message TokenFlowWaitResponse {
   string workspace_username = 4;
 }
 
+message TunnelStartRequest {
+  uint32 port = 1;
+}
+
+message TunnelStartResponse {
+  string host = 1;
+}
+
+message TunnelStopRequest {
+  uint32 port = 1;
+}
+
+message TunnelStopResponse {
+  bool exists = 1;
+}
+
 message VolumeCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -1531,9 +1543,6 @@ service ModalClient {
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
   rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
 
-  // Relays
-  rpc RelayList(google.protobuf.Empty) returns (RelayListResponse);
-
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
@@ -1559,6 +1568,10 @@ service ModalClient {
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
   rpc TokenFlowWait(TokenFlowWaitRequest) returns (TokenFlowWaitResponse);
+
+  // Tunnels
+  rpc TunnelStart(TunnelStartRequest) returns (TunnelStartResponse);
+  rpc TunnelStop(TunnelStopRequest) returns (TunnelStopResponse);
 
   // Volumes
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
