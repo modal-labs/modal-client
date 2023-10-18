@@ -5,6 +5,8 @@ import textwrap
 import warnings
 from typing import Tuple
 
+from synchronicity.synchronizer import FunctionWithAio
+
 
 def _signature_from_ast(func) -> Tuple[str, str]:
     """Get function signature, including decorators and comments, from source code
@@ -42,7 +44,7 @@ def get_signature(name, callable) -> str:
     TODO: use source parsing *only* to extract default arguments, comments (and possibly decorators) and "merge"
           that definition with the outer-most definition."""
 
-    if not (inspect.isfunction(callable) or inspect.ismethod(callable)):
+    if not (inspect.isfunction(callable) or inspect.ismethod(callable) or isinstance(callable, FunctionWithAio)):
         assert hasattr(callable, "__call__")
         callable = callable.__call__
 
@@ -65,5 +67,7 @@ def get_signature(name, callable) -> str:
         # hack to "reset" signature to a blocking one if the underlying source definition is async
         # but the wrapper function isn't (like when synchronicity wraps an async function as a blocking one)
         definition_source = definition_source.replace("async def", "def")
+        definition_source = definition_source.replace("asynccontextmanager", "contextmanager")
+        definition_source = definition_source.replace("AsyncIterator", "Iterator")
 
     return definition_source

@@ -65,19 +65,19 @@ class FooRemote:
 
 def test_call_cls_remote_sync(client):
     with stub_remote.run(client=client):
-        foo_remote: FooRemote
-        with pytest.warns(DeprecationError):
-            foo_remote = FooRemote.remote(3, "hello")  # type: ignore
-        # Mock servicer just squares the argument
-        # This means remote function call is taking place.
-        assert foo_remote.bar.remote(8) == 64
-        with pytest.warns(DeprecationError):
-            assert foo_remote.bar(8) == 64
+        # Check old cls syntax
+        with pytest.raises(DeprecationError):
+            FooRemote.remote(3, "hello")  # type: ignore
 
         # Check new syntax
-        foo_remote_2: FooRemote = FooRemote(3, "hello")
-        ret: float = foo_remote_2.bar.remote(8)
-        assert ret == 64
+        foo_remote: FooRemote = FooRemote(3, "hello")
+        ret: float = foo_remote.bar.remote(8)
+        assert ret == 64  # Mock servicer just squares the argument
+
+        # Check old method syntax
+        assert foo_remote.bar.remote(8) == 64
+        with pytest.raises(DeprecationError):
+            foo_remote.bar(8)
 
 
 def test_call_cls_remote_invalid_type(client):
@@ -106,10 +106,11 @@ class Bar:
 @pytest.mark.asyncio
 async def test_call_class_async(client, servicer):
     async with stub_2.run(client=client):
-        with pytest.warns(DeprecationError):
-            bar = await Bar.remote.aio()  # type: ignore
         bar = Bar()
         assert await bar.baz.remote.aio(42) == 1764
+
+        with pytest.raises(DeprecationError):
+            await Bar.remote.aio()  # type: ignore
 
 
 def test_run_class_serialized(client, servicer):
@@ -158,15 +159,18 @@ class BarRemote:
 @pytest.mark.asyncio
 async def test_call_cls_remote_async(client):
     async with stub_remote_2.run(client=client):
+        bar_remote = BarRemote(3, "hello")
+        assert await bar_remote.baz.remote.aio(8) == 64  # Mock servicer just squares the argument
+
+        # Check deprecated method syntax
+        with pytest.raises(DeprecationError):
+            bar_remote.baz(8)
+
+        # Check deprecated cls syntax
         coro = BarRemote.remote.aio(3, "hello")  # type: ignore
         assert inspect.iscoroutine(coro)
-        with pytest.warns(DeprecationError):
-            bar_remote = await coro
-        # Mock servicer just squares the argument
-        # This means remote function call is taking place.
-        assert await bar_remote.baz.remote.aio(8) == 64
-        with pytest.warns(DeprecationError):
-            assert bar_remote.baz(8) == 64
+        with pytest.raises(DeprecationError):
+            await coro
 
 
 stub_local = Stub()
@@ -183,10 +187,12 @@ class FooLocal:
         return self.bar.local(y + 1)
 
 
-def test_can_call_locally():
+def test_can_call_locally(client):
     foo = FooLocal()
     assert foo.bar.local(4) == 64
     assert foo.baz.local(4) == 125
+    with stub_local.run(client=client):
+        assert foo.baz.local(2) == 27
 
 
 def test_can_call_remotely_from_local(client):
@@ -213,19 +219,21 @@ class NoArgRemote:
 
 def test_call_cls_remote_no_args(client):
     with stub_remote_3.run(client=client):
-        with pytest.warns(DeprecationError):
-            foo_remote = NoArgRemote.remote()  # type: ignore
-        # Mock servicer just squares the argument
-        # This means remote function call is taking place.
-        with pytest.warns(DeprecationError):
-            assert foo_remote.baz(8) == 64
-
+        # Check new cls syntax
         foo_remote = NoArgRemote()
-        assert foo_remote.baz.remote(8) == 64
+        assert foo_remote.baz.remote(8) == 64  # Mock servicer just squares the argument
+
+        # Check old cls syntax
+        with pytest.raises(DeprecationError):
+            NoArgRemote.remote()  # type: ignore
+
+        # Check old method syntax
+        with pytest.raises(DeprecationError):
+            foo_remote.baz(8)
 
 
 def test_deprecated_mixin():
-    with pytest.warns(DeprecationError):
+    with pytest.raises(DeprecationError):
 
         class FooRemote(ClsMixin):
             pass
@@ -241,6 +249,7 @@ def test_lookup(client, servicer):
     deploy_stub(stub, "my-cls-app", client=client)
 
     cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
+    cls.resolve()
 
     assert cls.object_id.startswith("cs-")
     assert cls.bar.object_id.startswith("fu-")
@@ -288,22 +297,65 @@ def get_thread_id():
 @cls_with_enter_stub.cls()
 class ClsWithEnter:
     def __init__(self, thread_id):
-        self.x = 0
+        self.inited = True
+        self.entered = False
         self.thread_id = thread_id
         assert get_thread_id() == self.thread_id
 
     def __enter__(self):
-        self.x = 42
+        self.entered = True
         assert get_thread_id() == self.thread_id
 
-    def f(self, y):
-        assert get_thread_id() == self.thread_id
-        return self.x * y
+    def not_modal_method(self, y: int) -> int:
+        return y**2
+
+    @method()
+    def modal_method(self, y: int) -> int:
+        return y**2
 
 
-def test_local_enter():
+def test_dont_enter_on_local_access():
     obj = ClsWithEnter(get_thread_id())
-    assert obj.f(10) == 420
+    with pytest.raises(AttributeError):
+        obj.doesnt_exist  # type: ignore
+    assert obj.inited
+    assert not obj.entered
+
+
+def test_dont_enter_on_local_non_modal_call():
+    obj = ClsWithEnter(get_thread_id())
+    assert obj.not_modal_method(7) == 49
+    assert obj.inited
+    assert not obj.entered
+
+
+def test_enter_on_local_modal_call():
+    obj = ClsWithEnter(get_thread_id())
+    assert obj.modal_method.local(7) == 49
+    assert obj.inited
+    assert obj.entered
+
+
+@cls_with_enter_stub.cls()
+class ClsWithAenter:
+    def __init__(self):
+        self.inited = True
+        self.entered = False
+
+    async def __aenter__(self):
+        self.entered = True
+
+    @method()
+    async def modal_method(self, y: int) -> int:
+        return y**2
+
+
+@pytest.mark.asyncio
+async def test_aenter_on_local_modal_call():
+    obj = ClsWithAenter()
+    assert await obj.modal_method.local(7) == 49
+    assert obj.inited
+    assert obj.entered
 
 
 inheritance_stub = Stub()
@@ -354,7 +406,8 @@ def test_rehydrate(client, servicer):
     app_id = deploy_stub(stub, "my-cls-app", client=client).app_id
 
     # Initialize a container
-    app = ContainerApp.init_container(client, app_id, "stub")
+    app = ContainerApp()
+    app.init(client, app_id, "stub")
 
     # Associate app with stub
     app._associate_stub_container(stub)
@@ -362,3 +415,19 @@ def test_rehydrate(client, servicer):
     # Hydration shouldn't overwrite local function definition
     obj = Foo()
     assert obj.bar.local(7) == 343
+
+
+stub_unhydrated = Stub()
+
+
+@stub_unhydrated.cls()
+class FooUnhydrated:
+    @method()
+    def bar(self):
+        ...
+
+
+def test_unhydrated():
+    foo = FooUnhydrated()
+    with pytest.raises(ExecutionError, match="hydrated"):
+        foo.bar.remote(42)

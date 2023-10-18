@@ -1,18 +1,17 @@
 # Copyright Modal Labs 2022
 import asyncio
 import pickle
-import warnings
 from datetime import date
-from typing import Any, Callable, Dict, Optional, Type, TypeVar
+from typing import Any, Callable, Dict, Optional, TypeVar
 
 from google.protobuf.message import Message
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
+from modal_utils.async_utils import synchronize_api, synchronizer
 
 from ._output import OutputManager
 from ._resolver import Resolver
-from .exception import deprecation_warning
+from .exception import deprecation_error
 from .functions import _Function
 from .object import _Object
 
@@ -21,15 +20,7 @@ T = TypeVar("T")
 
 class ClsMixin:
     def __init_subclass__(cls):
-        deprecation_warning(date(2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
-
-    @classmethod
-    def remote(cls: Type[T], *args, **kwargs) -> T:
-        ...
-
-    @classmethod
-    async def aio_remote(cls: Type[T], *args, **kwargs) -> T:
-        ...
+        deprecation_error(date(2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
 
 
 def check_picklability(key, arg):
@@ -47,7 +38,8 @@ class _Obj:
     All this class does is to return `Function` objects."""
 
     _functions: Dict[str, _Function]
-    _has_local_obj: bool
+    _inited: bool
+    _entered: bool
     _local_obj: Any
     _local_obj_constr: Optional[Callable[[], Any]]
 
@@ -65,7 +57,8 @@ class _Obj:
             self._functions[k]._set_output_mgr(output_mgr)
 
         # Used for construction local object lazily
-        self._has_local_obj = False
+        self._inited = False
+        self._entered = False
         self._local_obj = None
         if user_cls:
             self._local_obj_constr = lambda: user_cls(*args, **kwargs)
@@ -80,15 +73,36 @@ class _Obj:
 
     def get_local_obj(self):
         """Construct local object lazily. Used for .local() calls."""
-        if not self._has_local_obj:
+        if not self._inited:
             self.get_obj()  # Instantiate object
-            if hasattr(self._local_obj, "__enter__"):
-                self._local_obj.__enter__()
-            elif hasattr(self._local_obj, "__aenter__"):
-                warnings.warn("Not running asynchronous enter handlers on local objects")
-            self._has_local_obj = True
+            self._inited = True
 
         return self._local_obj
+
+    def enter(self):
+        if not self._entered:
+            if hasattr(self._local_obj, "__enter__"):
+                self._local_obj.__enter__()
+        self._entered = True
+
+    @property
+    def entered(self):
+        # needed because aenter is nowrap
+        return self._entered
+
+    @entered.setter
+    def entered(self, val):
+        self._entered = val
+
+    @synchronizer.nowrap
+    async def aenter(self):
+        if not self.entered:
+            local_obj = self.get_local_obj()
+            if hasattr(local_obj, "__aenter__"):
+                await local_obj.__aenter__()
+            elif hasattr(local_obj, "__enter__"):
+                local_obj.__enter__()
+        self.entered = True
 
     def __getattr__(self, k):
         if k in self._functions:
@@ -167,11 +181,10 @@ class _Cls(_Object, type_prefix="cs"):
         """This acts as the class constructor."""
         return _Obj(self._user_cls, self._output_mgr, self._base_functions, args, kwargs)
 
-    async def remote(self, *args, **kwargs) -> _Obj:
-        deprecation_warning(
+    async def remote(self, *args, **kwargs):
+        deprecation_error(
             date(2023, 9, 1), "`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`."
         )
-        return self(*args, **kwargs)
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint

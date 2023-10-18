@@ -5,7 +5,7 @@ from typing import Optional, Union
 
 from modal_proto import api_pb2
 
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import InvalidError, deprecation_error
 
 
 @dataclass
@@ -70,27 +70,20 @@ class A100(_GPUConfig):
         count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
         memory: int = 0,  # Set this to 80 if you want to use the 80GB version. Otherwise defaults to 40.
     ):
-        allowed_memory_values = {0, 20, 40, 80}
+        if memory == 20:
+            raise ValueError("A100 20GB is unsupported, consider A10 or A100 40GB instead")
+
+        allowed_memory_values = {0, 40, 80}
         if memory not in allowed_memory_values:
             raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
 
-        if memory == 20:
-            deprecation_warning(
-                date(2023, 9, 7),
-                "A100 20GB is deprecated and will be unsupported in the future. Until then, it may incur A100 40GB prices.",
-            )
-            if count != 1:
-                raise ValueError(f"Cannot request more than 1 A100 20GB unit. Requested {count}")
-            super().__init__(api_pb2.GPU_TYPE_A100_20G, count, memory)
-        elif memory == 80:
+        if memory == 80:
             super().__init__(api_pb2.GPU_TYPE_A100_80GB, count, memory)
         else:
             super().__init__(api_pb2.GPU_TYPE_A100, count, memory)
 
     def __repr__(self):
-        if self.memory == 20:
-            return f"GPU(A100-20GB, count={self.count})"
-        elif self.memory == 80:
+        if self.memory == 80:
             return f"GPU(A100-80GB, count={self.count})"
         else:
             return f"GPU(A100-40GB, count={self.count})"
@@ -171,7 +164,7 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
                 raise InvalidError(f"Invalid GPU count: {count_str}. Value must be an integer.")
 
         if value.lower() == "a100-20g":
-            return A100(memory=20, count=count)  # trigger deprecation warning at this point
+            return A100(memory=20, count=count)  # Triggers unsupported error underneath.
         elif value.lower() not in STRING_TO_GPU_CONFIG:
             raise InvalidError(
                 f"Invalid GPU type: {value}. Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive)."

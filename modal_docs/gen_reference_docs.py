@@ -7,6 +7,8 @@ import sys
 import warnings
 from typing import NamedTuple
 
+from synchronicity.synchronizer import FunctionWithAio
+
 from .mdmd.mdmd import (
     Category,
     class_str,
@@ -58,7 +60,6 @@ def run(output_dir: str = None):
 
     base_title_level = "#"
     forced_module_docs = [
-        # TODO(erikbern): it's pretty confusing that this one is defined here, and not in modal-client
         ("modal.Function", "modal.functions"),
         ("modal.Secret", "modal.secret"),
         ("modal.SharedVolume", "modal.shared_volume"),
@@ -71,7 +72,7 @@ def run(output_dir: str = None):
         ("modal.Sandbox", "modal.sandbox"),
     ]
     # These aren't defined in `modal`, but should still be documented as top-level entries.
-    forced_members = ["web_endpoint", "asgi_app", "method", "wsgi_app"]
+    forced_members = {"web_endpoint", "asgi_app", "method", "wsgi_app", "forward"}
     # These are excluded from the sidebar, typically to 'soft release' some documentation.
     sidebar_excluded: set[str] = set()
 
@@ -100,13 +101,13 @@ def run(output_dir: str = None):
         if inspect.isclass(item):
             content = f"{base_title_level} {qual_name}\n\n" + class_str(item_name, item, base_title_level)
             category = Category.CLASS
-        elif inspect.isroutine(item):
+        elif inspect.isroutine(item) or isinstance(item, FunctionWithAio):
             content = f"{base_title_level} {qual_name}\n\n" + function_str(item_name, item)
             category = Category.FUNCTION
         elif inspect.ismodule(item):
             continue  # skipping imported modules
         else:
-            warnings.warn(f"Not sure how to document: {item_name} ({item}")
+            warnings.warn(f"Not sure how to document: {item_name} ({item})")
             continue
         ordered_doc_items.append(
             DocItem(

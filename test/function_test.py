@@ -35,27 +35,28 @@ def test_run_function(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
         # Old-style remote calls
-        with pytest.warns(DeprecationError):
-            assert foo.call(2, 4) == 20
-            assert len(servicer.cleared_function_calls) == 1
+        with pytest.raises(DeprecationError):
+            foo.call(2, 4)
 
         # New-style remote calls
         assert foo.remote(2, 4) == 20
-        assert len(servicer.cleared_function_calls) == 2
+        assert len(servicer.cleared_function_calls) == 1
 
         # Make sure we can also call the Function object
         fun = stub.foo
         assert isinstance(fun, Function)
         assert fun.remote(2, 4) == 20
-        assert len(servicer.cleared_function_calls) == 3
+        assert len(servicer.cleared_function_calls) == 2
 
 
 @pytest.mark.asyncio
 async def test_call_function_locally(client, servicer):
     # Old-style local calls
-    with pytest.warns(DeprecationError):
-        assert foo(22, 44) == 77  # call it locally
-        assert await async_foo(22, 44) == 78
+    with pytest.raises(DeprecationError):
+        foo(22, 44)
+
+    with pytest.raises(DeprecationError):
+        await async_foo(22, 44)
 
     # New-style local calls
     assert foo.local(22, 44) == 77  # call it locally
@@ -63,20 +64,20 @@ async def test_call_function_locally(client, servicer):
 
     with stub.run(client=client):
         assert foo.remote(2, 4) == 20
-        with pytest.warns(DeprecationError):
-            assert foo(22, 55) == 88
-        with pytest.warns(DeprecationError):
-            assert await async_foo(22, 44) == 78
+        with pytest.raises(DeprecationError):
+            foo(22, 55)
+        with pytest.raises(DeprecationError):
+            await async_foo(22, 44)
         assert async_foo.remote(2, 4) == 20
         assert await async_foo.remote.aio(2, 4) == 20
 
         # Make sure we can also call the Function object
         assert isinstance(stub.foo, Function)
         assert isinstance(stub.async_foo, Function)
-        with pytest.warns(DeprecationError):
-            assert stub.foo(22, 55) == 88
-        with pytest.warns(DeprecationError):
-            assert await stub.async_foo(22, 44) == 78
+        with pytest.raises(DeprecationError):
+            stub.foo(22, 55)
+        with pytest.raises(DeprecationError):
+            await stub.async_foo(22, 44)
 
 
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
@@ -241,9 +242,8 @@ async def test_generator(client, servicer):
         assert len(servicer.cleared_function_calls) == 1
 
         # Check deprecated interface
-        with pytest.warns(DeprecationError):
-            res = later_gen_modal.call()
-            assert next(res) == "bar"
+        with pytest.raises(DeprecationError):
+            later_gen_modal.call()
 
 
 @pytest.mark.asyncio
@@ -640,3 +640,8 @@ def test_invalid_large_serialization(client):
         stub.function(serialized=True)(g)
         with stub.run(client=client):
             pass
+
+
+def test_call_unhydrated_function():
+    with pytest.raises(ExecutionError, match="hydrated"):
+        foo.remote(123)

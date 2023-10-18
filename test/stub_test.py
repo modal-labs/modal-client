@@ -8,7 +8,7 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Dict, Image, Queue, Stub, web_endpoint
-from modal.exception import DeprecationError, ExecutionError, InvalidError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
@@ -134,7 +134,6 @@ def test_run_function_without_app_error():
         dummy_modal.remote()
 
     assert "hydrated" in str(excinfo.value)
-    assert "remote" in str(excinfo.value)
 
 
 def test_is_inside_basic():
@@ -292,12 +291,12 @@ def test_redeploy_delete_objects(servicer, client):
 async def test_unhydrate(servicer, client):
     stub = Stub()
     stub.d = Dict.new()
-    assert not stub.d.is_hydrated()
+    assert not stub.d.is_hydrated
     async with stub.run(client=client):
-        assert stub.d.is_hydrated()
+        assert stub.d.is_hydrated
 
     # After app finishes, it should unhydrate
-    assert not stub.d.is_hydrated()
+    assert not stub.d.is_hydrated
 
 
 def test_keyboard_interrupt(servicer, client):
@@ -319,3 +318,17 @@ def test_function_image_positional():
             pass
 
     assert "function(image=image)" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_deploy_disconnect(servicer, client):
+    stub = Stub()
+    stub.function(secret=modal.Secret.from_name("nonexistent-secret"))(square)
+
+    with pytest.raises(NotFoundError):
+        await deploy_stub.aio(stub, "my-app", client=client)
+
+    assert servicer.app_state_history["ap-1"] == [
+        api_pb2.APP_STATE_INITIALIZING,
+        api_pb2.APP_STATE_STOPPED,
+    ]

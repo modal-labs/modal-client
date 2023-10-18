@@ -593,7 +593,7 @@ message Function {
 
   PTYInfo pty_info = 22;
   bytes class_serialized = 23;
-  
+
   uint32 task_idle_timeout_secs = 25;
 
   CloudProvider cloud_provider = 26;
@@ -621,7 +621,8 @@ message Function {
   // TODO: combine into enum?
   bool is_builder_function = 32;
   bool is_auto_snapshot = 38;
-  bool is_checkpointing_function = 39;
+  bool is_method = 39;
+  bool is_checkpointing_function = 40;
 }
 
 message FunctionHandleMetadata {
@@ -633,6 +634,7 @@ message FunctionHandleMetadata {
   string function_name = 2;
   Function.FunctionType function_type = 8;
   string web_url = 28;
+  bool is_method = 39;
 }
 
 message FunctionCreateRequest {
@@ -853,7 +855,7 @@ message FunctionCallListResponse {
 
 
 message FunctionGetCurrentStatsRequest {
-  string function_id = 1; 
+  string function_id = 1;
 }
 
 message FunctionStats {
@@ -894,10 +896,6 @@ message GenericResult {  // Used for both tasks and function outputs
 
   string propagation_reason = 13;
 }
-
-message RelayListResponse {
-  repeated string hostnames = 1; // A subset of online relays to attempt connection with.
-} 
 
 message Sandbox {
   repeated string entrypoint_args = 1;
@@ -1121,7 +1119,7 @@ enum GPUType {
   GPU_TYPE_A100 = 2;
   GPU_TYPE_A10G = 3;
   GPU_TYPE_ANY = 4;
-  GPU_TYPE_A100_20G = 5;
+  GPU_TYPE_A100_20G = 5 [deprecated=true];
   GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
   GPU_TYPE_INFERENTIA2 = 7;
   GPU_TYPE_A100_80GB = 8;
@@ -1345,6 +1343,22 @@ message TokenFlowWaitResponse {
   string workspace_username = 4;
 }
 
+message TunnelStartRequest {
+  uint32 port = 1;
+}
+
+message TunnelStartResponse {
+  string host = 1;
+}
+
+message TunnelStopRequest {
+  uint32 port = 1;
+}
+
+message TunnelStopResponse {
+  bool exists = 1;
+}
+
 message VolumeCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -1529,9 +1543,6 @@ service ModalClient {
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
   rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
 
-  // Relays
-  rpc RelayList(google.protobuf.Empty) returns (RelayListResponse);
-
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
@@ -1557,6 +1568,10 @@ service ModalClient {
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
   rpc TokenFlowWait(TokenFlowWaitRequest) returns (TokenFlowWaitResponse);
+
+  // Tunnels
+  rpc TunnelStart(TunnelStartRequest) returns (TunnelStartResponse);
+  rpc TunnelStop(TunnelStopRequest) returns (TunnelStopResponse);
 
   // Volumes
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);

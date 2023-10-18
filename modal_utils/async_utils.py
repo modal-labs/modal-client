@@ -103,6 +103,10 @@ class TaskContext:
         self._tasks: set[asyncio.Task] = set()
         self._exited: asyncio.Event = asyncio.Event()  # Used to stop infinite loops
 
+    @property
+    def exited(self) -> bool:
+        return self._exited.is_set()
+
     async def __aenter__(self):
         await self.start()
         return self

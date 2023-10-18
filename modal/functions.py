@@ -46,7 +46,7 @@ from ._blob_utils import (
     blob_download,
     blob_upload,
 )
-from ._function_utils import FunctionInfo
+from ._function_utils import FunctionInfo, is_async
 from ._location import parse_cloud_provider
 from ._mount_utils import validate_mount_points
 from ._output import OutputManager
@@ -61,7 +61,7 @@ from .exception import (
     FunctionTimeoutError,
     InvalidError,
     RemoteError,
-    deprecation_warning,
+    deprecation_error,
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
@@ -504,8 +504,9 @@ class _Function(_Object, type_prefix="fu"):
     _stub: "modal.stub._Stub"
     _obj: Any
     _web_url: Optional[str]
-    _is_remote_cls_method: bool = False
+    _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
     _function_name: Optional[str]
+    _is_method: bool
 
     @staticmethod
     def from_args(
@@ -794,6 +795,7 @@ class _Function(_Object, type_prefix="fu"):
                 allow_concurrent_inputs=allow_concurrent_inputs,
                 worker_id=config.get("worker_id"),
                 is_auto_snapshot=is_auto_snapshot,
+                is_method=bool(cls),
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -849,6 +851,7 @@ class _Function(_Object, type_prefix="fu"):
         obj._stub = stub  # Needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
+        obj._is_method = bool(cls)
 
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
@@ -864,7 +867,12 @@ class _Function(_Object, type_prefix="fu"):
 
     def from_parametrized(self, obj, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_Function":
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            assert self._is_hydrated, "Cannot make bound function handle from unhydrated handle."
+            if not self.is_hydrated:
+                raise ExecutionError(
+                    "Base function in class has not been hydrated. This might happen if an object is"
+                    " defined on a different stub, or if it's on the same stub but it didn't get"
+                    " created because it wasn't defined in global scope."
+                )
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=self._object_id,
@@ -874,12 +882,15 @@ class _Function(_Object, type_prefix="fu"):
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
 
         provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
-        if len(args) + len(kwargs) == 0:
+        if len(args) + len(kwargs) == 0 and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
             provider._hydrate_from_other(self)
         provider._is_remote_cls_method = True  # TODO(erikbern): deprecated
         provider._info = self._info
         provider._obj = obj
+        provider._is_generator = self._is_generator
+        provider._is_method = True
+
         return provider
 
     @property
@@ -919,6 +930,7 @@ class _Function(_Object, type_prefix="fu"):
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
+        self._is_method = metadata.is_method
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1123,15 +1135,11 @@ class _Function(_Object, type_prefix="fu"):
 
     def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
         if self._is_generator:
-            deprecation_warning(
+            deprecation_error(
                 date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`"
             )
-            return self.remote_gen(*args, **kwargs)
         else:
-            deprecation_warning(
-                date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`"
-            )
-            return self.remote(*args, **kwargs)
+            deprecation_error(date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
 
     @live_method
     async def shell(self, *args, **kwargs) -> None:
@@ -1147,11 +1155,13 @@ class _Function(_Object, type_prefix="fu"):
     def _get_info(self):
         return self._info
 
-    def _get_self_obj(self):
-        # TODO(erikbern): See https://github.com/modal-labs/modal-client/pull/864
-        # We should keep track of "has a self object" separately from "needs a self object",
-        # and raise an exception here if a self object should be present but isn't.
-        return self._obj.get_local_obj() if self._obj else None
+    def _get_obj(self):
+        if not self._is_method:
+            return None
+        elif not self._obj:
+            raise ExecutionError("Method has no local object")
+        else:
+            return self._obj
 
     @synchronizer.nowrap
     def local(self, *args, **kwargs) -> Any:
@@ -1165,46 +1175,42 @@ class _Function(_Object, type_prefix="fu"):
             )
             raise ExecutionError(msg)
 
-        self_obj = self._get_self_obj()
-        if self_obj:
-            # This is a method on a class, so bind the self to the function
-            fun = info.raw_f.__get__(self_obj)
-        else:
+        obj = self._get_obj()
+
+        if not obj:
             fun = info.raw_f
-        return fun(*args, **kwargs)
+            return fun(*args, **kwargs)
+        else:
+            # This is a method on a class, so bind the self to the function
+            local_obj = obj.get_local_obj()
+            fun = info.raw_f.__get__(local_obj)
+
+            if is_async(info.raw_f):
+                # We want to run __aenter__ and fun in the same coroutine
+                async def coro():
+                    await obj.aenter()
+                    return await fun(*args, **kwargs)
+
+                return coro()
+            else:
+                obj.enter()
+                return fun(*args, **kwargs)
 
     @synchronizer.nowrap
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if self._get_is_remote_cls_method():
-            deprecation_warning(
+            deprecation_error(
                 date(2023, 9, 1),
                 "Calling remote class methods like `obj.f(...)` is deprecated. Use `obj.f.remote(...)` for remote calls"
                 " and `obj.f.local(...)` for local calls",
             )
-            return self.remote(*args, **kwargs)
         else:
-            deprecation_warning(
+            deprecation_error(
                 date(2023, 8, 16),
                 "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
                 " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
                 " a Modal container in the cloud",
             )
-
-            info = self._get_info()
-            if not info:
-                msg = (
-                    "The definition for this function is missing so it is not possible to invoke it locally. "
-                    "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
-                )
-                raise ExecutionError(msg)
-
-            self_obj = self._get_self_obj()
-            if self_obj:
-                # This is a method on a class, so bind the self to the function
-                fun = info.raw_f.__get__(self_obj)
-            else:
-                fun = info.raw_f
-            return fun(*args, **kwargs)
 
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.

@@ -31,13 +31,13 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._function_utils import LocalFunctionError, is_global_function
+from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function
 from ._proxy_tunnel import proxy_tunnel
 from ._pty import run_in_pty
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
-from .app import _ContainerApp
+from .app import _container_app, _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import logger
@@ -67,21 +67,6 @@ class SequenceNumber:
     @property
     def value(self) -> int:
         return self._value
-
-
-def get_is_async(function):
-    # TODO: this is somewhat hacky. We need to know whether the function is async or not in order to
-    # coerce the input arguments to the right type. The proper way to do is to call the function and
-    # see if you get a coroutine (or async generator) back. However at this point, it's too late to
-    # coerce the type. For now let's make a determination based on inspecting the function definition.
-    # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
-    # wraps async code or similar. Let's revisit this shortly.
-    if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
-        return True
-    elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
-        return False
-    else:
-        raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
 
 def run_with_signal_handler(coro):
@@ -123,7 +108,6 @@ class _FunctionIOManager:
         self._input_concurrency: Optional[int] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._output_queue: Optional[asyncio.Queue] = None
-        self._container_app: Optional[_ContainerApp] = None
         self._environment_name = container_args.environment_name
         self._container_id = os.getenv("MODAL_CONTAINER_ID")
 
@@ -132,10 +116,8 @@ class _FunctionIOManager:
 
     @wrap()
     async def initialize_app(self) -> _ContainerApp:
-        self._container_app = await _ContainerApp.init_container(
-            self._client, self.app_id, self._stub_name, self._environment_name
-        )
-        return self._container_app
+        await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name)
+        return _container_app
 
     async def _heartbeat(self):
         request = api_pb2.ContainerHeartbeatRequest()

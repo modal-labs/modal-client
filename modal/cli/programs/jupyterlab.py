@@ -9,8 +9,7 @@ import time
 import webbrowser
 from typing import Any
 
-from modal import Image, Queue, Stub
-from modal._relay_client import forward
+from modal import Image, Queue, Stub, forward
 
 args: Any = {}
 
@@ -45,6 +44,7 @@ def run_jupyter():
                 "lab",
                 "--no-browser",
                 "--allow-root",
+                "--ip=0.0.0.0",
                 "--port=8888",
                 "--notebook-dir=/lab",
                 "--LabApp.allow_origin='*'",
