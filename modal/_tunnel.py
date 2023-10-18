@@ -53,7 +53,7 @@ async def _forward(port: int) -> AsyncIterator[Tunnel]:
     def run_app():
         # Start a web server inside the container at port 8000. `modal.forward(8000)` lets us
         # expose that port to the world at a random HTTPS URL.
-        with modal.forward(800) as tunnel:
+        with modal.forward(8000) as tunnel:
             print("Server listening at", tunnel.url)
             app.run("0.0.0.0", 8000)
     ```
