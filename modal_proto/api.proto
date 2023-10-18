@@ -423,6 +423,7 @@ message ContainerHeartbeatRequest {
 message ContainerCheckpointRequest {
   string runtime = 1;
   string task_id = 2;
+  string container_id = 3;
 }
 
 message DictContainsRequest {
