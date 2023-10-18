@@ -45,6 +45,7 @@ def run_jupyter():
                 "lab",
                 "--no-browser",
                 "--allow-root",
+                "--ip=0.0.0.0",
                 "--port=8888",
                 "--notebook-dir=/lab",
                 "--LabApp.allow_origin='*'",
