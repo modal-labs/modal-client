@@ -5,6 +5,7 @@ import sys
 import threading
 from tempfile import NamedTemporaryFile
 from typing import List
+from unittest import mock
 
 from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu, method
 from modal.exception import InvalidError, NotFoundError
@@ -539,3 +540,43 @@ def test_image_auto_snapshot_off(client, servicer):
 
         assert not layers[0].build_function_def
         assert any("pip install pandas" in cmd for cmd in layers[0].dockerfile_commands)
+
+
+def test_inside_ctx_unhydrated(client):
+    image_1 = Image.debian_slim()
+    image_2 = Image.debian_slim()
+
+    with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": "im-123"}):
+        # This should initially swallow the exception
+        with image_1.run_inside():
+            raise Exception("foo")
+
+        # This one too
+        with image_2.run_inside():
+            raise Exception("bar")
+
+        # Hydration of the image should raise the exception
+        with pytest.raises(Exception, match="foo"):
+            image_1._hydrate("im-123", client, None)
+
+        # Should not raise since it's a different image
+        image_2._hydrate("im-456", client, None)
+
+
+def test_inside_ctx_hydrated(client):
+    image_1 = Image.debian_slim()
+    image_2 = Image.debian_slim()
+
+    with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": "im-123"}):
+        # Assign ids before the ctx mgr runs
+        image_1._hydrate("im-123", client, None)
+        image_2._hydrate("im-456", client, None)
+
+        # Ctx manager should now raise right away
+        with pytest.raises(Exception, match="baz"):
+            with image_1.run_inside():
+                raise Exception("baz")
+
+        # We're not inside this image so this should be swallowed
+        with image_2.run_inside():
+            raise Exception("bar")
