@@ -17,16 +17,47 @@ from .exception import InvalidError, RemoteError
 
 @dataclass
 class Tunnel:
+    """A port forwarded from within a running Modal container. Created by `modal.forward()`.
+
+    This is an EXPERIMENTAL API and may change in the future.
+    """
+
     host: str
 
     @property
     def url(self) -> str:
+        """Get the public HTTPS URL of the forwarded port."""
         return f"https://{self.host}"
 
 
 @contextlib.asynccontextmanager
 async def _forward(port: int) -> AsyncIterator[Tunnel]:
-    """Forward a port from within a running Modal container."""
+    """Expose a port publicly from inside a running Modal container, with TLS.
+
+    This is an EXPERIMENTAL API and may change in the future.
+
+    **Usage:**
+
+    ```python
+    from flask import Flask
+
+
+    app = Flask(__name__)
+
+    @app.route("/")
+    def hello_world():
+        return "Hello, World!"
+
+
+    @stub.function()
+    def run_app():
+        # Start a web server inside the container at port 8000. `modal.forward(8000)` lets us
+        # expose that port to the world at a random HTTPS URL.
+        with modal.forward(8000) as tunnel:
+            print("Server listening at", tunnel.url)
+            app.run("0.0.0.0", 8000)
+    ```
+    """
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError(f"Invalid port number {port}")
 

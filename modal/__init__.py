@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 from modal_version import __version__
 
+from ._tunnel import Tunnel, forward
 from .app import container_app, is_local
 from .client import Client
 from .cls import Cls
@@ -37,11 +38,13 @@ __all__ = [
     "Secret",
     "SharedVolume",
     "Stub",
+    "Tunnel",
     "Volume",
     "asgi_app",
     "container_app",
     "create_package_mounts",
     "current_input_id",
+    "forward",
     "is_local",
     "method",
     "web_endpoint",
