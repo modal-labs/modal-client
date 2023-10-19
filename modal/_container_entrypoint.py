@@ -109,7 +109,6 @@ class _FunctionIOManager:
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._output_queue: Optional[asyncio.Queue] = None
         self._environment_name = container_args.environment_name
-        self._container_id = os.getenv("MODAL_CONTAINER_ID")
 
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
@@ -430,11 +429,7 @@ class _FunctionIOManager:
         This message is intercepted by Modal runtime, triggering the checkpointing
         routine."""
         logger.info("initialization complete; sending checkpointing signal to modal-worker")
-        if self._container_id is None:
-            raise ValueError(f"failed to checkpoint container => missing container id")
-
-        request = api_pb2.ContainerCheckpointRequest(runtime="gvisor", task_id=self.task_id, container_id=self._container_id)
-        await self.client.stub.ContainerCheckpoint(request)
+        await self.client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest())
 
         # Busy-wait for the an eventual restore. `MODAL_CONTAINER_RESTORED` is
         # only populated when a container is restored. A checkpointed container
