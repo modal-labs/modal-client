@@ -52,7 +52,6 @@ class _Object:
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
-        client: Optional[_Client] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -62,8 +61,8 @@ class _Object:
         self._hydrate_lazily = hydrate_lazily
 
         self._object_id = None
+        self._client = None
         self._is_hydrated = False
-        self._client = client
 
         self._initialize_from_empty()
 
@@ -105,11 +104,10 @@ class _Object:
         is_persisted_ref: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
-        client: Optional[_Client] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
-        obj._init(rep, load, is_persisted_ref, preload, hydrate_lazily, client)
+        obj._init(rep, load, is_persisted_ref, preload, hydrate_lazily)
         return obj
 
     @classmethod
@@ -206,7 +204,7 @@ class _Object:
         """mdmd:hidden"""
         return self._is_hydrated
 
-    async def resolve(self: O):
+    async def resolve(self):
         if self._is_hydrated:
             return
         elif not self._hydrate_lazily:
@@ -217,7 +215,7 @@ class _Object:
                 " wasn't defined in global scope."
             )
         else:
-            resolver = Resolver(client=self._client)
+            resolver = Resolver()
             await resolver.load(self)
 
     async def _deploy(
@@ -272,7 +270,6 @@ class _Object:
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> O:
         """Retrieve an object with a given name and tag.
@@ -308,7 +305,7 @@ class _Object:
             )
 
         rep = f"Ref({app_name})"
-        return cls._from_loader(_load_remote, rep, hydrate_lazily=True, client=client)
+        return cls._from_loader(_load_remote, rep)
 
     @classmethod
     async def lookup(
@@ -339,7 +336,11 @@ class _Object:
         my_dict = Dict.lookup("my-dict")
         ```
         """
-        obj = cls.from_name(app_name, tag, namespace, client, environment_name)
+        # TODO(erikbern): this code is very duplicated. Clean up once handles are gone.
+        rep = f"Object({app_name})"  # TODO(erikbern): dumb
+        obj = _Object.__new__(cls)
+        obj._init(rep)
+        await obj._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
         return obj
 
     @classmethod

@@ -12,13 +12,11 @@ def test_persistent_object(servicer, client):
     deploy_stub(stub, "my-queue", client=client)
 
     q: Queue = Queue.lookup("my-queue", client=client)
-    q.resolve()
     assert isinstance(q, Queue)
     assert q.object_id == "qu-1"
 
-    q = Queue.lookup("bazbazbaz", client=client)
     with pytest.raises(NotFoundError):
-        q.resolve()
+        Queue.lookup("bazbazbaz", client=client)
 
 
 def square(x):
@@ -33,16 +31,13 @@ def test_lookup_function(servicer, client):
     deploy_stub(stub, "my-function", client=client)
 
     f = Function.lookup("my-function", client=client)
-    f.resolve()
     assert f.object_id == "fu-1"
 
     # Call it using two arguments
     f = Function.lookup("my-function", "square", client=client)
-    f.resolve()
     assert f.object_id == "fu-1"
-    g = Function.lookup("my-function", "cube", client=client)
     with pytest.raises(NotFoundError):
-        g.resolve()
+        f = Function.lookup("my-function", "cube", client=client)
 
     # Make sure we can call this function
     assert f.remote(2, 4) == 20
@@ -63,7 +58,6 @@ def test_webhook_lookup(servicer, client):
     deploy_stub(stub, "my-webhook", client=client)
 
     f = Function.lookup("my-webhook", client=client)
-    f.resolve()
     assert f.web_url
 
 
@@ -73,7 +67,6 @@ def test_deploy_exists(servicer, client):
     q1._deploy("my-queue", client=client)
     assert Queue._exists("my-queue", client=client)
     q2: Queue = Queue.lookup("my-queue", client=client)
-    q2.resolve()
     assert q1.object_id == q2.object_id
 
 

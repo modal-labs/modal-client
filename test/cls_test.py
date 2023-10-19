@@ -249,7 +249,6 @@ def test_lookup(client, servicer):
     deploy_stub(stub, "my-cls-app", client=client)
 
     cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
-    cls.resolve()
 
     assert cls.object_id.startswith("cs-")
     assert cls.bar.object_id.startswith("fu-")
