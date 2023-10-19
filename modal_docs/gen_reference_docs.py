@@ -65,7 +65,6 @@ def run(output_dir: str = None):
         ("modal.SharedVolume", "modal.shared_volume"),
         ("modal.Dict", "modal.dict"),
         ("modal.Queue", "modal.queue"),
-        ("modal.App", "modal.app"),
         ("modal.call_graph", "modal.call_graph"),
         ("modal.gpu", "modal.gpu"),
         ("modal.runner", "modal.runner"),
