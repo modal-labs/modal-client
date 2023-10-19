@@ -31,9 +31,9 @@ class DocItem(NamedTuple):
 def validate_doc_item(docitem: DocItem) -> DocItem:
     # Check that unwanted strings aren't leaking into our docs.
     bad_strings = [
-        # Presence of a TODO inside a `DocItem` usually indicates it's been
-        # places inside a function signature definition or right underneath it, before the body.
-        # Fix by moving the TODO into the body, or above the signature.
+        # Presence of a to-do inside a `DocItem` usually indicates it's been
+        # placed inside a function signature definition or right underneath it, before the body.
+        # Fix by moving the to-do into the body or above the signature.
         "TODO:"
     ]
     for line in docitem.document.splitlines():
