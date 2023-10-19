@@ -39,9 +39,7 @@ def validate_doc_item(docitem: DocItem) -> DocItem:
     for line in docitem.document.splitlines():
         for bad_str in bad_strings:
             if bad_str in line:
-                msg = (
-                    f"Found unwanted string '{bad_str}' in content for item '{docitem.label}'. " f"Problem line: {line}"
-                )
+                msg = f"Found unwanted string '{bad_str}' in content for item '{docitem.label}'. Problem line: {line}"
                 raise ValueError(msg)
     return docitem
 
