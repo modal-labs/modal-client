@@ -1033,9 +1033,21 @@ class _Function(_Object, type_prefix="fu"):
         is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
         in the order that they are completed instead.
 
-        If applied to a `stub.generator`, the results are returned as they are finished and can be
-        out of order. By yielding zero or more than once, mapping over generators can also be used
+        By yielding zero or more than once, mapping over generators can also be used
         as a "flat map".
+
+        ```python
+        @stub.function()
+        def flat(i: int):
+            choices = [[], ["once"], ["two", "times"], ["three", "times", "a lady"]]
+            for item in choices[i % len(choices)]:
+                yield item
+
+        @stub.local_entrypoint()
+        def main():
+            for item in flat.map(range(10)):
+                print(item)
+        ```
 
         `return_exceptions` can be used to treat exceptions as successful results:
         ```python
