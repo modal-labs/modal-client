@@ -1033,9 +1033,21 @@ class _Function(_Object, type_prefix="fu"):
         is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
         in the order that they are completed instead.
 
-        If applied to a `stub.generator`, the results are returned as they are finished and can be
-        out of order. By yielding zero or more than once, mapping over generators can also be used
+        By yielding zero or more than once, mapping over generators can also be used
         as a "flat map".
+
+        ```python
+        @stub.function()
+        def flat(i: int):
+            choices = [[], ["once"], ["two", "times"], ["three", "times", "a lady"]]
+            for item in choices[i % len(choices)]:
+                yield item
+
+        @stub.local_entrypoint()
+        def main():
+            for item in flat.map(range(10)):
+                print(item)
+        ```
 
         `return_exceptions` can be used to treat exceptions as successful results:
         ```python
@@ -1099,10 +1111,11 @@ class _Function(_Object, type_prefix="fu"):
             yield item
 
     @live_method
-    async def remote(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
+    async def remote(self, *args, **kwargs) -> Awaitable[Any]:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
+        # TODO: Generics/TypeVars
         if self._web_url:
             raise InvalidError(
                 "A web endpoint function cannot be invoked for remote execution with `.remote`. "
@@ -1116,10 +1129,11 @@ class _Function(_Object, type_prefix="fu"):
         return await self._call_function(args, kwargs)
 
     @live_method_gen
-    async def remote_gen(self, *args, **kwargs) -> AsyncGenerator[Any, None]:  # TODO: Generics/TypeVars
+    async def remote_gen(self, *args, **kwargs) -> AsyncGenerator[Any, None]:
         """
         Calls the generator remotely, executing it with the given arguments and returning the execution's result.
         """
+        # TODO: Generics/TypeVars
         if self._web_url:
             raise InvalidError(
                 "A web endpoint function cannot be invoked for remote execution with `.remote`. "
@@ -1133,7 +1147,9 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
 
-    def call(self, *args, **kwargs) -> Awaitable[Any]:  # TODO: Generics/TypeVars
+    def call(self, *args, **kwargs) -> Awaitable[Any]:
+        """Deprecated. Use `f.remote` or `f.remote_gen` instead."""
+        # TODO: Generics/TypeVars
         if self._is_generator:
             deprecation_error(
                 date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`"
@@ -1165,6 +1181,10 @@ class _Function(_Object, type_prefix="fu"):
 
     @synchronizer.nowrap
     def local(self, *args, **kwargs) -> Any:
+        """
+        Calls the function locally, executing it with the given arguments and returning the execution's result.
+        This method allows a caller to execute the standard Python function wrapped by Modal.
+        """
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
         info = self._get_info()
