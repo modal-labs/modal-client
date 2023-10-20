@@ -19,7 +19,7 @@ from .app import _container_app, _ContainerApp, _LocalApp, is_local
 from .client import _Client
 from .cls import _Cls
 from .config import config, logger
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import PartialFunction, _Function, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image
@@ -497,14 +497,16 @@ class _Stub:
             _cls: Optional[type] = None,  # Used for methods only
             _auto_snapshot_enabled: Optional[bool] = None,  # Used for methods only
         ) -> _Function:
-            is_generator_override: Optional[bool] = is_generator
+            nonlocal keep_warm, is_generator
 
             if isinstance(f, _PartialFunction):
                 f.wrapped = True
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name, cls=_cls)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
-                is_generator_override = f.is_generator
+                is_generator = f.is_generator
+                keep_warm = f.keep_warm or keep_warm
+
                 if webhook_config:
                     self._web_endpoints.append(info.get_tag())
             else:
@@ -517,10 +519,8 @@ class _Stub:
                     "`stub.function` on methods is not allowed. See https://modal.com/docs/guide/lifecycle-functions instead"
                 )
 
-            info.get_tag()
-
-            if is_generator_override is None:
-                is_generator_override = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+            if is_generator is None:
+                is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
             if interactive:
                 self._add_pty_input_stream()
@@ -532,7 +532,7 @@ class _Stub:
                 secret=secret,
                 secrets=secrets,
                 schedule=schedule,
-                is_generator=is_generator_override,
+                is_generator=is_generator,
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
@@ -585,7 +585,7 @@ class _Stub:
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
-        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
+        keep_warm: Optional[int] = None,  # DEPRECATED: use `@method(keep_warm=...)` instead!
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         auto_snapshot_enabled: Optional[bool] = None,  # Whether to run and snapshot __enter__ as part of image build.
     ) -> Callable[[CLS_T], _Cls]:
@@ -594,6 +594,11 @@ class _Stub:
 
         if auto_snapshot_enabled is None:
             auto_snapshot_enabled = config.get("auto_snapshot")
+
+        if keep_warm is not None:
+            deprecation_warning(
+                date(2023, 10, 20), "`@stub.cls(keep_warm=...)` is deprecated: use `@method(keep_warm=...)` instead!"
+            )
 
         decorator: Callable[[PartialFunction, type], _Function] = self.function(
             image=image,

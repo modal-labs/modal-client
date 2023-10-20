@@ -438,3 +438,25 @@ def test_unhydrated():
     foo = FooUnhydrated()
     with pytest.raises(ExecutionError, match="hydrated"):
         foo.bar.remote(42)
+
+
+stub_method_args = Stub()
+
+
+@stub_method_args.cls()
+class XYZ:
+    @method(keep_warm=3)
+    def foo(self):
+        ...
+
+    @method(keep_warm=7)
+    def bar(self):
+        ...
+
+
+def test_method_args(servicer, client):
+    XYZ()
+    with stub_method_args.run(client=client):
+        funcs = servicer.app_functions.values()
+        assert [f.function_name for f in funcs] == ["XYZ.foo", "XYZ.bar"]
+        assert [f.warm_pool_size for f in funcs] == [3, 7]

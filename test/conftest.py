@@ -126,8 +126,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_get_logs_initial_count = 0
         self.app_set_objects_count = 0
 
-        self.function2params = {}
-
         self.volume_counter = 0
         # Volume-id -> commit/reload count
         self.volume_commits: Dict[str, int] = defaultdict(lambda: 0)
@@ -398,7 +396,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         assert request.function_id
         assert request.serialized_params
         self.n_functions += 1
-        self.function2params[self.n_functions] = request.serialized_params
         function_id = f"fu-{self.n_functions}"
 
         await stream.send_message(api_pb2.FunctionBindParamsResponse(bound_function_id=function_id))
