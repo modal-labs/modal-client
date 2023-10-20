@@ -75,6 +75,8 @@ class _Client:
     _client_from_env = None
     _client_from_env_lock = None
 
+    client_type: int
+
     def __init__(
         self,
         server_url,
