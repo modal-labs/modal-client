@@ -106,6 +106,12 @@ class _Dict(_Object, type_prefix="di"):
         return self.persisted(label, namespace, environment_name)
 
     @live_method
+    async def clear(self) -> None:
+        """Remove all items from the modal.Dict."""
+        req = api_pb2.DictClearRequest(dict_id=self.object_id)
+        await retry_transient_errors(self._client.stub.DictClear, req)
+
+    @live_method
     async def get(self, key: Any) -> Any:
         """Get the value associated with a key.
 

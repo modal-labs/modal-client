@@ -371,10 +371,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.dicts[dict_id] = {}
         await stream.send_message(api_pb2.DictCreateResponse(dict_id=dict_id))
 
+    async def DictClear(self, stream):
+        request: api_pb2.DictGetRequest = await stream.recv_message()
+        self.dicts[request.dict_id] = {}
+        await stream.send_message(Empty())
+
     async def DictGet(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
         d = self.dicts[request.dict_id]
         await stream.send_message(api_pb2.DictGetResponse(value=d.get(request.key), found=bool(request.key in d)))
+
+    async def DictLen(self, stream):
+        request: api_pb2.DictLenRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.DictLenResponse(len=len(self.dicts[request.dict_id])))
 
     async def DictUpdate(self, stream):
         request: api_pb2.DictUpdateRequest = await stream.recv_message()
