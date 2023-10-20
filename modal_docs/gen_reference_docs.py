@@ -28,6 +28,22 @@ class DocItem(NamedTuple):
     in_sidebar: bool = True
 
 
+def validate_doc_item(docitem: DocItem) -> DocItem:
+    # Check that unwanted strings aren't leaking into our docs.
+    bad_strings = [
+        # Presence of a to-do inside a `DocItem` usually indicates it's been
+        # placed inside a function signature definition or right underneath it, before the body.
+        # Fix by moving the to-do into the body or above the signature.
+        "TODO:"
+    ]
+    for line in docitem.document.splitlines():
+        for bad_str in bad_strings:
+            if bad_str in line:
+                msg = f"Found unwanted string '{bad_str}' in content for item '{docitem.label}'. Problem line: {line}"
+                raise ValueError(msg)
+    return docitem
+
+
 def run(output_dir: str = None):
     """Generate Modal docs."""
     import modal
@@ -65,7 +81,6 @@ def run(output_dir: str = None):
         ("modal.SharedVolume", "modal.shared_volume"),
         ("modal.Dict", "modal.dict"),
         ("modal.Queue", "modal.queue"),
-        ("modal.App", "modal.app"),
         ("modal.call_graph", "modal.call_graph"),
         ("modal.gpu", "modal.gpu"),
         ("modal.runner", "modal.runner"),
@@ -81,11 +96,13 @@ def run(output_dir: str = None):
         document = module_str(modulepath, module, title_level=base_title_level, filter_items=modal_default_filter)
         if document:
             ordered_doc_items.append(
-                DocItem(
-                    label=title,
-                    category=Category.MODULE,
-                    document=document,
-                    in_sidebar=title not in sidebar_excluded,
+                validate_doc_item(
+                    DocItem(
+                        label=title,
+                        category=Category.MODULE,
+                        document=document,
+                        in_sidebar=title not in sidebar_excluded,
+                    )
                 )
             )
 
@@ -110,11 +127,13 @@ def run(output_dir: str = None):
             warnings.warn(f"Not sure how to document: {item_name} ({item})")
             continue
         ordered_doc_items.append(
-            DocItem(
-                label=title,
-                category=category,
-                document=content,
-                in_sidebar=title not in sidebar_excluded,
+            validate_doc_item(
+                DocItem(
+                    label=title,
+                    category=category,
+                    document=content,
+                    in_sidebar=title not in sidebar_excluded,
+                )
             )
         )
     ordered_doc_items.sort()
