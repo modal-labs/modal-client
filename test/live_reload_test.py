@@ -2,6 +2,7 @@
 import asyncio
 import pytest
 import threading
+import time
 from unittest import mock
 
 from modal import Function
@@ -61,12 +62,14 @@ async def test_no_change(stub_ref, server_url_env, servicer):
 
 
 @pytest.mark.asyncio
-@skip_windows("this flakes a lot of the time by giving 5 heartbeats")
 async def test_heartbeats(stub_ref, server_url_env, servicer):
     with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
+        t0 = time.time()
         async with serve_stub.aio(stub, stub_ref):
             await asyncio.sleep(3.1)
+        total_secs = int(time.time() - t0)
 
     apps = list(servicer.app_heartbeats.keys())
     assert len(apps) == 1
-    assert servicer.app_heartbeats[apps[0]] == 4  # 0s, 1s, 2s, 3s
+    # Typically [0s, 1s, 2s, 3s], but asyncio.sleep may lag.
+    assert servicer.app_heartbeats[apps[0]] == total_secs + 1
