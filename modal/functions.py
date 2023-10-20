@@ -1377,10 +1377,12 @@ class _PartialFunction:
         raw_f: Callable[..., Any],
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
+        keep_warm: Optional[int] = None,
     ):
         self.raw_f = raw_f
         self.webhook_config = webhook_config
         self.is_generator = is_generator
+        self.keep_warm = keep_warm
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
 
     def __get__(self, obj, objtype=None) -> _Function:
@@ -1409,6 +1411,7 @@ def _method(
     # Set this to True if it's a non-generator function returning
     # a [sync/async] generator object
     is_generator: Optional[bool] = None,
+    keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for methods that should be transformed into a Modal Function registered against this class's stub.
 
@@ -1427,7 +1430,7 @@ def _method(
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        return _PartialFunction(raw_f, is_generator=is_generator)
+        return _PartialFunction(raw_f, is_generator=is_generator, keep_warm=keep_warm)
 
     return wrapper
 
