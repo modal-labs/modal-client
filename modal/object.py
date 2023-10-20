@@ -205,6 +205,7 @@ class _Object:
         return self._is_hydrated
 
     async def resolve(self):
+        """mdmd:hidden"""
         if self._is_hydrated:
             return
         elif not self._hydrate_lazily:
