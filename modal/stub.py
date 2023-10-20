@@ -585,7 +585,7 @@ class _Stub:
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
-        keep_warm: Optional[int] = None,  # DEPRECATED: use `@method(keep_warm=...)` instead!
+        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         auto_snapshot_enabled: Optional[bool] = None,  # Whether to run and snapshot __enter__ as part of image build.
     ) -> Callable[[CLS_T], _Cls]:
@@ -594,11 +594,6 @@ class _Stub:
 
         if auto_snapshot_enabled is None:
             auto_snapshot_enabled = config.get("auto_snapshot")
-
-        if keep_warm is not None:
-            deprecation_warning(
-                date(2023, 10, 20), "`@stub.cls(keep_warm=...)` is deprecated: use `@method(keep_warm=...)` instead!"
-            )
 
         decorator: Callable[[PartialFunction, type], _Function] = self.function(
             image=image,
@@ -640,6 +635,13 @@ class _Stub:
                             user_cls,
                             auto_snapshot_enabled,
                         )
+
+            if len(functions) > 1 and keep_warm is not None:
+                deprecation_warning(
+                    date(2023, 10, 20),
+                    "`@stub.cls(keep_warm=...)` is deprecated when there is more than 1 method."
+                    " Use `@method(keep_warm=...)` on each method instead!",
+                )
 
             tag: str = user_cls.__name__
             cls: _Cls = _Cls.from_local(user_cls, functions)
