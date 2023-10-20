@@ -19,7 +19,7 @@ from .app import _container_app, _ContainerApp, _LocalApp, is_local
 from .client import _Client
 from .cls import _Cls
 from .config import config, logger
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import PartialFunction, _Function, _PartialFunction
 from .gpu import GPU_T
 from .image import _Image
@@ -497,14 +497,16 @@ class _Stub:
             _cls: Optional[type] = None,  # Used for methods only
             _auto_snapshot_enabled: Optional[bool] = None,  # Used for methods only
         ) -> _Function:
-            is_generator_override: Optional[bool] = is_generator
+            nonlocal keep_warm, is_generator
 
             if isinstance(f, _PartialFunction):
                 f.wrapped = True
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name, cls=_cls)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
-                is_generator_override = f.is_generator
+                is_generator = f.is_generator
+                keep_warm = f.keep_warm or keep_warm
+
                 if webhook_config:
                     self._web_endpoints.append(info.get_tag())
             else:
@@ -517,10 +519,8 @@ class _Stub:
                     "`stub.function` on methods is not allowed. See https://modal.com/docs/guide/lifecycle-functions instead"
                 )
 
-            info.get_tag()
-
-            if is_generator_override is None:
-                is_generator_override = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+            if is_generator is None:
+                is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
             if interactive:
                 self._add_pty_input_stream()
@@ -532,7 +532,7 @@ class _Stub:
                 secret=secret,
                 secrets=secrets,
                 schedule=schedule,
-                is_generator=is_generator_override,
+                is_generator=is_generator,
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
@@ -635,6 +635,13 @@ class _Stub:
                             user_cls,
                             auto_snapshot_enabled,
                         )
+
+            if len(functions) > 1 and keep_warm is not None:
+                deprecation_warning(
+                    date(2023, 10, 20),
+                    "`@stub.cls(keep_warm=...)` is deprecated when there is more than 1 method."
+                    " Use `@method(keep_warm=...)` on each method instead!",
+                )
 
             tag: str = user_cls.__name__
             cls: _Cls = _Cls.from_local(user_cls, functions)
