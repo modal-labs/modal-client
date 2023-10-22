@@ -290,8 +290,14 @@ class Baz:
 
 def test_call_not_modal_method():
     baz: Baz = Baz(5)
-    assert baz.x == 5
-    assert baz.not_modal_method(7) == 35
+
+    assert baz.local_obj.x == 5
+    with pytest.warns(DeprecationError, match=".local_obj.x"):
+        assert baz.x == 5
+
+    assert baz.local_obj.not_modal_method(7) == 35
+    with pytest.warns(DeprecationError, match=".local_obj.not_modal_method"):
+        assert baz.not_modal_method(7) == 35
 
 
 cls_with_enter_stub = Stub()
@@ -324,23 +330,24 @@ class ClsWithEnter:
 def test_dont_enter_on_local_access():
     obj = ClsWithEnter(get_thread_id())
     with pytest.raises(AttributeError):
-        obj.doesnt_exist  # type: ignore
-    assert obj.inited
-    assert not obj.entered
+        with pytest.warns(DeprecationError, match="local_obj.doesnt_exist"):
+            obj.doesnt_exist  # type: ignore
+    assert obj.local_obj.inited
+    assert not obj.local_obj.entered
 
 
 def test_dont_enter_on_local_non_modal_call():
     obj = ClsWithEnter(get_thread_id())
-    assert obj.not_modal_method(7) == 49
-    assert obj.inited
-    assert not obj.entered
+    assert obj.local_obj.not_modal_method(7) == 49
+    assert obj.local_obj.inited
+    assert not obj.local_obj.entered
 
 
 def test_enter_on_local_modal_call():
     obj = ClsWithEnter(get_thread_id())
     assert obj.modal_method.local(7) == 49
-    assert obj.inited
-    assert obj.entered
+    assert obj.local_obj.inited
+    assert obj.local_obj.entered
 
 
 @cls_with_enter_stub.cls()
@@ -361,8 +368,8 @@ class ClsWithAenter:
 async def test_aenter_on_local_modal_call():
     obj = ClsWithAenter()
     assert await obj.modal_method.local(7) == 49
-    assert obj.inited
-    assert obj.entered
+    assert obj.local_obj.inited
+    assert obj.local_obj.entered
 
 
 inheritance_stub = Stub()

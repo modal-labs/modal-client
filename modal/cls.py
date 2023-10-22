@@ -11,7 +11,7 @@ from modal_utils.async_utils import synchronize_api, synchronizer
 
 from ._output import OutputManager
 from ._resolver import Resolver
-from .exception import deprecation_error
+from .exception import ExecutionError, deprecation_error, deprecation_warning
 from .functions import _Function
 from .object import _Object
 
@@ -71,8 +71,15 @@ class _Obj:
         setattr(self._local_obj, "_modal_functions", self._functions)  # Needed for PartialFunction.__get__
         return self._local_obj
 
-    def get_local_obj(self):
-        """Construct local object lazily. Used for .local() calls."""
+    @property
+    def local_obj(self):
+        """Used to construct and access a local object corresponding to this class.
+
+        Only works if the code is known (i.e. was defined in this app).
+        Caches the object.
+        """
+        if not self._local_obj_constr:
+            raise ExecutionError(".local_obj only works if the code is available.")
         if not self._inited:
             self.get_obj()  # Instantiate object
             self._inited = True
@@ -97,7 +104,7 @@ class _Obj:
     @synchronizer.nowrap
     async def aenter(self):
         if not self.entered:
-            local_obj = self.get_local_obj()
+            local_obj = self.local_obj
             if hasattr(local_obj, "__aenter__"):
                 await local_obj.__aenter__()
             elif hasattr(local_obj, "__enter__"):
@@ -108,8 +115,10 @@ class _Obj:
         if k in self._functions:
             return self._functions[k]
         elif self._local_obj_constr:
-            obj = self.get_local_obj()
-            return getattr(obj, k)
+            deprecation_warning(
+                date(2023, 10, 21), f"Accessing local attributes on a cls is deprecated! Use `obj.local_obj.{k}`"
+            )
+            return getattr(self.local_obj, k)
         else:
             raise AttributeError(k)
 

@@ -1202,7 +1202,7 @@ class _Function(_Object, type_prefix="fu"):
             return fun(*args, **kwargs)
         else:
             # This is a method on a class, so bind the self to the function
-            local_obj = obj.get_local_obj()
+            local_obj = obj.local_obj
             fun = info.raw_f.__get__(local_obj)
 
             if is_async(info.raw_f):
