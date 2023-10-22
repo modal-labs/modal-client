@@ -150,10 +150,7 @@ class FunctionInfo:
             # python foo/bar/baz.py
 
             # If it's a cls, the @method could be defined in a base class in a different file.
-            if cls is not None:
-                self.file = os.path.abspath(inspect.getfile(cls))
-            else:
-                self.file = os.path.abspath(inspect.getfile(f))
+            self.file = os.path.abspath(inspect.getfile(module))
             self.module_name = inspect.getmodulename(self.file)
             self.base_dir = os.path.dirname(self.file)
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
