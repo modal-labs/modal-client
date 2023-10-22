@@ -4,6 +4,7 @@ import os
 import shlex
 import sys
 import typing
+import warnings
 from datetime import date
 from inspect import isfunction
 from pathlib import Path
@@ -1249,11 +1250,9 @@ class _Image(_Object, type_prefix="im"):
         info = FunctionInfo(raw_f)
 
         if shared_volumes or network_file_systems:
-            deprecation_error(
-                date(2023, 8, 19),
-                "Support for mounting NetworkFileSystems or Volumes has been removed from `run_function`."
+            warnings.warn(
+                "Mounting NetworkFileSystems or Volumes is usually not advised with `run_function`."
                 " If you are trying to download model weights, downloading it to the image itself is recommended and sufficient."
-                " Please refer to the docs for more on this, or reach out to us if your use case is not covered.",
             )
 
         function = _Function.from_args(
