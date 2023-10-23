@@ -424,6 +424,10 @@ message ContainerHeartbeatRequest {
 
 message ContainerCheckpointRequest {}
 
+message DictClearRequest {
+  string dict_id = 1;
+}
+
 message DictContainsRequest {
   string dict_id = 1;
   bytes key = 2;
@@ -1493,6 +1497,7 @@ service ModalClient {
   rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);
 
   // Dicts
+  rpc DictClear(DictClearRequest) returns (google.protobuf.Empty);
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
   rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
   rpc DictGet(DictGetRequest) returns (DictGetResponse);

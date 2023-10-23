@@ -126,8 +126,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_get_logs_initial_count = 0
         self.app_set_objects_count = 0
 
-        self.function2params = {}
-
         self.volume_counter = 0
         # Volume-id -> commit/reload count
         self.volume_commits: Dict[str, int] = defaultdict(lambda: 0)
@@ -371,10 +369,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.dicts[dict_id] = {}
         await stream.send_message(api_pb2.DictCreateResponse(dict_id=dict_id))
 
+    async def DictClear(self, stream):
+        request: api_pb2.DictGetRequest = await stream.recv_message()
+        self.dicts[request.dict_id] = {}
+        await stream.send_message(Empty())
+
     async def DictGet(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
         d = self.dicts[request.dict_id]
         await stream.send_message(api_pb2.DictGetResponse(value=d.get(request.key), found=bool(request.key in d)))
+
+    async def DictLen(self, stream):
+        request: api_pb2.DictLenRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.DictLenResponse(len=len(self.dicts[request.dict_id])))
 
     async def DictUpdate(self, stream):
         request: api_pb2.DictUpdateRequest = await stream.recv_message()
@@ -389,7 +396,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         assert request.function_id
         assert request.serialized_params
         self.n_functions += 1
-        self.function2params[self.n_functions] = request.serialized_params
         function_id = f"fu-{self.n_functions}"
 
         await stream.send_message(api_pb2.FunctionBindParamsResponse(bound_function_id=function_id))
@@ -734,6 +740,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 token_secret="xyz",
             )
         )
+
+    ### Tunnel
+
+    async def TunnelStart(self, stream):
+        request: api_pb2.TunnelStartRequest = await stream.recv_message()
+        port = request.port
+        await stream.send_message(api_pb2.TunnelStartResponse(host=f"{port}.modal.test"))
+
+    async def TunnelStop(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.TunnelStopResponse(exists=True))
 
     ### Volume
 
