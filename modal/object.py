@@ -148,41 +148,6 @@ class _Object:
         handle_metadata = get_proto_oneof(response.object, "handle_metadata_oneof")
         return cls._new_hydrated(object_id, client, handle_metadata)
 
-    async def _hydrate_from_app(
-        self,
-        app_name: str,
-        tag: Optional[str] = None,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-    ):
-        """Returns a handle to a tagged object in a deployment on Modal."""
-        if environment_name is None:
-            environment_name = config.get("environment")
-
-        if client is None:
-            client = await _Client.from_env()
-        request = api_pb2.AppLookupObjectRequest(
-            app_name=app_name,
-            object_tag=tag,
-            namespace=namespace,
-            object_entity=self._type_prefix,
-            environment_name=environment_name,
-        )
-        try:
-            response = await retry_transient_errors(client.stub.AppLookupObject, request)
-            if not response.object.object_id:
-                # Legacy error message: remove soon
-                raise NotFoundError(response.error_message)
-        except GRPCError as exc:
-            if exc.status == Status.NOT_FOUND:
-                raise NotFoundError(exc.message)
-            else:
-                raise
-
-        handle_metadata = get_proto_oneof(response.object, "handle_metadata_oneof")
-        return self._hydrate(response.object.object_id, client, handle_metadata)
-
     def _hydrate_from_other(self, other: O):
         self._hydrate(other._object_id, other._client, other._get_metadata())
 
@@ -301,9 +266,26 @@ class _Object:
                 # fall back on that one if no explicit environment was set in the call itself
                 environment_name = resolver.environment_name
 
-            await obj._hydrate_from_app(
-                app_name, tag, namespace, client=resolver.client, environment_name=environment_name
+            request = api_pb2.AppLookupObjectRequest(
+                app_name=app_name,
+                object_tag=tag,
+                namespace=namespace,
+                object_entity=cls._type_prefix,
+                environment_name=environment_name,
             )
+            try:
+                response = await retry_transient_errors(resolver.client.stub.AppLookupObject, request)
+                if not response.object.object_id:
+                    # Legacy error message: remove soon
+                    raise NotFoundError(response.error_message)
+            except GRPCError as exc:
+                if exc.status == Status.NOT_FOUND:
+                    raise NotFoundError(exc.message)
+                else:
+                    raise
+
+            handle_metadata = get_proto_oneof(response.object, "handle_metadata_oneof")
+            obj._hydrate(response.object.object_id, resolver.client, handle_metadata)
 
         rep = f"Ref({app_name})"
         return cls._from_loader(_load_remote, rep)
