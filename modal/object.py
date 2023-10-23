@@ -337,11 +337,9 @@ class _Object:
         my_dict = Dict.lookup("my-dict")
         ```
         """
-        # TODO(erikbern): this code is very duplicated. Clean up once handles are gone.
-        rep = f"Object({app_name})"  # TODO(erikbern): dumb
-        obj = _Object.__new__(cls)
-        obj._init(rep)
-        await obj._hydrate_from_app(app_name, tag, namespace, client, environment_name=environment_name)
+        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
         return obj
 
     @classmethod
