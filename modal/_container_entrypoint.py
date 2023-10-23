@@ -91,12 +91,11 @@ class _FunctionIOManager:
     Then we could potentially move a bunch of the global functions onto it.
     """
 
-    def __init__(self, container_args: api_pb2.ContainerArguments, client: Client):
+    def __init__(self, container_args: api_pb2.ContainerArguments, client: _Client):
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
-        self.client = client
         self.calls_completed = 0
         self.total_user_time: float = 0.0
         self.current_input_id: Optional[str] = None
@@ -107,8 +106,7 @@ class _FunctionIOManager:
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._output_queue: Optional[asyncio.Queue] = None
         self._environment_name = container_args.environment_name
-
-        self._client = synchronizer._translate_in(self.client)  # make it a _Client object
+        self._client = client
         assert isinstance(self._client, _Client)
 
     @wrap()
@@ -124,7 +122,7 @@ class _FunctionIOManager:
             request.current_input_started_at = self.current_input_started_at
 
         # TODO(erikbern): capture exceptions?
-        await retry_transient_errors(self.client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
+        await retry_transient_errors(self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):
@@ -135,7 +133,7 @@ class _FunctionIOManager:
     async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
-        response = await self.client.stub.FunctionGetSerialized(request)
+        response = await self._client.stub.FunctionGetSerialized(request)
         fun = self.deserialize(response.function_serialized)
 
         if response.class_serialized:
@@ -159,7 +157,7 @@ class _FunctionIOManager:
 
     @wrap()
     async def populate_input_blobs(self, item: api_pb2.FunctionInput):
-        args = await blob_download(item.args_blob_id, self.client.stub)
+        args = await blob_download(item.args_blob_id, self._client.stub)
 
         # Mutating
         item.ClearField("args_blob_id")
@@ -195,7 +193,7 @@ class _FunctionIOManager:
                     set_span_tag("iteration", str(iteration))  # force this to be a tag string
                     iteration += 1
                     response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
-                        self.client.stub.FunctionGetInputs, request
+                        self._client.stub.FunctionGetInputs, request
                     )
 
                 if response.rate_limit_sleep_duration:
@@ -235,7 +233,7 @@ class _FunctionIOManager:
         async for outputs in queue_batch_iterator(self._output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
             req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
             await retry_transient_errors(
-                self.client.stub.FunctionPutOutputs,
+                self._client.stub.FunctionPutOutputs,
                 req,
                 attempt_timeout=3.0,
                 total_timeout=20.0,
@@ -282,7 +280,7 @@ class _FunctionIOManager:
     ) -> None:
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
-            data_blob_id = await blob_upload(kwargs["data"], self.client.stub)
+            data_blob_id = await blob_upload(kwargs["data"], self._client.stub)
             # mutating kwargs.
             del kwargs["data"]
             kwargs["data_blob_id"] = data_blob_id
@@ -343,7 +341,7 @@ class _FunctionIOManager:
             )
 
             req = api_pb2.TaskResultRequest(result=result)
-            await retry_transient_errors(self.client.stub.TaskResult, req)
+            await retry_transient_errors(self._client.stub.TaskResult, req)
 
             # Shut down the task gracefully
             raise UserException()
@@ -422,7 +420,6 @@ class _FunctionIOManager:
         await self.complete_call(started_at)
 
 
-# just to mark the class as synchronized, we don't care about the interfaces
 FunctionIOManager = synchronize_api(_FunctionIOManager)
 
 
@@ -665,8 +662,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
     # This is a bit weird but we need both the blocking and async versions of FunctionIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
-    _function_io_manager = _FunctionIOManager(container_args, client)
-    function_io_manager = synchronize_api(_function_io_manager)
+    function_io_manager = FunctionIOManager(container_args, client)
 
     # Define a global app (need to do this before imports)
     container_app = function_io_manager.initialize_app()
