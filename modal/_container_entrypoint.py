@@ -97,7 +97,6 @@ class _FunctionIOManager:
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
-        # self.runtime = container_args.runtime  # TODO: enable after proto update
         self.client = client
         self.calls_completed = 0
         self.total_user_time: float = 0.0
@@ -109,6 +108,7 @@ class _FunctionIOManager:
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._output_queue: Optional[asyncio.Queue] = None
         self._environment_name = container_args.environment_name
+        self._waiting_for_checkpoint = False
 
         self._client = synchronizer._translate_in(self.client)  # make it a _Client object
         assert isinstance(self._client, _Client)
@@ -119,6 +119,12 @@ class _FunctionIOManager:
         return _container_app
 
     async def _heartbeat(self):
+        # Don't send heartbeats for checkpointing task waiting for a checkpoint
+        # to happen. Sending gRPC calls opens new connections which block
+        # the checkpointing process.
+        if self._waiting_for_checkpoint:
+            return
+
         request = api_pb2.ContainerHeartbeatRequest()
         if self.current_input_id is not None:
             request.current_input_id = self.current_input_id
@@ -422,7 +428,22 @@ class _FunctionIOManager:
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
         )
         await self.complete_call(started_at)
+    
+    def wait_for_restore(self):
+        # Close connection with backend and set state to prevent other
+        # gRPC calls opening new Unix domain sockets.
+        self.client._close()
+        self._waiting_for_checkpoint = True
 
+        # Busy-wait for the an eventual restore. `MODAL_CONTAINER_RESTORED` is
+        # only populated when a container is restored. A checkpointed container
+        # can only be restored with this variable populated.
+        while os.getenv("MODAL_CONTAINER_RESTORED", False):
+            continue
+
+        # Reconnect.
+        self.client = Client.from_env()
+        self._waiting_for_checkpoint = False
     
     async def checkpoint(self) -> None:
         """Message server indicating that function is ready to be checkpointed.
@@ -430,12 +451,6 @@ class _FunctionIOManager:
         routine."""
         logger.info("initialization complete; sending checkpointing signal to modal-worker")
         await self.client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest())
-
-        # Busy-wait for the an eventual restore. `MODAL_CONTAINER_RESTORED` is
-        # only populated when a container is restored. A checkpointed container
-        # can only be restored with this variable populated.
-        while not os.getenv("MODAL_CONTAINER_RESTORED"):
-            continue
 
 
 # just to mark the class as synchronized, we don't care about the interfaces
@@ -704,6 +719,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # including global imports.
         if container_args.function_def.is_checkpointing_function:
             function_io_manager.checkpoint()
+
+            # Blocks heartbeats. Heartbeats are not tracked during checkpointing.
+            function_io_manager.wait_for_restore()
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
         if pty_info.pty_type or pty_info.enabled:
