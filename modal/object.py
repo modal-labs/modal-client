@@ -320,6 +320,8 @@ class _Object:
         ```
         """
         obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        if client is None:
+            client = await _Client.from_env()
         resolver = Resolver(client=client)
         await resolver.load(obj)
         return obj
