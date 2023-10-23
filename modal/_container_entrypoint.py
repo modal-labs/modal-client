@@ -438,7 +438,7 @@ class _FunctionIOManager:
         # Busy-wait for the an eventual restore. `MODAL_CONTAINER_RESTORED` is
         # only populated when a container is restored. A checkpointed container
         # can only be restored with this variable populated.
-        while os.getenv("MODAL_CONTAINER_RESTORED", False):
+        while not os.getenv("MODAL_CONTAINER_RESTORED", False):
             continue
 
         # Reconnect.
