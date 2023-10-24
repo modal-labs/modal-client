@@ -162,18 +162,16 @@ class _LocalApp:
     @staticmethod
     async def _init_new(
         client: _Client,
-        description: Optional[str] = None,
-        detach: bool = False,
-        deploying: bool = False,
+        description: str,
+        app_state: int,
         environment_name: str = "",
     ) -> "_LocalApp":
-        # Start app
-        # TODO(erikbern): maybe this should happen outside of this method?
         app_req = api_pb2.AppCreateRequest(
             description=description,
-            initializing=deploying,
-            detach=detach,
+            initializing=(app_state == api_pb2.APP_STATE_INITIALIZING),  # TODO(erikbern): remove in next PR
+            detach=(app_state == api_pb2.APP_STATE_DETACHED),  # TODO(erikbern): remove in next PR
             environment_name=environment_name,
+            app_state=app_state,
         )
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
@@ -199,7 +197,7 @@ class _LocalApp:
             return await _LocalApp._init_existing(client, existing_app_id)
         else:
             return await _LocalApp._init_new(
-                client, name, detach=False, deploying=True, environment_name=environment_name
+                client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
             )
 
     async def deploy(self, name: str, namespace, object_entity: str) -> str:
