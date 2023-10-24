@@ -708,7 +708,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
 
-        # Checkpoint container after import. Checkpointed containers start from this point
+        # Checkpoint container after imports. Checkpointed containers start from this point
         # onwards. This assumes that everything up to this point has run successfully,
         # including global imports.
         if container_args.function_def.is_checkpointing_function:
