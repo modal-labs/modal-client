@@ -229,22 +229,60 @@ class _LocalApp:
         obj: _Object, type_prefix: str, client: _Client, label: str, namespace: int, environment_name: int
     ):
         """mdmd:hidden"""
-        app = await _LocalApp._init_from_name(client, label, namespace, environment_name=environment_name)
-        existing_object_id: Optional[str] = app._tag_to_object_id.get("_object")
-        resolver = Resolver(app._client, environment_name=environment_name, app_id=app.app_id)
+        # Look up any existing deployment (duplicated from `_init_from_name` temporarily)
+        app_req = api_pb2.AppGetByDeploymentNameRequest(
+            name=label, namespace=namespace, environment_name=environment_name
+        )
+        app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
+        existing_app_id = app_resp.app_id or None
+
+        if existing_app_id is None:
+            # Create new app if it doesn't exist (duplicated from `_init_new` temporarily)
+            app_req = api_pb2.AppCreateRequest(
+                description=label,
+                environment_name=environment_name,
+                app_state=api_pb2.APP_STATE_INITIALIZING,
+            )
+            app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
+            existing_app_id = app_resp.app_id
+            object_ids = {}
+        else:
+            # Fetch existing objects (duplicated from `_init_existing` temporarily)
+            obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
+            obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
+            object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
+
+        # Create object
+        existing_object_id: Optional[str] = object_ids.get("_object")
+        resolver = Resolver(client, environment_name=environment_name, app_id=existing_app_id)
         await resolver.load(obj, existing_object_id)
         if existing_object_id is not None:
             assert obj.object_id == existing_object_id
         indexed_object_ids = {"_object": obj.object_id}
         unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj.object_id is not obj.object_id]
         req_set = api_pb2.AppSetObjectsRequest(
-            app_id=app.app_id,
+            app_id=existing_app_id,
             indexed_object_ids=indexed_object_ids,
             unindexed_object_ids=unindexed_object_ids,
             new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
         )
         await retry_transient_errors(client.stub.AppSetObjects, req_set)
-        await app.deploy(label, namespace, type_prefix)  # TODO(erikbern): not needed if the app already existed
+
+        # Deploy app (duplicated from `deploy` temporarily)
+        deploy_req = api_pb2.AppDeployRequest(
+            app_id=existing_app_id,
+            name=label,
+            namespace=namespace,
+            object_entity=type_prefix,
+        )
+        try:
+            deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)
+        except GRPCError as exc:
+            if exc.status == Status.INVALID_ARGUMENT:
+                raise InvalidError(exc.message)
+            if exc.status == Status.FAILED_PRECONDITION:
+                raise InvalidError(exc.message)
+            raise
 
 
 class _ContainerApp:
