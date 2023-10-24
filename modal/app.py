@@ -233,6 +233,8 @@ class _LocalApp:
         existing_object_id: Optional[str] = app._tag_to_object_id.get("_object")
         resolver = Resolver(app._client, environment_name=environment_name, app_id=app.app_id)
         await resolver.load(obj, existing_object_id)
+        if existing_object_id is not None:
+            assert obj.object_id == existing_object_id
         indexed_object_ids = {"_object": obj.object_id}
         unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj.object_id is not obj.object_id]
         req_set = api_pb2.AppSetObjectsRequest(
