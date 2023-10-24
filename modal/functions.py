@@ -540,6 +540,7 @@ class _Function(_Object, type_prefix="fu"):
         cls: Optional[type] = None,
         is_auto_snapshot: bool = False,
         auto_snapshot_enabled: bool = False,
+        checkpointing_enabled: bool = False,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -796,6 +797,7 @@ class _Function(_Object, type_prefix="fu"):
                 worker_id=config.get("worker_id"),
                 is_auto_snapshot=is_auto_snapshot,
                 is_method=bool(cls),
+                is_checkpointing_function=checkpointing_enabled,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
