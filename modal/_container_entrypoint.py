@@ -429,28 +429,26 @@ class _FunctionIOManager:
         )
         await self.complete_call(started_at)
     
-    def wait_for_restore(self):
-        # Close connection with backend and set state to prevent other
-        # gRPC calls opening new Unix domain sockets.
-        self.client._close()
+    async def checkpoint(self) -> None:
+        """Message server indicating that function is ready to be checkpointed.
+        This message is intercepted by Modal runtime, triggering the checkpointing
+        routine."""
+        await self.client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest())
+
         self._waiting_for_checkpoint = True
+        await self._client._close()
+        logger.debug("checkpointing request sent and connection closed")
 
         # Busy-wait for the an eventual restore. `MODAL_CONTAINER_RESTORED` is
         # only populated when a container is restored. A checkpointed container
         # can only be restored with this variable populated.
         while not os.getenv("MODAL_CONTAINER_RESTORED", False):
+            await asyncio.sleep(0.01)
             continue
 
         # Reconnect.
-        self.client = Client.from_env()
+        self._client = await _Client.from_env()
         self._waiting_for_checkpoint = False
-    
-    async def checkpoint(self) -> None:
-        """Message server indicating that function is ready to be checkpointed.
-        This message is intercepted by Modal runtime, triggering the checkpointing
-        routine."""
-        logger.info("initialization complete; sending checkpointing signal to modal-worker")
-        await self.client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest())
 
 
 # just to mark the class as synchronized, we don't care about the interfaces
@@ -703,6 +701,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     container_app = function_io_manager.initialize_app()
 
     with function_io_manager.heartbeats():
+
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = function_io_manager.get_serialized_function()
@@ -719,9 +718,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # including global imports.
         if container_args.function_def.is_checkpointing_function:
             function_io_manager.checkpoint()
-
-            # Blocks heartbeats. Heartbeats are not tracked during checkpointing.
-            function_io_manager.wait_for_restore()
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
         if pty_info.pty_type or pty_info.enabled:
