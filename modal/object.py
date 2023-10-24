@@ -262,9 +262,10 @@ class _Object:
         async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
             nonlocal environment_name
             if environment_name is None:
-                # resolver always has an environment name, associated with the current app setup
-                # fall back on that one if no explicit environment was set in the call itself
-                environment_name = resolver.environment_name
+                # fall back if no explicit environment was set in the call itself.
+                # If there is a current app setup, the resolver has the env name. If doing a .lookup
+                # with no associated app, must fetch environment from config.
+                environment_name = resolver.environment_name or config.get("environment")
 
             request = api_pb2.AppLookupObjectRequest(
                 app_name=app_name,
@@ -275,9 +276,6 @@ class _Object:
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.AppLookupObject, request)
-                if not response.object.object_id:
-                    # Legacy error message: remove soon
-                    raise NotFoundError(response.error_message)
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
                     raise NotFoundError(exc.message)

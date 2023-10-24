@@ -63,13 +63,12 @@ async def _run_stub(
         client = await _Client.from_env()
     if output_mgr is None:
         output_mgr = OutputManager(stdout, show_progress, "Running app...")
-    post_init_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
+    app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     app = await _LocalApp._init_new(
         client,
         stub.description,
-        detach=detach,
-        deploying=False,
         environment_name=environment_name,
+        app_state=app_state,
     )
     async with stub._set_local_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
@@ -86,7 +85,7 @@ async def _run_stub(
         try:
             # Create all members
             await app._create_all_objects(
-                stub._blueprint, post_init_state, environment_name, shell=shell, output_mgr=output_mgr
+                stub._blueprint, app_state, environment_name, shell=shell, output_mgr=output_mgr
             )
 
             # Update all functions client-side to have the output mgr

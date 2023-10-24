@@ -169,9 +169,10 @@ message AppClientDisconnectRequest {
 message AppCreateRequest {
   string client_id = 1 [ (modal.options.audit_target_attr) = true ];
   string description = 2;    // Human readable label for the app
-  bool detach = 3; // deprecated, but needed until 0.48 is the minimum version
-  bool initializing = 4; // deprecated, but needed until 0.48 is the minimum version
+  bool detach = 3 [deprecated=true]; // replaced by app_state in 0.55.3904
+  bool initializing = 4 [deprecated=true]; // replaced by app_state in 0.55.3904
   string environment_name = 5;
+  AppState app_state = 6;
 }
 
 message AppCreateResponse {
@@ -192,6 +193,17 @@ message AppDeployRequest {
 
 message AppDeployResponse {
   string url = 1;
+}
+
+message AppDeploySingleObjectRequest {
+  string name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  string object_id = 4;
+}
+
+message AppDeploySingleObjectResponse {
+  string app_id = 1;
 }
 
 message AppGetByDeploymentNameRequest {
@@ -222,11 +234,11 @@ message AppGetObjectsRequest {
 
 message AppGetObjectsItem {
   string tag = 1;
-  string object_id = 2;  // deprecated
-  oneof handle_metadata_oneof {  // deprecated
-    FunctionHandleMetadata function_handle_metadata = 3;
-    MountHandleMetadata mount_handle_metadata = 4;
-    ClassHandleMetadata class_handle_metadata = 5;
+  string object_id = 2 [deprecated=true]; // needed by 0.51
+  oneof handle_metadata_oneof {
+    FunctionHandleMetadata function_handle_metadata = 3 [deprecated=true]; // needed by 0.51
+    MountHandleMetadata mount_handle_metadata = 4 [deprecated=true]; // needed by 0.51
+    ClassHandleMetadata class_handle_metadata = 5 [deprecated=true]; // needed by 0.51
   }
   Object object = 6;
 }
@@ -266,12 +278,12 @@ message AppLookupObjectRequest {
 }
 
 message AppLookupObjectResponse {
-  string object_id = 1; // deprecated
-  string error_message = 2;
-  oneof handle_metadata_oneof { // deprecated
-    FunctionHandleMetadata function_handle_metadata = 3;
-    MountHandleMetadata mount_handle_metadata = 4;
-    ClassHandleMetadata class_handle_metadata = 5;
+  string object_id = 1 [deprecated=true]; // needed by 0.51
+  string error_message = 2 [deprecated=true]; // needed by 0.55
+  oneof handle_metadata_oneof {
+    FunctionHandleMetadata function_handle_metadata = 3 [deprecated=true]; // needed by 0.51
+    MountHandleMetadata mount_handle_metadata = 4 [deprecated=true]; // needed by 0.51
+    ClassHandleMetadata class_handle_metadata = 5 [deprecated=true]; // needed by 0.51
   }
   Object object = 6;
 }
@@ -1005,15 +1017,6 @@ message ImageGetOrCreateResponse {
   string image_id = 1;
 }
 
-message ImageJoinRequest {
-  string image_id = 1;
-  float timeout = 2;
-}
-
-message ImageJoinResponse {
-  GenericResult result = 1;
-}
-
 message ImageJoinStreamingRequest {
   string image_id = 1;
   float timeout = 2;
@@ -1474,6 +1477,7 @@ service ModalClient {
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
+  rpc AppDeploySingleObject(AppDeploySingleObjectRequest) returns (AppDeploySingleObjectResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
@@ -1533,8 +1537,7 @@ service ModalClient {
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
-  rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);  // Deprecated
-  rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);  // New
+  rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
 
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
