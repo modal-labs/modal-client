@@ -276,7 +276,7 @@ class _LocalApp:
             object_entity=type_prefix,
         )
         try:
-            deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)
+            await retry_transient_errors(client.stub.AppDeploy, deploy_req)
         except GRPCError as exc:
             if exc.status == Status.INVALID_ARGUMENT:
                 raise InvalidError(exc.message)
