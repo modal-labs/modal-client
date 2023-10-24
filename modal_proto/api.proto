@@ -169,8 +169,8 @@ message AppClientDisconnectRequest {
 message AppCreateRequest {
   string client_id = 1 [ (modal.options.audit_target_attr) = true ];
   string description = 2;    // Human readable label for the app
-  bool detach = 3; // deprecated, but needed until 0.56 is the minimum version
-  bool initializing = 4; // deprecated, but needed until 0.56 is the minimum version
+  bool detach = 3 [deprecated=true]; // replaced by app_state in 0.55.3904
+  bool initializing = 4 [deprecated=true]; // replaced by app_state in 0.55.3904
   string environment_name = 5;
   AppState app_state = 6;
 }
