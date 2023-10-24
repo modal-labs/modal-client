@@ -427,7 +427,7 @@ class _FunctionIOManager:
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
         )
         await self.complete_call(started_at)
-    
+
     async def checkpoint(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
         await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest())

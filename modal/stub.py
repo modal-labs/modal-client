@@ -554,7 +554,7 @@ class _Stub:
                 webhook_config=webhook_config,
                 cls=_cls,
                 auto_snapshot_enabled=_auto_snapshot_enabled,
-                checkpointing_enabled=_checkpointing_enabled
+                checkpointing_enabled=_checkpointing_enabled,
             )
 
             self._add_function(function)
