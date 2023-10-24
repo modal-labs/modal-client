@@ -1010,15 +1010,6 @@ message ImageGetOrCreateResponse {
   string image_id = 1;
 }
 
-message ImageJoinRequest {
-  string image_id = 1;
-  float timeout = 2;
-}
-
-message ImageJoinResponse {
-  GenericResult result = 1;
-}
-
 message ImageJoinStreamingRequest {
   string image_id = 1;
   float timeout = 2;
@@ -1538,8 +1529,7 @@ service ModalClient {
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
-  rpc ImageJoin(ImageJoinRequest) returns (ImageJoinResponse);  // Deprecated
-  rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);  // New
+  rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
 
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
