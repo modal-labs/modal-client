@@ -195,6 +195,17 @@ message AppDeployResponse {
   string url = 1;
 }
 
+message AppDeploySingleObjectRequest {
+  string name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  string object_id = 4;
+}
+
+message AppDeploySingleObjectResponse {
+  string app_id = 1;
+}
+
 message AppGetByDeploymentNameRequest {
   DeploymentNamespace namespace = 1;
   string name = 2;
@@ -1479,6 +1490,7 @@ service ModalClient {
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
+  rpc AppDeploySingleObject(AppDeploySingleObjectRequest) returns (AppDeploySingleObjectResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
