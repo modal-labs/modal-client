@@ -351,7 +351,7 @@ def test_app_descriptions(servicer, server_url_env, test_dir):
 
     create_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppCreateRequest)]
     assert len(create_reqs) == 1
-    assert create_reqs[0].detach
+    assert create_reqs[0].app_state == api_pb2.APP_STATE_DETACHED
     description = create_reqs[0].description
     assert "prints_desc_stub.py::stub.foo" in description
     assert "run --detach " not in description
