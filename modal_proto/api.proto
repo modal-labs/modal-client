@@ -223,11 +223,11 @@ message AppGetObjectsRequest {
 
 message AppGetObjectsItem {
   string tag = 1;
-  string object_id = 2;  // deprecated
-  oneof handle_metadata_oneof {  // deprecated
-    FunctionHandleMetadata function_handle_metadata = 3;
-    MountHandleMetadata mount_handle_metadata = 4;
-    ClassHandleMetadata class_handle_metadata = 5;
+  string object_id = 2 [deprecated=true]; // needed by 0.51
+  oneof handle_metadata_oneof {
+    FunctionHandleMetadata function_handle_metadata = 3 [deprecated=true]; // needed by 0.51
+    MountHandleMetadata mount_handle_metadata = 4 [deprecated=true]; // needed by 0.51
+    ClassHandleMetadata class_handle_metadata = 5 [deprecated=true]; // needed by 0.51
   }
   Object object = 6;
 }
@@ -267,12 +267,12 @@ message AppLookupObjectRequest {
 }
 
 message AppLookupObjectResponse {
-  string object_id = 1; // deprecated
-  string error_message = 2;
-  oneof handle_metadata_oneof { // deprecated
-    FunctionHandleMetadata function_handle_metadata = 3;
-    MountHandleMetadata mount_handle_metadata = 4;
-    ClassHandleMetadata class_handle_metadata = 5;
+  string object_id = 1 [deprecated=true]; // needed by 0.51
+  string error_message = 2 [deprecated=true]; // needed by 0.55
+  oneof handle_metadata_oneof {
+    FunctionHandleMetadata function_handle_metadata = 3 [deprecated=true]; // needed by 0.51
+    MountHandleMetadata mount_handle_metadata = 4 [deprecated=true]; // needed by 0.51
+    ClassHandleMetadata class_handle_metadata = 5 [deprecated=true]; // needed by 0.51
   }
   Object object = 6;
 }

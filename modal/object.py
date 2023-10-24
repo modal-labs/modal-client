@@ -276,9 +276,6 @@ class _Object:
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.AppLookupObject, request)
-                if not response.object.object_id:
-                    # Legacy error message: remove soon
-                    raise NotFoundError(response.error_message)
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
                     raise NotFoundError(exc.message)
