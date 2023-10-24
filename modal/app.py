@@ -168,8 +168,6 @@ class _LocalApp:
     ) -> "_LocalApp":
         app_req = api_pb2.AppCreateRequest(
             description=description,
-            initializing=(app_state == api_pb2.APP_STATE_INITIALIZING),  # TODO(erikbern): remove in next PR
-            detach=(app_state == api_pb2.APP_STATE_DETACHED),  # TODO(erikbern): remove in next PR
             environment_name=environment_name,
             app_state=app_state,
         )
