@@ -8,6 +8,7 @@ import contextlib
 import importlib
 import inspect
 import math
+import os
 import pickle
 import signal
 import sys
@@ -106,6 +107,8 @@ class _FunctionIOManager:
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._output_queue: Optional[asyncio.Queue] = None
         self._environment_name = container_args.environment_name
+        self._waiting_for_checkpoint = False
+
         self._client = client
         assert isinstance(self._client, _Client)
 
@@ -115,6 +118,12 @@ class _FunctionIOManager:
         return _container_app
 
     async def _heartbeat(self):
+        # Don't send heartbeats for tasks waiting to be checkpointed.
+        # Calling gRPC methods open new connections which block the
+        # checkpointing process.
+        if self._waiting_for_checkpoint:
+            return
+
         request = api_pb2.ContainerHeartbeatRequest()
         if self.current_input_id is not None:
             request.current_input_id = self.current_input_id
@@ -419,6 +428,25 @@ class _FunctionIOManager:
         )
         await self.complete_call(started_at)
 
+    async def checkpoint(self) -> None:
+        """Message server indicating that function is ready to be checkpointed."""
+        await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest())
+
+        self._waiting_for_checkpoint = True
+        await self._client._close()
+        logger.debug("checkpointing request sent and connection closed")
+
+        # Busy-wait for the an eventual restore. `MODAL_FUNCTION_RESTORED` is
+        # only populated when a container is restored. A checkpointed container
+        # can only be restored with this variable populated.
+        while not os.getenv("MODAL_FUNCTION_RESTORED", False):
+            await asyncio.sleep(0.01)
+            continue
+
+        # Reconnect.
+        self._client = await _Client.from_env()
+        self._waiting_for_checkpoint = False
+
 
 FunctionIOManager = synchronize_api(_FunctionIOManager)
 
@@ -668,6 +696,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     container_app = function_io_manager.initialize_app()
 
     with function_io_manager.heartbeats():
+
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = function_io_manager.get_serialized_function()
@@ -678,6 +707,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # NOTE: detecting the stub causes all objects to be associated with the app and hydrated
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
+
+        # Checkpoint container after imports. Checkpointed containers start from this point
+        # onwards. This assumes that everything up to this point has run successfully,
+        # including global imports.
+        if container_args.function_def.is_checkpointing_function:
+            function_io_manager.checkpoint()
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
         if pty_info.pty_type or pty_info.enabled:

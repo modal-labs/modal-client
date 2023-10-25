@@ -436,7 +436,6 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   map<string, string> tracing_context = 9;
   bytes serialized_params = 10;
   string runtime = 11;
-  bool checkpoint = 12;
   string environment_name = 13;
 }
 
@@ -445,10 +444,7 @@ message ContainerHeartbeatRequest {
   double current_input_started_at = 2;
 }
 
-message ContainerCheckpointRequest {
-  string runtime = 1;
-  string function_id = 2;
-}
+message ContainerCheckpointRequest {}
 
 message DictClearRequest {
   string dict_id = 1;
@@ -649,8 +645,8 @@ message Function {
   // TODO: combine into enum?
   bool is_builder_function = 32;
   bool is_auto_snapshot = 38;
-
   bool is_method = 39;
+  bool is_checkpointing_function = 40;
 }
 
 message FunctionHandleMetadata {

@@ -9,4 +9,4 @@ __pycache__
 venv/
 build/
 *.pyi
-client_test/*.txt
+**/*.txt
