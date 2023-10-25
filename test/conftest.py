@@ -263,7 +263,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             else:
                 (object_id,) = list(app_objects.values())
         else:
-            app_id = None
             object_id = request.object_id
 
         if request.app_name:
@@ -271,7 +270,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if object_id:
                 assert object_id.startswith(request.object_entity)
 
-        response = api_pb2.AppLookupObjectResponse(object=self.get_object_metadata(object_id), app_id=app_id)
+        response = api_pb2.AppLookupObjectResponse(object=self.get_object_metadata(object_id))
         await stream.send_message(response)
 
     async def AppHeartbeat(self, stream):
