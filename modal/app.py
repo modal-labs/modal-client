@@ -269,12 +269,9 @@ class _LocalApp:
         await resolver.load(obj, existing_object_id)
         if existing_object_id is not None:
             assert obj.object_id == existing_object_id
-        indexed_object_ids = {"_object": obj.object_id}
         assert len(resolver.objects()) == 1
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=existing_app_id,
-            indexed_object_ids=indexed_object_ids,  # TODO(erikbern): remove in next PR
-            new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
             single_object_id=obj.object_id,
         )
         await retry_transient_errors(client.stub.AppSetObjects, req_set)
