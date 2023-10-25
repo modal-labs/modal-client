@@ -185,7 +185,9 @@ class _LocalApp:
     ):
         # Look up any existing deployment
         app_req = api_pb2.AppGetByDeploymentNameRequest(
-            name=name, namespace=namespace, environment_name=environment_name,
+            name=name,
+            namespace=namespace,
+            environment_name=environment_name,
         )
         app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
         existing_app_id = app_resp.app_id or None
@@ -231,7 +233,9 @@ class _LocalApp:
         """mdmd:hidden"""
         # Look up any existing deployment (duplicated from `_init_from_name` temporarily)
         app_req = api_pb2.AppGetByDeploymentNameRequest(
-            name=label, namespace=namespace, environment_name=environment_name,
+            name=label,
+            namespace=namespace,
+            environment_name=environment_name,
         )
         app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
         existing_app_id = app_resp.app_id or None
