@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import pathlib
 import pickle
 import pytest
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from unittest import mock
 
 from grpclib.exceptions import GRPCError
 
@@ -50,6 +52,7 @@ def _run_container(
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
+    is_checkpointing_function: bool = False,
 ) -> tuple[Client, list[api_pb2.FunctionPutOutputsItem]]:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -76,6 +79,7 @@ def _run_container(
             stub_name=stub_name or "",
             is_builder_function=is_builder_function,
             allow_concurrent_inputs=allow_concurrent_inputs,
+            is_checkpointing_function=is_checkpointing_function,
         )
 
         container_args = api_pb2.ContainerArguments(
@@ -92,8 +96,16 @@ def _run_container(
             # This is really only an issue for tests.
             sys.modules.pop(module_name)
 
+        env = os.environ.copy()
+        if is_checkpointing_function:
+            # Environment variable is set to allow restore from a checkpoint.
+            # Override server URL to reproduce restore behavior.
+            env["MODAL_FUNCTION_RESTORED"] = "1"
+            env["MODAL_SERVER_URL"] = servicer.remote_addr
+
         try:
-            main(container_args, client)
+            with mock.patch.dict(os.environ, env):
+                main(container_args, client)
         except UserException:
             # Handle it gracefully
             pass
@@ -776,3 +788,13 @@ def test_call_function_that_calls_method(unix_servicer, event_loop):
         "function_calling_method",
         inputs=_get_inputs(((42, "abc", 123), {})),
     )
+
+
+@skip_windows_unix_socket
+def test_checkpoint_and_restore_success(unix_servicer, event_loop):
+    """Functions send a checkpointing request and continue to execute normally,
+    simulating a restore operation."""
+    _, items = _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
+    assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.data == serialize(42**2)
