@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
-import os
 import asyncio
 import base64
 import concurrent.futures
@@ -9,6 +8,7 @@ import contextlib
 import importlib
 import inspect
 import math
+import os
 import pickle
 import signal
 import sys
