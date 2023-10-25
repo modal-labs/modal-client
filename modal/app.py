@@ -245,6 +245,8 @@ class _LocalApp:
             response = await retry_transient_errors(client.stub.AppLookupObject, request)
             existing_object_id = response.object.object_id
             existing_app_id = response.app_id
+            assert existing_object_id
+            assert existing_app_id
         except GRPCError as exc:
             if exc.status == Status.NOT_FOUND:
                 existing_object_id = None
