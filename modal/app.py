@@ -185,7 +185,7 @@ class _LocalApp:
     ):
         # Look up any existing deployment
         app_req = api_pb2.AppGetByDeploymentNameRequest(
-            name=name, namespace=namespace, environment_name=environment_name
+            name=name, namespace=namespace, environment_name=environment_name,
         )
         app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
         existing_app_id = app_resp.app_id or None
@@ -198,13 +198,13 @@ class _LocalApp:
                 client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
             )
 
-    async def deploy(self, name: str, namespace, object_entity: str) -> str:
+    async def deploy(self, name: str, namespace) -> str:
         """`App.deploy` is deprecated in favor of `modal.runner.deploy_stub`."""
         deploy_req = api_pb2.AppDeployRequest(
             app_id=self.app_id,
             name=name,
             namespace=namespace,
-            object_entity=object_entity,
+            object_entity="ap",
         )
         try:
             deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
@@ -231,7 +231,7 @@ class _LocalApp:
         """mdmd:hidden"""
         # Look up any existing deployment (duplicated from `_init_from_name` temporarily)
         app_req = api_pb2.AppGetByDeploymentNameRequest(
-            name=label, namespace=namespace, environment_name=environment_name
+            name=label, namespace=namespace, environment_name=environment_name,
         )
         app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
         existing_app_id = app_resp.app_id or None
@@ -259,12 +259,12 @@ class _LocalApp:
         if existing_object_id is not None:
             assert obj.object_id == existing_object_id
         indexed_object_ids = {"_object": obj.object_id}
-        unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj.object_id is not obj.object_id]
+        assert len(resolver.objects()) == 1
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=existing_app_id,
-            indexed_object_ids=indexed_object_ids,
-            unindexed_object_ids=unindexed_object_ids,
+            indexed_object_ids=indexed_object_ids,  # TODO(erikbern): remove in next PR
             new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
+            single_object_id=obj.object_id,
         )
         await retry_transient_errors(client.stub.AppSetObjects, req_set)
 

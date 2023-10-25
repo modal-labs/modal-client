@@ -286,17 +286,16 @@ message AppLookupObjectResponse {
     ClassHandleMetadata class_handle_metadata = 5 [deprecated=true]; // needed by 0.51
   }
   Object object = 6;
+  string app_id = 7;
 }
 
 message AppSetObjectsRequest {
-  // TODO: this is a bit of a hacky request meant to be somewhat temporary
-  // At some point, every object should be assigned to a app/namespace when created,
-  // so this method won't be necessary.
   string app_id = 1;
   map<string, string> indexed_object_ids = 2;
   string client_id = 3;
   repeated string unindexed_object_ids = 4;
   AppState new_app_state = 5; // promotes an app from initializing to this new state
+  string single_object_id = 6;
 }
 
 message AppHeartbeatRequest {
