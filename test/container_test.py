@@ -72,7 +72,7 @@ def _run_container(
         # Environment variable is set to allow restore from a checkpoint.
         # Override server URL to reproduce restore behavior.
         if is_checkpointing_function:
-            os.environ["MODAL_CONTAINER_RESTORED"] = "1"
+            os.environ["MODAL_FUNCTION_RESTORED"] = "1"
             os.environ["MODAL_SERVER_URL"] = servicer.remote_addr
 
         function_def = api_pb2.Function(
