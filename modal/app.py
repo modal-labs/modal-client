@@ -272,7 +272,6 @@ class _LocalApp:
         assert len(resolver.objects()) == 1
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=existing_app_id,
-            new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
             single_object_id=obj.object_id,
         )
         await retry_transient_errors(client.stub.AppSetObjects, req_set)
