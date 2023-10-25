@@ -790,6 +790,8 @@ def test_call_function_that_calls_method(unix_servicer, event_loop):
 def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     """Functions send a checkpointing request and continue to execute normally,
     simulating a restore operation."""
-    _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
+    _, items = _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert items[0].result.data == serialize(42**2)
 
