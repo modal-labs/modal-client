@@ -195,15 +195,25 @@ message AppDeployResponse {
   string url = 1;
 }
 
+message AppPrepareSingleObjectRequest {
+  string name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  string object_entity = 4;
+}
+
+message AppPrepareSingleObjectResponse {
+  string app_id = 1;     // Of existing or new app
+  string object_id = 2;  // If the app already existed, otherwise empty
+}
+
 message AppDeploySingleObjectRequest {
   string name = 1;
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
-  string object_id = 4;
-}
-
-message AppDeploySingleObjectResponse {
-  string app_id = 1;
+  string object_entity = 4;
+  string app_id = 5;     // Same app_id as previous step, just to check for races
+  string object_id = 6;  // If the object already existed, same as before
 }
 
 message AppGetByDeploymentNameRequest {
@@ -1481,7 +1491,8 @@ service ModalClient {
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
-  rpc AppDeploySingleObject(AppDeploySingleObjectRequest) returns (AppDeploySingleObjectResponse);
+  rpc AppPrepareSingleObject(AppPrepareSingleObjectRequest) returns (AppPrepareSingleObjectResponse);
+  rpc AppDeploySingleObject(AppDeploySingleObjectRequest) returns (google.protobuf.Empty);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
