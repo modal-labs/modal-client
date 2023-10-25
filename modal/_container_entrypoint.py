@@ -118,9 +118,9 @@ class _FunctionIOManager:
         return _container_app
 
     async def _heartbeat(self):
-        # Don't send heartbeats for checkpointing task waiting for a checkpoint
-        # to happen. Sending gRPC calls opens new connections which block
-        # the checkpointing process.
+        # Don't send heartbeats for tasks waiting to be checkpointed.
+        # Calling gRPC methods open new connections which block the
+        # checkpointing process.
         if self._waiting_for_checkpoint:
             return
 
