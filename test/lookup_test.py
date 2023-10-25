@@ -11,7 +11,7 @@ def test_persistent_object(servicer, client):
     stub["q_1"] = Queue.new()
     deploy_stub(stub, "my-queue", client=client)
 
-    q: Queue = Queue.lookup("my-queue", client=client)
+    q: Queue = Queue.lookup("my-queue", "q_1", client=client)
     assert isinstance(q, Queue)
     assert q.object_id == "qu-1"
 
@@ -30,7 +30,7 @@ def test_lookup_function(servicer, client):
     stub.function()(square)
     deploy_stub(stub, "my-function", client=client)
 
-    f = Function.lookup("my-function", client=client)
+    f = Function.lookup("my-function", "square", client=client)
     assert f.object_id == "fu-1"
 
     # Call it using two arguments
@@ -57,7 +57,7 @@ def test_webhook_lookup(servicer, client):
     stub.function()(web_endpoint(method="POST")(square))
     deploy_stub(stub, "my-webhook", client=client)
 
-    f = Function.lookup("my-webhook", client=client)
+    f = Function.lookup("my-webhook", "square", client=client)
     assert f.web_url
 
 
