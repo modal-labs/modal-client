@@ -231,14 +231,26 @@ class _LocalApp:
         obj: _Object, type_prefix: str, client: _Client, label: str, namespace: int, environment_name: int
     ):
         """mdmd:hidden"""
-        # Look up any existing deployment (duplicated from `_init_from_name` temporarily)
-        app_req = api_pb2.AppGetByDeploymentNameRequest(
-            name=label,
+        existing_object_id: Optional[str]
+        existing_app_id: Optional[str]
+
+        # Look up existing app+object
+        request = api_pb2.AppLookupObjectRequest(
+            app_name=label,
             namespace=namespace,
+            object_entity=type_prefix,
             environment_name=environment_name,
         )
-        app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
-        existing_app_id = app_resp.app_id or None
+        try:
+            response = await retry_transient_errors(client.stub.AppLookupObject, request)
+            existing_object_id = response.object.object_id
+            existing_app_id = response.app_id
+        except GRPCError as exc:
+            if exc.status == Status.NOT_FOUND:
+                existing_object_id = None
+                existing_app_id = None
+            else:
+                raise
 
         if existing_app_id is None:
             # Create new app if it doesn't exist (duplicated from `_init_new` temporarily)
@@ -249,15 +261,8 @@ class _LocalApp:
             )
             app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
             existing_app_id = app_resp.app_id
-            object_ids = {}
-        else:
-            # Fetch existing objects (duplicated from `_init_existing` temporarily)
-            obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
-            obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
-            object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
 
         # Create object
-        existing_object_id: Optional[str] = object_ids.get("_object")
         resolver = Resolver(client, environment_name=environment_name, app_id=existing_app_id)
         await resolver.load(obj, existing_object_id)
         if existing_object_id is not None:
