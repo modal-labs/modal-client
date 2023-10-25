@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
+import os
 import base64
 import json
 import pathlib
@@ -50,6 +51,7 @@ def _run_container(
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
+    is_checkpointing_function: bool = False
 ) -> tuple[Client, list[api_pb2.FunctionPutOutputsItem]]:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -67,6 +69,12 @@ def _run_container(
         else:
             webhook_config = None
 
+        # Environment variable is set to allow restore from a checkpoint.
+        # Override server URL to reproduce restore behavior.
+        if is_checkpointing_function:
+            os.environ["MODAL_CONTAINER_RESTORED"] = "1"
+            os.environ["MODAL_SERVER_URL"] = servicer.remote_addr
+
         function_def = api_pb2.Function(
             module_name=module_name,
             function_name=function_name,
@@ -76,6 +84,7 @@ def _run_container(
             stub_name=stub_name or "",
             is_builder_function=is_builder_function,
             allow_concurrent_inputs=allow_concurrent_inputs,
+            is_checkpointing_function=is_checkpointing_function
         )
 
         container_args = api_pb2.ContainerArguments(
@@ -776,3 +785,11 @@ def test_call_function_that_calls_method(unix_servicer, event_loop):
         "function_calling_method",
         inputs=_get_inputs(((42, "abc", 123), {})),
     )
+
+@skip_windows_unix_socket
+def test_checkpoint_and_restore_success(unix_servicer, event_loop):
+    """Functions send a checkpointing request and continue to execute normally,
+    simulating a restore operation."""
+    _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
+    assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
+
