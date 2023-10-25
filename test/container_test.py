@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from unittest import mock
 
 from grpclib.exceptions import GRPCError
 
@@ -69,12 +70,6 @@ def _run_container(
         else:
             webhook_config = None
 
-        # Environment variable is set to allow restore from a checkpoint.
-        # Override server URL to reproduce restore behavior.
-        if is_checkpointing_function:
-            os.environ["MODAL_FUNCTION_RESTORED"] = "1"
-            os.environ["MODAL_SERVER_URL"] = servicer.remote_addr
-
         function_def = api_pb2.Function(
             module_name=module_name,
             function_name=function_name,
@@ -101,8 +96,16 @@ def _run_container(
             # This is really only an issue for tests.
             sys.modules.pop(module_name)
 
+        env = os.environ.copy()
+        if is_checkpointing_function:
+            # Environment variable is set to allow restore from a checkpoint.
+            # Override server URL to reproduce restore behavior.
+            env["MODAL_FUNCTION_RESTORED"] = "1"
+            env["MODAL_SERVER_URL"] = servicer.remote_addr
+
         try:
-            main(container_args, client)
+            with mock.patch.dict(os.environ, env):
+                main(container_args, client)
         except UserException:
             # Handle it gracefully
             pass

@@ -436,10 +436,10 @@ class _FunctionIOManager:
         await self._client._close()
         logger.debug("checkpointing request sent and connection closed")
 
-        # Busy-wait for the an eventual restore. `MODAL_CONTAINER_RESTORED` is
+        # Busy-wait for the an eventual restore. `MODAL_FUNCTION_RESTORED` is
         # only populated when a container is restored. A checkpointed container
         # can only be restored with this variable populated.
-        while not os.getenv("MODAL_CONTAINER_RESTORED", False):
+        while not os.getenv("MODAL_FUNCTION_RESTORED", False):
             await asyncio.sleep(0.01)
             continue
 
