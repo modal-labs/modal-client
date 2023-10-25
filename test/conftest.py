@@ -267,7 +267,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             else:
                 object_id = self.app_single_objects.get(app_id)
                 if object_id is None:
-                    raise GRPCError(Status.NOT_FOUND, f"can't find single object for app")
+                    raise GRPCError(Status.NOT_FOUND, "can't find single object for app")
         else:
             app_id = None
             object_id = request.object_id
