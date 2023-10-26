@@ -12,6 +12,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
+from ._deployments import deploy_single_object
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
@@ -192,18 +193,15 @@ class _Object:
         environment_name: Optional[str] = None,
     ) -> None:
         """
-        Note 1: this uses the single-object app method, which we're planning to get rid of later
-        Note 2: still considering this an "internal" method, but we'll make it "official" later
+        Note: still considering this an "internal" method, but we'll make it "official" later
         """
-        from .app import _LocalApp
-
         if environment_name is None:
             environment_name = config.get("environment")
 
         if client is None:
             client = await _Client.from_env()
 
-        await _LocalApp._deploy_single_object(self, self._type_prefix, client, label, namespace, environment_name)
+        await deploy_single_object(self, self._type_prefix, client, label, namespace, environment_name)
 
     def persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
