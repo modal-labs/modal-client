@@ -36,7 +36,7 @@ enum ClientType {
   CLIENT_TYPE_WORKER = 2 [deprecated=true];
   CLIENT_TYPE_CONTAINER = 3;
   CLIENT_TYPE_SERVER = 4 [deprecated=true];
-  CLIENT_TYPE_WEB_SERVER = 5 [deprecated=true];
+  CLIENT_TYPE_WEB_SERVER = 5;
 }
 
 // Which data format a binary message is encoded with.
