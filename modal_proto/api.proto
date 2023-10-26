@@ -33,10 +33,10 @@ enum AppState {
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
-  CLIENT_TYPE_WORKER = 2; // deprecated
+  CLIENT_TYPE_WORKER = 2 [deprecated=true];
   CLIENT_TYPE_CONTAINER = 3;
-  CLIENT_TYPE_SERVER = 4; // deprecated
-  CLIENT_TYPE_WEB_SERVER = 5; // deprecated
+  CLIENT_TYPE_SERVER = 4 [deprecated=true];
+  CLIENT_TYPE_WEB_SERVER = 5 [deprecated=true];
 }
 
 // Which data format a binary message is encoded with.
