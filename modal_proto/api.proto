@@ -637,7 +637,22 @@ message Function {
   bool is_method = 39;
   bool is_checkpointing_function = 40;
 
+  // Checkpoint and restore
+
   bool checkpointing_enabled = 41;
+
+  enum CheckpointStatus {
+    CHECKPOINT_STATUS_UNSPECIFIED = 0;
+    CHECKPOINT_STATUS_PENDING = 1;
+    CHECKPOINT_STATUS_PROCESSING = 2;
+    CHECKPOINT_STATUS_READY = 3;
+    CHECKPOINT_STATUS_FAILED = 4;
+  }
+  message CheckpointInfo {
+    string checksum = 1;
+    CheckpointStatus status = 2;
+  }
+  CheckpointInfo checkpoint = 42;
 }
 
 message FunctionHandleMetadata {
