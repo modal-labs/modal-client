@@ -62,6 +62,7 @@ from .exception import (
     InvalidError,
     RemoteError,
     deprecation_error,
+    deprecation_warning,
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
@@ -564,6 +565,10 @@ class _Function(_Object, type_prefix="fu"):
             all_mounts.extend(info.get_mounts().values())  # this would typically only happen for builder functions
 
         if secret:
+            deprecation_warning(
+                date(2023, 10, 26),
+                "`@stub.function(secret=...)` is deprecated. Use @stub.function(secrets=[...])` instead!",
+            )
             secrets = [secret, *secrets]
 
         if isinstance(retries, int):
@@ -602,7 +607,6 @@ class _Function(_Object, type_prefix="fu"):
                 snapshot_info,
                 stub=None,
                 image=image,
-                secret=secret,
                 secrets=secrets,
                 gpu=gpu,
                 mounts=mounts,
