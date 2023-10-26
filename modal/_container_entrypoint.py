@@ -696,7 +696,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     container_app = function_io_manager.initialize_app()
 
     with function_io_manager.heartbeats():
-
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = function_io_manager.get_serialized_function()
