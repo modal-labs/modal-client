@@ -33,7 +33,7 @@ def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], vers
         "x-modal-node": platform.node(),
         "x-modal-platform": platform.platform(),
     }
-    if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
+    if credentials and client_type == api_pb2.CLIENT_TYPE_CLIENT:
         token_id, token_secret = credentials
         metadata.update(
             {
