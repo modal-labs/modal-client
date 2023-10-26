@@ -326,6 +326,7 @@ def shell(
             cpu=cpu,
             memory=memory,
             gpu=gpu,
+            timeout=3600,
         )(lambda: None)
 
     assert isinstance(function, Function)  # ensured by accept_local_entrypoint=False

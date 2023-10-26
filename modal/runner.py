@@ -169,7 +169,6 @@ async def _deploy_stub(
     client=None,
     stdout=None,
     show_progress=True,
-    object_entity="ap",
     environment_name: Optional[str] = None,
 ) -> DeployResult:
     """Deploy an app and export its objects persistently.
@@ -237,7 +236,7 @@ async def _deploy_stub(
 
             # Deploy app
             # TODO(erikbern): not needed if the app already existed
-            url = await app.deploy(name, namespace, object_entity)
+            url = await app.deploy(name, namespace)
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
             await app.disconnect()

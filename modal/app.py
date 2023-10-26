@@ -185,7 +185,9 @@ class _LocalApp:
     ):
         # Look up any existing deployment
         app_req = api_pb2.AppGetByDeploymentNameRequest(
-            name=name, namespace=namespace, environment_name=environment_name
+            name=name,
+            namespace=namespace,
+            environment_name=environment_name,
         )
         app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
         existing_app_id = app_resp.app_id or None
@@ -198,13 +200,13 @@ class _LocalApp:
                 client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
             )
 
-    async def deploy(self, name: str, namespace, object_entity: str) -> str:
+    async def deploy(self, name: str, namespace) -> str:
         """`App.deploy` is deprecated in favor of `modal.runner.deploy_stub`."""
         deploy_req = api_pb2.AppDeployRequest(
             app_id=self.app_id,
             name=name,
             namespace=namespace,
-            object_entity=object_entity,
+            object_entity="ap",
         )
         try:
             deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
@@ -229,12 +231,28 @@ class _LocalApp:
         obj: _Object, type_prefix: str, client: _Client, label: str, namespace: int, environment_name: int
     ):
         """mdmd:hidden"""
-        # Look up any existing deployment (duplicated from `_init_from_name` temporarily)
-        app_req = api_pb2.AppGetByDeploymentNameRequest(
-            name=label, namespace=namespace, environment_name=environment_name
+        existing_object_id: Optional[str]
+        existing_app_id: Optional[str]
+
+        # Look up existing app+object
+        request = api_pb2.AppLookupObjectRequest(
+            app_name=label,
+            namespace=namespace,
+            object_entity=type_prefix,
+            environment_name=environment_name,
         )
-        app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
-        existing_app_id = app_resp.app_id or None
+        try:
+            response = await retry_transient_errors(client.stub.AppLookupObject, request)
+            existing_object_id = response.object.object_id
+            existing_app_id = response.app_id
+            assert existing_object_id
+            assert existing_app_id
+        except GRPCError as exc:
+            if exc.status == Status.NOT_FOUND:
+                existing_object_id = None
+                existing_app_id = None
+            else:
+                raise
 
         if existing_app_id is None:
             # Create new app if it doesn't exist (duplicated from `_init_new` temporarily)
@@ -245,26 +263,16 @@ class _LocalApp:
             )
             app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
             existing_app_id = app_resp.app_id
-            object_ids = {}
-        else:
-            # Fetch existing objects (duplicated from `_init_existing` temporarily)
-            obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
-            obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
-            object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
 
         # Create object
-        existing_object_id: Optional[str] = object_ids.get("_object")
         resolver = Resolver(client, environment_name=environment_name, app_id=existing_app_id)
         await resolver.load(obj, existing_object_id)
         if existing_object_id is not None:
             assert obj.object_id == existing_object_id
-        indexed_object_ids = {"_object": obj.object_id}
-        unindexed_object_ids = [obj.object_id for obj in resolver.objects() if obj.object_id is not obj.object_id]
+        assert len(resolver.objects()) == 1
         req_set = api_pb2.AppSetObjectsRequest(
             app_id=existing_app_id,
-            indexed_object_ids=indexed_object_ids,
-            unindexed_object_ids=unindexed_object_ids,
-            new_app_state=api_pb2.APP_STATE_UNSPECIFIED,  # app is either already deployed or will be set to deployed after this call
+            single_object_id=obj.object_id,
         )
         await retry_transient_errors(client.stub.AppSetObjects, req_set)
 

@@ -73,11 +73,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             "my-proxy": "ap-proxy",
         }
         self.app_objects = {
-            "ap-x": {"": "mo-123"},
-            "ap-y": {"foo-queue": "qu-foo"},
             "ap-z": {"": "im-123"},
             "ap-c": {"": "im-456"},
-            "ap-proxy": {"": "pr-123"},
+        }
+        self.app_single_objects = {
+            "ap-x": "mo-123",
+            "ap-y": "qu-foo",
+            "ap-proxy": "pr-123",
         }
         self.n_inputs = 0
         self.n_queues = 0
@@ -234,6 +236,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppSetObjects(self, stream):
         request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
         self.app_objects[request.app_id] = dict(request.indexed_object_ids)
+        if request.single_object_id:
+            self.app_single_objects[request.app_id] = request.single_object_id
         self.app_set_objects_count += 1
         if request.new_app_state:
             self.app_state_history[request.app_id].append(request.new_app_state)
@@ -255,14 +259,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             app_id = self.deployed_apps.get(request.app_name)
             if app_id is None:
                 raise GRPCError(Status.NOT_FOUND, f"can't find app {request.app_name}")
-            app_objects = self.app_objects[app_id]
             if request.object_tag:
+                app_objects = self.app_objects[app_id]
                 object_id = app_objects.get(request.object_tag)
                 if object_id is None:
                     raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
             else:
-                (object_id,) = list(app_objects.values())
+                object_id = self.app_single_objects.get(app_id)
+                if object_id is None:
+                    raise GRPCError(Status.NOT_FOUND, "can't find single object for app")
         else:
+            app_id = None
             object_id = request.object_id
 
         if request.app_name:
@@ -270,7 +277,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if object_id:
                 assert object_id.startswith(request.object_entity)
 
-        response = api_pb2.AppLookupObjectResponse(object=self.get_object_metadata(object_id))
+        response = api_pb2.AppLookupObjectResponse(object=self.get_object_metadata(object_id), app_id=app_id)
         await stream.send_message(response)
 
     async def AppHeartbeat(self, stream):
