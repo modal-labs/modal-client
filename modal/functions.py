@@ -797,7 +797,8 @@ class _Function(_Object, type_prefix="fu"):
                 worker_id=config.get("worker_id"),
                 is_auto_snapshot=is_auto_snapshot,
                 is_method=bool(cls),
-                is_checkpointing_function=checkpointing_enabled,
+                checkpointing_enabled=checkpointing_enabled,
+                is_checkpointing_function=False,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
