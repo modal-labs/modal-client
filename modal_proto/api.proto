@@ -636,6 +636,8 @@ message Function {
   bool is_auto_snapshot = 38;
   bool is_method = 39;
   bool is_checkpointing_function = 40;
+
+  bool checkpointing_enabled = 41;
 }
 
 message FunctionHandleMetadata {
