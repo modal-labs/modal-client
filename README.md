@@ -6,9 +6,7 @@ cloud compute from Python scripts on your local computer.
 ## Documentation
 
 See the [Modal documentation](http://modal.com/docs) for Python, with examples
-of how to use the library. You need a Modal account to use this library. **We
-are currently in private beta**, and you can get a beta testing invite at
-[modal.com](https://modal.com).
+of how to use the library.
 
 ## Installation
 
@@ -16,6 +14,13 @@ This requires Python 3.7 or later. Install the package with:
 
 ```bash
 pip install modal
+```
+
+Then, you can create a Modal account (or link your existing one) directly on the
+command line.
+
+```bash
+python3 -m modal setup
 ```
 
 ## Support
