@@ -50,7 +50,7 @@ class _Object:
         self,
         rep: str,
         load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
-        is_persisted_ref: bool = False,
+        is_another_app: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
     ):
@@ -58,7 +58,7 @@ class _Object:
         self._load = load
         self._preload = preload
         self._rep = rep
-        self._is_persisted_ref = is_persisted_ref
+        self._is_another_app = is_another_app
         self._hydrate_lazily = hydrate_lazily
 
         self._object_id = None
@@ -95,20 +95,20 @@ class _Object:
 
     def _init_from_other(self, other: O):
         # Transient use case, see Dict, Queue, and SharedVolume
-        self._init(other._rep, other._load, other._is_persisted_ref, other._preload)
+        self._init(other._rep, other._load, other._is_another_app, other._preload)
 
     @classmethod
     def _from_loader(
         cls,
         load: Callable[[O, Resolver, Optional[str]], Awaitable[None]],
         rep: str,
-        is_persisted_ref: bool = False,
+        is_another_app: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
-        obj._init(rep, load, is_persisted_ref, preload, hydrate_lazily)
+        obj._init(rep, load, is_another_app, preload, hydrate_lazily)
         return obj
 
     @classmethod
@@ -226,7 +226,7 @@ class _Object:
 
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"
-        return cls._from_loader(_load_persisted, rep, is_persisted_ref=True)
+        return cls._from_loader(_load_persisted, rep, is_another_app=True)
 
     @classmethod
     def from_name(
@@ -284,7 +284,7 @@ class _Object:
             obj._hydrate(response.object.object_id, resolver.client, handle_metadata)
 
         rep = f"Ref({app_name})"
-        return cls._from_loader(_load_remote, rep)
+        return cls._from_loader(_load_remote, rep, is_another_app=True)
 
     @classmethod
     async def lookup(

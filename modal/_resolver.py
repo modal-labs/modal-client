@@ -109,7 +109,7 @@ class Resolver:
                     #
                     # Persisted refs are ignored because their life cycle is managed independently.
                     # The same tag on an app can be pointed at different objects.
-                    if not obj._is_persisted_ref and not existing_object_id.startswith("im-"):
+                    if not obj._is_another_app and not existing_object_id.startswith("im-"):
                         raise Exception(
                             f"Tried creating an object using existing id {existing_object_id}"
                             f" but it has id {obj.object_id}"
