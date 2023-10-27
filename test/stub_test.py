@@ -332,3 +332,18 @@ async def test_deploy_disconnect(servicer, client):
         api_pb2.APP_STATE_INITIALIZING,
         api_pb2.APP_STATE_STOPPED,
     ]
+
+
+def test_redeploy_from_name_change(servicer, client):
+    stub = Stub()
+    stub.q = modal.Queue.from_name("foo-queue")
+    deploy_stub(stub, "my-app", client=client)
+
+    # Change the object id of foo-queue
+    q_app_id = servicer.deployed_apps["foo-queue"]
+    servicer.app_single_objects[q_app_id]
+    servicer.app_single_objects[q_app_id] = "qu-baz123"
+
+    # Redeploy app
+    # This should not fail because the object_id changed - it's a different app
+    deploy_stub(stub, "my-app", client=client)
