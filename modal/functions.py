@@ -66,7 +66,7 @@ from .exception import (
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
-from .network_file_system import _NetworkFileSystem, load_network_file_systems
+from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
@@ -656,6 +656,11 @@ class _Function(_Object, type_prefix="fu"):
                     f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
                 )
 
+        # Validate NFS
+        if not isinstance(network_file_systems, dict):
+            raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
+        validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -744,11 +749,11 @@ class _Function(_Object, type_prefix="fu"):
             if stub and stub.name:
                 stub_name = stub.name
 
-            mount_ids, secret_ids, image_id, network_file_system_mounts, volume_ids = await asyncio.gather(
+            mount_ids, secret_ids, image_id, nfs_ids, volume_ids = await asyncio.gather(
                 _load_ids(all_mounts),
                 _load_ids(secrets),
                 image_loader(),
-                load_network_file_systems(network_file_systems, allow_cross_region_volumes, resolver),
+                _load_ids([nfs for _, nfs in validated_network_file_systems]),
                 _load_ids([vol for _, vol in validated_volumes]),
             )
 
@@ -775,7 +780,9 @@ class _Function(_Object, type_prefix="fu"):
                 function_type=function_type,
                 resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory),
                 webhook_config=webhook_config,
-                shared_volume_mounts=network_file_system_mounts,
+                shared_volume_mounts=network_file_system_mount_protos(
+                    validated_network_file_systems, nfs_ids, allow_cross_region_volumes
+                ),
                 volume_mounts=volume_mounts,
                 proxy_id=proxy_id,
                 retry_policy=retry_policy,
