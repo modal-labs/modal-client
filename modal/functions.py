@@ -641,6 +641,21 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 raise InvalidError("Webhooks cannot be generators")
 
+        # Validate volumes
+        if not isinstance(volumes, dict):
+            raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
+        validated_volumes = validate_mount_points("Volume", volumes)
+        # We don't support mounting a volume in more than one location
+        volume_to_paths: Dict[_Volume, List[str]] = {}
+        for path, volume in validated_volumes:
+            volume_to_paths.setdefault(volume, []).append(path)
+        for paths in volume_to_paths.values():
+            if len(paths) > 1:
+                conflicting = ", ".join(paths)
+                raise InvalidError(
+                    f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
+                )
+
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -680,35 +695,6 @@ class _Function(_Object, type_prefix="fu"):
                 else:
                     image_id = None  # Happens if it's a notebook function
                 return image_id
-
-            # validation
-
-            if not isinstance(volumes, dict):
-                raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
-            validated_volumes = validate_mount_points("Volume", volumes)
-            # We don't support mounting a volume in more than one location
-            volume_to_paths: Dict[_Volume, List[str]] = {}
-            for path, volume in validated_volumes:
-                volume_to_paths.setdefault(volume, []).append(path)
-            for paths in volume_to_paths.values():
-                if len(paths) > 1:
-                    conflicting = ", ".join(paths)
-                    raise InvalidError(
-                        f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
-                    )
-
-            async def volume_loader():
-                volume_mounts = []
-                volume_ids = await _load_ids([vol for _, vol in validated_volumes])
-                # Relies on dicts being ordered (true as of Python 3.6).
-                for (path, _), volume_id in zip(validated_volumes, volume_ids):
-                    volume_mounts.append(
-                        api_pb2.VolumeMount(
-                            mount_path=path,
-                            volume_id=volume_id,
-                        )
-                    )
-                return volume_mounts
 
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -758,13 +744,23 @@ class _Function(_Object, type_prefix="fu"):
             if stub and stub.name:
                 stub_name = stub.name
 
-            mount_ids, secret_ids, image_id, network_file_system_mounts, volume_mounts = await asyncio.gather(
+            mount_ids, secret_ids, image_id, network_file_system_mounts, volume_ids = await asyncio.gather(
                 _load_ids(all_mounts),
                 _load_ids(secrets),
                 image_loader(),
                 load_network_file_systems(network_file_systems, allow_cross_region_volumes, resolver),
-                volume_loader(),
+                _load_ids([vol for _, vol in validated_volumes]),
             )
+
+            # Relies on dicts being ordered (true as of Python 3.6).
+            volume_mounts = []
+            for (path, _), volume_id in zip(validated_volumes, volume_ids):
+                volume_mounts.append(
+                    api_pb2.VolumeMount(
+                        mount_path=path,
+                        volume_id=volume_id,
+                    )
+                )
 
             # Create function remotely
             function_definition = api_pb2.Function(
