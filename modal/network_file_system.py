@@ -1,9 +1,8 @@
 # Copyright Modal Labs 2023
-import asyncio
 import os
 import time
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, BinaryIO, Dict, List, Optional, Union
+from typing import AsyncIterator, BinaryIO, List, Optional, Tuple, Union
 
 import modal
 from modal._location import parse_cloud_provider
@@ -13,10 +12,8 @@ from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 from modal_utils.hash_utils import get_sha256_hex
 
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
-from ._mount_utils import validate_mount_points
 from ._resolver import Resolver
 from ._types import typechecked
-from .exception import InvalidError
 from .object import _Object, live_method, live_method_gen
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
@@ -24,18 +21,11 @@ NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
 )  # 10 min max for transferring files (does not include upload time to s3)
 
 
-async def load_network_file_systems(
-    network_file_systems: Dict[Union[str, os.PathLike], "_NetworkFileSystem"],
+def network_file_system_mount_protos(
+    validated_network_file_systems: List[Tuple[str, "_NetworkFileSystem"]],
+    volume_ids: List[str],
     allow_cross_region_volumes: bool,
-    resolver: Resolver,
 ) -> List[api_pb2.SharedVolumeMount]:
-    if not isinstance(network_file_systems, dict):
-        raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
-
-    validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
-    loaded_handles = await asyncio.gather(*[resolver.load(vol) for _, vol in validated_network_file_systems])
-    volume_ids = [handle.object_id for handle in loaded_handles]
-
     network_file_system_mounts = []
     # Relies on dicts being ordered (true as of Python 3.6).
     for (path, _), volume_id in zip(validated_network_file_systems, volume_ids):
