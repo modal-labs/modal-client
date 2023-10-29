@@ -11,12 +11,13 @@ from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 from ._location import parse_cloud_provider
+from ._mount_utils import validate_mount_points
 from ._resolver import Resolver
 from .client import _Client
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
-from .network_file_system import _NetworkFileSystem, load_network_file_systems
+from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _Object
 from .secret import _Secret
 
@@ -120,6 +121,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         if len(entrypoint_args) == 0:
             raise InvalidError("entrypoint_args must not be empty")
 
+        if not isinstance(network_file_systems, dict):
+            raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
+        validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+
         async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
             async def _load_ids(objs: Sequence[_Object]) -> List[str]:
                 handles = await asyncio.gather(*[resolver.load(obj) for obj in objs])
@@ -137,11 +142,11 @@ class _Sandbox(_Object, type_prefix="sb"):
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
-            image_id, mount_ids, secret_ids, nfs_mounts = await asyncio.gather(
+            image_id, mount_ids, secret_ids, nfs_ids = await asyncio.gather(
                 _load_image(),
                 _load_ids(mounts),
                 _load_ids(secrets),
-                load_network_file_systems(network_file_systems, False, resolver),
+                _load_ids([vol for _, vol in validated_network_file_systems]),
             )
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
@@ -152,7 +157,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 workdir=workdir,
                 resources=api_pb2.Resources(gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory),
                 cloud_provider=cloud_provider,
-                nfs_mounts=nfs_mounts,
+                nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, nfs_ids, False),
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)

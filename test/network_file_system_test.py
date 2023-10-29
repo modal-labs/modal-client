@@ -6,8 +6,6 @@ import modal
 from modal.exception import DeprecationError, InvalidError
 from modal.runner import deploy_stub
 
-from .supports.skip import skip_windows
-
 
 def dummy():
     pass
@@ -24,27 +22,20 @@ def test_network_file_system_files(client, test_dir, servicer):
         dummy_modal.remote()
 
 
-@skip_windows("TODO: implement client-side path check on Windows.")
-def test_network_file_system_bad_paths(client, test_dir, servicer):
+def test_network_file_system_bad_paths():
     stub = modal.Stub()
 
     def _f():
         pass
 
-    dummy_modal = stub.function(network_file_systems={"/root/../../foo": modal.NetworkFileSystem.new()})(dummy)
     with pytest.raises(InvalidError):
-        with stub.run(client=client):
-            dummy_modal.remote()
+        stub.function(network_file_systems={"/root/../../foo": modal.NetworkFileSystem.new()})(dummy)
 
-    dummy_modal = stub.function(network_file_systems={"/": modal.NetworkFileSystem.new()})(dummy)
     with pytest.raises(InvalidError):
-        with stub.run(client=client):
-            dummy_modal.remote()
+        stub.function(network_file_systems={"/": modal.NetworkFileSystem.new()})(dummy)
 
-    dummy_modal = stub.function(network_file_systems={"/tmp/": modal.NetworkFileSystem.new()})(dummy)
     with pytest.raises(InvalidError):
-        with stub.run(client=client):
-            dummy_modal.remote()
+        stub.function(network_file_systems={"/tmp/": modal.NetworkFileSystem.new()})(dummy)
 
 
 def test_network_file_system_handle_single_file(client, tmp_path, servicer):
