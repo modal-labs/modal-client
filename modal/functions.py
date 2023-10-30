@@ -661,6 +661,10 @@ class _Function(_Object, type_prefix="fu"):
             raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
         validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
 
+        # Validate image
+        if image is not None and not isinstance(image, _Image):
+            raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
+
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -683,23 +687,17 @@ class _Function(_Object, type_prefix="fu"):
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
 
+            # Resolve all dependencies
+            deps: List[_Object] = list(all_mounts) + list(secrets)
             if proxy:
-                proxy_id = (await resolver.load(proxy)).object_id
-            else:
-                proxy_id = None
-
-            async def _load_ids(providers) -> List[str]:
-                loaded_handles = await asyncio.gather(*[resolver.load(provider) for provider in providers])
-                return [handle.object_id for handle in loaded_handles]
-
-            async def image_loader():
-                if image is not None:
-                    if not isinstance(image, _Image):
-                        raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
-                    image_id = (await resolver.load(image)).object_id
-                else:
-                    image_id = None  # Happens if it's a notebook function
-                return image_id
+                deps.append(proxy)
+            if image:
+                deps.append(image)
+            for _, nfs in validated_network_file_systems:
+                deps.append(nfs)
+            for _, vol in validated_volumes:
+                deps.append(vol)
+            await asyncio.gather(*[resolver.load(dep) for dep in deps])
 
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -749,31 +747,22 @@ class _Function(_Object, type_prefix="fu"):
             if stub and stub.name:
                 stub_name = stub.name
 
-            mount_ids, secret_ids, image_id, nfs_ids, volume_ids = await asyncio.gather(
-                _load_ids(all_mounts),
-                _load_ids(secrets),
-                image_loader(),
-                _load_ids([nfs for _, nfs in validated_network_file_systems]),
-                _load_ids([vol for _, vol in validated_volumes]),
-            )
-
             # Relies on dicts being ordered (true as of Python 3.6).
-            volume_mounts = []
-            for (path, _), volume_id in zip(validated_volumes, volume_ids):
-                volume_mounts.append(
-                    api_pb2.VolumeMount(
-                        mount_path=path,
-                        volume_id=volume_id,
-                    )
+            volume_mounts = [
+                api_pb2.VolumeMount(
+                    mount_path=path,
+                    volume_id=volume.object_id,
                 )
+                for path, volume in validated_volumes
+            ]
 
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name,
                 function_name=info.function_name,
-                mount_ids=mount_ids,
-                secret_ids=secret_ids,
-                image_id=image_id,
+                mount_ids=[mount.object_id for mount in all_mounts],
+                secret_ids=[secret.object_id for secret in secrets],
+                image_id=(image.object_id if image else None),
                 definition_type=info.definition_type,
                 function_serialized=function_serialized,
                 class_serialized=class_serialized,
@@ -781,10 +770,10 @@ class _Function(_Object, type_prefix="fu"):
                 resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory),
                 webhook_config=webhook_config,
                 shared_volume_mounts=network_file_system_mount_protos(
-                    validated_network_file_systems, nfs_ids, allow_cross_region_volumes
+                    validated_network_file_systems, allow_cross_region_volumes
                 ),
                 volume_mounts=volume_mounts,
-                proxy_id=proxy_id,
+                proxy_id=(proxy.object_id if proxy else None),
                 retry_policy=retry_policy,
                 timeout_secs=timeout_secs,
                 task_idle_timeout_secs=container_idle_timeout,
