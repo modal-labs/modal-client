@@ -665,6 +665,17 @@ class _Function(_Object, type_prefix="fu"):
         if image is not None and not isinstance(image, _Image):
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
+        # Get all dependent objects
+        deps: List[_Object] = list(all_mounts) + list(secrets)
+        if proxy:
+            deps.append(proxy)
+        if image:
+            deps.append(image)
+        for _, nfs in validated_network_file_systems:
+            deps.append(nfs)
+        for _, vol in validated_volumes:
+            deps.append(vol)
+
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -683,21 +694,8 @@ class _Function(_Object, type_prefix="fu"):
             provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
-            # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
-
-            # Resolve all dependencies
-            deps: List[_Object] = list(all_mounts) + list(secrets)
-            if proxy:
-                deps.append(proxy)
-            if image:
-                deps.append(image)
-            for _, nfs in validated_network_file_systems:
-                deps.append(nfs)
-            for _, vol in validated_volumes:
-                deps.append(vol)
-            await asyncio.gather(*[resolver.load(dep) for dep in deps])
 
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -837,7 +835,7 @@ class _Function(_Object, type_prefix="fu"):
             provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
-        obj = _Function._from_loader(_load, rep, preload=_preload)
+        obj = _Function._from_loader(_load, rep, preload=_preload, deps=deps)
 
         obj._raw_f = raw_f
         obj._info = info
