@@ -23,16 +23,15 @@ NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
 
 def network_file_system_mount_protos(
     validated_network_file_systems: List[Tuple[str, "_NetworkFileSystem"]],
-    volume_ids: List[str],
     allow_cross_region_volumes: bool,
 ) -> List[api_pb2.SharedVolumeMount]:
     network_file_system_mounts = []
     # Relies on dicts being ordered (true as of Python 3.6).
-    for (path, _), volume_id in zip(validated_network_file_systems, volume_ids):
+    for path, volume in validated_network_file_systems:
         network_file_system_mounts.append(
             api_pb2.SharedVolumeMount(
                 mount_path=path,
-                shared_volume_id=volume_id,
+                shared_volume_id=volume.object_id,
                 allow_cross_region=allow_cross_region_volumes,
             )
         )
