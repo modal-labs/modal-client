@@ -126,14 +126,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
 
         async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
-            async def _load_ids(objs: Sequence[_Object]) -> List[str]:
-                handles = await asyncio.gather(*[resolver.load(obj) for obj in objs])
-                return [handle.object_id for handle in handles]
-
-            async def _load_image():
-                image_handle = await resolver.load(image)
-                return image_handle.object_id
-
             gpu_config = parse_gpu_config(gpu)
 
             cloud_provider = parse_cloud_provider(cloud) if cloud else None
@@ -142,22 +134,22 @@ class _Sandbox(_Object, type_prefix="sb"):
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
-            image_id, mount_ids, secret_ids, nfs_ids = await asyncio.gather(
-                _load_image(),
-                _load_ids(mounts),
-                _load_ids(secrets),
-                _load_ids([vol for _, vol in validated_network_file_systems]),
-            )
+            # Resolve dependencies recursively
+            deps: List[_Object] = [image] + list(mounts) + list(secrets)
+            for _, vol in validated_network_file_systems:
+                deps.append(vol)
+            await asyncio.gather(*[resolver.load(dep) for dep in deps])
+
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
-                image_id=image_id,
-                mount_ids=mount_ids,
-                secret_ids=secret_ids,
+                image_id=image.object_id,
+                mount_ids=[mount.object_id for mount in mounts],
+                secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
                 workdir=workdir,
                 resources=api_pb2.Resources(gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory),
                 cloud_provider=cloud_provider,
-                nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, nfs_ids, False),
+                nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
