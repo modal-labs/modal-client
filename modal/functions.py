@@ -789,6 +789,7 @@ class _Function(_Object, type_prefix="fu"):
                 is_method=bool(cls),
                 checkpointing_enabled=checkpointing_enabled,
                 is_checkpointing_function=False,
+                object_dependencies=[api_pb2.ObjectDependency(object_id=dep.object_id) for dep in deps],
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
