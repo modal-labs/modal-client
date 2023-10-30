@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import asyncio
 import pickle
 from datetime import date
 from typing import Any, Callable, Dict, Optional, TypeVar
@@ -152,11 +151,9 @@ class _Cls(_Object, type_prefix="cs"):
 
     @staticmethod
     def from_local(user_cls, base_functions: Dict[str, _Function]) -> "_Cls":
-        async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
-            # Make sure all functions are loaded
-            await asyncio.gather(*[resolver.load(function) for function in base_functions.values()])
+        deps = list(base_functions.values())
 
-            # Create class remotely
+        async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
             for f_name, f in base_functions.items():
                 req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
@@ -164,7 +161,7 @@ class _Cls(_Object, type_prefix="cs"):
             provider._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
-        cls = _Cls._from_loader(_load, rep)
+        cls = _Cls._from_loader(_load, rep, deps=deps)
         cls._user_cls = user_cls
         cls._base_functions = base_functions
         setattr(cls._user_cls, "_modal_functions", base_functions)  # Needed for PartialFunction.__get__

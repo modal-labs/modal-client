@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import asyncio
 import os
 from typing import Dict, List, Optional, Sequence, Union
 
@@ -125,6 +124,10 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
         validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
 
+        deps: List[_Object] = [image] + list(mounts) + list(secrets)
+        for _, vol in validated_network_file_systems:
+            deps.append(vol)
+
         async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
             gpu_config = parse_gpu_config(gpu)
 
@@ -133,12 +136,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             if cpu is not None and cpu < 0.25:
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
-
-            # Resolve dependencies recursively
-            deps: List[_Object] = [image] + list(mounts) + list(secrets)
-            for _, vol in validated_network_file_systems:
-                deps.append(vol)
-            await asyncio.gather(*[resolver.load(dep) for dep in deps])
 
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
@@ -160,7 +157,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             provider._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, resolver.client)
             provider._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, resolver.client)
 
-        return _Sandbox._from_loader(_load, "Sandbox()")
+        return _Sandbox._from_loader(_load, "Sandbox()", deps=deps)
 
     # Live handle methods
 

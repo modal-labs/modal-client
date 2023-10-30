@@ -2,7 +2,7 @@
 import uuid
 from datetime import date
 from functools import wraps
-from typing import Awaitable, Callable, ClassVar, Dict, Optional, Type, TypeVar
+from typing import Awaitable, Callable, ClassVar, Dict, List, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -30,6 +30,10 @@ class _Object:
     # For constructors
     _load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]]
     _preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]]
+    _rep: str
+    _is_another_app: bool
+    _hydrate_lazily: bool
+    _deps: List["_Object"]
 
     # For hydrated objects
     _object_id: str
@@ -53,6 +57,7 @@ class _Object:
         is_another_app: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
+        deps: List["_Object"] = [],
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -60,6 +65,7 @@ class _Object:
         self._rep = rep
         self._is_another_app = is_another_app
         self._hydrate_lazily = hydrate_lazily
+        self._deps = deps
 
         self._object_id = None
         self._client = None
@@ -105,10 +111,11 @@ class _Object:
         is_another_app: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
+        deps: List["_Object"] = [],
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
-        obj._init(rep, load, is_another_app, preload, hydrate_lazily)
+        obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps)
         return obj
 
     @classmethod
@@ -169,6 +176,10 @@ class _Object:
     def is_hydrated(self) -> bool:
         """mdmd:hidden"""
         return self._is_hydrated
+
+    @property
+    def deps(self) -> List[O]:
+        return self._deps
 
     async def resolve(self):
         """mdmd:hidden"""
