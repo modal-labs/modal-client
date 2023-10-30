@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import contextlib
 import os
 import shlex
@@ -108,12 +109,10 @@ class _ImageRegistryConfig:
         self.registry_type = registry_type
         self.secret = secret
 
-    async def resolve(self, resolver: Resolver) -> api_pb2.ImageRegistryConfig:
-        if not self.secret:
-            return api_pb2.ImageRegistryConfig(registry_type=self.registry_type)
-
+    def get_proto(self) -> api_pb2.ImageRegistryConfig:
         return api_pb2.ImageRegistryConfig(
-            registry_type=self.registry_type, secret_id=(await resolver.load(self.secret)).object_id
+            registry_type=self.registry_type,
+            secret_id=(self.secret.object_id if self.secret else None),
         )
 
 
@@ -175,22 +174,23 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError("Cannot run a build function with multiple base images!")
 
         async def _load(provider: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            # Recursively build base images
-            base_image_ids: List[str] = []
-            for image in base_images.values():
-                base_image_ids.append((await resolver.load(image)).object_id)
+            # Recursively build all dependencies
+            deps: List[_Object] = list(base_images.values()) + list(secrets)
+            if build_function:
+                deps.append(build_function)
+            if context_mount:
+                deps.append(context_mount)
+            if image_registry_config.secret:
+                deps.append(image_registry_config.secret)
+            await asyncio.gather(*[resolver.load(dep) for dep in deps])
+
             base_images_pb2s = [
                 api_pb2.BaseImage(
                     docker_tag=docker_tag,
-                    image_id=image_id,
+                    image_id=image.object_id,
                 )
-                for docker_tag, image_id in zip(base_images.keys(), base_image_ids)
+                for docker_tag, image in base_images.items()
             ]
-
-            secret_ids = []
-            for secret in secrets:
-                secret_id = (await resolver.load(secret)).object_id
-                secret_ids.append(secret_id)
 
             context_file_pb2s = []
             for filename, path in context_files.items():
@@ -199,7 +199,7 @@ class _Image(_Object, type_prefix="im"):
 
             if build_function:
                 build_function_def = build_function.get_build_def()
-                build_function_id = (await resolver.load(build_function)).object_id
+                build_function_id = build_function.object_id
 
                 globals = build_function._get_info().get_globals()
                 filtered_globals = {}
@@ -231,24 +231,17 @@ class _Image(_Object, type_prefix="im"):
             else:
                 dockerfile_commands_list = dockerfile_commands
 
-            if context_mount:
-                context_mount_id = (await resolver.load(context_mount)).object_id
-            else:
-                context_mount_id = None
-
             image_definition = api_pb2.Image(
                 base_images=base_images_pb2s,
                 dockerfile_commands=dockerfile_commands_list,
                 context_files=context_file_pb2s,
-                secret_ids=secret_ids,
+                secret_ids=[secret.object_id for secret in secrets],
                 gpu=bool(gpu_config.type),  # Note: as of 2023-01-27, server still uses this
                 build_function_def=build_function_def,
                 build_function_globals=build_function_globals,
-                context_mount_id=context_mount_id,
+                context_mount_id=(context_mount.object_id if context_mount else None),
                 gpu_config=gpu_config,  # Note: as of 2023-01-27, server ignores this
-                image_registry_config=await image_registry_config.resolve(
-                    resolver
-                ),  # Resolves private registry secret.,
+                image_registry_config=image_registry_config.get_proto(),
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
             )
