@@ -147,7 +147,6 @@ class _Image(_Object, type_prefix="im"):
         context_files={},
         dockerfile_commands: Union[List[str], Callable[[], List[str]]] = [],
         secrets: Sequence[_Secret] = [],
-        ref=None,
         gpu_config: Optional[api_pb2.GPUConfig] = None,
         build_function: Optional["modal.functions._Function"] = None,
         context_mount: Optional[_Mount] = None,
@@ -161,9 +160,7 @@ class _Image(_Object, type_prefix="im"):
         if image_registry_config is None:
             image_registry_config = _ImageRegistryConfig()
 
-        if ref and (base_images or dockerfile_commands or context_files):
-            raise InvalidError("No other arguments can be provided when initializing an image from a ref.")
-        if not ref and not dockerfile_commands and not build_function:
+        if not dockerfile_commands and not build_function:
             raise InvalidError(
                 "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
             )
@@ -178,11 +175,6 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError("Cannot run a build function with multiple base images!")
 
         async def _load(provider: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            if ref:
-                image_id = (await resolver.load(ref)).object_id
-                provider._hydrate(image_id, resolver.client, None)
-                return
-
             # Recursively build base images
             base_image_ids: List[str] = []
             for image in base_images.values():
