@@ -1,22 +1,21 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
-import json
 import asyncio
 import base64
 import concurrent.futures
 import contextlib
 import importlib
 import inspect
+import json
 import math
-import os
 import pickle
 import signal
 import sys
 import time
 import traceback
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional, Type
 
 from grpclib import Status
@@ -42,7 +41,7 @@ from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _container_app, _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
-from .config import logger, config
+from .config import config, logger
 from .exception import InvalidError
 from .functions import Function, _set_current_input_id  # type: ignore
 
