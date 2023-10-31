@@ -438,8 +438,8 @@ class _FunctionIOManager:
 
         logger.debug("checkpointing request sent and connection closed")
 
-        # Busy-wait for the an eventual restore. `/modal-restored.json` is created
-        # by the worker process with state data for the restored container.
+        # Busy-wait for the an eventual restore. `/opt/modal/restore-state.json` is created
+        # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
         while not restored_path.exists():
             logger.debug("waiting for restore ...")
