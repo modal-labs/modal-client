@@ -232,7 +232,7 @@ class _Client:
                 return client
 
     @classmethod
-    def set_env_client(cls, client:Optional["_Client"]):
+    def set_env_client(cls, client: Optional["_Client"]):
         """mdmd:hidden"""
         # Just used from tests.
         cls._client_from_env = client

@@ -49,9 +49,9 @@ from .functions import Function, _set_current_input_id  # type: ignore
 if TYPE_CHECKING:
     from types import ModuleType
 
-MAX_OUTPUT_BATCH_SIZE:int = 100
+MAX_OUTPUT_BATCH_SIZE: int = 100
 
-RTT_S:float = 0.5  # conservative estimate of RTT in seconds.
+RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
 
 
 class UserException(Exception):
