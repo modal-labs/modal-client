@@ -66,7 +66,7 @@ from .exception import (
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
-from .network_file_system import _NetworkFileSystem, load_network_file_systems
+from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
@@ -641,6 +641,41 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 raise InvalidError("Webhooks cannot be generators")
 
+        # Validate volumes
+        if not isinstance(volumes, dict):
+            raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
+        validated_volumes = validate_mount_points("Volume", volumes)
+        # We don't support mounting a volume in more than one location
+        volume_to_paths: Dict[_Volume, List[str]] = {}
+        for path, volume in validated_volumes:
+            volume_to_paths.setdefault(volume, []).append(path)
+        for paths in volume_to_paths.values():
+            if len(paths) > 1:
+                conflicting = ", ".join(paths)
+                raise InvalidError(
+                    f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
+                )
+
+        # Validate NFS
+        if not isinstance(network_file_systems, dict):
+            raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
+        validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+
+        # Validate image
+        if image is not None and not isinstance(image, _Image):
+            raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
+
+        # Get all dependent objects
+        deps: List[_Object] = list(all_mounts) + list(secrets)
+        if proxy:
+            deps.append(proxy)
+        if image:
+            deps.append(image)
+        for _, nfs in validated_network_file_systems:
+            deps.append(nfs)
+        for _, vol in validated_volumes:
+            deps.append(vol)
+
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -659,56 +694,8 @@ class _Function(_Object, type_prefix="fu"):
             provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
-            # TODO: should we really join recursively here? Maybe it's better to move this logic to the app class?
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
-
-            if proxy:
-                proxy_id = (await resolver.load(proxy)).object_id
-            else:
-                proxy_id = None
-
-            async def _load_ids(providers) -> List[str]:
-                loaded_handles = await asyncio.gather(*[resolver.load(provider) for provider in providers])
-                return [handle.object_id for handle in loaded_handles]
-
-            async def image_loader():
-                if image is not None:
-                    if not isinstance(image, _Image):
-                        raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
-                    image_id = (await resolver.load(image)).object_id
-                else:
-                    image_id = None  # Happens if it's a notebook function
-                return image_id
-
-            # validation
-
-            if not isinstance(volumes, dict):
-                raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
-            validated_volumes = validate_mount_points("Volume", volumes)
-            # We don't support mounting a volume in more than one location
-            volume_to_paths: Dict[_Volume, List[str]] = {}
-            for path, volume in validated_volumes:
-                volume_to_paths.setdefault(volume, []).append(path)
-            for paths in volume_to_paths.values():
-                if len(paths) > 1:
-                    conflicting = ", ".join(paths)
-                    raise InvalidError(
-                        f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
-                    )
-
-            async def volume_loader():
-                volume_mounts = []
-                volume_ids = await _load_ids([vol for _, vol in validated_volumes])
-                # Relies on dicts being ordered (true as of Python 3.6).
-                for (path, _), volume_id in zip(validated_volumes, volume_ids):
-                    volume_mounts.append(
-                        api_pb2.VolumeMount(
-                            mount_path=path,
-                            volume_id=volume_id,
-                        )
-                    )
-                return volume_mounts
 
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -758,30 +745,33 @@ class _Function(_Object, type_prefix="fu"):
             if stub and stub.name:
                 stub_name = stub.name
 
-            mount_ids, secret_ids, image_id, network_file_system_mounts, volume_mounts = await asyncio.gather(
-                _load_ids(all_mounts),
-                _load_ids(secrets),
-                image_loader(),
-                load_network_file_systems(network_file_systems, allow_cross_region_volumes, resolver),
-                volume_loader(),
-            )
+            # Relies on dicts being ordered (true as of Python 3.6).
+            volume_mounts = [
+                api_pb2.VolumeMount(
+                    mount_path=path,
+                    volume_id=volume.object_id,
+                )
+                for path, volume in validated_volumes
+            ]
 
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name,
                 function_name=info.function_name,
-                mount_ids=mount_ids,
-                secret_ids=secret_ids,
-                image_id=image_id,
+                mount_ids=[mount.object_id for mount in all_mounts],
+                secret_ids=[secret.object_id for secret in secrets],
+                image_id=(image.object_id if image else None),
                 definition_type=info.definition_type,
                 function_serialized=function_serialized,
                 class_serialized=class_serialized,
                 function_type=function_type,
                 resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory),
                 webhook_config=webhook_config,
-                shared_volume_mounts=network_file_system_mounts,
+                shared_volume_mounts=network_file_system_mount_protos(
+                    validated_network_file_systems, allow_cross_region_volumes
+                ),
                 volume_mounts=volume_mounts,
-                proxy_id=proxy_id,
+                proxy_id=(proxy.object_id if proxy else None),
                 retry_policy=retry_policy,
                 timeout_secs=timeout_secs,
                 task_idle_timeout_secs=container_idle_timeout,
@@ -799,6 +789,7 @@ class _Function(_Object, type_prefix="fu"):
                 is_method=bool(cls),
                 checkpointing_enabled=checkpointing_enabled,
                 is_checkpointing_function=False,
+                object_dependencies=[api_pb2.ObjectDependency(object_id=dep.object_id) for dep in deps],
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -845,7 +836,7 @@ class _Function(_Object, type_prefix="fu"):
             provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
-        obj = _Function._from_loader(_load, rep, preload=_preload)
+        obj = _Function._from_loader(_load, rep, preload=_preload, deps=deps)
 
         obj._raw_f = raw_f
         obj._info = info

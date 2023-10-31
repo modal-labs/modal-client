@@ -8,7 +8,7 @@ import typing
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
-from modal import NetworkFileSystem, Proxy, Stub, web_endpoint
+from modal import Image, NetworkFileSystem, Proxy, Stub, web_endpoint
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub
@@ -645,3 +645,21 @@ def test_invalid_large_serialization(client):
 def test_call_unhydrated_function():
     with pytest.raises(ExecutionError, match="hydrated"):
         foo.remote(123)
+
+
+def test_deps(client, servicer):
+    stub = Stub()
+
+    image = Image.debian_slim()
+    nfs_1 = NetworkFileSystem.new()
+    nfs_2 = NetworkFileSystem.new()
+
+    stub.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
+
+    with stub.run(client=client):
+        f = servicer.app_functions[stub.dummy.object_id]
+
+    dep_object_ids = [d.object_id for d in f.object_dependencies]
+    assert image.object_id in dep_object_ids
+    assert nfs_1.object_id in dep_object_ids
+    assert nfs_2.object_id in dep_object_ids

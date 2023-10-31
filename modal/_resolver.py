@@ -99,6 +99,11 @@ class Resolver:
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
+                # Wait for all its dependencies
+                # TODO(erikbern): do we need existing_object_id for those?
+                await asyncio.gather(*[self.load(dep) for dep in obj.deps])
+
+                # Load the object itself
                 await obj._load(obj, self, existing_object_id)
                 if existing_object_id is not None and obj.object_id != existing_object_id:
                     # TODO(erikbern): ignoring images is an ugly fix to a problem that's on the server.
@@ -109,7 +114,7 @@ class Resolver:
                     #
                     # Persisted refs are ignored because their life cycle is managed independently.
                     # The same tag on an app can be pointed at different objects.
-                    if not obj._is_persisted_ref and not existing_object_id.startswith("im-"):
+                    if not obj._is_another_app and not existing_object_id.startswith("im-"):
                         raise Exception(
                             f"Tried creating an object using existing id {existing_object_id}"
                             f" but it has id {obj.object_id}"

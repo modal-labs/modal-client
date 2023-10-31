@@ -6,8 +6,6 @@ import modal
 from modal.exception import InvalidError
 from modal.runner import deploy_stub
 
-from .supports.skip import skip_windows
-
 
 def dummy():
     pass
@@ -24,34 +22,25 @@ def test_volume_mount(client, servicer):
         pass
 
 
-@skip_windows("TODO: implement client-side path check on Windows.")
-def test_volume_bad_paths(client, servicer):
+def test_volume_bad_paths():
     stub = modal.Stub()
 
-    _ = stub.function(volumes={"/root/../../foo": modal.Volume.new()})(dummy)
     with pytest.raises(InvalidError):
-        with stub.run(client=client):
-            pass
+        stub.function(volumes={"/root/../../foo": modal.Volume.new()})(dummy)
 
-    _ = stub.function(volumes={"/": modal.Volume.new()})(dummy)
     with pytest.raises(InvalidError):
-        with stub.run(client=client):
-            pass
+        stub.function(volumes={"/": modal.Volume.new()})(dummy)
 
-    _ = stub.function(volumes={"/tmp/": modal.Volume.new()})(dummy)
     with pytest.raises(InvalidError):
-        with stub.run(client=client):
-            pass
+        stub.function(volumes={"/tmp/": modal.Volume.new()})(dummy)
 
 
-def test_volume_duplicate_mount(client, servicer):
+def test_volume_duplicate_mount():
     stub = modal.Stub()
 
     volume = modal.Volume.new()
-    _ = stub.function(volumes={"/foo": volume, "/bar": volume})(dummy)
     with pytest.raises(InvalidError):
-        with stub.run(client=client):
-            pass
+        stub.function(volumes={"/foo": volume, "/bar": volume})(dummy)
 
 
 def test_volume_commit(client, servicer):
