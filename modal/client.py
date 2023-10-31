@@ -118,6 +118,9 @@ class _Client:
         if self._channel is not None:
             self._channel.close()
 
+        # Remove cached client.
+        self.set_env_client(None)
+
     def set_pre_stop(self, pre_stop: Callable[[], Awaitable[None]]):
         """mdmd:hidden"""
         # hack: stub.serve() gets into a losing race with the `on_shutdown` client
@@ -229,7 +232,7 @@ class _Client:
                 return client
 
     @classmethod
-    def set_env_client(cls, client):
+    def set_env_client(cls, client:Optional["_Client"]):
         """mdmd:hidden"""
         # Just used from tests.
         cls._client_from_env = client

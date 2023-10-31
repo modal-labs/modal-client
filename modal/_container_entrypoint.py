@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
+import json
 import asyncio
 import base64
 import concurrent.futures
@@ -14,6 +15,7 @@ import signal
 import sys
 import time
 import traceback
+from pathlib import Path
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional, Type
 
@@ -40,16 +42,16 @@ from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _container_app, _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
-from .config import logger
+from .config import logger, config
 from .exception import InvalidError
 from .functions import Function, _set_current_input_id  # type: ignore
 
 if TYPE_CHECKING:
     from types import ModuleType
 
-MAX_OUTPUT_BATCH_SIZE = 100
+MAX_OUTPUT_BATCH_SIZE:int = 100
 
-RTT_S = 0.5  # conservative estimate of RTT in seconds.
+RTT_S:float = 0.5  # conservative estimate of RTT in seconds.
 
 
 class UserException(Exception):
@@ -434,16 +436,25 @@ class _FunctionIOManager:
 
         self._waiting_for_checkpoint = True
         await self._client._close()
+
         logger.debug("checkpointing request sent and connection closed")
 
-        # Busy-wait for the an eventual restore. `MODAL_FUNCTION_RESTORED` is
-        # only populated when a container is restored. A checkpointed container
-        # can only be restored with this variable populated.
-        while not os.getenv("MODAL_FUNCTION_RESTORED", False):
+        # Busy-wait for the an eventual restore. `/modal-restored.json` is created
+        # by the worker process with state data for the restored container.
+        restored_path = Path(config.get("restore_state_path"))
+        while not restored_path.exists():
+            logger.debug("waiting for restore ...")
             await asyncio.sleep(0.01)
             continue
 
-        # Reconnect.
+        # Look for state file and create new client with updated credentials.
+        with restored_path.open("r") as file:
+            restored_state = json.load(file)
+
+        # State data is encoded with {"task_id": "tk-000", ...}.
+        for key, value in restored_state.items():
+            config.override_locally(key, value)
+
         self._client = await _Client.from_env()
         self._waiting_for_checkpoint = False
 

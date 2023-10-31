@@ -10,6 +10,7 @@ import pytest
 import subprocess
 import sys
 import time
+import tempfile
 from typing import Any, Dict, List, Optional, Tuple
 from unittest import mock
 
@@ -97,10 +98,15 @@ def _run_container(
             sys.modules.pop(module_name)
 
         env = os.environ.copy()
+        temp_restore_file_path = tempfile.NamedTemporaryFile()
         if is_checkpointing_function:
-            # Environment variable is set to allow restore from a checkpoint.
+            # State file is written to allow for a restore to happen.
+            tmep_file_name = temp_restore_file_path.name
+            with pathlib.Path(tmep_file_name).open("w") as target:
+                json.dump({}, target)
+            env["MODAL_RESTORE_STATE_PATH"] = tmep_file_name
+
             # Override server URL to reproduce restore behavior.
-            env["MODAL_FUNCTION_RESTORED"] = "1"
             env["MODAL_SERVER_URL"] = servicer.remote_addr
 
         try:
@@ -109,6 +115,8 @@ def _run_container(
         except UserException:
             # Handle it gracefully
             pass
+        finally:
+            temp_restore_file_path.close()
 
         # Flatten outputs
         items: list[api_pb2.FunctionPutOutputsItem] = []

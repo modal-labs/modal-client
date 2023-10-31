@@ -158,6 +158,7 @@ _SETTINGS = {
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
     "worker_id": _Setting(),  # For internal debugging use.
     "auto_snapshot": _Setting(False, transform=lambda x: x not in ("", "0")),
+    "restore_state_path": _Setting("/opt/modal/restored-state.json"),
 }
 
 
