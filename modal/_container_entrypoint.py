@@ -438,7 +438,7 @@ class _FunctionIOManager:
 
         logger.debug("checkpointing request sent and connection closed")
 
-        # Busy-wait for the an eventual restore. `/opt/modal/restore-state.json` is created
+        # Busy-wait for restore. `/opt/modal/restore-state.json` is created
         # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
         while not restored_path.exists():
@@ -450,7 +450,7 @@ class _FunctionIOManager:
         with restored_path.open("r") as file:
             restored_state = json.load(file)
 
-        # State data is encoded with {"task_id": "tk-000", ...}.
+        # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
         for key, value in restored_state.items():
             config.override_locally(key, value)
 
