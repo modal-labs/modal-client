@@ -186,6 +186,8 @@ def create_channel(
         if inject_tracing_context is not None:
             inject_tracing_context(cast(Dict[str, str], event.metadata))
 
+        logger.debug(f"Sending request to {event.method_name}")
+
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
     return channel
 
