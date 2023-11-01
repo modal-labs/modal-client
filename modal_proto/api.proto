@@ -948,6 +948,8 @@ message Sandbox {
   optional string workdir = 8;
 
   repeated SharedVolumeMount nfs_mounts = 9;
+
+  bool runtime_debug = 10; // For internal debugging use only.
 }
 
 message SandboxCreateRequest {
