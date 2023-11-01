@@ -13,6 +13,7 @@ from ._location import parse_cloud_provider
 from ._mount_utils import validate_mount_points
 from ._resolver import Resolver
 from .client import _Client
+from .config import config
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _Mount
@@ -147,6 +148,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 resources=api_pb2.Resources(gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory),
                 cloud_provider=cloud_provider,
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
+                runtime_debug=config.get("function_runtime_debug"),
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
