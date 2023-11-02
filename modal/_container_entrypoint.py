@@ -48,7 +48,7 @@ from .functions import Function, _set_current_input_id  # type: ignore
 if TYPE_CHECKING:
     from types import ModuleType
 
-MAX_OUTPUT_BATCH_SIZE: int = 100
+MAX_OUTPUT_BATCH_SIZE: int = 49
 
 RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
 
@@ -254,7 +254,7 @@ class _FunctionIOManager:
 
     async def run_inputs_outputs(self, input_concurrency: int = 1):
         # This also makes sure to terminate the outputs
-        self._output_queue = asyncio.Queue()
+        self._output_queue = asyncio.Queue(MAX_OUTPUT_BATCH_SIZE)
 
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
