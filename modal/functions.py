@@ -1424,6 +1424,11 @@ def _method(
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
+            raw_f.wrapped = True  # suppress later warning
+            raise InvalidError(
+                "Web endpoints on classes should not be wrapped by `@method`. Suggestion: remove the `@method` decorator."
+            )
         return _PartialFunction(raw_f, is_generator=is_generator, keep_warm=keep_warm)
 
     return wrapper

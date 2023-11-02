@@ -70,3 +70,16 @@ def test_invalid_web_decorator_usage():
         @wsgi_app  # type: ignore
         def my_handle_wsgi():
             pass
+
+
+def test_web_endpoint_method():
+    stub = Stub()
+
+    with pytest.raises(InvalidError, match="remove the `@method`"):
+
+        @stub.cls()
+        class Container:
+            @method()  # type: ignore
+            @web_endpoint()
+            def generate(self):
+                pass
