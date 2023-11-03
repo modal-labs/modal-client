@@ -11,10 +11,10 @@ from ._blob_utils import MAX_OBJECT_SIZE_BYTES
 
 def asgi_app_wrapper(asgi_app):
     async def fn(scope, body=None):
-        messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+        messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
 
         # TODO: send disconnect at some point.
-        messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+        messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
         await messages_to_app.put({"type": "http.request", "body": body})
 
         async def send(msg):
