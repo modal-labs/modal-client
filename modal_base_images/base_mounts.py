@@ -32,9 +32,10 @@ def publish_client_mount(client):
 def publish_python_standalone(client, version: str, libc: str) -> None:
     release, full_version = PYTHON_STANDALONE_VERSIONS[version]
 
+    arch = "x86_64" if version == "3.8" else "x86_64_v3"
     url = (
         "https://github.com/indygreg/python-build-standalone/releases/download"
-        + f"/{release}/cpython-{full_version}+{release}-x86_64-unknown-linux-{libc}-install_only.tar.gz"
+        + f"/{release}/cpython-{full_version}+{release}-{arch}-unknown-linux-{libc}-install_only.tar.gz"
     )
 
     profile_environment = config.get("environment")
