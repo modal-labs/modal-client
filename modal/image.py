@@ -52,6 +52,11 @@ def _dockerhub_python_version(python_version=None):
     if python_version is None:
         python_version = "%d.%d" % sys.version_info[:2]
 
+    parts = python_version.split(".")
+
+    if len(parts) > 2:
+        return python_version
+
     # We use the same major/minor version, but the highest micro version
     # See https://hub.docker.com/_/python
     latest_micro_version = {
@@ -61,7 +66,7 @@ def _dockerhub_python_version(python_version=None):
         "3.8": "15",
         "3.7": "15",
     }
-    major_minor_version = ".".join(python_version.split(".")[:2])
+    major_minor_version = ".".join(parts[:2])
     python_version = major_minor_version + "." + latest_micro_version[major_minor_version]
     return python_version
 
