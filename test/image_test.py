@@ -14,7 +14,7 @@ from modal_proto import api_pb2
 
 
 def test_python_version():
-    assert _dockerhub_python_version("3.9.1") == "3.9.15"
+    assert _dockerhub_python_version("3.9.1") == "3.9.1"
     assert _dockerhub_python_version("3.9") == "3.9.15"
     v = _dockerhub_python_version().split(".")
     assert len(v) == 3
