@@ -231,6 +231,7 @@ message AppGetLogsRequest {
 
 message AppGetObjectsRequest {
   string app_id = 1;
+  bool include_unindexed = 2;
 }
 
 message AppGetObjectsItem {
