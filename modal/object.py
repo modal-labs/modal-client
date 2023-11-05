@@ -33,7 +33,7 @@ class _Object:
     _rep: str
     _is_another_app: bool
     _hydrate_lazily: bool
-    _deps: List["_Object"]
+    _deps: Optional[Callable[[], List["_Object"]]]
 
     # For hydrated objects
     _object_id: str
@@ -57,7 +57,7 @@ class _Object:
         is_another_app: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
-        deps: List["_Object"] = [],
+        deps: Optional[Callable[[], List["_Object"]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -111,7 +111,7 @@ class _Object:
         is_another_app: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
-        deps: List["_Object"] = [],
+        deps: Optional[Callable[[], List["_Object"]]] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
@@ -177,9 +177,8 @@ class _Object:
         """mdmd:hidden"""
         return self._is_hydrated
 
-    @property
     def deps(self) -> List[O]:
-        return self._deps
+        return self._deps() if self._deps else []
 
     async def resolve(self):
         """mdmd:hidden"""

@@ -177,13 +177,15 @@ class _Image(_Object, type_prefix="im"):
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
 
-        deps: List[_Object] = list(base_images.values()) + list(secrets)
-        if build_function:
-            deps.append(build_function)
-        if context_mount:
-            deps.append(context_mount)
-        if image_registry_config.secret:
-            deps.append(image_registry_config.secret)
+        def _deps() -> List[_Object]:
+            deps: List[_Object] = list(base_images.values()) + list(secrets)
+            if build_function:
+                deps.append(build_function)
+            if context_mount:
+                deps.append(context_mount)
+            if image_registry_config.secret:
+                deps.append(image_registry_config.secret)
+            return deps
 
         async def _load(provider: _Image, resolver: Resolver, existing_object_id: Optional[str]):
             base_images_pb2s = [
@@ -308,7 +310,7 @@ class _Image(_Object, type_prefix="im"):
             provider._hydrate(image_id, resolver.client, None)
 
         rep = f"Image({dockerfile_commands})"
-        obj = _Image._from_loader(_load, rep, deps=deps)
+        obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
         return obj
 
