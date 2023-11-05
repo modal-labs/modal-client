@@ -233,19 +233,17 @@ class _ContainerApp:
     _associated_stub: Optional[Any]  # TODO(erikbern): type
     _environment_name: Optional[str]
     _tag_to_object_id: Dict[str, str]
-    _tag_to_handle_metadata: Dict[str, Optional[Message]]
+    _object_handle_metadata: Dict[str, Optional[Message]]
     _stub_name: Optional[str]
 
     def __init__(self):
         self._client = None
         self._app_id = None
-        self._tag_to_object_id = {}
-        self._tag_to_handle_metadata = {}
         self._associated_stub = None
         self._stub_name = None
         self._environment_name = None
         self._tag_to_object_id = {}
-        self._tag_to_handle_metadata = {}
+        self._object_handle_metadata = {}
 
     @property
     def client(self) -> Optional[_Client]:
@@ -274,7 +272,7 @@ class _ContainerApp:
             for tag, object_id in self._tag_to_object_id.items():
                 obj = stub_objects.get(tag)
                 if obj is not None:
-                    handle_metadata = self._tag_to_handle_metadata[tag]
+                    handle_metadata = self._object_handle_metadata[object_id]
                     obj._hydrate(object_id, self._client, handle_metadata)
 
     def __getitem__(self, tag: str) -> _Object:
@@ -295,14 +293,14 @@ class _ContainerApp:
 
     def _hydrate_object(self, obj, tag: str):
         object_id: str = self._tag_to_object_id[tag]
-        metadata: Message = self._tag_to_handle_metadata[tag]
+        metadata: Message = self._object_handle_metadata[object_id]
         obj._hydrate(object_id, self._client, metadata)
 
     def _get_pty(self) -> _Object:
         # TOOD(erikbern): This method has zero tests. It's used in _container_entrypoint
         # Let's try to clean this up ASAP
         object_id = self._tag_to_object_id["_pty_input_stream"]
-        metadata = self._tag_to_handle_metadata["_pty_input_stream"]
+        metadata = self._object_handle_metadata[object_id]
         return _Object._new_hydrated(object_id, self._client, metadata)
 
     async def init(self, client: _Client, app_id: str, stub_name: str = "", environment_name: str = ""):
@@ -315,13 +313,14 @@ class _ContainerApp:
         self._stub_name = stub_name
         self._environment_name = environment_name
         self._tag_to_object_id = {}
-        self._tag_to_handle_metadata = {}
-        req = api_pb2.AppGetObjectsRequest(app_id=app_id)
+        self._object_handle_metadata = {}
+        req = api_pb2.AppGetObjectsRequest(app_id=app_id, include_unindexed=True)
         resp = await retry_transient_errors(client.stub.AppGetObjects, req)
         for item in resp.items:
-            self._tag_to_object_id[item.tag] = item.object.object_id
             handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-            self._tag_to_handle_metadata[item.tag] = handle_metadata
+            self._object_handle_metadata[item.object.object_id] = handle_metadata
+            if item.tag:
+                self._tag_to_object_id[item.tag] = item.object.object_id
 
     async def spawn_sandbox(
         self,
