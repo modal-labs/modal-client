@@ -659,7 +659,5 @@ def test_deps(client, servicer):
     with stub.run(client=client):
         f = servicer.app_functions[stub.dummy.object_id]
 
-    dep_object_ids = [d.object_id for d in f.object_dependencies]
-    assert image.object_id in dep_object_ids
-    assert nfs_1.object_id in dep_object_ids
-    assert nfs_2.object_id in dep_object_ids
+    dep_object_ids = set(d.object_id for d in f.object_dependencies)
+    assert dep_object_ids == set([image.object_id, nfs_1.object_id, nfs_2.object_id])
