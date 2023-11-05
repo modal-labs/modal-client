@@ -125,9 +125,11 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
         validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
 
-        deps: List[_Object] = [image] + list(mounts) + list(secrets)
-        for _, vol in validated_network_file_systems:
-            deps.append(vol)
+        def _deps() -> List[_Object]:
+            deps: List[_Object] = [image] + list(mounts) + list(secrets)
+            for _, vol in validated_network_file_systems:
+                deps.append(vol)
+            return deps
 
         async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
             gpu_config = parse_gpu_config(gpu)
@@ -159,7 +161,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             provider._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, resolver.client)
             provider._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, resolver.client)
 
-        return _Sandbox._from_loader(_load, "Sandbox()", deps=deps)
+        return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
 
     # Live handle methods
 

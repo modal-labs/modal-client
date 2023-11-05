@@ -665,16 +665,24 @@ class _Function(_Object, type_prefix="fu"):
         if image is not None and not isinstance(image, _Image):
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
-        # Get all dependent objects
-        deps: List[_Object] = list(all_mounts) + list(secrets)
-        if proxy:
-            deps.append(proxy)
-        if image:
-            deps.append(image)
-        for _, nfs in validated_network_file_systems:
-            deps.append(nfs)
-        for _, vol in validated_volumes:
-            deps.append(vol)
+        def _deps(only_explicit_mounts=False) -> List[_Object]:
+            deps: List[_Object] = list(secrets)
+            if only_explicit_mounts:
+                # TODO: this is a bit hacky, but all_mounts may differ in the container vs locally
+                # We don't want the function dependencies to change, so we have this way to force it to
+                # only include its declared dependencies
+                deps += list(mounts)
+            else:
+                deps += list(all_mounts)
+            if proxy:
+                deps.append(proxy)
+            if image:
+                deps.append(image)
+            for _, nfs in validated_network_file_systems:
+                deps.append(nfs)
+            for _, vol in validated_volumes:
+                deps.append(vol)
+            return deps
 
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if is_generator:
@@ -789,7 +797,9 @@ class _Function(_Object, type_prefix="fu"):
                 is_method=bool(cls),
                 checkpointing_enabled=checkpointing_enabled,
                 is_checkpointing_function=False,
-                object_dependencies=[api_pb2.ObjectDependency(object_id=dep.object_id) for dep in deps],
+                object_dependencies=[
+                    api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
+                ],
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -836,7 +846,7 @@ class _Function(_Object, type_prefix="fu"):
             provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
-        obj = _Function._from_loader(_load, rep, preload=_preload, deps=deps)
+        obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
 
         obj._raw_f = raw_f
         obj._info = info

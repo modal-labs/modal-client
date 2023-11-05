@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import pickle
 from datetime import date
-from typing import Any, Callable, Dict, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from google.protobuf.message import Message
 
@@ -151,7 +151,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     @staticmethod
     def from_local(user_cls, base_functions: Dict[str, _Function]) -> "_Cls":
-        deps = list(base_functions.values())
+        def _deps() -> List[_Function]:
+            return list(base_functions.values())
 
         async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
@@ -161,7 +162,7 @@ class _Cls(_Object, type_prefix="cs"):
             provider._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
-        cls = _Cls._from_loader(_load, rep, deps=deps)
+        cls = _Cls._from_loader(_load, rep, deps=_deps)
         cls._user_cls = user_cls
         cls._base_functions = base_functions
         setattr(cls._user_cls, "_modal_functions", base_functions)  # Needed for PartialFunction.__get__
