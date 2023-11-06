@@ -13,7 +13,7 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .exception import InvalidError, deprecation_error
+from .exception import ExecutionError, InvalidError, deprecation_error
 from .object import _Object
 
 if TYPE_CHECKING:
@@ -307,9 +307,12 @@ class _ContainerApp:
 
     def hydrate_function_deps(self, function: _Function, dep_object_ids: List[str]):
         function_deps = function.deps(only_explicit_mounts=True)
-        assert len(function_deps) == len(dep_object_ids)
+        if len(function_deps) != len(dep_object_ids):
+            raise ExecutionError(
+                f"Function has {len(function_deps)} dependencies"
+                f" but container got {len(dep_object_ids)} object ids."
+            )
         for object_id, obj in zip(dep_object_ids, function_deps):
-            assert object_id.startswith(obj._type_prefix)
             metadata: Message = self._object_handle_metadata[object_id]
             obj._hydrate(object_id, self._client, metadata)
 
