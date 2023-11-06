@@ -31,7 +31,7 @@ FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
 
-def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> list[api_pb2.FunctionGetInputsResponse]:
+def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> List[api_pb2.FunctionGetInputsResponse]:
     input_pb = api_pb2.FunctionInput(args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE)
 
     return [
@@ -125,7 +125,7 @@ def _run_container(
             temp_restore_file_path.close()
 
         # Flatten outputs
-        items: list[api_pb2.FunctionPutOutputsItem] = []
+        items: List[api_pb2.FunctionPutOutputsItem] = []
         for req in servicer.container_outputs:
             items += list(req.outputs)
 
@@ -163,6 +163,8 @@ def _unwrap_generator(ret: ContainerResult) -> Tuple[List[Any], Optional[Excepti
         assert last_result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
         exc = deserialize(last_result.data, ret.client)
         return (items, exc)
+    else:
+        raise RuntimeError("unknown result type")
 
 
 def _unwrap_asgi(ret: ContainerResult):
