@@ -442,7 +442,6 @@ def test_webhook_streaming_async(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_cls_function(unix_servicer, event_loop):
-    deploy_stub_externally(unix_servicer, "modal_test_support.functions", "stub")
     ret = _run_container(unix_servicer, "modal_test_support.functions", "Cls.f")
     assert _unwrap_scalar(ret) == 42 * 111
 
@@ -450,7 +449,6 @@ def test_cls_function(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_param_cls_function(unix_servicer, event_loop):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
-    deploy_stub_externally(unix_servicer, "modal_test_support.functions", "stub")
     ret = _run_container(
         unix_servicer, "modal_test_support.functions", "ParamCls.f", serialized_params=serialized_params
     )
@@ -569,7 +567,6 @@ def test_multistub(unix_servicer, caplog):
 def test_multistub_privately_decorated(unix_servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # and the two stubs are not named
-    deploy_stub_externally(unix_servicer, "modal_test_support.multistub_privately_decorated", "stub")
     ret = _run_container(unix_servicer, "modal_test_support.multistub_privately_decorated", "foo")
     assert _unwrap_scalar(ret) == 1
     assert "You have more than one unnamed stub." in caplog.text
@@ -579,7 +576,6 @@ def test_multistub_privately_decorated(unix_servicer, caplog):
 def test_multistub_privately_decorated_named_stub(unix_servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # but we can use the names of the stubs to determine the active stub
-    deploy_stub_externally(unix_servicer, "modal_test_support.multistub_privately_decorated_named_stub", "stub")
     ret = _run_container(
         unix_servicer, "modal_test_support.multistub_privately_decorated_named_stub", "foo", stub_name="dummy"
     )
@@ -591,7 +587,6 @@ def test_multistub_privately_decorated_named_stub(unix_servicer, caplog):
 def test_multistub_same_name_warning(unix_servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # two stubs with the same name - warn since we won't know which one to hydrate
-    deploy_stub_externally(unix_servicer, "modal_test_support.multistub_same_name", "stub")
     ret = _run_container(unix_servicer, "modal_test_support.multistub_same_name", "foo", stub_name="dummy")
     assert _unwrap_scalar(ret) == 1
     assert "You have more than one stub with the same name ('dummy')" in caplog.text
@@ -604,7 +599,6 @@ def test_multistub_serialized_func(unix_servicer, caplog):
         return x
 
     unix_servicer.function_serialized = serialize(dummy)
-    deploy_stub_externally(unix_servicer, "modal_test_support.multistub_serialized_func", "stub")
     ret = _run_container(
         unix_servicer,
         "modal_test_support.multistub_serialized_func",
@@ -618,7 +612,6 @@ def test_multistub_serialized_func(unix_servicer, caplog):
 @skip_windows_unix_socket
 def test_image_run_function_no_warn(unix_servicer, caplog):
     # builder functions currently aren't tied to any modal stub, so they shouldn't need to warn if they can't determine a stub to use
-    deploy_stub_externally(unix_servicer, "modal_test_support.image_run_function", "stub")
     ret = _run_container(
         unix_servicer,
         "modal_test_support.image_run_function",
@@ -632,7 +625,6 @@ def test_image_run_function_no_warn(unix_servicer, caplog):
 
 @skip_windows_unix_socket
 def test_is_inside(unix_servicer, caplog, capsys):
-    deploy_stub_externally(unix_servicer, "modal_test_support.is_inside", "stub")
     ret = _run_container(
         unix_servicer,
         "modal_test_support.is_inside",
@@ -647,7 +639,6 @@ def test_is_inside(unix_servicer, caplog, capsys):
 
 @skip_windows_unix_socket
 def test_multistub_is_inside(unix_servicer, caplog, capsys):
-    deploy_stub_externally(unix_servicer, "modal_test_support.multistub_is_inside", "a_stub")
     ret = _run_container(unix_servicer, "modal_test_support.multistub_is_inside", "foo", stub_name="a")
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
@@ -658,7 +649,6 @@ def test_multistub_is_inside(unix_servicer, caplog, capsys):
 
 @skip_windows_unix_socket
 def test_multistub_is_inside_warning(unix_servicer, caplog, capsys):
-    deploy_stub_externally(unix_servicer, "modal_test_support.multistub_is_inside_warning", "a_stub")
     ret = _run_container(
         unix_servicer,
         "modal_test_support.multistub_is_inside_warning",
