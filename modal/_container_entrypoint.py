@@ -565,6 +565,7 @@ class ImportedFunction:
     data_format: int  # api_pb2.DataFormat
     input_concurrency: int
     is_auto_snapshot: bool
+    function: _Function
 
 
 @wrap()
@@ -598,10 +599,11 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
 
     # The decorator is typically in global scope, but may have been applied independently
     active_stub: Optional[_Stub] = None
+    function: Optional[_Function] = None
     if isinstance(fun, Function):
-        _function_proxy = synchronizer._translate_in(fun)
-        fun = _function_proxy.get_raw_f()
-        active_stub = _function_proxy._stub
+        function = synchronizer._translate_in(fun)
+        fun = function.get_raw_f()
+        active_stub = function._stub
     elif module is not None and not function_def.is_builder_function:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated stubs - if there is only one with the indicated name, use that one
@@ -663,7 +665,15 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
         data_format = api_pb2.DATA_FORMAT_ASGI
 
     return ImportedFunction(
-        obj, fun, active_stub, is_async, is_generator, data_format, input_concurrency, function_def.is_auto_snapshot
+        obj,
+        fun,
+        active_stub,
+        is_async,
+        is_generator,
+        data_format,
+        input_concurrency,
+        function_def.is_auto_snapshot,
+        function,
     )
 
 
@@ -690,6 +700,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # NOTE: detecting the stub causes all objects to be associated with the app and hydrated
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
+
+        # Hydrate all function dependencies
+        if imp_fun.function:
+            dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
+            container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
 
         # Checkpoint container after imports. Checkpointed containers start from this point
         # onwards. This assumes that everything up to this point has run successfully,
