@@ -18,6 +18,7 @@ from .object import _Object
 
 if TYPE_CHECKING:
     from rich.tree import Tree
+
     from .functions import _Function
 
 else:

@@ -16,7 +16,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional, Type
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Type
 
 from grpclib import Status
 
@@ -42,7 +42,7 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
 from .exception import InvalidError
-from .functions import Function, _set_current_input_id  # type: ignore
+from .functions import Function, _Function, _set_current_input_id  # type: ignore
 
 if TYPE_CHECKING:
     from types import ModuleType

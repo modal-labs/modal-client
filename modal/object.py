@@ -2,7 +2,7 @@
 import uuid
 from datetime import date
 from functools import wraps
-from typing import Any, Awaitable, Callable, ClassVar, Dict, List, Optional, Type, TypeVar
+from typing import Awaitable, Callable, ClassVar, Dict, List, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
