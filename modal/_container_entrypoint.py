@@ -223,7 +223,7 @@ class _FunctionIOManager:
                         else:
                             input_pb = item.input
 
-                        # If yielded, allow semaphore to be released via enqueue_outputs
+                        # If yielded, allow semaphore to be released via push_outputs
                         yield (item.input_id, input_pb)
                         yielded = True
 
@@ -238,7 +238,7 @@ class _FunctionIOManager:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
-        # - or, when the output for the fetched input is enqueued, release the semaphore.
+        # - or, when the output for the fetched input is sent, release the semaphore.
         self._input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
@@ -255,7 +255,7 @@ class _FunctionIOManager:
             for _ in range(input_concurrency):
                 await self._semaphore.acquire()
 
-    async def _send_output(
+    async def _push_output(
         self, input_id, started_at: float, gen_index: int, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs
     ):
         # upload data to S3 if too big.
@@ -352,7 +352,7 @@ class _FunctionIOManager:
             # serializing the exception, which may have some issues (there
             # was an earlier note about it that it might not be possible
             # to unpickle it in some cases). Let's watch out for issues.
-            await self._send_output(
+            await self._push_output(
                 input_id,
                 started_at=started_at,
                 gen_index=output_index.value,
@@ -371,8 +371,8 @@ class _FunctionIOManager:
         self.calls_completed += 1
         self._semaphore.release()
 
-    async def enqueue_output(self, input_id, started_at: float, output_index: int, data: Any, data_format: int) -> None:
-        await self._send_output(
+    async def push_output(self, input_id, started_at: float, output_index: int, data: Any, data_format: int) -> None:
+        await self._push_output(
             input_id,
             started_at=started_at,
             gen_index=output_index,
@@ -382,10 +382,10 @@ class _FunctionIOManager:
         )
         await self.complete_call(started_at)
 
-    async def enqueue_generator_value(
+    async def push_generator_value(
         self, input_id, started_at: float, output_index: int, data: Any, data_format: int
     ) -> None:
-        await self._send_output(
+        await self._push_output(
             input_id,
             started_at=started_at,
             gen_index=output_index,
@@ -395,8 +395,8 @@ class _FunctionIOManager:
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
         )
 
-    async def enqueue_generator_eof(self, input_id, started_at: float, output_index: int) -> None:
-        await self._send_output(
+    async def push_generator_eof(self, input_id, started_at: float, output_index: int) -> None:
+        await self._push_output(
             input_id,
             started_at=started_at,
             gen_index=output_index,
@@ -465,21 +465,19 @@ def call_function_sync(
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
 
                     for value in res:
-                        function_io_manager.enqueue_generator_value(
+                        function_io_manager.push_generator_value(
                             input_id, started_at, output_index.value, value, imp_fun.data_format
                         )
                         output_index.increase()
 
-                    function_io_manager.enqueue_generator_eof(input_id, started_at, output_index.value)
+                    function_io_manager.push_generator_eof(input_id, started_at, output_index.value)
                 else:
                     if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
                             f"Sync (non-generator) function return value of type {type(res)}."
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
-                    function_io_manager.enqueue_output(
-                        input_id, started_at, output_index.value, res, imp_fun.data_format
-                    )
+                    function_io_manager.push_output(input_id, started_at, output_index.value, res, imp_fun.data_format)
 
         if imp_fun.input_concurrency > 1:
             with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -522,11 +520,11 @@ async def call_function_async(
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
                     async for value in res:
-                        await function_io_manager.enqueue_generator_value.aio(
+                        await function_io_manager.push_generator_value.aio(
                             input_id, started_at, output_index.value, value, imp_fun.data_format
                         )
                         output_index.increase()
-                    await function_io_manager.enqueue_generator_eof.aio(input_id, started_at, output_index.value)
+                    await function_io_manager.push_generator_eof.aio(input_id, started_at, output_index.value)
                 else:
                     if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
@@ -534,7 +532,7 @@ async def call_function_async(
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
                     value = await res
-                    await function_io_manager.enqueue_output.aio(
+                    await function_io_manager.push_output.aio(
                         input_id, started_at, output_index.value, value, imp_fun.data_format
                     )
 
