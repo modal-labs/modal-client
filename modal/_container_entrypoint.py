@@ -441,9 +441,10 @@ class _FunctionIOManager:
         # Busy-wait for restore. `/opt/modal/restore-state.json` is created
         # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
+        logger.info(f"observing path => {restored_path}")
         while not restored_path.exists():
-            logger.debug("waiting for restore ...")
-            await asyncio.sleep(0.01)
+            logger.info("waiting for restore ...")
+            await asyncio.sleep(0.5)
             continue
 
         # Look for state file and create new client with updated credentials.
