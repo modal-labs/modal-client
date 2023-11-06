@@ -24,7 +24,6 @@ from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
-    queue_batch_iterator,
     synchronize_api,
     synchronizer,
 )
@@ -236,26 +235,7 @@ class _FunctionIOManager:
                 if not yielded:
                     self._semaphore.release()
 
-    async def _send_outputs(self):
-        """Background task that tries to drain output queue until it's empty,
-        or the output buffer changes, and then sends the entire batch in one request.
-        """
-        async for outputs in queue_batch_iterator(self._output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
-            req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
-            await retry_transient_errors(
-                self._client.stub.FunctionPutOutputs,
-                req,
-                attempt_timeout=3.0,
-                total_timeout=20.0,
-                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-            )
-            # TODO(erikbern): we'll get a RESOURCE_EXHAUSTED if the buffer is full server-side.
-            # It's possible we want to retry "harder" for this particular error.
-
     async def run_inputs_outputs(self, input_concurrency: int = 1):
-        # This also makes sure to terminate the outputs
-        self._output_queue = asyncio.Queue(MAX_OUTPUT_BATCH_SIZE)
-
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
@@ -263,31 +243,22 @@ class _FunctionIOManager:
         self._input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
-        async with TaskContext(grace=10) as tc:
-            tc.create_task(self._send_outputs())
-            try:
-                async for input_id, input_pb in self._generate_inputs():
-                    args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
-                    _set_current_input_id(input_id)
-                    self.current_input_id, self.current_input_started_at = (input_id, time.time())
-                    yield input_id, args, kwargs
-                    _set_current_input_id(None)
-                    self.current_input_id, self.current_input_started_at = (None, None)
-            finally:
-                # collect all active input slots, meaning all outputs of outstanding inputs are enqueued
-                for _ in range(input_concurrency):
-                    await self._semaphore.acquire()
-                # send the eof to _send_outputs loop
-                await self._output_queue.put(None)
+        try:
+            async for input_id, input_pb in self._generate_inputs():
+                args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
+                _set_current_input_id(input_id)
+                self.current_input_id, self.current_input_started_at = (input_id, time.time())
+                yield input_id, args, kwargs
+                _set_current_input_id(None)
+                self.current_input_id, self.current_input_started_at = (None, None)
+        finally:
+            # collect all active input slots, meaning all inputs have wrapped up.
+            for _ in range(input_concurrency):
+                await self._semaphore.acquire()
 
-    async def _enqueue_output(
-        self,
-        input_id,
-        started_at: float,
-        gen_index: int,
-        data_format=api_pb2.DATA_FORMAT_UNSPECIFIED,
-        **kwargs,
-    ) -> None:
+    async def _send_output(
+        self, input_id, started_at: float, gen_index: int, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs
+    ):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
             data_blob_id = await blob_upload(kwargs["data"], self._client.stub)
@@ -303,7 +274,13 @@ class _FunctionIOManager:
             result=api_pb2.GenericResult(**kwargs),
             data_format=data_format,
         )
-        await self._output_queue.put(output)
+
+        await retry_transient_errors(
+            self._client.stub.FunctionPutOutputs,
+            api_pb2.FunctionPutOutputsRequest(outputs=[output]),
+            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            max_retries=None,  # Retry indefinitely, trying every 1s.
+        )
 
     def serialize_exception(self, exc: BaseException) -> Optional[bytes]:
         try:
@@ -376,7 +353,7 @@ class _FunctionIOManager:
             # serializing the exception, which may have some issues (there
             # was an earlier note about it that it might not be possible
             # to unpickle it in some cases). Let's watch out for issues.
-            await self._enqueue_output(
+            await self._send_output(
                 input_id,
                 started_at=started_at,
                 gen_index=output_index.value,
@@ -396,7 +373,7 @@ class _FunctionIOManager:
         self._semaphore.release()
 
     async def enqueue_output(self, input_id, started_at: float, output_index: int, data: Any, data_format: int) -> None:
-        await self._enqueue_output(
+        await self._send_output(
             input_id,
             started_at=started_at,
             gen_index=output_index,
@@ -409,7 +386,7 @@ class _FunctionIOManager:
     async def enqueue_generator_value(
         self, input_id, started_at: float, output_index: int, data: Any, data_format: int
     ) -> None:
-        await self._enqueue_output(
+        await self._send_output(
             input_id,
             started_at=started_at,
             gen_index=output_index,
@@ -420,7 +397,7 @@ class _FunctionIOManager:
         )
 
     async def enqueue_generator_eof(self, input_id, started_at: float, output_index: int) -> None:
-        await self._enqueue_output(
+        await self._send_output(
             input_id,
             started_at=started_at,
             gen_index=output_index,
