@@ -105,7 +105,6 @@ class _FunctionIOManager:
         self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
-        self._output_queue: Optional[asyncio.Queue] = None
         self._environment_name = container_args.environment_name
         self._waiting_for_checkpoint = False
 
