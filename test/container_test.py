@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
-from __future__ import annotations
 
 import base64
+import dataclasses
 import json
 import os
 import pathlib
@@ -31,13 +31,19 @@ FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
 
-def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> list[api_pb2.FunctionGetInputsResponse]:
+def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> List[api_pb2.FunctionGetInputsResponse]:
     input_pb = api_pb2.FunctionInput(args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE)
 
     return [
         api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", input=input_pb)])
         for i in range(n)
     ] + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
+
+
+@dataclasses.dataclass
+class ContainerResult:
+    client: Client
+    items: List[api_pb2.FunctionPutOutputsItem]
 
 
 def _run_container(
@@ -54,7 +60,7 @@ def _run_container(
     allow_concurrent_inputs: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
     is_checkpointing_function: bool = False,
-) -> tuple[Client, list[api_pb2.FunctionPutOutputsItem]]:
+) -> ContainerResult:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
             servicer.container_inputs = _get_inputs()
@@ -119,109 +125,116 @@ def _run_container(
             temp_restore_file_path.close()
 
         # Flatten outputs
-        items: list[api_pb2.FunctionPutOutputsItem] = []
+        items: List[api_pb2.FunctionPutOutputsItem] = []
         for req in servicer.container_outputs:
             items += list(req.outputs)
 
-        return client, items
+        return ContainerResult(client, items)
 
 
-def _unwrap_asgi_response(item: api_pb2.FunctionPutOutputsItem) -> Any:
-    assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-    assert item.data_format == api_pb2.DATA_FORMAT_ASGI
-    return deserialize_data_format(item.result.data, item.data_format, None)
+def _unwrap_scalar(ret: ContainerResult):
+    assert len(ret.items) == 1
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    return deserialize(ret.items[0].result.data, ret.client)
 
 
-def _unwrap_asgi_done(item: api_pb2.FunctionPutOutputsItem) -> None:
-    assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+def _unwrap_exception(ret: ContainerResult):
+    assert len(ret.items) == 1
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "Traceback" in ret.items[0].result.traceback
+    return ret.items[0].result.exception
+
+
+def _unwrap_generator(ret: ContainerResult) -> Tuple[List[Any], Optional[Exception]]:
+    items = []
+    for i in range(len(ret.items) - 1):
+        result = ret.items[i].result
+        assert result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+        assert result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+        assert ret.items[i].gen_index == i
+        items.append(deserialize(result.data, ret.client))
+
+    last_result = ret.items[-1].result
+    if last_result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+        assert last_result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+        assert last_result.data == b""  # no data in generator complete marker result
+        return (items, None)
+    elif last_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+        assert last_result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
+        exc = deserialize(last_result.data, ret.client)
+        return (items, exc)
+    else:
+        raise RuntimeError("unknown result type")
+
+
+def _unwrap_asgi(ret: ContainerResult):
+    items = []
+    for item in ret.items[:-1]:
+        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+        assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
+        assert item.data_format == api_pb2.DATA_FORMAT_ASGI
+        items.append(deserialize_data_format(item.result.data, item.data_format, None))
+
+    last_item = ret.items[-1]
+    assert last_item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert last_item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+
+    return items
 
 
 @skip_windows_unix_socket
 def test_success(unix_servicer, event_loop):
     t0 = time.time()
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "square")
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize(42**2)
+    assert _unwrap_scalar(ret) == 42**2
 
 
 @skip_windows_unix_socket
 def test_generator_success(unix_servicer, event_loop):
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer, "modal_test_support.functions", "gen_n", function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
     )
 
-    assert 1 <= len(items) <= 43
-    assert len(items) == 43  # The generator creates N outputs, and N is 42 from the autogenerated input
-
-    for i in range(42):
-        result = items[i].result
-        assert result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-        assert deserialize(result.data, client) == i**2
-        assert items[i].gen_index == i
-
-    last_result = items[-1].result
-    assert last_result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert last_result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
-    assert last_result.data == b""  # no data in generator complete marker result
+    items, exc = _unwrap_generator(ret)
+    assert items == [i**2 for i in range(42)]
+    assert exc is None
 
 
 @skip_windows_unix_socket
 def test_generator_failure(unix_servicer, event_loop):
     inputs = _get_inputs(((10, 5), {}))
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
         "gen_n_fail_on_m",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
         inputs=inputs,
     )
-    assert len(items) == 6  # 5 successful outputs, 1 failure
-
-    for i in range(5):
-        result = items[i].result
-        assert result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-        assert deserialize(result.data, client) == i**2
-        assert items[i].gen_index == i
-
-    last_result = items[-1].result
-    assert last_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
-    assert last_result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
-    data = deserialize(last_result.data, client)
-    assert isinstance(data, Exception)
-    assert data.args == ("bad",)
+    items, exc = _unwrap_generator(ret)
+    assert items == [i**2 for i in range(5)]
+    assert isinstance(exc, Exception)
+    assert exc.args == ("bad",)
 
 
 @skip_windows_unix_socket
 def test_async(unix_servicer):
     t0 = time.time()
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "square_async")
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "square_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize(42**2)
+    assert _unwrap_scalar(ret) == 42**2
 
 
 @skip_windows_unix_socket
 def test_failure(unix_servicer):
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "raises")
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
-    assert items[0].result.exception == "Exception('Failure!')"
-    assert "Traceback" in items[0].result.traceback
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "raises")
+    assert _unwrap_exception(ret) == "Exception('Failure!')"
 
 
 @skip_windows_unix_socket
 def test_raises_base_exception(unix_servicer):
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "raises_sysexit")
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
-    assert items[0].result.exception == "SystemExit(1)"
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "raises_sysexit")
+    assert _unwrap_exception(ret) == "SystemExit(1)"
 
 
 @skip_windows_unix_socket
@@ -234,11 +247,9 @@ def test_keyboardinterrupt(unix_servicer):
 def test_rate_limited(unix_servicer, event_loop):
     t0 = time.time()
     unix_servicer.rate_limit_sleep_duration = 0.25
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "square")
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert 0.25 <= time.time() - t0 < 0.25 + EXTRA_TOLERANCE_DELAY
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize(42**2)
+    assert _unwrap_scalar(ret) == 42**2
 
 
 @skip_windows_unix_socket
@@ -277,9 +288,8 @@ def test_from_local_python_packages_inside_container(unix_servicer, event_loop, 
     """`from_local_python_packages` shouldn't actually collect modules inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
     all the containers."""
-    client, items = _run_container(unix_servicer, "modal_test_support.package_mount", "num_mounts")
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert deserialize(items[0].result.data, None) == 0
+    ret = _run_container(unix_servicer, "modal_test_support.package_mount", "num_mounts")
+    assert _unwrap_scalar(ret) == 0
 
 
 def _get_web_inputs(path="/"):
@@ -298,29 +308,25 @@ def _get_web_inputs(path="/"):
 @skip_windows_unix_socket
 def test_webhook(unix_servicer, event_loop):
     inputs = _get_web_inputs()
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
         "webhook",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
     )
+    items = _unwrap_asgi(ret)
 
     # There should be one message for the header, one for the body, one for the EOF
-    assert len(items) == 3
+    first_message, second_message = items  # _unwrap_asgi ignores the eof
 
     # Check the headers
-    first_message = _unwrap_asgi_response(items[0])
     assert first_message["status"] == 200
     headers = dict(first_message["headers"])
     assert headers[b"content-type"] == b"application/json"
 
     # Check body
-    second_message = _unwrap_asgi_response(items[1])
     assert json.loads(second_message["body"]) == {"hello": "space"}
-
-    # Check EOF
-    _unwrap_asgi_done(items[2])
 
 
 @skip_windows_unix_socket
@@ -329,15 +335,13 @@ def test_serialized_function(unix_servicer, event_loop):
         return 3 * x
 
     unix_servicer.function_serialized = serialize(triple)
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "foo.bar.baz",
         "f",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
     )
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize(3 * 42)
+    assert _unwrap_scalar(ret) == 3 * 42
 
 
 @skip_windows_unix_socket
@@ -350,7 +354,7 @@ def test_webhook_serialized(unix_servicer, event_loop):
 
     unix_servicer.function_serialized = serialize(webhook)
 
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "foo.bar.baz",
         "f",
@@ -359,28 +363,26 @@ def test_webhook_serialized(unix_servicer, event_loop):
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
     )
 
-    assert len(items) == 3
-    second_message = _unwrap_asgi_response(items[1])
+    _, second_message = _unwrap_asgi(ret)
     assert second_message["body"] == b'"Hello, space"'  # Note: JSON-encoded
 
 
 @skip_windows_unix_socket
 def test_function_returning_generator(unix_servicer, event_loop):
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
         "fun_returning_gen",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
-    assert len(items) == 43  # The generator creates N outputs, and N is 42 from the autogenerated input
-    assert items[-1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[-1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+    items, exc = _unwrap_generator(ret)
+    assert len(items) == 42
 
 
 @skip_windows_unix_socket
 def test_asgi(unix_servicer, event_loop):
     inputs = _get_web_inputs(path="/foo")
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
         "fastapi_app",
@@ -389,26 +391,22 @@ def test_asgi(unix_servicer, event_loop):
     )
 
     # There should be one message for the header, one for the body, one for the EOF
-    assert len(items) == 3
+    # EOF is removed by _unwrap_asgi
+    first_message, second_message = _unwrap_asgi(ret)
 
     # Check the headers
-    first_message = _unwrap_asgi_response(items[0])
     assert first_message["status"] == 200
     headers = dict(first_message["headers"])
     assert headers[b"content-type"] == b"application/json"
 
-    # Check body=
-    second_message = _unwrap_asgi_response(items[1])
+    # Check body
     assert json.loads(second_message["body"]) == {"hello": "space"}
-
-    # Check EOF
-    _unwrap_asgi_done(items[2])
 
 
 @skip_windows_unix_socket
 def test_webhook_streaming_sync(unix_servicer, event_loop):
     inputs = _get_web_inputs()
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
         "webhook_streaming",
@@ -417,7 +415,7 @@ def test_webhook_streaming_sync(unix_servicer, event_loop):
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
 
-    data = [_unwrap_asgi_response(item) for item in items if item.result.data]
+    data = _unwrap_asgi(ret)
     bodies = [d["body"].decode() for d in data if d.get("body")]
     assert bodies == [f"{i}..." for i in range(10)]
 
@@ -425,7 +423,7 @@ def test_webhook_streaming_sync(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_webhook_streaming_async(unix_servicer, event_loop):
     inputs = _get_web_inputs()
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
         "webhook_streaming_async",
@@ -434,7 +432,7 @@ def test_webhook_streaming_async(unix_servicer, event_loop):
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
 
-    data = [_unwrap_asgi_response(item) for item in items if item.result.data]
+    data = _unwrap_asgi(ret)
     bodies = [d["body"].decode() for d in data if d.get("body")]
     assert bodies == [f"{i}..." for i in range(10)]
 
@@ -457,7 +455,7 @@ def test_param_cls_function(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_cls_web_endpoint(unix_servicer, event_loop):
     inputs = _get_web_inputs()
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
         "Cls.web",
@@ -465,8 +463,7 @@ def test_cls_web_endpoint(unix_servicer, event_loop):
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
     )
 
-    assert len(items) == 3
-    second_message = _unwrap_asgi_response(items[1])
+    _, second_message = _unwrap_asgi(ret)
     assert json.loads(second_message["body"]) == {"ret": "space" * 111}
 
 
@@ -481,36 +478,31 @@ def test_serialized_cls(unix_servicer, event_loop):
 
     unix_servicer.class_serialized = serialize(Cls)
     unix_servicer.function_serialized = serialize(Cls.method)
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "module.doesnt.matter",
         "function.doesnt.matter",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
     )
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize(42**5)
+    assert _unwrap_scalar(ret) == 42**5
 
 
 @skip_windows_unix_socket
 def test_cls_generator(unix_servicer, event_loop):
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
         "Cls.generator",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
-    assert len(items) == 2
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-    assert items[0].result.data == serialize(42**3)
-    assert items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[1].result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
+    items, exc = _unwrap_generator(ret)
+    assert items == [42**3]
+    assert exc is None
 
 
 @skip_windows_unix_socket
 def test_container_heartbeats(unix_servicer, event_loop):
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "square")
+    _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)
 
 
@@ -566,7 +558,7 @@ def _run_e2e_function(
     # TODO(elias): make this a bit more prod-like in how it connects the load and run parts by returning function definitions from _load_stub so we don't have to double specify things like definition type
     _Stub._all_stubs = {}  # reset _Stub tracking state between runs
     deploy_stub_externally(servicer, module_name, stub_var_name)
-    client, items = _run_container(
+    ret = _run_container(
         servicer,
         module_name,
         function_name,
@@ -576,8 +568,7 @@ def _run_e2e_function(
         is_builder_function=is_builder_function,
         serialized_params=serialized_params,
     )
-    assert items[0].result.status == assert_result
-    return deserialize(items[0].result.data, client)
+    return _unwrap_scalar(ret)
 
 
 @skip_windows_unix_socket
@@ -694,21 +685,23 @@ def test_multistub_is_inside_warning(unix_servicer, caplog, capsys):
 SLEEP_TIME = 0.7
 
 
-def verify_concurrent_input_outputs(n_inputs: int, n_parallel: int, output_items: list[api_pb2.FunctionPutOutputsItem]):
+def _unwrap_concurrent_input_outputs(n_inputs: int, n_parallel: int, ret: ContainerResult):
     # Ensure that outputs align with expectation of running concurrent inputs
 
     # Each group of n_parallel inputs should start together of each other
     # and different groups should start SLEEP_TIME apart.
-    assert len(output_items) == n_inputs
-    for i in range(1, len(output_items)):
-        diff = output_items[i].input_started_at - output_items[i - 1].input_started_at
+    assert len(ret.items) == n_inputs
+    for i in range(1, len(ret.items)):
+        diff = ret.items[i].input_started_at - ret.items[i - 1].input_started_at
         expected_diff = SLEEP_TIME if i % n_parallel == 0 else 0
         assert diff == pytest.approx(expected_diff, abs=0.2)
 
-    for item in output_items:
+    outputs = []
+    for item in ret.items:
         assert item.output_created_at - item.input_started_at == pytest.approx(SLEEP_TIME, abs=0.2)
         assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert item.result.data == serialize(42**2)
+        outputs.append(deserialize(item.result.data, ret.client))
+    return outputs
 
 
 @skip_windows_unix_socket
@@ -717,7 +710,7 @@ def test_concurrent_inputs_sync_function(unix_servicer):
     n_parallel = 6
 
     t0 = time.time()
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
         "sleep_700_sync",
@@ -727,7 +720,7 @@ def test_concurrent_inputs_sync_function(unix_servicer):
 
     expected_execution = n_inputs / n_parallel * SLEEP_TIME
     assert expected_execution <= time.time() - t0 < expected_execution + EXTRA_TOLERANCE_DELAY
-    verify_concurrent_input_outputs(n_inputs, n_parallel, items)
+    assert _unwrap_concurrent_input_outputs(n_inputs, n_parallel, ret) == [42**2] * n_inputs
 
 
 @skip_windows_unix_socket
@@ -736,7 +729,7 @@ def test_concurrent_inputs_async_function(unix_servicer, event_loop):
     n_parallel = 6
 
     t0 = time.time()
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
         "sleep_700_async",
@@ -746,37 +739,30 @@ def test_concurrent_inputs_async_function(unix_servicer, event_loop):
 
     expected_execution = n_inputs / n_parallel * SLEEP_TIME
     assert expected_execution <= time.time() - t0 < expected_execution + EXTRA_TOLERANCE_DELAY
-    verify_concurrent_input_outputs(n_inputs, n_parallel, items)
+    assert _unwrap_concurrent_input_outputs(n_inputs, n_parallel, ret) == [42**2] * n_inputs
 
 
 @skip_windows_unix_socket
 def test_unassociated_function(unix_servicer, event_loop):
-    client, items = _run_container(unix_servicer, "modal_test_support.functions", "unassociated_function")
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data
-    assert deserialize(items[0].result.data, client) == 58
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "unassociated_function")
+    assert _unwrap_scalar(ret) == 58
 
 
 @skip_windows_unix_socket
 def test_param_cls_function_calling_local(unix_servicer, event_loop):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer, "modal_test_support.functions", "ParamCls.g", serialized_params=serialized_params
     )
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize("111 foo 42")
+    assert _unwrap_scalar(ret) == "111 foo 42"
 
 
 @skip_windows_unix_socket
 def test_derived_cls(unix_servicer, event_loop):
-    client, items = _run_container(
+    ret = _run_container(
         unix_servicer, "modal_test_support.functions", "DerivedCls.run", inputs=_get_inputs(((3,), {}))
     )
-    assert len(items) == 1
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize(6)
+    assert _unwrap_scalar(ret) == 6
 
 
 @skip_windows_unix_socket
@@ -802,7 +788,6 @@ def test_call_function_that_calls_method(unix_servicer, event_loop):
 def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     """Functions send a checkpointing request and continue to execute normally,
     simulating a restore operation."""
-    _, items = _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert items[0].result.data == serialize(42**2)
+    assert _unwrap_scalar(ret) == 42**2
