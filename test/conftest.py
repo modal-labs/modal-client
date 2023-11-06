@@ -81,6 +81,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             "ap-y": "qu-foo",
             "ap-proxy": "pr-123",
         }
+        self.app_unindexed_objects = {
+            "ap-1": ["im-0"],
+        }
         self.n_inputs = 0
         self.n_queues = 0
         self.n_mounts = 0
@@ -224,18 +227,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppGetObjects(self, stream):
         request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
         object_ids = self.app_objects.get(request.app_id, {})
+        objects = list(object_ids.items())
+        if request.include_unindexed:
+            unindexed_object_ids = self.app_unindexed_objects.get(request.app_id, [])
+            objects += [(None, object_id) for object_id in unindexed_object_ids]
         items = [
-            api_pb2.AppGetObjectsItem(
-                tag=tag,
-                object=self.get_object_metadata(object_id),
-            )
-            for tag, object_id in object_ids.items()
+            api_pb2.AppGetObjectsItem(tag=tag, object=self.get_object_metadata(object_id)) for tag, object_id in objects
         ]
         await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
 
     async def AppSetObjects(self, stream):
         request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
         self.app_objects[request.app_id] = dict(request.indexed_object_ids)
+        self.app_unindexed_objects[request.app_id] = list(request.unindexed_object_ids)
         if request.single_object_id:
             self.app_single_objects[request.app_id] = request.single_object_id
         self.app_set_objects_count += 1

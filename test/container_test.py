@@ -87,6 +87,7 @@ def _run_container(
             is_builder_function=is_builder_function,
             allow_concurrent_inputs=allow_concurrent_inputs,
             is_checkpointing_function=is_checkpointing_function,
+            object_dependencies=[api_pb2.ObjectDependency(object_id="im-0")],
         )
 
         container_args = api_pb2.ContainerArguments(
@@ -519,14 +520,18 @@ def test_cli(unix_servicer, event_loop):
         function_name="square",
         function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
         definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
+        object_dependencies=[api_pb2.ObjectDependency(object_id="im-123")],
     )
     container_args = api_pb2.ContainerArguments(
         task_id="ta-123",
         function_id="fu-123",
-        app_id="se-123",
+        app_id="ap-123",
         function_def=function_def,
     )
     data_base64: str = base64.b64encode(container_args.SerializeToString()).decode("ascii")
+
+    # Needed for function hydration
+    unix_servicer.app_objects["ap-123"] = {"": "im-123"}
 
     # Inputs that will be consumed by the container
     unix_servicer.container_inputs = _get_inputs()
