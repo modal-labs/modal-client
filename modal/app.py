@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from datetime import date
-from typing import TYPE_CHECKING, Any, Dict, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -13,14 +13,17 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .exception import InvalidError, deprecation_error
+from .exception import ExecutionError, InvalidError, deprecation_error
 from .object import _Object
 
 if TYPE_CHECKING:
     from rich.tree import Tree
 
+    from .functions import _Function
+
 else:
     Tree = TypeVar("Tree")
+    _Function = TypeVar("_Function")
 
 
 class _LocalApp:
@@ -302,6 +305,17 @@ class _ContainerApp:
         object_id = self._tag_to_object_id["_pty_input_stream"]
         metadata = self._object_handle_metadata[object_id]
         return _Object._new_hydrated(object_id, self._client, metadata)
+
+    def hydrate_function_deps(self, function: _Function, dep_object_ids: List[str]):
+        function_deps = function.deps(only_explicit_mounts=True)
+        if len(function_deps) != len(dep_object_ids):
+            raise ExecutionError(
+                f"Function has {len(function_deps)} dependencies"
+                f" but container got {len(dep_object_ids)} object ids."
+            )
+        for object_id, obj in zip(dep_object_ids, function_deps):
+            metadata: Message = self._object_handle_metadata[object_id]
+            obj._hydrate(object_id, self._client, metadata)
 
     async def init(self, client: _Client, app_id: str, stub_name: str = "", environment_name: str = ""):
         """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
