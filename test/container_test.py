@@ -552,7 +552,7 @@ def test_cli(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_function_subling_hydration(unix_servicer):
+def test_function_sibling_hydration(unix_servicer):
     deploy_stub_externally(unix_servicer, "modal_test_support.functions", "stub")
     ret = _run_container(unix_servicer, "modal_test_support.functions", "check_sibling_hydration")
     assert _unwrap_scalar(ret) is None
