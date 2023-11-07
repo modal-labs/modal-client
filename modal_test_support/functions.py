@@ -5,7 +5,7 @@ import asyncio
 import time
 from datetime import date
 
-from modal import Stub, asgi_app, method, web_endpoint
+from modal import Image, Stub, Volume, asgi_app, method, web_endpoint
 from modal.exception import deprecation_warning
 
 SLEEP_DELAY = 0.1
@@ -220,3 +220,17 @@ def cube(x):
 def function_calling_method(x, y, z):
     obj = ParamCls(x, y)
     return obj.f.remote(z)
+
+
+image = Image.debian_slim().pip_install("xyz")
+other_image = Image.debian_slim().pip_install("abc")
+volume = Volume.new()
+other_volume = Volume.new()
+
+
+@stub.function(image=image, volumes={"/tmp/xyz": volume})
+def check_dep_hydration(x):
+    assert image.is_hydrated
+    assert not other_image.is_hydrated
+    assert volume.is_hydrated
+    assert not other_volume.is_hydrated
