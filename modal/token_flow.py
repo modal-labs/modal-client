@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import platform
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional, Tuple
 
@@ -32,12 +31,7 @@ class _TokenFlow:
         app = aiohttp.web.Application()
         app.add_routes([aiohttp.web.get("/", slash)])
         async with run_temporary_http_server(app) as url:
-            # Create request
-            # Send some strings identifying the computer (these are shown to the user for security reasons)
-            # TODO(erikbern): we already send these as metadata for every request - we should remove this
             req = api_pb2.TokenFlowCreateRequest(
-                node_name=platform.node(),
-                platform_name=platform.platform(),
                 utm_source=utm_source,
                 next_url=next_url,
                 localhost_port=int(url.split(":")[-1]),
