@@ -82,7 +82,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             "ap-proxy": "pr-123",
         }
         self.app_unindexed_objects = {
-            "ap-1": ["im-0"],
+            "ap-1": ["im-1", "vo-1"],
         }
         self.n_inputs = 0
         self.n_queues = 0
