@@ -575,6 +575,12 @@ enum CheckpointStatus {
   CHECKPOINT_STATUS_FAILED = 4;
 }
 
+enum CheckpointCPUBrand {
+  CHECKPOINT_CPU_BRAND_UNSPECIFIED = 0;
+  CHECKPOINT_CPU_BRAND_INTEL = 1;
+  CHECKPOINT_CPU_BRAND_AMD = 2;
+}
+
 message ObjectDependency {
   string object_id = 1;
 }
@@ -658,9 +664,11 @@ message Function {
   message CheckpointInfo {
     string checksum = 1;
     CheckpointStatus status = 2;
+    CheckpointCPUBrand cpu_brand = 3;
   }
-  CheckpointInfo checkpoint = 42;
+  CheckpointInfo checkpoint = 42 [deprecated=true];
   repeated ObjectDependency object_dependencies = 43;
+  repeated CheckpointInfo checkpoint_info = 44;
 }
 
 message FunctionHandleMetadata {
