@@ -458,6 +458,8 @@ class _FunctionIOManager:
         self._client = await _Client.from_env()
         self._waiting_for_checkpoint = False
 
+        logger.debug("function restored from checkpoint")
+
 
 FunctionIOManager = synchronize_api(_FunctionIOManager)
 
