@@ -664,11 +664,13 @@ message Function {
   message CheckpointInfo {
     string checksum = 1;
     CheckpointStatus status = 2;
-    CheckpointCPUBrand cpu_brand = 3;
   }
   CheckpointInfo checkpoint = 42 [deprecated=true];
+  // Keys are CheckpointCPUBrand
+  map<int32, CheckpointInfo> checkpoint_info = 44;
+
   repeated ObjectDependency object_dependencies = 43;
-  repeated CheckpointInfo checkpoint_info = 44;
+
 }
 
 message FunctionHandleMetadata {
