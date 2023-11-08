@@ -26,12 +26,20 @@ CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 
 
 def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], version: str) -> Dict[str, str]:
+    # This implements a simplified version of platform.platform() that's still machine-readable
+    uname: platform.uname_result = platform.uname()
+    if uname.system == "Darwin":
+        system, release = "macOS", platform.mac_ver()[0]
+    else:
+        system, release = uname.system, uname.release
+    platform_str = "-".join(s.replace("-", "_") for s in (system, release, uname.machine))
+
     metadata = {
         "x-modal-client-version": version,
         "x-modal-client-type": str(client_type),
         "x-modal-python-version": platform.python_version(),
         "x-modal-node": platform.node(),
-        "x-modal-platform": platform.platform(),
+        "x-modal-platform": platform_str,
     }
     if credentials and client_type == api_pb2.CLIENT_TYPE_CLIENT:
         token_id, token_secret = credentials

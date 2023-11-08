@@ -28,14 +28,11 @@ def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
     result = []
 
     while True:
-        idx = int(image_id.split("-")[1])
-
-        if idx not in servicer.images:
+        if image_id not in servicer.images:
             break
 
-        image = servicer.images[idx]
-
-        result.append(servicer.images[idx])
+        image = servicer.images[image_id]
+        result.append(servicer.images[image_id])
 
         if not image.base_images:
             break
@@ -286,13 +283,14 @@ def test_image_run_function(client, servicer):
     )
 
     with stub.run(client=client):
-        layers = get_image_layers(stub["image"].object_id, servicer)
+        image_id = stub["image"].object_id
+        layers = get_image_layers(image_id, servicer)
         assert "foo!" in layers[0].build_function_def
         assert "Secret.from_dict([xyz])" in layers[0].build_function_def
         # globals is none when no globals are referenced
         assert layers[0].build_function_globals == b""
 
-    function_id = servicer.image_build_function_ids[2]
+    function_id = servicer.image_build_function_ids[image_id]
     assert function_id
     assert servicer.app_functions[function_id].function_name == "run_f"
     assert len(servicer.app_functions[function_id].secret_ids) == 1
@@ -306,10 +304,11 @@ def test_image_run_function_interactivity(client, servicer):
     from modal.runner import run_stub
 
     with run_stub(stub, client=client, shell=True):
-        layers = get_image_layers(stub["image"].object_id, servicer)
+        image_id = stub["image"].object_id
+        layers = get_image_layers(image_id, servicer)
         assert "foo!" in layers[0].build_function_def
 
-    function_id = servicer.image_build_function_ids[2]
+    function_id = servicer.image_build_function_ids[image_id]
     assert function_id
     assert servicer.app_functions[function_id].function_name == "run_f"
     assert not servicer.app_functions[function_id].pty_info.enabled
@@ -446,7 +445,7 @@ def test_image_force_build(client, servicer):
         Image.debian_slim().run_commands("echo 1").pip_install("foo", force_build=True).run_commands("echo 2")
     )
     with stub.run(client=client):
-        assert servicer.force_built_images == [2, 3]
+        assert servicer.force_built_images == ["im-3", "im-4"]
 
     stub["image"] = (
         Image.from_gcp_artifact_registry("foo", force_build=True)
@@ -455,7 +454,7 @@ def test_image_force_build(client, servicer):
         .run_commands("echo 2")
     )
     with stub.run(client=client):
-        assert servicer.force_built_images == [2, 3, 4, 5, 6, 7]
+        assert servicer.force_built_images == ["im-3", "im-4", "im-5", "im-6", "im-7", "im-8"]
 
 
 def test_workdir(servicer, client):
@@ -493,8 +492,8 @@ class Foo:
 
 def test_image_auto_snapshot_on(client, servicer):
     with cls_stub.run(client=client):
-        idx = max(*servicer.images.keys())
-        layers = get_image_layers(f"im-{idx}", servicer)
+        image_id = list(servicer.images.keys())[-1]
+        layers = get_image_layers(image_id, servicer)
 
         assert "foo!" in layers[0].build_function_def
         assert "Secret.from_dict([xyz])" in layers[0].build_function_def
@@ -507,7 +506,7 @@ def test_image_auto_snapshot_on(client, servicer):
         assert "bar!" not in layers[0].build_function_def
         assert b"VARIABLE_6" not in globals
 
-    function_id = servicer.image_build_function_ids[idx]
+    function_id = servicer.image_build_function_ids[image_id]
     assert function_id
     assert servicer.app_functions[function_id].function_name == "Foo.__enter__"
     assert len(servicer.app_functions[function_id].secret_ids) == 1
@@ -535,8 +534,8 @@ class Foo2:
 
 def test_image_auto_snapshot_off(client, servicer):
     with cls_stub_2.run(client=client):
-        idx = max(*servicer.images.keys())
-        layers = get_image_layers(f"im-{idx}", servicer)
+        image_id = list(servicer.images.keys())[-1]
+        layers = get_image_layers(image_id, servicer)
 
         assert not layers[0].build_function_def
         assert any("pip install pandas" in cmd for cmd in layers[0].dockerfile_commands)

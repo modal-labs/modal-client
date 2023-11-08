@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import platform
 import pytest
 
 from google.protobuf.empty_pb2 import Empty
@@ -13,16 +14,27 @@ from .supports.skip import skip_windows_unix_socket
 TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
 
 
-@pytest.mark.asyncio
-async def test_client(servicer, client):
+def test_client_type(servicer, client):
     assert len(servicer.requests) == 1
     assert isinstance(servicer.requests[0], Empty)
     assert servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
+def test_client_platform_string(servicer, client):
+    platform_str = servicer.client_create_metadata["x-modal-platform"]
+    system, release, machine = platform_str.split("-")
+    if platform.system() == "Darwin":
+        assert system == "macOS"
+        assert release == platform.mac_ver()[0].replace("-", "_")
+    else:
+        assert system == platform.system().replace("-", "_")
+        assert release == platform.release().replace("-", "_")
+    assert machine == platform.machine().replace("-", "_")
+
+
 @pytest.mark.asyncio
 @skip_windows_unix_socket
-async def test_container_client(unix_servicer, container_client):
+async def test_container_client_type(unix_servicer, container_client):
     assert len(unix_servicer.requests) == 1  # no heartbeat, just ClientHello
     assert isinstance(unix_servicer.requests[0], Empty)
     assert unix_servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)

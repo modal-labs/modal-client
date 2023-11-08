@@ -16,7 +16,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional, Type
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Type
 
 from grpclib import Status
 
@@ -24,7 +24,6 @@ from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
-    queue_batch_iterator,
     synchronize_api,
     synchronizer,
 )
@@ -43,7 +42,7 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
 from .exception import InvalidError
-from .functions import Function, _set_current_input_id  # type: ignore
+from .functions import Function, _Function, _set_current_input_id  # type: ignore
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -106,7 +105,6 @@ class _FunctionIOManager:
         self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
-        self._output_queue: Optional[asyncio.Queue] = None
         self._environment_name = container_args.environment_name
         self._waiting_for_checkpoint = False
 
@@ -225,7 +223,7 @@ class _FunctionIOManager:
                         else:
                             input_pb = item.input
 
-                        # If yielded, allow semaphore to be released via enqueue_outputs
+                        # If yielded, allow semaphore to be released via push_outputs
                         yield (item.input_id, input_pb)
                         yielded = True
 
@@ -236,58 +234,30 @@ class _FunctionIOManager:
                 if not yielded:
                     self._semaphore.release()
 
-    async def _send_outputs(self):
-        """Background task that tries to drain output queue until it's empty,
-        or the output buffer changes, and then sends the entire batch in one request.
-        """
-        async for outputs in queue_batch_iterator(self._output_queue, MAX_OUTPUT_BATCH_SIZE, 0):
-            req = api_pb2.FunctionPutOutputsRequest(outputs=outputs)
-            await retry_transient_errors(
-                self._client.stub.FunctionPutOutputs,
-                req,
-                attempt_timeout=3.0,
-                total_timeout=20.0,
-                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-            )
-            # TODO(erikbern): we'll get a RESOURCE_EXHAUSTED if the buffer is full server-side.
-            # It's possible we want to retry "harder" for this particular error.
-
     async def run_inputs_outputs(self, input_concurrency: int = 1):
-        # This also makes sure to terminate the outputs
-        self._output_queue = asyncio.Queue(MAX_OUTPUT_BATCH_SIZE)
-
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
-        # - or, when the output for the fetched input is enqueued, release the semaphore.
+        # - or, when the output for the fetched input is sent, release the semaphore.
         self._input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
-        async with TaskContext(grace=10) as tc:
-            tc.create_task(self._send_outputs())
-            try:
-                async for input_id, input_pb in self._generate_inputs():
-                    args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
-                    _set_current_input_id(input_id)
-                    self.current_input_id, self.current_input_started_at = (input_id, time.time())
-                    yield input_id, args, kwargs
-                    _set_current_input_id(None)
-                    self.current_input_id, self.current_input_started_at = (None, None)
-            finally:
-                # collect all active input slots, meaning all outputs of outstanding inputs are enqueued
-                for _ in range(input_concurrency):
-                    await self._semaphore.acquire()
-                # send the eof to _send_outputs loop
-                await self._output_queue.put(None)
+        try:
+            async for input_id, input_pb in self._generate_inputs():
+                args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
+                _set_current_input_id(input_id)
+                self.current_input_id, self.current_input_started_at = (input_id, time.time())
+                yield input_id, args, kwargs
+                _set_current_input_id(None)
+                self.current_input_id, self.current_input_started_at = (None, None)
+        finally:
+            # collect all active input slots, meaning all inputs have wrapped up.
+            for _ in range(input_concurrency):
+                await self._semaphore.acquire()
 
-    async def _enqueue_output(
-        self,
-        input_id,
-        started_at: float,
-        gen_index: int,
-        data_format=api_pb2.DATA_FORMAT_UNSPECIFIED,
-        **kwargs,
-    ) -> None:
+    async def _push_output(
+        self, input_id, started_at: float, gen_index: int, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs
+    ):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
             data_blob_id = await blob_upload(kwargs["data"], self._client.stub)
@@ -303,7 +273,13 @@ class _FunctionIOManager:
             result=api_pb2.GenericResult(**kwargs),
             data_format=data_format,
         )
-        await self._output_queue.put(output)
+
+        await retry_transient_errors(
+            self._client.stub.FunctionPutOutputs,
+            api_pb2.FunctionPutOutputsRequest(outputs=[output]),
+            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            max_retries=None,  # Retry indefinitely, trying every 1s.
+        )
 
     def serialize_exception(self, exc: BaseException) -> Optional[bytes]:
         try:
@@ -376,7 +352,7 @@ class _FunctionIOManager:
             # serializing the exception, which may have some issues (there
             # was an earlier note about it that it might not be possible
             # to unpickle it in some cases). Let's watch out for issues.
-            await self._enqueue_output(
+            await self._push_output(
                 input_id,
                 started_at=started_at,
                 gen_index=output_index.value,
@@ -395,8 +371,8 @@ class _FunctionIOManager:
         self.calls_completed += 1
         self._semaphore.release()
 
-    async def enqueue_output(self, input_id, started_at: float, output_index: int, data: Any, data_format: int) -> None:
-        await self._enqueue_output(
+    async def push_output(self, input_id, started_at: float, output_index: int, data: Any, data_format: int) -> None:
+        await self._push_output(
             input_id,
             started_at=started_at,
             gen_index=output_index,
@@ -406,10 +382,10 @@ class _FunctionIOManager:
         )
         await self.complete_call(started_at)
 
-    async def enqueue_generator_value(
+    async def push_generator_value(
         self, input_id, started_at: float, output_index: int, data: Any, data_format: int
     ) -> None:
-        await self._enqueue_output(
+        await self._push_output(
             input_id,
             started_at=started_at,
             gen_index=output_index,
@@ -419,8 +395,8 @@ class _FunctionIOManager:
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
         )
 
-    async def enqueue_generator_eof(self, input_id, started_at: float, output_index: int) -> None:
-        await self._enqueue_output(
+    async def push_generator_eof(self, input_id, started_at: float, output_index: int) -> None:
+        await self._push_output(
             input_id,
             started_at=started_at,
             gen_index=output_index,
@@ -492,21 +468,19 @@ def call_function_sync(
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
 
                     for value in res:
-                        function_io_manager.enqueue_generator_value(
+                        function_io_manager.push_generator_value(
                             input_id, started_at, output_index.value, value, imp_fun.data_format
                         )
                         output_index.increase()
 
-                    function_io_manager.enqueue_generator_eof(input_id, started_at, output_index.value)
+                    function_io_manager.push_generator_eof(input_id, started_at, output_index.value)
                 else:
                     if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
                             f"Sync (non-generator) function return value of type {type(res)}."
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
-                    function_io_manager.enqueue_output(
-                        input_id, started_at, output_index.value, res, imp_fun.data_format
-                    )
+                    function_io_manager.push_output(input_id, started_at, output_index.value, res, imp_fun.data_format)
 
         if imp_fun.input_concurrency > 1:
             with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -549,11 +523,11 @@ async def call_function_async(
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
                     async for value in res:
-                        await function_io_manager.enqueue_generator_value.aio(
+                        await function_io_manager.push_generator_value.aio(
                             input_id, started_at, output_index.value, value, imp_fun.data_format
                         )
                         output_index.increase()
-                    await function_io_manager.enqueue_generator_eof.aio(input_id, started_at, output_index.value)
+                    await function_io_manager.push_generator_eof.aio(input_id, started_at, output_index.value)
                 else:
                     if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
@@ -561,7 +535,7 @@ async def call_function_async(
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
                     value = await res
-                    await function_io_manager.enqueue_output.aio(
+                    await function_io_manager.push_output.aio(
                         input_id, started_at, output_index.value, value, imp_fun.data_format
                     )
 
@@ -594,6 +568,7 @@ class ImportedFunction:
     data_format: int  # api_pb2.DataFormat
     input_concurrency: int
     is_auto_snapshot: bool
+    function: _Function
 
 
 @wrap()
@@ -627,10 +602,11 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
 
     # The decorator is typically in global scope, but may have been applied independently
     active_stub: Optional[_Stub] = None
+    function: Optional[_Function] = None
     if isinstance(fun, Function):
-        _function_proxy = synchronizer._translate_in(fun)
-        fun = _function_proxy.get_raw_f()
-        active_stub = _function_proxy._stub
+        function = synchronizer._translate_in(fun)
+        fun = function.get_raw_f()
+        active_stub = function._stub
     elif module is not None and not function_def.is_builder_function:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated stubs - if there is only one with the indicated name, use that one
@@ -692,7 +668,15 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
         data_format = api_pb2.DATA_FORMAT_ASGI
 
     return ImportedFunction(
-        obj, fun, active_stub, is_async, is_generator, data_format, input_concurrency, function_def.is_auto_snapshot
+        obj,
+        fun,
+        active_stub,
+        is_async,
+        is_generator,
+        data_format,
+        input_concurrency,
+        function_def.is_auto_snapshot,
+        function,
     )
 
 
@@ -719,6 +703,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # NOTE: detecting the stub causes all objects to be associated with the app and hydrated
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
+
+        # Hydrate all function dependencies
+        if imp_fun.function:
+            dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
+            container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
 
         # Checkpoint container after imports. Checkpointed containers start from this point
         # onwards. This assumes that everything up to this point has run successfully,

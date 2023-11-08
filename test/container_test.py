@@ -60,6 +60,7 @@ def _run_container(
     allow_concurrent_inputs: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
     is_checkpointing_function: bool = False,
+    deps: List[str] = ["im-1"],
 ) -> ContainerResult:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -87,6 +88,7 @@ def _run_container(
             is_builder_function=is_builder_function,
             allow_concurrent_inputs=allow_concurrent_inputs,
             is_checkpointing_function=is_checkpointing_function,
+            object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         )
 
         container_args = api_pb2.ContainerArguments(
@@ -519,14 +521,18 @@ def test_cli(unix_servicer, event_loop):
         function_name="square",
         function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
         definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
+        object_dependencies=[api_pb2.ObjectDependency(object_id="im-123")],
     )
     container_args = api_pb2.ContainerArguments(
         task_id="ta-123",
         function_id="fu-123",
-        app_id="se-123",
+        app_id="ap-123",
         function_def=function_def,
     )
     data_base64: str = base64.b64encode(container_args.SerializeToString()).decode("ascii")
+
+    # Needed for function hydration
+    unix_servicer.app_objects["ap-123"] = {"": "im-123"}
 
     # Inputs that will be consumed by the container
     unix_servicer.container_inputs = _get_inputs()
@@ -546,7 +552,7 @@ def test_cli(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_function_hydration(unix_servicer):
+def test_function_sibling_hydration(unix_servicer):
     deploy_stub_externally(unix_servicer, "modal_test_support.functions", "stub")
     ret = _run_container(unix_servicer, "modal_test_support.functions", "check_sibling_hydration")
     assert _unwrap_scalar(ret) is None
@@ -773,3 +779,10 @@ def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     ret = _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
     assert _unwrap_scalar(ret) == 42**2
+
+
+@skip_windows_unix_socket
+def test_function_dep_hydration(unix_servicer):
+    deploy_stub_externally(unix_servicer, "modal_test_support.functions", "stub")
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "check_dep_hydration", deps=["im-1", "vo-1"])
+    assert _unwrap_scalar(ret) is None
