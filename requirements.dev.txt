@@ -2,7 +2,7 @@
 
 black~=22.3.0
 grpcio-tools==1.48.0;python_version<'3.11'  # TODO: remove when we drop client support for Protobuf 3.19
-grpcio-tools==1.56.2;python_version>='3.11'
+grpcio-tools==1.59.2;python_version>='3.11'
 grpclib==0.4.3
 httpx~=0.23.0
 invoke~=2.2
