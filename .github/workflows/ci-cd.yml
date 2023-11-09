@@ -13,7 +13,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         os: ["ubuntu-20.04"]
         proto-version: ["latest"]
         include:
@@ -24,7 +24,7 @@ jobs:
             python-version: "3.10"
             proto-version: "latest"
           - os: "ubuntu-20.04"
-            python-version: "3.7"
+            python-version: "3.8"
             proto-version: "3.19"
 
     runs-on: ${{ matrix.os }}
@@ -63,7 +63,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     strategy:
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12"]
         image-name: ["debian_slim", "conda", "micromamba"]
         exclude:
           - python-version: "3.7"
