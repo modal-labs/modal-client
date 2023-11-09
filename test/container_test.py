@@ -19,7 +19,7 @@ from grpclib.exceptions import GRPCError
 from modal import Client
 from modal._container_entrypoint import UserException, main
 from modal._serialization import deserialize, deserialize_data_format, serialize
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal.stub import _Stub
 from modal_proto import api_pb2
 
@@ -631,11 +631,8 @@ def test_image_run_function_no_warn(unix_servicer, caplog):
 
 @skip_windows_unix_socket
 def test_is_inside(unix_servicer, caplog, capsys):
-    ret = _run_container(
-        unix_servicer,
-        "modal_test_support.is_inside",
-        "foo",
-    )
+    with pytest.warns(DeprecationError, match="run_inside"):
+        ret = _run_container(unix_servicer, "modal_test_support.is_inside", "foo")
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
     out, err = capsys.readouterr()
@@ -645,7 +642,8 @@ def test_is_inside(unix_servicer, caplog, capsys):
 
 @skip_windows_unix_socket
 def test_multistub_is_inside(unix_servicer, caplog, capsys):
-    ret = _run_container(unix_servicer, "modal_test_support.multistub_is_inside", "foo", stub_name="a")
+    with pytest.warns(DeprecationError, match="run_inside"):
+        ret = _run_container(unix_servicer, "modal_test_support.multistub_is_inside", "foo", stub_name="a")
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
     out, err = capsys.readouterr()
@@ -655,11 +653,8 @@ def test_multistub_is_inside(unix_servicer, caplog, capsys):
 
 @skip_windows_unix_socket
 def test_multistub_is_inside_warning(unix_servicer, caplog, capsys):
-    ret = _run_container(
-        unix_servicer,
-        "modal_test_support.multistub_is_inside_warning",
-        "foo",
-    )
+    with pytest.warns(DeprecationError, match="run_inside"):
+        ret = _run_container(unix_servicer, "modal_test_support.multistub_is_inside_warning", "foo")
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 1
     assert "You have more than one unnamed stub" in caplog.text
