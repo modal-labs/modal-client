@@ -318,9 +318,8 @@ def shell(
     if func_ref is not None:
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
     else:
-        stub = Stub("modal shell")
-        if image:
-            stub.image = Image.from_registry(image, add_python=add_python)
+        image_obj = Image.from_registry(image, add_python=add_python) if image else None
+        stub = Stub("modal shell", image=image_obj)
         function = stub.function(
             serialized=True,
             cpu=cpu,

@@ -241,6 +241,12 @@ class _Stub:
             self._validate_blueprint_value(tag, obj)
             self._add_object(tag, obj)
 
+    @property
+    def image(self) -> _Image:
+        # Exists to get the type inference working for `stub.image`
+        # Will also keep this one after we remove [get/set][item/attr]
+        return self._blueprint["image"]
+
     def get_objects(self) -> List[Tuple[str, _Object]]:
         """Used by the container app to initialize objects."""
         return list(self._blueprint.items())
