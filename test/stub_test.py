@@ -67,9 +67,8 @@ def square(x):
 
 @pytest.mark.asyncio
 async def test_redeploy(servicer, client):
-    stub = Stub()
+    stub = Stub(image=Image.debian_slim().pip_install("pandas"))
     stub.function()(square)
-    stub.image = Image.debian_slim().pip_install("pandas")
 
     # Deploy app
     app = await deploy_stub.aio(stub, "my-app", client=client)
@@ -241,17 +240,15 @@ def test_set_image_on_stub_as_attribute():
     # TODO: do we want to deprecate this syntax? It's kind of random for image to
     #     have a reserved name in the blueprint, and being the only of the construction
     #     arguments that can be set on the instance after construction
-    stub = Stub()
     custom_img = modal.Image.debian_slim().apt_install("emacs")
-    stub.image = custom_img
+    stub = Stub(image=custom_img)
     assert stub._get_default_image() == custom_img
 
 
 @pytest.mark.asyncio
 async def test_redeploy_persist(servicer, client):
-    stub = Stub()
+    stub = Stub(image=Image.debian_slim().pip_install("pandas"))
     stub.function()(square)
-    stub.image = Image.debian_slim().pip_install("pandas")
 
     stub.d = Dict.new()
 
