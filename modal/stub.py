@@ -258,7 +258,15 @@ class _Stub:
 
     @typechecked
     def is_inside(self, image: Optional[_Image] = None) -> bool:
-        """Returns if the program is currently running inside a container for this app."""
+        """Deprecated: use `Image.run_inside()` instead! Usage:
+        ```
+        my_image = modal.Image.debian_slim().pip_install("torch")
+        with my_image.run_inside():
+            import torch
+        ```
+        """
+        deprecation_warning(date(2023, 11, 8), _Stub.is_inside.__doc__)
+
         if self._container_app is None:
             return False
         elif self._container_app != _container_app:

@@ -7,7 +7,7 @@ from unittest import mock
 import modal.secret
 from modal import Dict, Image, Stub
 from modal.app import container_app
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -51,10 +51,11 @@ async def test_is_inside(servicer, unix_servicer, client, container_client):
 
     # Run container
     async with stub.run(client=client):
-        # We're not inside the container (yet)
-        assert not stub.is_inside()
-        assert not stub.is_inside(stub.image)
-        assert not stub.is_inside(stub.image_2)
+        with pytest.warns(DeprecationError, match="run_inside"):
+            # We're not inside the container (yet)
+            assert not stub.is_inside()
+            assert not stub.is_inside(stub.image)
+            assert not stub.is_inside(stub.image_2)
 
         app_id = stub.app_id
         image_1_id = stub["image"].object_id
@@ -71,15 +72,17 @@ async def test_is_inside(servicer, unix_servicer, client, container_client):
 
         # Pretend that we're inside image 1
         with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": image_1_id}):
-            assert stub.is_inside()
-            assert stub.is_inside(stub.image)
-            assert not stub.is_inside(stub.image_2)
+            with pytest.warns(DeprecationError, match="run_inside"):
+                assert stub.is_inside()
+                assert stub.is_inside(stub.image)
+                assert not stub.is_inside(stub.image_2)
 
         # Pretend that we're inside image 2
         with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": image_2_id}):
-            assert stub.is_inside()
-            assert not stub.is_inside(stub.image)
-            assert stub.is_inside(stub.image_2)
+            with pytest.warns(DeprecationError, match="run_inside"):
+                assert stub.is_inside()
+                assert not stub.is_inside(stub.image)
+                assert stub.is_inside(stub.image_2)
 
 
 def f():
@@ -92,7 +95,8 @@ async def test_is_inside_default_image(servicer, unix_servicer, client, containe
     stub = Stub()
     stub.function()(f)
 
-    assert not stub.is_inside()
+    with pytest.warns(DeprecationError, match="run_inside"):
+        assert not stub.is_inside()
 
     from modal.stub import _default_image
 
@@ -110,7 +114,8 @@ async def test_is_inside_default_image(servicer, unix_servicer, client, containe
     stub = Stub()
 
     with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": default_image_id}):
-        assert stub.is_inside()
+        with pytest.warns(DeprecationError, match="run_inside"):
+            assert stub.is_inside()
 
 
 @pytest.mark.skip("runtime type checking has been temporarily disabled")
