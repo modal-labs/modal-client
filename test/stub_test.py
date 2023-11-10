@@ -137,7 +137,8 @@ def test_run_function_without_app_error():
 
 def test_is_inside_basic():
     stub = Stub()
-    assert stub.is_inside() is False
+    with pytest.warns(DeprecationError, match="run_inside"):
+        assert stub.is_inside() is False
 
 
 def test_missing_attr():

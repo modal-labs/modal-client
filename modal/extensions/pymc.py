@@ -16,7 +16,7 @@ pymc_stub = modal.Stub(
     .apt_install("zlib1g")
 )
 
-if pymc_stub.is_inside():
+with pymc_stub.image.run_inside():
     import numpy as np
     from fastprogress.fastprogress import progress_bar
     from pymc3 import theanof
