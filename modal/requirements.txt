@@ -1,5 +1,5 @@
 # Pins Modal dependencies installed within the container runtime.
-aiohttp==3.8.3
+aiohttp==3.8.6
 aiostream==0.4.4
 asgiref==3.5.2
 certifi>=2022.12.07
