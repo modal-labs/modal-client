@@ -102,6 +102,25 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, 
     return ret
 
 
+def _make_pip_install_args(
+    find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
+    index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
+    extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+    pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+) -> str:
+    flags = [
+        ("--find-links", find_links),  # TODO(erikbern): allow multiple?
+        ("--index-url", index_url),
+        ("--extra-index-url", extra_index_url),  # TODO(erikbern): allow multiple?
+    ]
+
+    args = " ".join(flag + " " + shlex.quote(value) for flag, value in flags if value is not None)
+    if pre:
+        args += " --pre"
+
+    return args
+
+
 class _ImageRegistryConfig:
     """mdmd:hidden"""
 
@@ -406,14 +425,7 @@ class _Image(_Object, type_prefix="im"):
         if not pkgs:
             return self
 
-        flags = [
-            ("--find-links", find_links),  # TODO(erikbern): allow multiple?
-            ("--index-url", index_url),
-            ("--extra-index-url", extra_index_url),  # TODO(erikbern): allow multiple?
-        ]
-        extra_args = " ".join(flag + " " + shlex.quote(value) for flag, value in flags if value is not None)
-        if pre:
-            extra_args += " --pre"
+        extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
         package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
 
         dockerfile_commands = [
@@ -436,6 +448,10 @@ class _Image(_Object, type_prefix="im"):
         self,
         *repositories: str,
         git_user: str,
+        find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
+        index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
+        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+        pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         gpu: GPU_T = None,
         secrets: Sequence[_Secret] = [],
         force_build: bool = False,
@@ -506,8 +522,10 @@ class _Image(_Object, type_prefix="im"):
                 f"RUN bash -c \"[[ -v GITLAB_TOKEN ]] || (echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
             )
 
+        extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+
         dockerfile_commands.extend(["RUN apt-get update && apt-get install -y git"])
-        dockerfile_commands.extend([f'RUN python3 -m pip install "{url}"' for url in install_urls])
+        dockerfile_commands.extend([f'RUN python3 -m pip install "{url}" {extra_args}' for url in install_urls])
 
         gpu_config = parse_gpu_config(gpu)
 
@@ -522,9 +540,12 @@ class _Image(_Object, type_prefix="im"):
     def pip_install_from_requirements(
         self,
         requirements_txt: str,  # Path to a requirements.txt file.
-        find_links: Optional[str] = None,
-        force_build: bool = False,
+        find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
         *,
+        index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
+        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+        pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        force_build: bool = False,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -535,10 +556,12 @@ class _Image(_Object, type_prefix="im"):
         find_links_arg = f"-f {find_links}" if find_links else ""
         context_files = {"/.requirements.txt": requirements_txt}
 
+        extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+
         dockerfile_commands = [
             "FROM base",
             "COPY /.requirements.txt /.requirements.txt",
-            f"RUN python -m pip install -r /.requirements.txt {find_links_arg}",
+            f"RUN python -m pip install -r /.requirements.txt {find_links_arg} {extra_args}",
         ]
 
         return self.extend(
@@ -554,8 +577,12 @@ class _Image(_Object, type_prefix="im"):
         self,
         pyproject_toml: str,
         optional_dependencies: List[str] = [],
-        force_build: bool = False,
         *,
+        find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
+        index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
+        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+        pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        force_build: bool = False,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -583,7 +610,16 @@ class _Image(_Object, type_prefix="im"):
                 if dep_group_name in optionals:
                     dependencies.extend(optionals[dep_group_name])
 
-        return self.pip_install(*dependencies, force_build=self.force_build or force_build, secrets=secrets, gpu=gpu)
+        return self.pip_install(
+            *dependencies,
+            find_links=find_links,
+            index_url=index_url,
+            extra_index_url=extra_index_url,
+            pre=pre,
+            force_build=self.force_build or force_build,
+            secrets=secrets,
+            gpu=gpu,
+        )
 
     @typechecked
     def poetry_install_from_file(
