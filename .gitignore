@@ -10,3 +10,4 @@ venv/
 build/
 *.pyi
 **/*.txt
+.idea/

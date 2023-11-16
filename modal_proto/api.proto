@@ -261,8 +261,17 @@ message AppStats {
   string environment_name = 11;
 }
 
+enum AppSortType {
+  DEFAULT = 0;
+  RECENT_CREATED = 1;
+  NAME = 2;
+  RECENT_STOPPED = 3;
+}
+
 message AppListRequest {
   string environment_name = 1;
+  repeated AppState state_filters = 2;
+  optional AppSortType sort_type = 3;
 }
 
 message AppListResponse {
