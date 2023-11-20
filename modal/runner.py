@@ -2,6 +2,7 @@
 import asyncio
 import contextlib
 import dataclasses
+import os
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
 
@@ -58,6 +59,11 @@ async def _run_stub(
             "App is already running and can't be started again.\n"
             "You should not use `stub.run` or `run_stub` within a Modal local_entrypoint"
         )
+
+    if stub.description is None:
+        from __main__ import __file__ as main_file
+
+        stub.set_description(os.path.basename(main_file))
 
     if client is None:
         client = await _Client.from_env()
