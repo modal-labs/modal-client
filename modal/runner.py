@@ -195,8 +195,6 @@ async def _deploy_stub(
     if environment_name is None:
         environment_name = config.get("environment")
 
-    if not is_local():
-        raise InvalidError("Cannot run a deploy from within a container.")
     if name is None:
         name = stub.name
     if name is None:
