@@ -75,9 +75,9 @@ async def _run_stub(
         tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
         with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-            initialized_msg = f"Initialized. [grey70]View app at [underline]{app._app_page_url}[/underline][/grey70]"
+            initialized_msg = f"Initialized. [grey70]View run at [underline]{app.log_url()}[/underline][/grey70]"
             output_mgr.print_if_visible(step_completed(initialized_msg))
-            output_mgr.update_app_page_url(app._app_page_url)
+            output_mgr.update_app_page_url(app.log_url())
 
         # Start logs loop
         logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
@@ -121,7 +121,9 @@ async def _run_stub(
                 )
                 logs_loop.cancel()
             else:
-                output_mgr.print_if_visible(step_completed("App aborted."))
+                output_mgr.print_if_visible(
+                    step_completed(f"App aborted. [grey70]View run at [underline]{app.log_url()}[/underline][/grey70]")
+                )
                 output_mgr.print_if_visible(
                     "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                 )
@@ -129,7 +131,9 @@ async def _run_stub(
             await app.disconnect()
             stub._uncreate_all_objects()
 
-    output_mgr.print_if_visible(step_completed("App completed."))
+    output_mgr.print_if_visible(
+        step_completed(f"App completed. [grey70]View run at [underline]{app.log_url()}[/underline][/grey70]")
+    )
 
 
 async def _serve_update(
