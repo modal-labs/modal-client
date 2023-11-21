@@ -34,7 +34,7 @@ def test_run_progress_info(servicer):
     assert returncode == 0
     assert stderr == ""
     lines = stdout.splitlines()
-    assert "Initialized. View app at https://modaltest.com/apps/ap-123" in lines[0]
+    assert "Initialized. View run at https://modaltest.com/apps/ap-123" in lines[0]
     assert "App completed" in lines[-1]
 
 
