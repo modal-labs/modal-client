@@ -1372,10 +1372,14 @@ message TokenFlowWaitResponse {
 
 message TunnelStartRequest {
   uint32 port = 1;
+  bool unencrypted = 2;
 }
 
 message TunnelStartResponse {
   string host = 1;
+  string port = 2;
+  optional string unencrypted_host = 3;
+  optional uint32 unencrypted_port = 4;
 }
 
 message TunnelStopRequest {

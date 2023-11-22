@@ -767,7 +767,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def TunnelStart(self, stream):
         request: api_pb2.TunnelStartRequest = await stream.recv_message()
         port = request.port
-        await stream.send_message(api_pb2.TunnelStartResponse(host=f"{port}.modal.test"))
+        await stream.send_message(api_pb2.TunnelStartResponse(host=f"{port}.modal.test", port=443))
 
     async def TunnelStop(self, stream):
         await stream.recv_message()
