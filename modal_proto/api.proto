@@ -1464,7 +1464,6 @@ message VolumePutFilesRequest {
 message VolumeMount {
   string volume_id = 1;
   string mount_path = 2;
-  bool allow_background_commit = 3;
 }
 
 message CustomDomainConfig {
