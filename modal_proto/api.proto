@@ -1377,7 +1377,7 @@ message TunnelStartRequest {
 
 message TunnelStartResponse {
   string host = 1;
-  int port = 2;
+  uint32 port = 2;
   optional string unencrypted_host = 3;
   optional uint32 unencrypted_port = 4;
 }
