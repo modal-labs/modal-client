@@ -97,7 +97,7 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
             raise
 
     try:
-        yield Tunnel(response.host, response.unencrypted_host, response.unecrypted_port)
+        yield Tunnel(response.host, response.unencrypted_host, response.unencrypted_port)
     finally:
         await client.stub.TunnelStop(api_pb2.TunnelStopRequest(port=port))
 
