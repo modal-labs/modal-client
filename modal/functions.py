@@ -681,7 +681,10 @@ class _Function(_Object, type_prefix="fu"):
             for _, nfs in validated_network_file_systems:
                 deps.append(nfs)
             for _, vol in validated_volumes:
-                deps.append(vol)
+                if isinstance(vol, _Object):
+                    deps.append(vol)
+                else:
+                    deps.append(vol.volume)
             return deps
 
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -758,6 +761,13 @@ class _Function(_Object, type_prefix="fu"):
                 api_pb2.VolumeMount(
                     mount_path=path,
                     volume_id=volume.object_id,
+                    allow_background_commit=False,
+                )
+                if isinstance(volume, _Object)
+                else api_pb2.VolumeMount(
+                    mount_path=path,
+                    volume_id=volume.volume.object_id,
+                    allow_background_commit=volume.allow_background_commits,
                 )
                 for path, volume in validated_volumes
             ]

@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
+import dataclasses
+import os
 import time
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, List, Optional, Union
@@ -13,6 +15,15 @@ from ._resolver import Resolver
 from .config import logger
 from .mount import MOUNT_PUT_FILE_CLIENT_TIMEOUT
 from .object import _Object, live_method, live_method_gen
+
+
+@dataclasses.dataclass(frozen=True)
+class VolumeMount:
+    """mdmd:hidden"""
+
+    path: Union[str, os.PathLike]
+    volume: "_Volume"
+    allow_background_commits: bool
 
 
 class _Volume(_Object, type_prefix="vo"):
