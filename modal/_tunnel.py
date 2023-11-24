@@ -22,21 +22,25 @@ class Tunnel:
     """
 
     host: str
+    port: int
     unencrypted_host: str
     unencrypted_port: int
 
     @property
     def url(self) -> str:
         """Get the public HTTPS URL of the forwarded port."""
-        return f"https://{self.host}"
+        value = f"https://{self.host}"
+        if self.port != 443:
+            value += f":{self.port}"
+        return value
 
     @property
-    def tls(self) -> Tuple[str, int]:
+    def tls_socket(self) -> Tuple[str, int]:
         """Get the public TLS socket as a (host, port) tuple."""
-        return (self.host, 443)
+        return (self.host, self.port)
 
     @property
-    def tcp(self) -> Tuple[str, int]:
+    def tcp_socket(self) -> Tuple[str, int]:
         """Get the public TCP socket as a (host, port) tuple."""
         if not self.unencrypted_host:
             raise InvalidError(
@@ -49,9 +53,9 @@ class Tunnel:
 async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Client] = None) -> AsyncIterator[Tunnel]:
     """Expose a port publicly from inside a running Modal container, with TLS.
 
-    If `unencrypted` is set, this allows you to expose a raw TCP port without encryption. This is
-    useful for exposing SSH servers. Note that the socket lives on the public Internet, so make
-    sure you are using a secure protocol over TCP.
+    If `unencrypted` is set, this also exposes the TCP socket without encryption on a random port
+    number. This can be used to SSH into a container. Note that it is on the public Internet, so
+    make sure you are using a secure protocol over TCP.
 
     This is an EXPERIMENTAL API and may change in the future.
 
@@ -59,9 +63,11 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
 
     ```python
     from flask import Flask
+    from modal import Image, Stub, forward
 
-
+    stub = Stub(image=Image.debian_slim().pip_install("Flask"))
     app = Flask(__name__)
+
 
     @app.route("/")
     def hello_world():
@@ -72,11 +78,56 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
     def run_app():
         # Start a web server inside the container at port 8000. `modal.forward(8000)` lets us
         # expose that port to the world at a random HTTPS URL.
-        with modal.forward(8000) as tunnel:
+        with forward(8000) as tunnel:
             print("Server listening at", tunnel.url)
             app.run("0.0.0.0", 8000)
+
+        # When the context manager exits, the port is no longer exposed.
     ```
+
+    **Raw TCP usage:**
+
+    ```python
+    import socket
+    import threading
+    from modal import Stub, forward
+
+
+    def run_echo_server(port: int):
+        \"""Run a TCP echo server listening on the given port.\"""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("0.0.0.0", port))
+        sock.listen(1)
+
+        while True:
+            conn, addr = sock.accept()
+            print("Connection from:", addr)
+
+            # Start a new thread to handle the connection
+            def handle(conn):
+                with conn:
+                    while True:
+                        data = conn.recv(1024)
+                        if not data:
+                            break
+                        conn.sendall(data)
+
+            threading.Thread(target=handle, args=(conn,)).start()
+
+
+    stub = Stub()
+
+
+    @stub.function()
+    def tcp_tunnel():
+        # This exposes port 8000 to public Internet traffic over TCP.
+        with forward(8000, unencrypted=True) as tunnel:
+            # You can connect to this TCP socket from outside the container, for example, using `nc`:
+            #  nc <HOST> <PORT>
+            print("TCP tunnel listening at:", tunnel.tcp_socket)
+            run_echo_server(8000)
     """
+
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError(f"Invalid port number {port}")
 
@@ -97,7 +148,8 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
             raise
 
     try:
-        yield Tunnel(response.host, response.unencrypted_host, response.unencrypted_port)
+        port = response.port or 443  # reverse compatibility
+        yield Tunnel(response.host, response.port, response.unencrypted_host, response.unencrypted_port)
     finally:
         await client.stub.TunnelStop(api_pb2.TunnelStopRequest(port=port))
 
