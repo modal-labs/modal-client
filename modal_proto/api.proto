@@ -190,15 +190,16 @@ message AppCreateResponse {
   string app_logs_url = 2;
 }
 
-enum AppStopReason {
-  APP_STOP_REASON_UNSPECIFIED = 0;
-  APP_STOP_REASON_CLI_STOP = 1;
-  APP_STOP_REASON_WEB_STOP = 2;
+enum AppStopSource {
+  APP_STOP_SOURCE_UNSPECIFIED = 0;
+  APP_STOP_SOURCE_CLI = 1;
+  APP_STOP_SOURCE_PYTHON_CLIENT = 2;
+  APP_STOP_SOURCE_WEB = 3;
 }
 
 message AppStopRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  AppStopReason reason = 2;
+  AppStopSource source = 2;
 }
 
 message AppDeployRequest {
