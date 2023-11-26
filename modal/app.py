@@ -123,7 +123,7 @@ class _LocalApp:
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
 
     async def disconnect(
-        self, reason: Optional[api_pb2.AppDisconnectReason.ValueType] = None, exc_str: Optional[str] = None
+        self, reason: "Optional[api_pb2.AppDisconnectReason.ValueType]" = None, exc_str: Optional[str] = None
     ):
         """Tell the server the client has disconnected for this app. Terminates all running tasks
         for ephemeral apps."""
