@@ -122,18 +122,20 @@ class _LocalApp:
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
 
-    async def disconnect(self):
+    async def disconnect(
+        self, reason: "Optional[api_pb2.AppDisconnectReason.ValueType]" = None, exc_str: Optional[str] = None
+    ):
         """Tell the server the client has disconnected for this app. Terminates all running tasks
         for ephemeral apps."""
 
         logger.debug("Sending app disconnect/stop request")
-        req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id)
+        req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id, reason=reason, exception=exc_str)
         await retry_transient_errors(self._client.stub.AppClientDisconnect, req_disconnect)
         logger.debug("App disconnected")
 
     async def stop(self):
         """Tell the server to stop this app, terminating all running tasks."""
-        req_disconnect = api_pb2.AppStopRequest(app_id=self._app_id)
+        req_disconnect = api_pb2.AppStopRequest(app_id=self._app_id, source=api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT)
         await retry_transient_errors(self._client.stub.AppStop, req_disconnect)
 
     def log_url(self):

@@ -88,6 +88,7 @@ async def _run_stub(
         # Start logs loop
         logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
 
+        exc_info: Optional[BaseException] = None
         try:
             # Create all members
             await app._create_all_objects(
@@ -115,7 +116,8 @@ async def _run_stub(
             else:
                 with output_mgr.show_status_spinner():
                     yield stub
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as e:
+            exc_info = e
             # mute cancellation errors on all function handles to prevent exception spam
             for obj in stub.registered_functions.values():
                 obj._set_mute_cancellation(True)
@@ -133,8 +135,20 @@ async def _run_stub(
                 output_mgr.print_if_visible(
                     "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                 )
+        except BaseException as e:
+            exc_info = e
+            raise e
         finally:
-            await app.disconnect()
+            if isinstance(exc_info, KeyboardInterrupt):
+                reason = api_pb2.APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT
+            elif exc_info is not None:
+                reason = api_pb2.APP_DISCONNECT_REASON_LOCAL_EXCEPTION
+            else:
+                reason = api_pb2.APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED
+
+            exc_str = repr(exc_info) if exc_info else ""
+
+            await app.disconnect(reason, exc_str)
             stub._uncreate_all_objects()
 
     output_mgr.print_if_visible(
@@ -247,7 +261,7 @@ async def _deploy_stub(
             url = await app.deploy(name, namespace)
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
-            await app.disconnect()
+            await app.disconnect(reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
