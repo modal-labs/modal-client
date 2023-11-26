@@ -163,8 +163,18 @@ message Asgi {
   }
 }
 
+enum AppDisconnectReason {
+  APP_DISCONNECT_REASON_UNSPECIFIED = 0;
+  APP_DISCONNECT_REASON_LOCAL_EXCEPTION = 1;
+  APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT = 2;
+  APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED = 3;
+  APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION = 4;
+}
+
 message AppClientDisconnectRequest {
   string app_id = 1;
+  AppDisconnectReason reason = 2;
+  string exception = 3;
 }
 
 message AppCreateRequest {
@@ -181,8 +191,16 @@ message AppCreateResponse {
   string app_logs_url = 2;
 }
 
+enum AppStopSource {
+  APP_STOP_SOURCE_UNSPECIFIED = 0;
+  APP_STOP_SOURCE_CLI = 1;
+  APP_STOP_SOURCE_PYTHON_CLIENT = 2;
+  APP_STOP_SOURCE_WEB = 3;
+}
+
 message AppStopRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  AppStopSource source = 2;
 }
 
 message AppDeployRequest {
