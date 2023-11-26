@@ -139,7 +139,16 @@ async def _run_stub(
             exc_info = e
             raise e
         finally:
-            await app.disconnect(exc_info)
+            if isinstance(exc_info, KeyboardInterrupt):
+                reason = api_pb2.APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT
+            elif exc_info is not None:
+                reason = api_pb2.APP_DISCONNECT_REASON_LOCAL_EXCEPTION
+            else:
+                reason = api_pb2.APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED
+
+            exc_str = repr(exc_info) if exc_info else ""
+
+            await app.disconnect(reason, exc_str)
             stub._uncreate_all_objects()
 
     output_mgr.print_if_visible(
@@ -252,8 +261,7 @@ async def _deploy_stub(
             url = await app.deploy(name, namespace)
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
-            # No exc_info since we won't stop a deployed app.
-            await app.disconnect(exc_info=None)
+            await app.disconnect(reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))

@@ -122,21 +122,13 @@ class _LocalApp:
         )
         await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
 
-    async def disconnect(self, exc_info: Optional[BaseException] = None):
+    async def disconnect(
+        self, reason: Optional[api_pb2.AppDisconnectReason.ValueType] = None, exc_str: Optional[str] = None
+    ):
         """Tell the server the client has disconnected for this app. Terminates all running tasks
         for ephemeral apps."""
 
-        if isinstance(exc_info, KeyboardInterrupt):
-            reason = api_pb2.APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT
-        elif exc_info is not None:
-            reason = api_pb2.APP_DISCONNECT_REASON_LOCAL_EXCEPTION
-        else:
-            reason = api_pb2.APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED
-
-        exc_str = repr(exc_info) if exc_info else ""
-
         logger.debug("Sending app disconnect/stop request")
-
         req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id, reason=reason, exception=exc_str)
         await retry_transient_errors(self._client.stub.AppClientDisconnect, req_disconnect)
         logger.debug("App disconnected")
