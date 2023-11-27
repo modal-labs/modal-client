@@ -39,6 +39,21 @@ enum ClientType {
   CLIENT_TYPE_WEB_SERVER = 5;
 }
 
+// Chunks of data that can be streamed in and out of tasks.
+message DataChunk {
+  DataFormat data_format = 1;
+  oneof data_oneof {
+	  bytes data = 2;
+		string data_blob_id = 3;
+	}
+	uint32 index = 4; // Index of this data chunk in the stream.
+}
+
+message DataChunkRequest {
+  repeated DataChunk data_chunk = 1;
+  string function_call_id = 2;
+}
+
 // Which data format a binary message is encoded with.
 enum DataFormat {
   DATA_FORMAT_UNSPECIFIED = 0; // Equivalent to PICKLE in client version 0.52 and earlier.
@@ -1567,8 +1582,6 @@ service ModalClient {
 
   // Functions
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
-  rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
-  rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
@@ -1579,6 +1592,12 @@ service ModalClient {
   rpc FunctionPrecreate(FunctionPrecreateRequest) returns (FunctionPrecreateResponse);
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
+
+  // Function calls
+  rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
+  rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
+  rpc FunctionCallGetDataIn(DataChunkRequest) returns (google.protobuf.Empty);
+  rpc FunctionCallPutDataOut(DataChunkRequest) returns (stream DataChunk);
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
