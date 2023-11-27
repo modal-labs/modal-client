@@ -268,12 +268,21 @@ def test_lookup(client, servicer):
         assert obj.bar.local(1, 2)
 
 
-def test_lookup_lazy(client, servicer):
+def test_lookup_lazy_remote(client, servicer):
     # See #972 (PR) and #985 (revert PR): adding unit test to catch regression
     deploy_stub(stub, "my-cls-app", client=client)
     cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
     obj = cls("foo", 234)
     assert obj.bar.remote(42, 77) == 7693
+
+
+def test_lookup_lazy_spawn(client, servicer):
+    # See #1071
+    deploy_stub(stub, "my-cls-app", client=client)
+    cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
+    obj = cls("foo", 234)
+    function_call = obj.bar.spawn(42, 77)
+    assert function_call.get() == 7693
 
 
 baz_stub = Stub()
