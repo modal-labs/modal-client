@@ -55,7 +55,19 @@ def serialize(obj: Any) -> bytes:
 
 def deserialize(s: bytes, client) -> Any:
     """Deserializes object and replaces all client placeholders by self."""
-    return Unpickler(client, io.BytesIO(s)).load()
+    try:
+        return Unpickler(client, io.BytesIO(s)).load()
+    except AttributeError as exc:
+        # We use a different cloudpickle version pre- and post-3.11. Unfortunately cloudpickle
+        # doesn't expose some kind of serialization version number, so we have to guess based
+        # on the error message.
+        if "Can't get attribute '_make_function'" in str(exc):
+            raise InvalidError(
+                "Failed to deserialize value due to a version mismatch between your local client and the image. "
+                "Try changing the `python_version` in your Modal image to match your local Python version. "
+            ) from exc
+        else:
+            raise exc
 
 
 def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
