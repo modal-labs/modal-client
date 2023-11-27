@@ -1238,6 +1238,7 @@ class _Function(_Object, type_prefix="fu"):
                 " a Modal container in the cloud",
             )
 
+    @live_method
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
 
