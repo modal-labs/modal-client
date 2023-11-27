@@ -118,9 +118,6 @@ def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
     import pty
     import threading
 
-    if pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-        fn = exec_cmd
-
     @functools.wraps(fn)
     def wrapped_fn(*args, **kwargs):
         write_fd, read_fd = pty.openpty()
