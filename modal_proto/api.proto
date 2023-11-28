@@ -50,8 +50,9 @@ message DataChunk {
 }
 
 message DataChunkRequest {
-  repeated DataChunk data_chunk = 1;
+  repeated DataChunk data_chunks = 1;
   string function_call_id = 2;
+  uint32 last_index = 3;
 }
 
 // Which data format a binary message is encoded with.
