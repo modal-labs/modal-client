@@ -70,11 +70,11 @@ def step_progress_update(spinner: Spinner, message: str):
 def step_completed(message: str, is_substep: bool = False) -> RenderableType:
     """Returns the element to be rendered when a step is completed."""
 
-    STEP_COMPLETED = "✓"
+    STEP_COMPLETED = "[green]✓[/green]"
     SUBSTEP_COMPLETED = "🔨"
 
     symbol = SUBSTEP_COMPLETED if is_substep else STEP_COMPLETED
-    return f"[green]{symbol}[/green] " + message
+    return f"{symbol} {message}"
 
 
 class LineBufferedOutput(io.StringIO):
