@@ -126,8 +126,7 @@ class _ImageRegistryConfig:
 
     def __init__(
         self,
-        # TODO: change to _PUBLIC after worker starts handling it.
-        registry_auth_type: int = api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED,
+        registry_auth_type: int,
         secret: Optional[_Secret] = None,
     ):
         self.registry_auth_type = registry_auth_type
@@ -961,6 +960,7 @@ class _Image(_Object, type_prefix="im"):
     def from_registry(
         tag: str,
         *,
+        secret: Optional[_Secret] = None,
         setup_dockerfile_commands: List[str] = [],
         force_build: bool = False,
         add_python: Optional[str] = None,
@@ -980,6 +980,12 @@ class _Image(_Object, type_prefix="im"):
         remaining commands run. This might be useful if you want a custom Python installation or to
         set a `SHELL`. Prefer `run_commands()` when possible though.
 
+        To authenticate against a private registry with static credentials, you may set the `secret` parameter to
+        a `modal.Secret` containing a username (`REGISTRY_USERNAME`) and an access token or password (`REGISTRY_PASSWORD`).
+
+        To authenticate against private registries with credentials from a cloud provider, use `Image.from_gcp_artifact_registry()`
+        or `Image.from_aws_ecr()`.
+
         **Examples**
 
         ```python
@@ -998,11 +1004,18 @@ class _Image(_Object, type_prefix="im"):
                 namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
             )
 
+        if secret is None:
+            # TODO: change to _PUBLIC after worker starts handling it.
+            image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED)
+        else:
+            image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS, secret)
+
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_mount=context_mount,
             context_files={"/modal_requirements.txt": requirements_path},
             force_build=force_build,
+            image_registry_config=image_registry_config,
             **kwargs,
         )
 
