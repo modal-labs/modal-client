@@ -18,7 +18,7 @@ from ._resolver import Resolver
 from .app import _container_app, _ContainerApp, _LocalApp, is_local
 from .client import _Client
 from .cls import _Cls
-from .config import config, logger
+from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import PartialFunction, _Function, _PartialFunction
 from .gpu import GPU_T
@@ -511,7 +511,6 @@ class _Stub:
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any]],
             _cls: Optional[type] = None,  # Used for methods only
-            _auto_snapshot_enabled: Optional[bool] = None,  # Used for methods only
         ) -> _Function:
             nonlocal keep_warm, is_generator
 
@@ -568,7 +567,6 @@ class _Stub:
                 cloud=cloud,
                 webhook_config=webhook_config,
                 cls=_cls,
-                auto_snapshot_enabled=_auto_snapshot_enabled,
                 checkpointing_enabled=_checkpointing_enabled,
                 allow_background_volume_commits=_allow_background_volume_commits,
             )
@@ -605,13 +603,9 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        auto_snapshot_enabled: Optional[bool] = None,  # Whether to run and snapshot __enter__ as part of image build.
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
-
-        if auto_snapshot_enabled is None:
-            auto_snapshot_enabled = config.get("auto_snapshot")
 
         decorator: Callable[[PartialFunction, type], _Function] = self.function(
             image=image,
@@ -651,7 +645,6 @@ class _Stub:
                         functions[k] = decorator(
                             partial_function,
                             user_cls,
-                            auto_snapshot_enabled,
                         )
 
             if len(functions) > 1 and keep_warm is not None:
