@@ -126,7 +126,7 @@ class _ImageRegistryConfig:
 
     def __init__(
         self,
-        registry_auth_type: int,
+        registry_auth_type: int = api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED,
         secret: Optional[_Secret] = None,
     ):
         self.registry_auth_type = registry_auth_type
