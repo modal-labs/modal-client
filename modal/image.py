@@ -126,6 +126,7 @@ class _ImageRegistryConfig:
 
     def __init__(
         self,
+        # TODO: change to _PUBLIC after worker starts handling it.
         registry_auth_type: int = api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED,
         secret: Optional[_Secret] = None,
     ):
@@ -1004,18 +1005,14 @@ class _Image(_Object, type_prefix="im"):
                 namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
             )
 
-        if secret is None:
-            # TODO: change to _PUBLIC after worker starts handling it.
-            image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED)
-        else:
-            image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS, secret)
+        if "image_registry_config" not in kwargs and secret is not None:
+            kwargs["image_registry_config"] = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS, secret)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
             context_mount=context_mount,
             context_files={"/modal_requirements.txt": requirements_path},
             force_build=force_build,
-            image_registry_config=image_registry_config,
             **kwargs,
         )
 
