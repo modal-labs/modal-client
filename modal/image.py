@@ -126,15 +126,16 @@ class _ImageRegistryConfig:
 
     def __init__(
         self,
-        registry_type: int = api_pb2.RegistryType.DOCKERHUB,
+        # TODO: change to _PUBLIC after worker starts handling it.
+        registry_auth_type: int = api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED,
         secret: Optional[_Secret] = None,
     ):
-        self.registry_type = registry_type
+        self.registry_auth_type = registry_auth_type
         self.secret = secret
 
     def get_proto(self) -> api_pb2.ImageRegistryConfig:
         return api_pb2.ImageRegistryConfig(
-            registry_type=self.registry_type,
+            registry_auth_type=self.registry_auth_type,
             secret_id=(self.secret.object_id if self.secret else None),
         )
 
@@ -960,6 +961,7 @@ class _Image(_Object, type_prefix="im"):
     def from_registry(
         tag: str,
         *,
+        secret: Optional[_Secret] = None,
         setup_dockerfile_commands: List[str] = [],
         force_build: bool = False,
         add_python: Optional[str] = None,
@@ -979,6 +981,12 @@ class _Image(_Object, type_prefix="im"):
         remaining commands run. This might be useful if you want a custom Python installation or to
         set a `SHELL`. Prefer `run_commands()` when possible though.
 
+        To authenticate against a private registry with static credentials, you may set the `secret` parameter to
+        a `modal.Secret` containing a username (`REGISTRY_USERNAME`) and an access token or password (`REGISTRY_PASSWORD`).
+
+        To authenticate against private registries with credentials from a cloud provider, use `Image.from_gcp_artifact_registry()`
+        or `Image.from_aws_ecr()`.
+
         **Examples**
 
         ```python
@@ -996,6 +1004,9 @@ class _Image(_Object, type_prefix="im"):
                 python_standalone_mount_name(add_python),
                 namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
             )
+
+        if "image_registry_config" not in kwargs and secret is not None:
+            kwargs["image_registry_config"] = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS, secret)
 
         return _Image._from_args(
             dockerfile_commands=dockerfile_commands,
@@ -1045,7 +1056,7 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        image_registry_config = _ImageRegistryConfig(api_pb2.RegistryType.GCP_ARTIFACT_REGISTRY, secret)
+        image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_GCP, secret)
         return _Image.from_registry(
             tag,
             setup_dockerfile_commands=setup_dockerfile_commands,
@@ -1086,7 +1097,7 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        image_registry_config = _ImageRegistryConfig(api_pb2.RegistryType.ECR, secret)
+        image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_AWS, secret)
         return _Image.from_registry(
             tag,
             setup_dockerfile_commands=setup_dockerfile_commands,

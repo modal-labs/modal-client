@@ -386,14 +386,16 @@ message EnvironmentUpdateRequest {
   google.protobuf.StringValue web_suffix = 3;
 }
 
-enum RegistryType {
-  DOCKERHUB = 0;
-  ECR = 1;
-  GCP_ARTIFACT_REGISTRY = 2;
+enum RegistryAuthType {
+  REGISTRY_AUTH_TYPE_UNSPECIFIED = 0; // Older clients send this instead of "public".
+  REGISTRY_AUTH_TYPE_AWS = 1;
+  REGISTRY_AUTH_TYPE_GCP = 2;
+  REGISTRY_AUTH_TYPE_PUBLIC = 3;
+  REGISTRY_AUTH_TYPE_STATIC_CREDS = 4;
 }
 
 message ImageRegistryConfig {
-  RegistryType registry_type = 1;
+  RegistryAuthType registry_auth_type = 1;
   string secret_id = 2;
 }
 
