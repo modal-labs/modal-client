@@ -212,7 +212,6 @@ async def retry_transient_errors(
     delay_factor: float = 2,
     max_retries: Optional[int] = 3,
     additional_status_codes: list = [],
-    ignore_errors: list = [],
     attempt_timeout: Optional[float] = None,  # timeout for each attempt
     total_timeout: Optional[float] = None,  # timeout for the entire function call
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
