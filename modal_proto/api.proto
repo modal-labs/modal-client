@@ -49,10 +49,14 @@ message DataChunk {
   uint32 index = 4; // Index of this data chunk in the stream.
 }
 
-message DataChunkRequest {
-  repeated DataChunk data_chunks = 1;
-  string function_call_id = 2;
-  uint32 last_index = 3;
+message FunctionCallPutDataRequest {
+  string function_call_id = 1;
+  repeated DataChunk data_chunks = 2;
+}
+
+message FunctionCallGetDataRequest {
+  string function_call_id = 1;
+  uint32 last_index = 2;
 }
 
 // Which data format a binary message is encoded with.
@@ -1597,8 +1601,8 @@ service ModalClient {
   // Function calls
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
-  rpc FunctionCallGetDataIn(DataChunkRequest) returns (google.protobuf.Empty);
-  rpc FunctionCallPutDataOut(DataChunkRequest) returns (stream DataChunk);
+  rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (google.protobuf.Empty);
+  rpc FunctionCallPutDataOut(FunctionCallPutDataRequest) returns (stream DataChunk);
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
