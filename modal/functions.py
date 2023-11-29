@@ -592,12 +592,12 @@ class _Function(_Object, type_prefix="fu"):
         if (
             auto_snapshot_enabled
             and not is_auto_snapshot  # Don't snapshot the snapshot function
-            and (hasattr(info.cls, "__enter__") or hasattr(info.cls, "__aenter__"))
+            and (hasattr(info.cls, "__build__") or hasattr(info.cls, "__abuild__"))
         ):
-            if hasattr(info.cls, "__enter__"):
-                snapshot_info = FunctionInfo(info.cls.__enter__, cls=info.cls)
+            if hasattr(info.cls, "__build__"):
+                snapshot_info = FunctionInfo(info.cls.__build__, cls=info.cls)
             else:
-                snapshot_info = FunctionInfo(info.cls.__aenter__, cls=info.cls)
+                snapshot_info = FunctionInfo(info.cls.__abuild__, cls=info.cls)
 
             snapshot_function = _Function.from_args(
                 snapshot_info,
