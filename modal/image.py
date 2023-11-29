@@ -126,15 +126,16 @@ class _ImageRegistryConfig:
 
     def __init__(
         self,
-        registry_type: int = api_pb2.RegistryType.DOCKERHUB,
+        # TODO: change to _PUBLIC after worker starts handling it.
+        registry_auth_type: int = api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED,
         secret: Optional[_Secret] = None,
     ):
-        self.registry_type = registry_type
+        self.registry_auth_type = registry_auth_type
         self.secret = secret
 
     def get_proto(self) -> api_pb2.ImageRegistryConfig:
         return api_pb2.ImageRegistryConfig(
-            registry_type=self.registry_type,
+            registry_auth_type=self.registry_auth_type,
             secret_id=(self.secret.object_id if self.secret else None),
         )
 
@@ -1045,7 +1046,7 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        image_registry_config = _ImageRegistryConfig(api_pb2.RegistryType.GCP_ARTIFACT_REGISTRY, secret)
+        image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_GCP, secret)
         return _Image.from_registry(
             tag,
             setup_dockerfile_commands=setup_dockerfile_commands,
@@ -1086,7 +1087,7 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        image_registry_config = _ImageRegistryConfig(api_pb2.RegistryType.ECR, secret)
+        image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_AWS, secret)
         return _Image.from_registry(
             tag,
             setup_dockerfile_commands=setup_dockerfile_commands,
