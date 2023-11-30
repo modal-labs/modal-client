@@ -1,4 +1,4 @@
-# Modal Python Library
+# Modal Python Library Yay
 
 The Modal Python Library provides convenient, on-demand access to serverless
 cloud compute from Python scripts on your local computer.
