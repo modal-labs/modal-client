@@ -5,11 +5,12 @@ import concurrent.futures
 import dataclasses
 import functools
 import os
+import pathspec
 import time
 import typing
 from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Union
+from typing import AsyncGenerator, Callable, Dict, Generator, List, Optional, Sequence, Tuple, Union
 
 import aiostream
 from google.protobuf.message import Message
@@ -121,14 +122,37 @@ class _MountDir(_MountEntry):
         else:
             gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
+        ignore_rule_map = self._create_modal_ignore_rule_map(gen)
+
         for local_filename in gen:
-            if self.condition(local_filename):
+            if self.condition(local_filename) and self._apply_modal_ignore_rules(local_filename, ignore_rule_map):
                 local_relpath = Path(local_filename).relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
                 yield local_filename, mount_path.as_posix()
 
     def watch_entry(self):
         return self.local_dir, None
+
+    def _create_modal_ignore_rule_map(self, path_gen: Generator[str, None, None]) -> Dict[str, pathspec.PathSpec]:
+        rule_map = {}
+        for local_filename in path_gen:
+            if local_filename.endswith(".modalignore"):
+                root = os.path.dirname(local_filename)
+                try:
+                    with open(local_filename, "r") as f:
+                        rule_map[root] = pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, f.readlines())
+                except IOError:
+                    logger.error(f"Could not open .modalignore {local_filename}")
+                    continue
+        return rule_map
+
+    def _apply_modal_ignore_rules(self, filename: str, rule_map: Dict[str, pathspec.PathSpec]) -> bool:
+        root = os.path.dirname(filename)
+        rules = [rule for path, rule in rule_map.items() if root.startswith(path)]
+        for rule in rules:
+            if not rule.match_file(filename):
+                return False
+        return True
 
 
 class _Mount(_Object, type_prefix="mo"):
