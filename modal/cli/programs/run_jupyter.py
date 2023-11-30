@@ -22,11 +22,11 @@ def wait_for_port(url: str):
     start_time = time.monotonic()
     while True:
         try:
-            with socket.create_connection(("localhost", 8888), timeout=5.0):
+            with socket.create_connection(("localhost", 8888), timeout=15.0):
                 break
         except OSError as exc:
             time.sleep(0.01)
-            if time.monotonic() - start_time >= 5.0:
+            if time.monotonic() - start_time >= 15.0:
                 raise TimeoutError("Waited too long for port 8888 to accept connections") from exc
     stub.q.put(url)
 
