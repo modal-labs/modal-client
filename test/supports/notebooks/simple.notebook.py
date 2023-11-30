@@ -35,5 +35,5 @@ def hello():
 # + tags=["main"]
 with client:
     with stub.run(client=client, show_progress=True):
-        hello.call()
+        hello.remote()
 # -
