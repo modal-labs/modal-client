@@ -402,7 +402,7 @@ class _Stub:
         ```python
         @stub.local_entrypoint()
         def main():
-            some_modal_function.call()
+            some_modal_function.remote()
         ```
 
         You can call the function using `modal run` directly from the CLI:

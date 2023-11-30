@@ -16,8 +16,7 @@ class Error(Exception):
     import modal
 
     try:
-        with stub.run():
-            f.call()
+        ...
     except modal.Error:
         # Catch any exception raised by Modal's systems.
         print("Responding to error...")
