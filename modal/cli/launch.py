@@ -46,7 +46,7 @@ def jupyter(
         "image": image,
         "add_python": add_python,
     }
-    _launch_program("jupyterlab.py", args)
+    _launch_program("run_jupyter.py", args)
 
 
 @launch_cli.command(name="vscode", help="Start VS Code on Modal.")
