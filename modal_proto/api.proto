@@ -296,6 +296,7 @@ message AppStats {
   int32 n_running_tasks = 8;
   string object_entity = 9;
   string name = 10;
+  double deployed_at = 11;
 }
 
 message AppListRequest {
