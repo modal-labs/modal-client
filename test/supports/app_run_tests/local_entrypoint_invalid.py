@@ -13,4 +13,4 @@ def foo():
 def main():
     with stub.run():  # should error here
         print("unreachable")
-        foo.call()  # should not get here
+        foo.remote()  # should not get here
