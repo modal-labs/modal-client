@@ -16,7 +16,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Type
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional, Type
 
 from grpclib import Status
 
@@ -42,7 +42,12 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
 from .exception import InvalidError
-from .functions import Function, _Function, _set_current_input_id  # type: ignore
+from .functions import (
+    Function,
+    _Function,  # type: ignore
+    _set_current_function_call_id,
+    _set_current_input_id,
+)
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -184,7 +189,7 @@ class _FunctionIOManager:
 
         return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
 
-    async def _generate_inputs(self) -> AsyncIterator[tuple[str, api_pb2.FunctionInput]]:
+    async def _generate_inputs(self) -> AsyncIterator[tuple[str, str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         iteration = 0
@@ -224,7 +229,7 @@ class _FunctionIOManager:
                             input_pb = item.input
 
                         # If yielded, allow semaphore to be released via push_outputs
-                        yield (item.input_id, input_pb)
+                        yield (item.input_id, item.function_call_id, input_pb)
                         yielded = True
 
                         if item.input.final_input:
@@ -243,12 +248,14 @@ class _FunctionIOManager:
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
         try:
-            async for input_id, input_pb in self._generate_inputs():
+            async for input_id, function_call_id, input_pb in self._generate_inputs():
                 args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
                 _set_current_input_id(input_id)
+                _set_current_function_call_id(function_call_id)
                 self.current_input_id, self.current_input_started_at = (input_id, time.time())
                 yield input_id, args, kwargs
                 _set_current_input_id(None)
+                _set_current_function_call_id(None)
                 self.current_input_id, self.current_input_started_at = (None, None)
         finally:
             # collect all active input slots, meaning all inputs have wrapped up.
@@ -711,7 +718,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Hydrate all function dependencies
         if imp_fun.function:
-            dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
+            dep_object_ids: list[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
 
         # Checkpoint container after imports. Checkpointed containers start from this point
