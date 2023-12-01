@@ -630,7 +630,11 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
     data_format = api_pb2.DATA_FORMAT_PICKLE
 
     # Container can fetch multiple inputs simultaneously
-    input_concurrency = function_def.allow_concurrent_inputs or 1
+    if pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+        # Concurrency doesn't apply for `modal shell`.
+        input_concurrency = 1
+    else:
+        input_concurrency = function_def.allow_concurrent_inputs or 1
 
     # Instantiate the class if it's defined
     if cls:
