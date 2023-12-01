@@ -109,7 +109,7 @@ def get_by_object_path(obj: Any, obj_path: str):
 
 
 def infer_function_or_help(
-    stub: Stub, accept_local_entrypoint: bool, accept_webhook: bool
+    stub: Stub, module, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint]:
     function_choices = set(stub.registered_functions.keys())
     if not accept_webhook:
@@ -119,9 +119,19 @@ def infer_function_or_help(
 
     sorted_function_choices = sorted(function_choices)
     registered_functions_str = "\n".join(sorted_function_choices)
-    if accept_local_entrypoint and len(stub.registered_entrypoints) == 1:
-        # if there is a single local_entrypoint, use that regardless of
-        # other functions on the stub
+    filtered_local_entrypoints = [
+        name
+        for name, entrypoint in stub.registered_entrypoints.items()
+        if entrypoint.info.module_name == module.__name__
+    ]
+
+    if accept_local_entrypoint and len(filtered_local_entrypoints) == 1:
+        # If there is just a single local entrypoint in the target module, use
+        # that regardless of other functions.
+        function_name = list(filtered_local_entrypoints)[0]
+    elif accept_local_entrypoint and len(stub.registered_entrypoints) == 1:
+        # Otherwise, if there is just a single local entrypoint in the stub as a whole,
+        # use that one.
         function_name = list(stub.registered_entrypoints.keys())[0]
     elif len(function_choices) == 1:
         function_name = sorted_function_choices[0]
@@ -224,7 +234,7 @@ def import_function(
     if isinstance(stub_or_function, Stub):
         # infer function or display help for how to select one
         stub = stub_or_function
-        function_handle = infer_function_or_help(stub, accept_local_entrypoint, accept_webhook)
+        function_handle = infer_function_or_help(stub, module, accept_local_entrypoint, accept_webhook)
         return function_handle
     elif isinstance(stub_or_function, Function):
         return stub_or_function
