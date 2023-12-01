@@ -445,6 +445,9 @@ class _Stub:
         def wrapped(raw_f: Callable[..., Any]) -> None:
             info = FunctionInfo(raw_f)
             tag = name if name is not None else raw_f.__qualname__
+            if tag in self._local_entrypoints:
+                # TODO: get rid of this limitation.
+                raise InvalidError(f"Duplicate local entrypoint name: {tag}. Local entrypoint names must be unique.")
             entrypoint = self._local_entrypoints[tag] = _LocalEntrypoint(info, self)
             return entrypoint
 
