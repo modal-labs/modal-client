@@ -16,7 +16,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Type
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional, Type
 
 from grpclib import Status
 
@@ -189,7 +189,7 @@ class _FunctionIOManager:
 
         return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
 
-    async def _generate_inputs(self) -> AsyncIterator[tuple[str, api_pb2.FunctionInput]]:
+    async def _generate_inputs(self) -> AsyncIterator[tuple[str, str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         iteration = 0
@@ -718,7 +718,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Hydrate all function dependencies
         if imp_fun.function:
-            dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
+            dep_object_ids: list[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
 
         # Checkpoint container after imports. Checkpointed containers start from this point
