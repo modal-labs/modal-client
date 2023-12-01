@@ -42,7 +42,12 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
 from .exception import InvalidError
-from .functions import Function, _Function, _set_current_input_id  # type: ignore
+from .functions import (
+    Function,
+    _Function,  # type: ignore
+    _set_current_input_id,
+    _set_current_function_call_id,
+)
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -224,7 +229,7 @@ class _FunctionIOManager:
                             input_pb = item.input
 
                         # If yielded, allow semaphore to be released via push_outputs
-                        yield (item.input_id, input_pb)
+                        yield (item.input_id, item.function_call_id, input_pb)
                         yielded = True
 
                         if item.input.final_input:
@@ -243,12 +248,14 @@ class _FunctionIOManager:
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
         try:
-            async for input_id, input_pb in self._generate_inputs():
+            async for input_id, function_call_id, input_pb in self._generate_inputs():
                 args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
                 _set_current_input_id(input_id)
+                _set_current_function_call_id(function_call_id)
                 self.current_input_id, self.current_input_started_at = (input_id, time.time())
                 yield input_id, args, kwargs
                 _set_current_input_id(None)
+                _set_current_function_call_id(None)
                 self.current_input_id, self.current_input_started_at = (None, None)
         finally:
             # collect all active input slots, meaning all inputs have wrapped up.

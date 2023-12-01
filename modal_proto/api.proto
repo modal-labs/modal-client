@@ -757,6 +757,7 @@ message FunctionGetInputsItem {
   FunctionInput input = 2;
   bool kill_switch = 3;
   reserved 4; // previously used
+  string function_call_id = 5;
 }
 
 message FunctionGetInputsRequest {

@@ -1347,10 +1347,11 @@ gather = synchronize_api(_gather)
 
 
 _current_input_id: Optional[str] = None
+_current_function_call_id: Optional[str] = None
 
 
 def current_input_id() -> str:
-    """Returns the input ID for the currently processed input.
+    """Returns the input ID for the current input.
 
     Can only be called from Modal function (i.e. in a container context).
 
@@ -1366,9 +1367,31 @@ def current_input_id() -> str:
     return _current_input_id
 
 
+def current_function_call_id() -> str:
+    """Returns the function call ID for the current input.
+
+    Can only be called from Modal function (i.e. in a container context).
+
+    ```python
+    from modal import current_function_call_id
+
+    @stub.function()
+    def process_stuff():
+        print(f"Starting to process input from {current_function_call_id()}")
+    ```
+    """
+    global _current_function_call_id
+    return _current_function_call_id
+
+
 def _set_current_input_id(input_id: Optional[str]):
     global _current_input_id
     _current_input_id = input_id
+
+
+def _set_current_function_call_id(function_call_id: Optional[str]):
+    global _current_function_call_id
+    _current_function_call_id = function_call_id
 
 
 class _PartialFunction:
