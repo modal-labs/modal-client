@@ -577,11 +577,11 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
     fun: Callable
     pty_info: api_pb2.PTYInfo = function_def.pty_info
 
-    if ser_fun is not None:
+    if pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+        fun = exec_cmd
+    elif ser_fun is not None:
         # This is a serialized function we already fetched from the server
         cls, fun = ser_cls, ser_fun
-    elif pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-        fun = exec_cmd
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
