@@ -45,8 +45,8 @@ from .exception import InvalidError
 from .functions import (
     Function,
     _Function,  # type: ignore
-    _set_current_input_id,
     _set_current_function_call_id,
+    _set_current_input_id,
 )
 
 if TYPE_CHECKING:
