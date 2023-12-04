@@ -577,7 +577,9 @@ class ImportedFunction:
 
 
 @wrap()
-def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params: Optional[bytes]) -> ImportedFunction:
+def import_function(
+    function_def: api_pb2.Function, ser_cls, ser_fun, ser_params: Optional[bytes], client: Client
+) -> ImportedFunction:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
     module: Optional[ModuleType] = None
@@ -661,21 +663,21 @@ def import_function(function_def: api_pb2.Function, ser_cls, ser_fun, ser_params
     if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # function returns an asgi_app, that we can use as a callable.
         asgi_app = fun()
-        fun = asgi_app_wrapper(asgi_app)
+        fun = asgi_app_wrapper(asgi_app, client)
         is_async = True
         is_generator = True
         data_format = api_pb2.DATA_FORMAT_ASGI
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
         # function returns an wsgi_app, that we can use as a callable.
         wsgi_app = fun()
-        fun = wsgi_app_wrapper(wsgi_app)
+        fun = wsgi_app_wrapper(wsgi_app, client)
         is_async = True
         is_generator = True
         data_format = api_pb2.DATA_FORMAT_ASGI
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # function is webhook without an ASGI app. Create one for it.
         asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
-        fun = asgi_app_wrapper(asgi_app)
+        fun = asgi_app_wrapper(asgi_app, client)
         is_async = True
         is_generator = True
         data_format = api_pb2.DATA_FORMAT_ASGI
@@ -715,7 +717,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function
         # NOTE: detecting the stub causes all objects to be associated with the app and hydrated
         with function_io_manager.handle_user_exception():
-            imp_fun = import_function(container_args.function_def, ser_cls, ser_fun, container_args.serialized_params)
+            imp_fun = import_function(
+                container_args.function_def, ser_cls, ser_fun, container_args.serialized_params, client
+            )
 
         # Hydrate all function dependencies
         if imp_fun.function:
