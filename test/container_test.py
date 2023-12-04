@@ -33,11 +33,14 @@ SLEEP_DELAY = 0.1
 
 def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> List[api_pb2.FunctionGetInputsResponse]:
     input_pb = api_pb2.FunctionInput(args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE)
-
-    return [
-        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", input=input_pb)])
-        for i in range(n)
-    ] + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
+    inputs = [
+        *(
+            api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
+            for i in range(n)
+        ),
+        api_pb2.FunctionGetInputsItem(kill_switch=True),
+    ]
+    return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
 
 
 @dataclasses.dataclass
@@ -703,7 +706,11 @@ def test_concurrent_inputs_sync_function(unix_servicer):
 
     expected_execution = n_inputs / n_parallel * SLEEP_TIME
     assert expected_execution <= time.time() - t0 < expected_execution + EXTRA_TOLERANCE_DELAY
-    assert _unwrap_concurrent_input_outputs(n_inputs, n_parallel, ret) == [42**2] * n_inputs
+    outputs = _unwrap_concurrent_input_outputs(n_inputs, n_parallel, ret)
+    for i, (squared, input_id, function_call_id) in enumerate(outputs):
+        assert squared == 42**2
+        assert input_id and input_id != outputs[i - 1][1]
+        assert function_call_id and function_call_id == outputs[i - 1][2]
 
 
 @skip_windows_unix_socket
@@ -722,7 +729,11 @@ def test_concurrent_inputs_async_function(unix_servicer, event_loop):
 
     expected_execution = n_inputs / n_parallel * SLEEP_TIME
     assert expected_execution <= time.time() - t0 < expected_execution + EXTRA_TOLERANCE_DELAY
-    assert _unwrap_concurrent_input_outputs(n_inputs, n_parallel, ret) == [42**2] * n_inputs
+    outputs = _unwrap_concurrent_input_outputs(n_inputs, n_parallel, ret)
+    for i, (squared, input_id, function_call_id) in enumerate(outputs):
+        assert squared == 42**2
+        assert input_id and input_id != outputs[i - 1][1]
+        assert function_call_id and function_call_id == outputs[i - 1][2]
 
 
 @skip_windows_unix_socket

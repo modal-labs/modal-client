@@ -6,6 +6,7 @@ import pickle
 import time
 import typing
 import warnings
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date
 from typing import (
@@ -1346,11 +1347,11 @@ async def _gather(*function_calls: _FunctionCall):
 gather = synchronize_api(_gather)
 
 
-_current_input_id: Optional[str] = None
-_current_function_call_id: Optional[str] = None
+_current_input_id = ContextVar("_current_input_id")
+_current_function_call_id = ContextVar("_current_function_call_id")
 
 
-def current_input_id() -> str:
+def current_input_id() -> Optional[str]:
     """Returns the input ID for the current input.
 
     Can only be called from Modal function (i.e. in a container context).
@@ -1363,11 +1364,13 @@ def current_input_id() -> str:
         print(f"Starting to process {current_input_id()}")
     ```
     """
-    global _current_input_id
-    return _current_input_id
+    try:
+        return _current_input_id.get()
+    except LookupError:
+        return None
 
 
-def current_function_call_id() -> str:
+def current_function_call_id() -> Optional[str]:
     """Returns the function call ID for the current input.
 
     Can only be called from Modal function (i.e. in a container context).
@@ -1380,18 +1383,21 @@ def current_function_call_id() -> str:
         print(f"Starting to process input from {current_function_call_id()}")
     ```
     """
-    global _current_function_call_id
-    return _current_function_call_id
+    try:
+        return _current_function_call_id.get()
+    except LookupError:
+        return None
 
 
-def _set_current_input_id(input_id: Optional[str]):
-    global _current_input_id
-    _current_input_id = input_id
+def _set_current_context_ids(input_id: str, function_call_id: str) -> Callable[[], None]:
+    input_token = _current_input_id.set(input_id)
+    function_call_token = _current_function_call_id.set(function_call_id)
 
+    def _reset_current_context_ids():
+        _current_input_id.reset(input_token)
+        _current_function_call_id.reset(function_call_token)
 
-def _set_current_function_call_id(function_call_id: Optional[str]):
-    global _current_function_call_id
-    _current_function_call_id = function_call_id
+    return _reset_current_context_ids
 
 
 class _PartialFunction:
