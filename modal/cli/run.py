@@ -284,6 +284,10 @@ def shell(
         default=None,
         help="GPUs to request for the shell, if any. Examples are `any`, `a10g`, `a100:4` (if not using FUNC_REF).",
     ),
+    cloud: Optional[str] = typer.Option(
+        default=None,
+        help="Cloud provider to run the function on. Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF).",
+    ),
 ):
     """Run an interactive shell inside a Modal image.
 
@@ -325,6 +329,7 @@ def shell(
             cpu=cpu,
             memory=memory,
             gpu=gpu,
+            cloud=cloud,
             timeout=3600,
         )(lambda: None)
 
