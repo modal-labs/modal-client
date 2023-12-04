@@ -776,7 +776,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Volume
 
     async def VolumeCreate(self, stream):
-        await stream.recv_message()
+        req = await stream.recv_message()
+        self.requests.append(req)
         self.volume_counter += 1
         volume_id = f"vo-{self.volume_counter}"
         self.volume_files[volume_id] = {}
@@ -784,11 +785,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeCommit(self, stream):
         req = await stream.recv_message()
+        self.requests.append(req)
+        if not req.volume_id.startswith("vo-"):
+            raise GRPCError(Status.NOT_FOUND, f"invalid volume ID {req.volume_id}")
         self.volume_commits[req.volume_id] += 1
         await stream.send_message(Empty())
 
     async def VolumeReload(self, stream):
         req = await stream.recv_message()
+        self.requests.append(req)
         self.volume_reloads[req.volume_id] += 1
         await stream.send_message(Empty())
 
