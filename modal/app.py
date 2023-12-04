@@ -128,6 +128,9 @@ class _LocalApp:
         """Tell the server the client has disconnected for this app. Terminates all running tasks
         for ephemeral apps."""
 
+        if exc_str:
+            exc_str = exc_str[:1000]  # Truncate to 1000 chars
+
         logger.debug("Sending app disconnect/stop request")
         req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id, reason=reason, exception=exc_str)
         await retry_transient_errors(self._client.stub.AppClientDisconnect, req_disconnect)
