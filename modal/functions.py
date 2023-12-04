@@ -1351,7 +1351,7 @@ _current_input_id = ContextVar("_current_input_id")
 _current_function_call_id = ContextVar("_current_function_call_id")
 
 
-def current_input_id() -> str:
+def current_input_id() -> Optional[str]:
     """Returns the input ID for the current input.
 
     Can only be called from Modal function (i.e. in a container context).
@@ -1367,10 +1367,10 @@ def current_input_id() -> str:
     try:
         _current_input_id.get()
     except LookupError:
-        raise InvalidError("current_input_id() can only be called from a Modal function.")
+        return None
 
 
-def current_function_call_id() -> str:
+def current_function_call_id() -> Optional[str]:
     """Returns the function call ID for the current input.
 
     Can only be called from Modal function (i.e. in a container context).
@@ -1386,7 +1386,7 @@ def current_function_call_id() -> str:
     try:
         _current_function_call_id.get()
     except LookupError:
-        raise InvalidError("current_input_id() can only be called from a Modal function.")
+        return None
 
 
 def _set_current_context_ids(input_id: str, function_call_id: str) -> Callable[[], None]:
