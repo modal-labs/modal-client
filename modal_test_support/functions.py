@@ -5,7 +5,7 @@ import asyncio
 import time
 from datetime import date
 
-from modal import Image, Stub, Volume, asgi_app, method, web_endpoint
+from modal import Image, Stub, Volume, asgi_app, current_function_call_id, current_input_id, method, web_endpoint
 from modal.exception import deprecation_warning
 
 SLEEP_DELAY = 0.1
@@ -180,13 +180,13 @@ class ParamCls:
 @stub.function(allow_concurrent_inputs=5)
 def sleep_700_sync(x):
     time.sleep(0.7)
-    return x * x
+    return x * x, current_input_id(), current_function_call_id()
 
 
 @stub.function(allow_concurrent_inputs=5)
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
-    return x * x
+    return x * x, current_input_id(), current_function_call_id()
 
 
 def unassociated_function(x):

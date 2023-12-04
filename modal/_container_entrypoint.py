@@ -42,12 +42,7 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
 from .exception import InvalidError
-from .functions import (
-    Function,
-    _Function,  # type: ignore
-    _set_current_function_call_id,
-    _set_current_input_id,
-)
+from .functions import Function, _Function, _set_current_context_ids  # type: ignore
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -239,7 +234,7 @@ class _FunctionIOManager:
                 if not yielded:
                     self._semaphore.release()
 
-    async def run_inputs_outputs(self, input_concurrency: int = 1):
+    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[tuple[str, str, Any, Any]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
@@ -250,12 +245,8 @@ class _FunctionIOManager:
         try:
             async for input_id, function_call_id, input_pb in self._generate_inputs():
                 args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
-                _set_current_input_id(input_id)
-                _set_current_function_call_id(function_call_id)
                 self.current_input_id, self.current_input_started_at = (input_id, time.time())
-                yield input_id, args, kwargs
-                _set_current_input_id(None)
-                _set_current_function_call_id(None)
+                yield input_id, function_call_id, args, kwargs
                 self.current_input_id, self.current_input_started_at = (None, None)
         finally:
             # collect all active input slots, meaning all inputs have wrapped up.
@@ -459,9 +450,10 @@ def call_function_sync(
 
     try:
 
-        def run_inputs(input_id, args, kwargs):
+        def run_inputs(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
             output_index = SequenceNumber(0)
             started_at = time.time()
+            reset_context = _set_current_context_ids(input_id, function_call_id)
             with function_io_manager.handle_input_exception(input_id, started_at, output_index):
                 # TODO(gongy): run this in an executor
                 res = imp_fun.fun(*args, **kwargs)
@@ -485,14 +477,19 @@ def call_function_sync(
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
                     function_io_manager.push_output(input_id, started_at, output_index.value, res, imp_fun.data_format)
+            reset_context()
 
         if imp_fun.input_concurrency > 1:
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                for input_id, args, kwargs in function_io_manager.run_inputs_outputs(imp_fun.input_concurrency):
-                    executor.submit(run_inputs, input_id, args, kwargs)
+                for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs(
+                    imp_fun.input_concurrency
+                ):
+                    executor.submit(run_inputs, input_id, function_call_id, args, kwargs)
         else:
-            for input_id, args, kwargs in function_io_manager.run_inputs_outputs(imp_fun.input_concurrency):
-                run_inputs(input_id, args, kwargs)
+            for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs(
+                imp_fun.input_concurrency
+            ):
+                run_inputs(input_id, function_call_id, args, kwargs)
     finally:
         if imp_fun.obj is not None and hasattr(imp_fun.obj, "__exit__"):
             with function_io_manager.handle_user_exception():
@@ -516,9 +513,10 @@ async def call_function_async(
 
     try:
 
-        async def run_input(input_id, args, kwargs):
+        async def run_input(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
             output_index = SequenceNumber(0)  # mutable number we can increase from the generator loop
             started_at = time.time()
+            reset_context = _set_current_context_ids(input_id, function_call_id)
             async with function_io_manager.handle_input_exception.aio(input_id, started_at, output_index):
                 res = imp_fun.fun(*args, **kwargs)
 
@@ -542,16 +540,19 @@ async def call_function_async(
                     await function_io_manager.push_output.aio(
                         input_id, started_at, output_index.value, value, imp_fun.data_format
                     )
+            reset_context()
 
         if imp_fun.input_concurrency > 1:
             async with TaskContext() as execution_context:
-                async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
+                async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
                     imp_fun.input_concurrency
                 ):
-                    execution_context.create_task(run_input(input_id, args, kwargs))
+                    execution_context.create_task(run_input(input_id, function_call_id, args, kwargs))
         else:
-            async for input_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(imp_fun.input_concurrency):
-                await run_input(input_id, args, kwargs)
+            async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
+                imp_fun.input_concurrency
+            ):
+                await run_input(input_id, function_call_id, args, kwargs)
     finally:
         if imp_fun.obj is not None:
             if hasattr(imp_fun.obj, "__aexit__"):
