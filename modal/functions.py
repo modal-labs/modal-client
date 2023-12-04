@@ -1347,8 +1347,8 @@ async def _gather(*function_calls: _FunctionCall):
 gather = synchronize_api(_gather)
 
 
-_current_input_id: ContextVar[str] = ContextVar("_current_input_id")
-_current_function_call_id: ContextVar[str] = ContextVar("_current_function_call_id")
+_current_input_id = ContextVar("_current_input_id")
+_current_function_call_id = ContextVar("_current_function_call_id")
 
 
 def current_input_id() -> str:
