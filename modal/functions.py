@@ -1365,7 +1365,7 @@ def current_input_id() -> Optional[str]:
     ```
     """
     try:
-        _current_input_id.get()
+        return _current_input_id.get()
     except LookupError:
         return None
 
@@ -1384,7 +1384,7 @@ def current_function_call_id() -> Optional[str]:
     ```
     """
     try:
-        _current_function_call_id.get()
+        return _current_function_call_id.get()
     except LookupError:
         return None
 
