@@ -1605,8 +1605,8 @@ service ModalClient {
   // Function calls
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
-  rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (google.protobuf.Empty);
-  rpc FunctionCallPutDataOut(FunctionCallPutDataRequest) returns (stream DataChunk);
+  rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
+  rpc FunctionCallPutDataOut(FunctionCallPutDataRequest) returns (google.protobuf.Empty);
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
