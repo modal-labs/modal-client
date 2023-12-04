@@ -8,7 +8,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext
 from modal_utils.grpc_utils import unary_stream
 
-from ._blob_utils import MAX_OBJECT_SIZE_BYTES
+from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download
 from ._serialization import deserialize_data_format
 from .client import Client
 from .functions import current_function_call_id
@@ -33,7 +33,11 @@ def asgi_app_wrapper(asgi_app, client: Client):
                         if chunk.index <= last_index:
                             continue
                         last_index = chunk.index
-                        message = deserialize_data_format(chunk.data, chunk.data_format, client)
+                        if chunk.data_blob_id:
+                            message_bytes = await blob_download(chunk.data_blob_id, client.stub)
+                        else:
+                            message_bytes = chunk.data
+                        message = deserialize_data_format(message_bytes, chunk.data_format, client)
                         await messages_to_app.put(message)
                 except Exception:  # TODO: Catch specific exceptions versus transient errors.
                     await asyncio.sleep(0.1)
