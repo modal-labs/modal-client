@@ -803,6 +803,17 @@ def test_volume_commit_on_exit(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
+def test_volume_commit_on_error(unix_servicer, event_loop):
+    volume_mounts = [
+        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-foo", allow_background_commits=True),
+        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-bar", allow_background_commits=True),
+    ]
+    _run_container(unix_servicer, "modal_test_support.functions", "raises", volume_mounts=volume_mounts)
+    volume_commit_rpcs = [r for r in unix_servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
+    assert {"vo-foo", "vo-bar"} == set(r.volume_id for r in volume_commit_rpcs)
+
+
+@skip_windows_unix_socket
 def test_no_volume_commit_on_exit(unix_servicer, event_loop):
     volume_mounts = [api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-999", allow_background_commits=False)]
     ret = _run_container(unix_servicer, "modal_test_support.functions", "square", volume_mounts=volume_mounts)
