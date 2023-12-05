@@ -425,8 +425,10 @@ class _FunctionIOManager:
             restored_state = json.load(file)
 
         # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
+        # Empty string indicates that value does not need to be updated.
         for key, value in restored_state.items():
-            config.override_locally(key, value)
+            if value != "":
+                config.override_locally(key, value)
 
         self._client = await _Client.from_env()
         self._waiting_for_checkpoint = False
