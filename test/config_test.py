@@ -6,7 +6,6 @@ import sys
 import tempfile
 
 import modal
-
 from modal.config import config
 
 
