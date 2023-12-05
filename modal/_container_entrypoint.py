@@ -9,6 +9,7 @@ import importlib
 import inspect
 import json
 import math
+import os
 import pickle
 import signal
 import sys
@@ -24,6 +25,7 @@ from modal.stub import _Stub
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     TaskContext,
+    asyncify,
     synchronize_api,
     synchronizer,
 )
@@ -438,6 +440,7 @@ class _FunctionIOManager:
         """
         if not volume_ids:
             return
+        await asyncify(os.sync)()
         results = await asyncio.gather(
             *[
                 retry_transient_errors(
