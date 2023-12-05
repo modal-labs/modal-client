@@ -431,6 +431,28 @@ class _FunctionIOManager:
         self._client = await _Client.from_env()
         self._waiting_for_checkpoint = False
 
+    async def volume_commit(self, volume_ids: list[str]) -> None:
+        """
+        Perform volume commit for given `volume_ids`.
+        Only used on container exit to persist uncommitted changes on behalf of user.
+        """
+        if not volume_ids:
+            return
+        results = await asyncio.gather(
+            *[
+                retry_transient_errors(
+                    self._client.stub.VolumeCommit, api_pb2.VolumeCommitRequest(volume_id=v_id), max_retries=10
+                )
+                for v_id in volume_ids
+            ],
+            return_exceptions=True,
+        )
+        for volume_id, res in zip(volume_ids, results):
+            if isinstance(res, Exception):
+                logger.error(f"modal.Volume background commit failed for {volume_id}. Exception: {res}")
+            else:
+                logger.debug(f"modal.Volume background commit success for {volume_id}.")
+
 
 FunctionIOManager = synchronize_api(_FunctionIOManager)
 
@@ -739,6 +761,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             call_function_sync(function_io_manager, imp_fun)
         else:
             run_with_signal_handler(call_function_async(function_io_manager, imp_fun))
+
+        # Commit on exit to catch uncommitted volume changes and surface background
+        # commit errors.
+        function_io_manager.volume_commit(
+            [v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits]
+        )
 
 
 if __name__ == "__main__":

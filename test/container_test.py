@@ -64,6 +64,7 @@ def _run_container(
     serialized_params: Optional[bytes] = None,
     is_checkpointing_function: bool = False,
     deps: List[str] = ["im-1"],
+    volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
 ) -> ContainerResult:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -85,6 +86,7 @@ def _run_container(
             module_name=module_name,
             function_name=function_name,
             function_type=function_type,
+            volume_mounts=volume_mounts,
             webhook_config=webhook_config,
             definition_type=definition_type,
             stub_name=stub_name or "",
@@ -784,6 +786,52 @@ def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     simulating a restore operation."""
     ret = _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
+    assert _unwrap_scalar(ret) == 42**2
+
+
+@skip_windows_unix_socket
+def test_volume_commit_on_exit(unix_servicer, event_loop):
+    volume_mounts = [
+        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-123", allow_background_commits=True),
+        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-456", allow_background_commits=True),
+    ]
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "square", volume_mounts=volume_mounts)
+    volume_commit_rpcs = [r for r in unix_servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
+    assert volume_commit_rpcs
+    assert {"vo-123", "vo-456"} == set(r.volume_id for r in volume_commit_rpcs)
+    assert _unwrap_scalar(ret) == 42**2
+
+
+@skip_windows_unix_socket
+def test_volume_commit_on_error(unix_servicer, event_loop):
+    volume_mounts = [
+        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-foo", allow_background_commits=True),
+        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-bar", allow_background_commits=True),
+    ]
+    _run_container(unix_servicer, "modal_test_support.functions", "raises", volume_mounts=volume_mounts)
+    volume_commit_rpcs = [r for r in unix_servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
+    assert {"vo-foo", "vo-bar"} == set(r.volume_id for r in volume_commit_rpcs)
+
+
+@skip_windows_unix_socket
+def test_no_volume_commit_on_exit(unix_servicer, event_loop):
+    volume_mounts = [api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-999", allow_background_commits=False)]
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "square", volume_mounts=volume_mounts)
+    volume_commit_rpcs = [r for r in unix_servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
+    assert not volume_commit_rpcs  # No volume commit on exit for legacy volumes
+    assert _unwrap_scalar(ret) == 42**2
+
+
+@skip_windows_unix_socket
+def test_volume_commit_on_exit_doesnt_fail_container(unix_servicer, event_loop):
+    volume_mounts = [
+        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-999", allow_background_commits=True),
+        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="BAD-ID-FOR-VOL", allow_background_commits=True),
+        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vol-111", allow_background_commits=True),
+    ]
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "square", volume_mounts=volume_mounts)
+    volume_commit_rpcs = [r for r in unix_servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
+    assert len(volume_commit_rpcs) == 3
     assert _unwrap_scalar(ret) == 42**2
 
 
