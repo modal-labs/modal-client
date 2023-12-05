@@ -89,7 +89,7 @@ def test_config_store_user(servicer):
 
 def test_config_env_override_arbitrary_env():
     """config.override_locally() replaces existing env var if not part of config."""
-    key = "NVIDIA_AVAILABLE_DEVICES"
+    key = "NVIDIA_VISIBLE_DEVICES"
     value = "0,1"
 
     # Place old value in memory.
