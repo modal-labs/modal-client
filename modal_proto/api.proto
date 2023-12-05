@@ -1507,6 +1507,12 @@ message VolumePutFilesRequest {
   repeated MountFile files = 2;
 }
 
+message VolumeRemoveFileRequest {
+  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  bytes path = 2;
+  bool recursive = 3;
+}
+
 message VolumeMount {
   string volume_id = 1;
   string mount_path = 2;
@@ -1660,4 +1666,5 @@ service ModalClient {
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);
   rpc VolumePutFiles(VolumePutFilesRequest) returns (google.protobuf.Empty);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
+  rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
 }

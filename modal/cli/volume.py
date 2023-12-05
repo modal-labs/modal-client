@@ -148,7 +148,7 @@ async def get(
         print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
 
 
-@volume_cli.command(name="list", help="List the names of all modal.Volume volumes.", hidden=True)
+@volume_cli.command(name="list", help="List the details of all modal.Volume volumes in an environment.")
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
