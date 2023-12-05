@@ -87,15 +87,15 @@ def test_config_store_user(servicer):
 
     os.remove(t.name)
 
+
 def test_config_env_override_arbitrary_env():
     """config.override_locally() replaces existing env var if not part of config."""
     key = "NVIDIA_AVAILABLE_DEVICES"
     value = "0,1"
-    
+
     # Place old value in memory.
     os.environ[key] = "none"
 
     # Expect value to be overwritten.
     config.override_locally(key, value)
     assert os.getenv(key) == value
-
