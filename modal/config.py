@@ -190,7 +190,13 @@ class Config:
         # Override setting in this process by overriding environment variable for the setting
         #
         # Does NOT write back to settings file etc.
-        os.environ["MODAL_" + key.upper()] = value
+        try:
+            self.get(key)
+            os.environ["MODAL_" + key.upper()] = value
+        except KeyError:
+            # Override env vars not available in config, e.g. NVIDIA_AVAILABLE_DEVICES.
+            # This is used for restoring env vars from a checkpoint.
+            os.environ[key.upper()] = value
 
     def __getitem__(self, key):
         return self.get(key)
