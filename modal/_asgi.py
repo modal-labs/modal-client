@@ -19,9 +19,8 @@ def asgi_app_wrapper(asgi_app, client: Client):
         function_call_id = current_function_call_id()
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
 
+        # TODO: Add support for the ASGI lifecycle spec.
         messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
-
-        # TODO: send disconnect at some point.
         messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
 
         async def fetch_inputs():
