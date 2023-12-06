@@ -7,15 +7,21 @@ from asgiref.wsgi import WsgiToAsgi
 from modal_utils.async_utils import TaskContext
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES
+from .functions import current_function_call_id
 
 
-def asgi_app_wrapper(asgi_app):
-    async def fn(scope, body=None):
+def asgi_app_wrapper(asgi_app, function_io_manager):
+    async def fn(scope):
+        function_call_id = current_function_call_id()
+        assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
+
+        # TODO: Add support for the ASGI lifecycle spec.
         messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
-
-        # TODO: send disconnect at some point.
         messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
-        await messages_to_app.put({"type": "http.request", "body": body})
+
+        async def fetch_inputs():
+            async for message in function_io_manager.get_data_in.aio(function_call_id):
+                await messages_to_app.put(message)
 
         async def send(msg):
             # Automatically split body chunks that are greater than the output size limit, to
@@ -47,31 +53,35 @@ def asgi_app_wrapper(asgi_app):
 
         # Run the ASGI app, while draining the send message queue at the same time,
         # and yielding results.
-        async with TaskContext(grace=1.0) as tc:
+        async with TaskContext() as tc:
             app_task = tc.create_task(asgi_app(scope, receive, send))
+            fetch_inputs_task = tc.create_task(fetch_inputs())
 
-            while True:
-                pop_task = tc.create_task(messages_from_app.get())
+            try:
+                while True:
+                    pop_task = tc.create_task(messages_from_app.get())
 
-                try:
-                    done, pending = await asyncio.wait([pop_task, app_task], return_when=asyncio.FIRST_COMPLETED)
-                except asyncio.CancelledError:
-                    break
+                    try:
+                        done, pending = await asyncio.wait([pop_task, app_task], return_when=asyncio.FIRST_COMPLETED)
+                    except asyncio.CancelledError:
+                        break
 
-                if pop_task in done:
-                    yield pop_task.result()
+                    if pop_task in done:
+                        yield pop_task.result()
 
-                if app_task in done:
-                    while not messages_from_app.empty():
-                        yield messages_from_app.get_nowait()
-                    break
+                    if app_task in done:
+                        while not messages_from_app.empty():
+                            yield messages_from_app.get_nowait()
+                        break
+            finally:
+                fetch_inputs_task.cancel()
 
     return fn
 
 
-def wsgi_app_wrapper(wsgi_app):
+def wsgi_app_wrapper(wsgi_app, function_io_manager):
     asgi_app = WsgiToAsgi(wsgi_app)
-    return asgi_app_wrapper(asgi_app)
+    return asgi_app_wrapper(asgi_app, function_io_manager)
 
 
 def webhook_asgi_app(fn: Callable, method: str):
