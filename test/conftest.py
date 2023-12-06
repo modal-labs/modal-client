@@ -49,6 +49,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     # TODO(erikbern): add more annotations
     container_inputs: list[api_pb2.FunctionGetInputsResponse]
     container_outputs: list[api_pb2.FunctionPutOutputsRequest]
+    fc_data_in: dict[str, asyncio.Queue[api_pb2.DataChunk]]
 
     def __init__(self, blob_host, blobs):
         self.app_state_history = defaultdict(list)
@@ -64,6 +65,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.slow_put_inputs = False
         self.container_inputs = []
         self.container_outputs = []
+        self.fc_data_in = {}
         self.queue = []
         self.deployed_apps = {
             client_mount_name(): "ap-x",
@@ -594,6 +596,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
         req = await stream.recv_message()
         self.cancelled_calls.append(req.function_call_id)
         await stream.send_message(Empty())
+
+    async def FunctionCallGetDataIn(self, stream):
+        req: api_pb2.FunctionCallGetDataRequest = await stream.recv_message()
+        if req.function_call_id not in self.fc_data_in:
+            raise GRPCError(Status.NOT_FOUND, f"No such function call: {req.function_call_id}")
+
+        while True:
+            chunk = await self.fc_data_in[req.function_call_id].get()
+            await stream.send_message(chunk)
 
     ### Image
 
