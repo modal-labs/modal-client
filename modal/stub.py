@@ -606,6 +606,7 @@ class _Stub:
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+        _checkpointing_enabled: bool = False,
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
@@ -632,6 +633,7 @@ class _Stub:
             interactive=interactive,
             keep_warm=keep_warm,
             cloud=cloud,
+            _checkpointing_enabled=_checkpointing_enabled,
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
