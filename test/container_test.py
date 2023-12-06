@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 
+import asyncio
 import base64
 import dataclasses
 import json
@@ -18,7 +19,7 @@ from grpclib.exceptions import GRPCError
 
 from modal import Client
 from modal._container_entrypoint import UserException, main
-from modal._serialization import deserialize, deserialize_data_format, serialize
+from modal._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from modal.exception import DeprecationError, InvalidError
 from modal.stub import _Stub
 from modal_proto import api_pb2
@@ -311,13 +312,21 @@ def _get_web_inputs(path="/"):
         "query_string": "arg=space",
         "http_version": "2",
     }
-    body = b""
-    return _get_inputs(((scope, body), {}))
+    return _get_inputs(((scope,), {}))
+
+
+def _put_web_body(servicer, body: bytes):
+    asgi = {"type": "http.request", "body": body, "more_body": False}
+    data = serialize_data_format(asgi, api_pb2.DATA_FORMAT_ASGI)
+
+    q = servicer.fc_data_in.setdefault("fc-123", asyncio.Queue())
+    q.put_nowait(api_pb2.DataChunk(data_format=api_pb2.DATA_FORMAT_ASGI, data=data, index=1))
 
 
 @skip_windows_unix_socket
 def test_webhook(unix_servicer, event_loop):
     inputs = _get_web_inputs()
+    _put_web_body(unix_servicer, b"")
     ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
@@ -357,6 +366,7 @@ def test_serialized_function(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_webhook_serialized(unix_servicer, event_loop):
     inputs = _get_web_inputs()
+    _put_web_body(unix_servicer, b"")
 
     # Store a serialized webhook function on the servicer
     def webhook(arg="world"):
@@ -392,6 +402,7 @@ def test_function_returning_generator(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_asgi(unix_servicer, event_loop):
     inputs = _get_web_inputs(path="/foo")
+    _put_web_body(unix_servicer, b"")
     ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
@@ -416,6 +427,7 @@ def test_asgi(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_webhook_streaming_sync(unix_servicer, event_loop):
     inputs = _get_web_inputs()
+    _put_web_body(unix_servicer, b"")
     ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
@@ -433,6 +445,7 @@ def test_webhook_streaming_sync(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_webhook_streaming_async(unix_servicer, event_loop):
     inputs = _get_web_inputs()
+    _put_web_body(unix_servicer, b"")
     ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
