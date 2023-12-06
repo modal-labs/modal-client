@@ -4,17 +4,13 @@ from typing import Any, Callable, Dict
 
 from asgiref.wsgi import WsgiToAsgi
 
-from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext
-from modal_utils.grpc_utils import unary_stream
 
-from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download
-from ._serialization import deserialize_data_format
-from .client import Client
+from ._blob_utils import MAX_OBJECT_SIZE_BYTES
 from .functions import current_function_call_id
 
 
-def asgi_app_wrapper(asgi_app, client: Client):
+def asgi_app_wrapper(asgi_app, function_io_manager):
     async def fn(scope):
         function_call_id = current_function_call_id()
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
@@ -24,22 +20,8 @@ def asgi_app_wrapper(asgi_app, client: Client):
         messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
 
         async def fetch_inputs():
-            last_index = 0
-            while True:
-                req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
-                try:
-                    async for chunk in unary_stream(client.stub.FunctionCallGetDataIn, req):
-                        if chunk.index <= last_index:
-                            continue
-                        last_index = chunk.index
-                        if chunk.data_blob_id:
-                            message_bytes = await blob_download(chunk.data_blob_id, client.stub)
-                        else:
-                            message_bytes = chunk.data
-                        message = deserialize_data_format(message_bytes, chunk.data_format, client)
-                        await messages_to_app.put(message)
-                except Exception:  # TODO: Catch specific exceptions versus transient errors.
-                    await asyncio.sleep(0.1)
+            async for message in function_io_manager.get_data_in.aio(function_call_id):
+                await messages_to_app.put(message)
 
         async def send(msg):
             # Automatically split body chunks that are greater than the output size limit, to
@@ -97,9 +79,9 @@ def asgi_app_wrapper(asgi_app, client: Client):
     return fn
 
 
-def wsgi_app_wrapper(wsgi_app, client: Client):
+def wsgi_app_wrapper(wsgi_app, function_io_manager):
     asgi_app = WsgiToAsgi(wsgi_app)
-    return asgi_app_wrapper(asgi_app, client)
+    return asgi_app_wrapper(asgi_app, function_io_manager)
 
 
 def webhook_asgi_app(fn: Callable, method: str):

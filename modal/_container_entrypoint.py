@@ -27,7 +27,7 @@ from modal_utils.async_utils import (
     synchronize_api,
     synchronizer,
 )
-from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
@@ -162,6 +162,25 @@ class _FunctionIOManager:
 
     def deserialize_data_format(self, data: bytes, data_format: int) -> Any:
         return deserialize_data_format(data, data_format, self._client)
+
+    async def get_data_in(self, function_call_id: str) -> AsyncIterator[Any]:
+        """Read from the `data_in` stream of a function call."""
+        last_index = 0
+        while True:
+            req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
+            try:
+                async for chunk in unary_stream(client.stub.FunctionCallGetDataIn, req):
+                    if chunk.index <= last_index:
+                        continue
+                    last_index = chunk.index
+                    if chunk.data_blob_id:
+                        message_bytes = await blob_download(chunk.data_blob_id, client.stub)
+                    else:
+                        message_bytes = chunk.data
+                    message = deserialize_data_format(message_bytes, chunk.data_format, client)
+                    yield message
+            except Exception:  # TODO: Catch specific exceptions versus transient errors.
+                await asyncio.sleep(0.1)
 
     @wrap()
     async def populate_input_blobs(self, item: api_pb2.FunctionInput):
@@ -578,7 +597,11 @@ class ImportedFunction:
 
 @wrap()
 def import_function(
-    function_def: api_pb2.Function, ser_cls, ser_fun, ser_params: Optional[bytes], client: Client
+    function_def: api_pb2.Function,
+    ser_cls,
+    ser_fun,
+    ser_params: Optional[bytes],
+    function_io_manager,
 ) -> ImportedFunction:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
@@ -663,21 +686,21 @@ def import_function(
     if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # function returns an asgi_app, that we can use as a callable.
         asgi_app = fun()
-        fun = asgi_app_wrapper(asgi_app, client)
+        fun = asgi_app_wrapper(asgi_app, function_io_manager)
         is_async = True
         is_generator = True
         data_format = api_pb2.DATA_FORMAT_ASGI
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
         # function returns an wsgi_app, that we can use as a callable.
         wsgi_app = fun()
-        fun = wsgi_app_wrapper(wsgi_app, client)
+        fun = wsgi_app_wrapper(wsgi_app, function_io_manager)
         is_async = True
         is_generator = True
         data_format = api_pb2.DATA_FORMAT_ASGI
     elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # function is webhook without an ASGI app. Create one for it.
         asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
-        fun = asgi_app_wrapper(asgi_app, client)
+        fun = asgi_app_wrapper(asgi_app, function_io_manager)
         is_async = True
         is_generator = True
         data_format = api_pb2.DATA_FORMAT_ASGI
@@ -718,7 +741,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # NOTE: detecting the stub causes all objects to be associated with the app and hydrated
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(
-                container_args.function_def, ser_cls, ser_fun, container_args.serialized_params, client
+                container_args.function_def, ser_cls, ser_fun, container_args.serialized_params, function_io_manager
             )
 
         # Hydrate all function dependencies
