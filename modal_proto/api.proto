@@ -248,13 +248,11 @@ message AppDeploySingleObjectResponse {
 message AppGetByDeploymentNameRequest {
   DeploymentNamespace namespace = 1;
   string name = 2;
-  reserved 3;
   string environment_name = 4;
 }
 
 message AppGetByDeploymentNameResponse {
   string app_id = 1;
-  string last_log_entry_id = 2; // Last log entry as a starting point for the client.
 }
 
 message AppGetLogsRequest {
