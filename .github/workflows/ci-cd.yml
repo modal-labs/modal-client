@@ -141,6 +141,9 @@ jobs:
         working-directory: alias-package
         run: python setup.py bdist_wheel
 
+      - name: Set the Modal environment
+        run: modal config set-environment main
+
       - name: Publish client mount
         env:
           MODAL_LOGLEVEL: DEBUG
