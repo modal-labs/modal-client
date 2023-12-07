@@ -11,15 +11,19 @@ from modal_utils.async_utils import synchronizer
 
 
 @synchronizer.create_blocking
-async def delete_environment(name: str):
-    client = await _Client.from_env()
-    stub = client.stub
-    await stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
+async def delete_environment(name: str, client: Optional[_Client] = None):
+    if client is None:
+        client = await _Client.from_env()
+    await client.stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
 
 
 @synchronizer.create_blocking
 async def update_environment(
-    current_name: str, *, new_name: Optional[str] = None, new_web_suffix: Optional[str] = None
+    current_name: str,
+    *,
+    new_name: Optional[str] = None,
+    new_web_suffix: Optional[str] = None,
+    client: Optional[_Client] = None
 ):
     if new_name is not None:
         if len(new_name) < 1:
@@ -32,23 +36,23 @@ async def update_environment(
     update_payload = api_pb2.EnvironmentUpdateRequest(
         current_name=current_name, name=new_name, web_suffix=new_web_suffix
     )
-    client = await _Client.from_env()
-    stub = client.stub
-    await stub.EnvironmentUpdate(update_payload)
+    if client is None:
+        client = await _Client.from_env()
+    await client.stub.EnvironmentUpdate(update_payload)
 
 
 @synchronizer.create_blocking
-async def create_environment(name: str):
-    client = await _Client.from_env()
-    stub = client.stub
-    await stub.EnvironmentCreate(api_pb2.EnvironmentCreateRequest(name=name))
+async def create_environment(name: str, client: Optional[_Client] = None):
+    if client is None:
+        client = await _Client.from_env()
+    await client.stub.EnvironmentCreate(api_pb2.EnvironmentCreateRequest(name=name))
 
 
 @synchronizer.create_blocking
-async def list_environments() -> List[api_pb2.EnvironmentListItem]:
-    client = await _Client.from_env()
-    stub = client.stub
-    resp = await stub.EnvironmentList(Empty())
+async def list_environments(client: Optional[_Client] = None) -> List[api_pb2.EnvironmentListItem]:
+    if client is None:
+        client = await _Client.from_env()
+    resp = await client.stub.EnvironmentList(Empty())
     return list(resp.items)
 
 
