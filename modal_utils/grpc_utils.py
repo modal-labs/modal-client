@@ -19,6 +19,7 @@ from typing import (
 )
 
 import grpclib.client
+import grpclib.config
 import grpclib.events
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -163,8 +164,13 @@ def create_channel(
         channel_cls = grpclib.client.Channel
 
     channel: grpclib.client.Channel
+    config = grpclib.config.Configuration(
+        http2_connection_window_size=64 * 1024 * 1024,  # 64 MiB
+        http2_stream_window_size=64 * 1024 * 1024,  # 64 MiB
+    )
+
     if o.scheme == "unix":
-        channel = channel_cls(path=o.path)  # probably pointless to use a pool ever
+        channel = channel_cls(path=o.path, config=config)  # probably pointless to use a pool ever
     elif o.scheme in ("http", "https"):
         target = o.netloc
         parts = target.split(":")
@@ -172,7 +178,7 @@ def create_channel(
         ssl = o.scheme.endswith("s")
         host = parts[0]
         port = int(parts[1]) if len(parts) == 2 else 443 if ssl else 80
-        channel = channel_cls(host, port, ssl=ssl)
+        channel = channel_cls(host, port, ssl=ssl, config=config)
     else:
         raise Exception(f"Unknown scheme: {o.scheme}")
 
