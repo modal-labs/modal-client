@@ -412,6 +412,26 @@ def test_volume_get(servicer, set_env_client):
             assert f.read() == file_contents
 
 
+def test_volume_rm(servicer, set_env_client):
+    vol_name = "my-test-vol"
+    _run(["volume", "create", vol_name])
+    file_path = b"test.txt"
+    file_contents = b"foo bar baz"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        upload_path = os.path.join(tmpdir, "upload.txt")
+        with open(upload_path, "wb") as f:
+            f.write(file_contents)
+            f.flush()
+        _run(["volume", "put", vol_name, upload_path, file_path.decode()])
+
+        _run(["volume", "get", vol_name, file_path.decode(), tmpdir])
+        with open(os.path.join(tmpdir, file_path.decode()), "rb") as f:
+            assert f.read() == file_contents
+
+        _run(["volume", "rm", vol_name, file_path.decode()])
+        _run(["volume", "get", vol_name, file_path.decode()], expected_exit_code=2, expected_stderr=None)
+
+
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
 @pytest.mark.usefixtures("set_env_client", "mock_shell_pty")
 def test_environment_flag(test_dir, servicer, command):

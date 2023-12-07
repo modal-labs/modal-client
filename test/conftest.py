@@ -810,11 +810,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeGetFile(self, stream):
         req = await stream.recv_message()
+        if req.path.decode("utf-8") not in self.volume_files[req.volume_id]:
+            raise GRPCError(Status.NOT_FOUND, "File not found")
         vol_file = self.volume_files[req.volume_id][req.path.decode("utf-8")]
         if vol_file.data_blob_id:
             await stream.send_message(api_pb2.VolumeGetFileResponse(data_blob_id=vol_file.data_blob_id))
         else:
             await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data))
+
+    async def VolumeRemoveFile(self, stream):
+        req = await stream.recv_message()
+        if req.path.decode("utf-8") not in self.volume_files[req.volume_id]:
+            raise GRPCError(Status.INVALID_ARGUMENT, "File not found")
+        del self.volume_files[req.volume_id][req.path.decode("utf-8")]
+        await stream.send_message(Empty())
 
     async def VolumeListFiles(self, stream):
         req = await stream.recv_message()
