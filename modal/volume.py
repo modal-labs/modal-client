@@ -197,6 +197,14 @@ class _Volume(_Object, type_prefix="vo"):
                 yield data
 
     @live_method
+    async def remove_file(self, path: Union[str, bytes], recursive: bool = False) -> None:
+        """Remove a file or directory from a volume."""
+        if isinstance(path, str):
+            path = path.encode("utf-8")
+        req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
+        await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+
+    @live_method
     async def _add_local_file(
         self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
     ):

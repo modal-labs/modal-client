@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.syntax import Syntax
 from rich.table import Table
-from typer import Argument, Typer
+from typer import Argument, Option, Typer
 
 import modal
 from modal._output import step_completed, step_progress
@@ -251,3 +251,23 @@ async def put(
         with Live(spinner, console=console):
             await vol._add_local_file(local_path, remote_path)
         console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
+
+
+@volume_cli.command(name="rm", help="Delete a file or directory from a volume.")
+@synchronizer.create_blocking
+async def rm(
+    volume_name: str,
+    remote_path: str,
+    recursive: bool = Option(False, "-r", "--recursive", help="Delete directory recursively"),
+    env: Optional[str] = ENV_OPTION,
+):
+    ensure_env(env)
+    volume = await _Volume.lookup(volume_name, environment_name=env)
+    if not isinstance(volume, _Volume):
+        raise UsageError("The specified app entity is not a modal.Volume")
+    try:
+        await volume.remove_file(remote_path, recursive=recursive)
+    except GRPCError as exc:
+        if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
+            raise UsageError(exc.message)
+        raise
