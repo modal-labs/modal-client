@@ -604,7 +604,15 @@ class _Image(_Object, type_prefix="im"):
         config = toml.load(pyproject_toml)
 
         dependencies = []
-        dependencies.extend(config["project"]["dependencies"])
+        if "project" not in config or "dependencies" not in config["project"]:
+            msg = (
+                "No [project.dependencies] section in pyproject.toml file. "
+                "If your pyproject.toml instead declares [tool.poetry.dependencies], use `Image.poetry_install_from_file()`. "
+                "See https://packaging.python.org/en/latest/guides/writing-pyproject-toml for further file format guidelines."
+            )
+            raise ValueError(msg)
+        else:
+            dependencies.extend(config["project"]["dependencies"])
         if optional_dependencies:
             optionals = config["project"]["optional-dependencies"]
             for dep_group_name in optional_dependencies:
