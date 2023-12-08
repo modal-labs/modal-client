@@ -37,7 +37,7 @@ async def test_roundtrip(servicer, client):
 @pytest.mark.asyncio
 async def test_asgi_roundtrip():
     rand = random.Random(42)
-    for _ in range(1000):
+    for _ in range(10000):
         msg = rand_pb(api_pb2.Asgi, rand)
         buf = msg.SerializeToString()
         asgi_obj = deserialize_data_format(buf, api_pb2.DATA_FORMAT_ASGI, None)

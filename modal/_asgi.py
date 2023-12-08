@@ -16,10 +16,11 @@ def asgi_app_wrapper(asgi_app, function_io_manager):
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
 
         # TODO: Add support for the ASGI lifecycle spec.
+        # TODO: Cancel an ASGI app call if the initial data message is not received within a short timeout.
         messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
         messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
 
-        async def fetch_inputs():
+        async def fetch_data_in():
             async for message in function_io_manager.get_data_in.aio(function_call_id):
                 await messages_to_app.put(message)
 
@@ -55,7 +56,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager):
         # and yielding results.
         async with TaskContext() as tc:
             app_task = tc.create_task(asgi_app(scope, receive, send))
-            fetch_inputs_task = tc.create_task(fetch_inputs())
+            fetch_data_in_task = tc.create_task(fetch_data_in())
 
             try:
                 while True:
@@ -74,7 +75,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager):
                             yield messages_from_app.get_nowait()
                         break
             finally:
-                fetch_inputs_task.cancel()
+                fetch_data_in_task.cancel()
 
     return fn
 
