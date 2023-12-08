@@ -242,7 +242,7 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
                 if asgi.websocket.HasField("client_host")
                 else {}
             ),
-            "subprotocols": asgi.websocket.subprotocols,
+            "subprotocols": list(asgi.websocket.subprotocols),
         }
     elif msg_type == "websocket_connect":
         return {"type": "websocket.connect"}
