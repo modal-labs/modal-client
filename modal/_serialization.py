@@ -78,14 +78,15 @@ def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
         return api_pb2.Asgi()
 
     msg_type = obj.get("type")
+
     if msg_type == "http":
         return api_pb2.Asgi(
             http=api_pb2.Asgi.Http(
-                http_version=obj["http_version"],
+                http_version=obj.get("http_version", "1.1"),
                 method=obj["method"],
-                scheme=obj.get("scheme"),
+                scheme=obj.get("scheme", "http"),
                 path=obj["path"],
-                query_string=obj["query_string"],
+                query_string=obj.get("query_string"),
                 headers=flatten_headers(obj["headers"]),
                 client_host=obj["client"][0] if obj.get("client") else None,
                 client_port=obj["client"][1] if obj.get("client") else None,
@@ -122,6 +123,59 @@ def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
         )
     elif msg_type == "http.disconnect":
         return api_pb2.Asgi(http_disconnect=api_pb2.Asgi.HttpDisconnect())
+
+    elif msg_type == "websocket":
+        return api_pb2.Asgi(
+            websocket=api_pb2.Asgi.Websocket(
+                http_version=obj.get("http_version", "1.1"),
+                scheme=obj.get("scheme", "ws"),
+                path=obj["path"],
+                query_string=obj.get("query_string"),
+                headers=flatten_headers(obj["headers"]),
+                client_host=obj["client"][0] if obj.get("client") else None,
+                client_port=obj["client"][1] if obj.get("client") else None,
+                subprotocols=obj.get("subprotocols"),
+            )
+        )
+    elif msg_type == "websocket.connect":
+        return api_pb2.Asgi(
+            websocket_connect=api_pb2.Asgi.WebsocketConnect(),
+        )
+    elif msg_type == "websocket.accept":
+        return api_pb2.Asgi(
+            websocket_accept=api_pb2.Asgi.WebsocketAccept(
+                subprotocol=obj.get("subprotocol"),
+                headers=flatten_headers(obj.get("headers", [])),
+            )
+        )
+    elif msg_type == "websocket.receive":
+        return api_pb2.Asgi(
+            websocket_receive=api_pb2.Asgi.WebsocketReceive(
+                bytes=obj.get("bytes"),
+                text=obj.get("text"),
+            )
+        )
+    elif msg_type == "websocket.send":
+        return api_pb2.Asgi(
+            websocket_send=api_pb2.Asgi.WebsocketSend(
+                bytes=obj.get("bytes"),
+                text=obj.get("text"),
+            )
+        )
+    elif msg_type == "websocket.disconnect":
+        return api_pb2.Asgi(
+            websocket_disconnect=api_pb2.Asgi.WebsocketDisconnect(
+                code=obj.get("code"),
+            )
+        )
+    elif msg_type == "websocket.close":
+        return api_pb2.Asgi(
+            websocket_close=api_pb2.Asgi.WebsocketClose(
+                code=obj.get("code"),
+                reason=obj.get("reason"),
+            )
+        )
+
     else:
         logger.debug("skipping serialization of unknown ASGI message type %r", msg_type)
         return api_pb2.Asgi()
@@ -132,6 +186,7 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
         return list(zip(obj[::2], obj[1::2]))
 
     msg_type = asgi.WhichOneof("type")
+
     if msg_type == "http":
         return {
             "type": "http",
@@ -173,6 +228,54 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
         }
     elif msg_type == "http_disconnect":
         return {"type": "http.disconnect"}
+
+    elif msg_type == "websocket":
+        return {
+            "type": "websocket",
+            "http_version": asgi.websocket.http_version,
+            "scheme": asgi.websocket.scheme,
+            "path": asgi.websocket.path,
+            "query_string": asgi.websocket.query_string,
+            "headers": unflatten_headers(asgi.websocket.headers),
+            **(
+                {"client": (asgi.websocket.client_host, asgi.websocket.client_port)}
+                if asgi.websocket.HasField("client_host")
+                else {}
+            ),
+            "subprotocols": list(asgi.websocket.subprotocols),
+        }
+    elif msg_type == "websocket_connect":
+        return {"type": "websocket.connect"}
+    elif msg_type == "websocket_accept":
+        return {
+            "type": "websocket.accept",
+            "subprotocol": asgi.websocket_accept.subprotocol if asgi.websocket_accept.HasField("subprotocol") else None,
+            "headers": unflatten_headers(asgi.websocket_accept.headers),
+        }
+    elif msg_type == "websocket_receive":
+        return {
+            "type": "websocket.receive",
+            "bytes": asgi.websocket_receive.bytes if asgi.websocket_receive.HasField("bytes") else None,
+            "text": asgi.websocket_receive.text if asgi.websocket_receive.HasField("text") else None,
+        }
+    elif msg_type == "websocket_send":
+        return {
+            "type": "websocket.send",
+            "bytes": asgi.websocket_send.bytes if asgi.websocket_send.HasField("bytes") else None,
+            "text": asgi.websocket_send.text if asgi.websocket_send.HasField("text") else None,
+        }
+    elif msg_type == "websocket_disconnect":
+        return {
+            "type": "websocket.disconnect",
+            "code": asgi.websocket_disconnect.code if asgi.websocket_disconnect.HasField("code") else 1005,
+        }
+    elif msg_type == "websocket_close":
+        return {
+            "type": "websocket.close",
+            "code": asgi.websocket_close.code if asgi.websocket_close.HasField("code") else 1000,
+            "reason": asgi.websocket_close.reason,
+        }
+
     else:
         assert msg_type is None
         return None

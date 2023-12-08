@@ -173,6 +173,55 @@ message Asgi {
   message HttpDisconnect {
   }
 
+  // Message of type "websocket" (connection scope)
+  message Websocket {
+    string http_version = 1; // We don't support RFC 8441 yet, so this will always be "1.1"
+    string scheme = 2;
+    string path = 3;
+    bytes query_string = 4;
+    repeated bytes headers = 5; // Flat list of alternating header names and values
+    optional string client_host = 6;
+    optional uint32 client_port = 7;
+    repeated string subprotocols = 8;
+  }
+
+  // Message of type "websocket.connect"
+  message WebsocketConnect {
+  }
+
+  // Message of type "websocket.accept"
+  message WebsocketAccept {
+    optional string subprotocol = 1;
+    repeated bytes headers = 2; // Flat list of alternating header names and values
+  }
+
+  // Message of type "websocket.receive"
+  message WebsocketReceive {
+    oneof content {
+      bytes bytes = 1;
+      string text = 2;
+    }
+  }
+
+  // Message of type "websocket.send"
+  message WebsocketSend {
+    oneof content {
+      bytes bytes = 1;
+      string text = 2;
+    }
+  }
+
+  // Message of type "websocket.disconnect"
+  message WebsocketDisconnect {
+    optional uint32 code = 1;
+  }
+
+  // Message of type "websocket.close"
+  message WebsocketClose {
+    optional uint32 code = 1;
+    string reason = 2;
+  }
+
   oneof type {
     Http http = 1;
     HttpRequest http_request = 2;
@@ -180,6 +229,14 @@ message Asgi {
     HttpResponseBody http_response_body = 4;
     HttpResponseTrailers http_response_trailers = 5;
     HttpDisconnect http_disconnect = 6;
+
+    Websocket websocket = 7;
+    WebsocketConnect websocket_connect = 8;
+    WebsocketAccept websocket_accept = 9;
+    WebsocketReceive websocket_receive = 10;
+    WebsocketSend websocket_send = 11;
+    WebsocketDisconnect websocket_disconnect = 12;
+    WebsocketClose websocket_close = 13;
   }
 }
 
