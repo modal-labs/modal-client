@@ -667,7 +667,7 @@ class _Image(_Object, type_prefix="im"):
 
         dockerfile_commands = [
             "FROM base",
-            "RUN python -m pip install poetry",
+            "RUN python -m pip install poetry~=1.7",
         ]
 
         if old_installer:
@@ -695,6 +695,7 @@ class _Image(_Object, type_prefix="im"):
 
         if only:
             install_cmd += f" --only {','.join(only)}"
+        install_cmd += " --compile"  # no .pyc compilation slows down cold-start.
 
         dockerfile_commands += [
             "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
