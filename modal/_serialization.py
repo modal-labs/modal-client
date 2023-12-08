@@ -267,12 +267,12 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
     elif msg_type == "websocket_disconnect":
         return {
             "type": "websocket.disconnect",
-            "code": asgi.websocket_disconnect.code if asgi.websocket_disconnect.HasField("code") else None,
+            "code": asgi.websocket_disconnect.code if asgi.websocket_disconnect.HasField("code") else 1005,
         }
     elif msg_type == "websocket_close":
         return {
             "type": "websocket.close",
-            "code": asgi.websocket_close.code if asgi.websocket_close.HasField("code") else None,
+            "code": asgi.websocket_close.code if asgi.websocket_close.HasField("code") else 1000,
             "reason": asgi.websocket_close.reason,
         }
 
