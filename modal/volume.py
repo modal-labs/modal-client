@@ -4,6 +4,8 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, List, Optional, Union
 
+from grpclib import GRPCError, Status
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import ConcurrencyPool, asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
@@ -189,7 +191,10 @@ class _Volume(_Object, type_prefix="vo"):
         if isinstance(path, str):
             path = path.encode("utf-8")
         req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
-        response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+        try:
+            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+        except GRPCError as exc:
+            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
         if response.WhichOneof("data_oneof") == "data":
             yield response.data
         else:

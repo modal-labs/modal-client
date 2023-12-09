@@ -4,6 +4,8 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, BinaryIO, List, Optional, Tuple, Union
 
+from grpclib import GRPCError, Status
+
 import modal
 from modal._location import parse_cloud_provider
 from modal_proto import api_pb2
@@ -183,7 +185,10 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     async def read_file(self, path: str) -> AsyncIterator[bytes]:
         """Read a file from the network file system"""
         req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self.object_id, path=path)
-        response = await retry_transient_errors(self._client.stub.SharedVolumeGetFile, req)
+        try:
+            response = await retry_transient_errors(self._client.stub.SharedVolumeGetFile, req)
+        except GRPCError as exc:
+            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
         if response.WhichOneof("data_oneof") == "data":
             yield response.data
         else:

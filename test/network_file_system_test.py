@@ -139,6 +139,15 @@ def test_redeploy(servicer, client):
     assert set(app1_ids) & set(app3_ids) == set()
 
 
+def test_read_file(client, tmp_path, servicer):
+    stub = modal.Stub()
+    stub.vol = modal.NetworkFileSystem.new()
+    with stub.run(client=client):
+        with pytest.raises(FileNotFoundError):
+            for _ in stub.vol.read_file("idontexist.txt"):
+                ...
+
+
 def test_write_file(client, tmp_path, servicer):
     stub = modal.Stub()
     stub.vol = modal.NetworkFileSystem.new()
