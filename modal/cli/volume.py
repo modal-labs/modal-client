@@ -140,9 +140,10 @@ async def get(
                 b += n
                 if n != len(chunk):
                     raise IOError(f"failed to write {len(chunk)} bytes from {remote_path} to {fp}")
+    except FileNotFoundError as exc:
+        raise UsageError(str(exc))
     except GRPCError as exc:
-        if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
-            raise UsageError(exc.message)
+        raise UsageError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
     if destination != PIPE_PATH:
         print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)

@@ -79,6 +79,10 @@ async def test_volume_get(servicer, client, tmp_path):
         data += chunk
     assert data == file_contents
 
+    with pytest.raises(FileNotFoundError):
+        for _ in vol.read_file("/abc/def/i-dont-exist-at-all"):
+            ...
+
 
 def test_volume_reload(client, servicer):
     stub = modal.Stub()
