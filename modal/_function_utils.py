@@ -7,7 +7,7 @@ import sysconfig
 import typing
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Dict, Optional, Type
+from typing import Callable, Dict, List, Optional, Type
 
 from modal_proto import api_pb2
 
@@ -15,6 +15,7 @@ from ._serialization import serialize
 from .config import config, logger
 from .exception import InvalidError
 from .mount import _Mount
+from .object import Object
 
 ROOT_DIR = PurePosixPath("/root")
 
@@ -297,3 +298,19 @@ class FunctionInfo:
 
     def is_nullary(self):
         return all(param.default is not param.empty for param in self.signature.parameters.values())
+
+
+def get_referred_objects(f: Callable) -> List[Object]:
+    """Takes a function and returns any Modal Objects in global scope that it refers to.
+
+    TODO: this does not yet support Object contained by another object,
+    e.g. a list of Objects in global scope.
+    """
+    ret: List[Object] = []
+    for obj in inspect.getclosurevars(f).globals.values():
+        if isinstance(obj, Object):
+            ret.append(obj)
+        elif callable(obj):
+            ret += get_referred_objects(obj)
+
+    return ret
