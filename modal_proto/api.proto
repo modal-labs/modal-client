@@ -28,6 +28,9 @@ enum AppState {
 
   // Same as stopped but prevented from being garbage collected
   APP_STATE_DISABLED = 7;
+
+  // App is detached and local client has disconnected.
+  APP_STATE_DETACHED_DISCONNECTED = 8;
 }
 
 enum ClientType {
