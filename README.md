@@ -10,7 +10,7 @@ of how to use the library.
 
 ## Installation
 
-This requires Python 3.7 or later. Install the package with:
+**This requires Python 3.7 – 3.11.** Install the package with:
 
 ```bash
 pip install modal
