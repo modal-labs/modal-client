@@ -2,7 +2,7 @@
 import asyncio
 import time
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, List, Optional, Union
+from typing import IO, AsyncIterator, List, Literal, Optional, Union, overload
 
 from grpclib import GRPCError, Status
 
@@ -173,8 +173,18 @@ class _Volume(_Object, type_prefix="vo"):
         """
         return [entry async for entry in self.iterdir(path)]
 
+    @overload
+    async def read_file(self, path: Union[str, bytes], output: Literal[None] = ...) -> AsyncIterator[bytes]:
+        ...
+
+    @overload
+    async def read_file(self, path: Union[str, bytes], output: IO[bytes]) -> None:
+        ...
+
     @live_method_gen
-    async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
+    async def read_file(
+        self, path: Union[str, bytes], output: Optional[IO[bytes]] = None
+    ) -> Union[AsyncIterator[bytes], None]:
         """
         Read a file from the modal.Volume.
 
