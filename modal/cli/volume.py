@@ -17,7 +17,7 @@ from rich.table import Table
 from typer import Argument, Option, Typer
 
 import modal
-from modal._output import OutputManager, step_completed, step_progress
+from modal._output import step_completed, step_progress
 from modal.cli._download import _glob_download
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
@@ -133,11 +133,8 @@ async def get(
             shutil.move(fp.name, destination)
 
     try:
-        path = remote_path.lstrip("/")
         with _destination_stream() as fp:
-            output_mgr = OutputManager(stdout=None, show_progress=True, status_spinner_text=f"Downloading {path}")
-            progress = destination != PIPE_PATH
-            await volume.read_file_into_fileobj(path, fileobj=fp, progress=progress, output_mgr=output_mgr)
+            await volume.read_file_into_fileobj(remote_path.lstrip("/"), fileobj=fp, progress=destination != PIPE_PATH)
     except FileNotFoundError as exc:
         raise UsageError(str(exc))
     except GRPCError as exc:
