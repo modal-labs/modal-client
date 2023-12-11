@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2023
 import asyncio
 import time
+from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, List, Optional, Union
+from typing import IO, AsyncIterator, List, Optional, Union
 
 from grpclib import GRPCError, Status
 
@@ -179,8 +180,7 @@ class _Volume(_Object, type_prefix="vo"):
         """
         return [entry async for entry in self.iterdir(path)]
 
-    @live_method_gen
-    async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
+    async def read_file(self, path: Union[str, bytes]) -> Union[AsyncIterator[bytes], None]:
         """
         Read a file from the modal.Volume.
 
@@ -203,9 +203,59 @@ class _Volume(_Object, type_prefix="vo"):
             raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
         if response.WhichOneof("data_oneof") == "data":
             yield response.data
+            return
         else:
             async for data in blob_iter(response.data_blob_id, self._client.stub):
                 yield data
+
+    @live_method
+    async def read_file_into_fileobj(self, path: Union[str, bytes], fileobj: IO[bytes], progress: bool = False) -> int:
+        """mdmd:hidden
+
+        Read volume file into file-like IO object, with support for progress display.
+        Used by modal CLI. In future will replace current generator implementation of `read_file` method.
+        """
+        if isinstance(path, str):
+            path = path.encode("utf-8")
+
+        if progress:
+            from ._output import download_progress_bar
+
+            progress_bar = download_progress_bar()
+            task_id = progress_bar.add_task("download", path=path.decode(), start=False)
+            progress_bar.console.log(f"Requesting {path.decode()}")
+        else:
+            progress_bar = nullcontext()
+            task_id = None
+
+        req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
+        try:
+            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+        except GRPCError as exc:
+            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
+        if response.WhichOneof("data_oneof") == "data":
+            n = fileobj.write(response.data)
+            if n != len(response.data):
+                raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
+            return len(response.data)
+
+        written = 0
+        if progress:
+            progress_bar.update(task_id, total=int(response.size))
+            progress_bar.start_task(task_id)
+        with progress_bar:
+            async for data in blob_iter(response.data_blob_id, self._client.stub):
+                n = fileobj.write(data)
+                if n != len(data):
+                    raise IOError(f"failed to write {len(data)} bytes to output. Wrote {n}.")
+                written += n
+                if progress:
+                    progress_bar.update(task_id, advance=n)
+            if written != response.size:
+                raise IOError(f"truncated read. expected to read {response.size} total but only read {written}")
+            if progress:
+                progress_bar.console.log(f"Wrote {written} bytes to '{path.decode()}'")
+        return written
 
     @live_method
     async def remove_file(self, path: Union[str, bytes], recursive: bool = False) -> None:
