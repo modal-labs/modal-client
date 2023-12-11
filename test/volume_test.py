@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import io
 import pytest
 from unittest import mock
 
@@ -78,6 +79,10 @@ async def test_volume_get(servicer, client, tmp_path):
     for chunk in vol.read_file(file_path):
         data += chunk
     assert data == file_contents
+
+    output = io.BytesIO()
+    vol.read_file_into_fileobj(file_path, output)
+    assert output.getvalue() == file_contents
 
     with pytest.raises(FileNotFoundError):
         for _ in vol.read_file("/abc/def/i-dont-exist-at-all"):

@@ -25,6 +25,7 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
+    TransferSpeedColumn,
 )
 from rich.spinner import Spinner
 from rich.text import Text
@@ -75,6 +76,25 @@ def step_completed(message: str, is_substep: bool = False) -> RenderableType:
 
     symbol = SUBSTEP_COMPLETED if is_substep else STEP_COMPLETED
     return f"{symbol} {message}"
+
+
+def download_progress_bar():
+    """
+    Returns a progress bar suitable for showing file download progress.
+    Requires passing a `path: str` data field for rendering.
+    """
+    return Progress(
+        TextColumn("[bold white]{task.fields[path]}", justify="right"),
+        BarColumn(bar_width=None),
+        "[progress.percentage]{task.percentage:>3.1f}%",
+        "•",
+        DownloadColumn(),
+        "•",
+        TransferSpeedColumn(),
+        "•",
+        TimeRemainingColumn(),
+        transient=True,
+    )
 
 
 class LineBufferedOutput(io.StringIO):
