@@ -139,7 +139,7 @@ class _Volume(_Object, type_prefix="vo"):
                 # Reload changes on successful commit.
                 await self._do_reload(lock=False)
             except GRPCError as exc:
-                raise RuntimeError(exc.message) if exc.status == Status.FAILED_PRECONDITION else exc
+                raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
 
     @live_method
     async def reload(self):
@@ -154,7 +154,7 @@ class _Volume(_Object, type_prefix="vo"):
         try:
             await self._do_reload()
         except GRPCError as exc:
-            raise RuntimeError(exc.message) if exc.status == Status.FAILED_PRECONDITION else exc
+            raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
 
     @live_method_gen
     async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
