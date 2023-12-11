@@ -143,6 +143,7 @@ class OutputManager:
     _task_states: dict[str, int]
     _task_progress_items: dict[tuple[str, int], TaskID]
     _current_render_group: Optional[Group]
+    _file_download_progress: Optional[Progress]
     _function_progress: Optional[Progress]
     _function_queueing_progress: Optional[Progress]
     _snapshot_progress: Optional[Progress]
@@ -159,6 +160,7 @@ class OutputManager:
         self._task_states = {}
         self._task_progress_items = {}
         self._current_render_group = None
+        self._file_download_progress = None
         self._function_progress = None
         self._function_queueing_progress = None
         self._snapshot_progress = None
@@ -185,6 +187,28 @@ class OutputManager:
 
     def enable_image_logs(self):
         self._show_image_logs = True
+
+    @property
+    def file_download_progress(self) -> Progress:
+        """Creates a `rich.Progress` instance with custom columns for file download progress,
+        and adds it to the current render group."""
+        if not self._file_download_progress:
+            self._file_download_progress = Progress(
+                TextColumn("[bold white]{task.fields[path]}", justify="right"),
+                BarColumn(bar_width=None),
+                "[progress.percentage]{task.percentage:>3.1f}%",
+                "•",
+                DownloadColumn(),
+                "•",
+                TransferSpeedColumn(),
+                "•",
+                TimeRemainingColumn(),
+                transient=True,
+                console=self._console,
+            )
+            if self._current_render_group:
+                self._current_render_group.renderables.append(Panel(self._file_download_progress, style="gray50"))
+        return self._file_download_progress
 
     @property
     def function_progress(self) -> Progress:
@@ -310,6 +334,21 @@ class OutputManager:
                 self.snapshot_progress.remove_task(progress_task_id)
         except KeyError:
             # Rich throws a KeyError if the task has already been removed.
+            pass
+
+    def update_file_download_progress(self, path: str, advance: int, total: Optional[int] = None) -> None:
+        task_key = (path, "file_download")
+        if task_key in self._task_progress_items:
+            progress_task_id = self._task_progress_items[task_key]
+        else:
+            progress_task_id = self.file_download_progress.add_task(f"[yellow]Downloading {path}", total=total)
+            self._task_progress_items[task_key] = progress_task_id
+            self.file_download_progress.start_task(progress_task_id)
+        if total is not None:
+            self.file_download_progress.update(progress_task_id, total=int(total))
+        try:
+            self.file_download_progress.update(progress_task_id, advance=advance)
+        except KeyError:
             pass
 
     def update_queueing_progress(

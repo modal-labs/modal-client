@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
 import time
-from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
 from typing import IO, AsyncIterator, List, Optional, Union
 
@@ -203,7 +202,9 @@ class _Volume(_Object, type_prefix="vo"):
                 yield data
 
     @live_method
-    async def read_file_into_fileobj(self, path: Union[str, bytes], fileobj: IO[bytes], progress: bool = False) -> int:
+    async def read_file_into_fileobj(
+        self, path: Union[str, bytes], fileobj: IO[bytes], progress: bool = False, output_mgr=None
+    ) -> int:
         """mdmd:hidden
 
         Read volume file into file-like IO object, with support for progress display.
@@ -212,15 +213,16 @@ class _Volume(_Object, type_prefix="vo"):
         if isinstance(path, str):
             path = path.encode("utf-8")
 
-        if progress:
-            from ._output import download_progress_bar
+        output_mgr.file_download_progress.console.log("Foo bar")
+        # if progress:
+        #     from ._output import download_progress_bar
 
-            progress_bar = download_progress_bar()
-            task_id = progress_bar.add_task("download", path=path.decode(), start=False)
-            progress_bar.console.log(f"Requesting {path.decode()}")
-        else:
-            progress_bar = nullcontext()
-            task_id = None
+        #     progress_bar = download_progress_bar()
+        #     task_id = progress_bar.add_task("download", path=path.decode(), start=False)
+        #     progress_bar.console.log(f"Requesting {path.decode()}")
+        # else:
+        #     progress_bar = nullcontext()
+        #     task_id = None
 
         req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
         try:
@@ -235,20 +237,24 @@ class _Volume(_Object, type_prefix="vo"):
 
         written = 0
         if progress:
-            progress_bar.update(task_id, total=int(response.size))
-            progress_bar.start_task(task_id)
-        with progress_bar:
-            async for data in blob_iter(response.data_blob_id, self._client.stub):
-                n = fileobj.write(data)
-                if n != len(data):
-                    raise IOError(f"failed to write {len(data)} bytes to output. Wrote {n}.")
-                written += n
-                if progress:
-                    progress_bar.update(task_id, advance=n)
-            if written != response.size:
-                raise IOError(f"truncated read. expected to read {response.size} total but only read {written}")
+            # progress_bar.update(task_id, total=int(response.size))
+            # progress_bar.start_task(task_id)
+            output_mgr.update_file_download_progress(path, advance=0, total=response.size)
+        # with progress_bar:
+        async for data in blob_iter(response.data_blob_id, self._client.stub):
+            n = fileobj.write(data)
+            if n != len(data):
+                raise IOError(f"failed to write {len(data)} bytes to output. Wrote {n}.")
+            written += n
             if progress:
-                progress_bar.console.log(f"Wrote {written} bytes to '{path.decode()}'")
+                # progress_bar.update(task_id, advance=n)
+                output_mgr.update_file_download_progress(path, advance=n)
+        if written != response.size:
+            raise IOError(f"truncated read. expected to read {response.size} total but only read {written}")
+        if progress:
+            ...
+            # progress_bar.console.log(f"Wrote {written} bytes to '{path.decode()}'")
+            output_mgr.file_download_progress.console.log(f"Wrote {written} bytes to '{path.decode()}'")
         return written
 
     @live_method
