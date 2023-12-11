@@ -647,7 +647,7 @@ def test_call_unhydrated_function():
         foo.remote(123)
 
 
-def test_deps(client, servicer):
+def test_deps_explicit(client, servicer):
     stub = Stub()
 
     image = Image.debian_slim()
@@ -661,3 +661,22 @@ def test_deps(client, servicer):
 
     dep_object_ids = set(d.object_id for d in f.object_dependencies)
     assert dep_object_ids == set([image.object_id, nfs_1.object_id, nfs_2.object_id])
+
+
+nfs = NetworkFileSystem.new()
+
+
+def dummy_closurevars():
+    nfs.listdir("/")
+
+
+def test_deps_closurevars(client, servicer):
+    stub = Stub()
+
+    image = Image.debian_slim()
+    modal_f = stub.function(image=image)(dummy_closurevars)
+
+    with stub.run(client=client):
+        f = servicer.app_functions[modal_f.object_id]
+
+    assert set(d.object_id for d in f.object_dependencies) == set([nfs.object_id, image.object_id])
