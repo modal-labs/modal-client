@@ -6,6 +6,9 @@ import "modal_proto/options.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/wrappers.proto";
 
+
+// NOTE: make sure to update the frontend if we add a new state here
+// https://github.com/modal-labs/modal/blob/main/frontend/src/routes/(dashboard)/%5B%5Bworkspace%5D%5D/apps/+page.svelte#L95
 enum AppState {
   APP_STATE_UNSPECIFIED = 0;
 
