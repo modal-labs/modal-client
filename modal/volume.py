@@ -133,10 +133,13 @@ class _Volume(_Object, type_prefix="vo"):
         """
         async with self._lock:
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
-            # TODO(gongy): only apply indefinite retries on 504 status.
-            _ = await retry_transient_errors(self._client.stub.VolumeCommit, req, max_retries=90)
-            # Reload changes on successful commit.
-            await self._do_reload(lock=False)
+            try:
+                # TODO(gongy): only apply indefinite retries on 504 status.
+                _ = await retry_transient_errors(self._client.stub.VolumeCommit, req, max_retries=90)
+                # Reload changes on successful commit.
+                await self._do_reload(lock=False)
+            except GRPCError as exc:
+                raise RuntimeError(exc.message) if exc.status == Status.FAILED_PRECONDITION else exc
 
     @live_method
     async def reload(self):
@@ -148,7 +151,10 @@ class _Volume(_Object, type_prefix="vo"):
 
         Reloading will fail if there are open files for the volume.
         """
-        await self._do_reload()
+        try:
+            await self._do_reload()
+        except GRPCError as exc:
+            raise RuntimeError(exc.message) if exc.status == Status.FAILED_PRECONDITION else exc
 
     @live_method_gen
     async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
