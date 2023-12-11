@@ -132,21 +132,13 @@ async def get(
                 yield fp
             shutil.move(fp.name, destination)
 
-    b = 0
     try:
         with _destination_stream() as fp:
-            async for chunk in volume.read_file(remote_path.lstrip("/")):
-                n = fp.write(chunk)
-                b += n
-                if n != len(chunk):
-                    raise IOError(f"failed to write {len(chunk)} bytes from {remote_path} to {fp}")
+            await volume.read_file_into_fileobj(remote_path.lstrip("/"), fileobj=fp, progress=destination != PIPE_PATH)
     except FileNotFoundError as exc:
         raise UsageError(str(exc))
     except GRPCError as exc:
         raise UsageError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
-
-    if destination != PIPE_PATH:
-        print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
 
 
 @volume_cli.command(name="list", help="List the details of all modal.Volume volumes in an environment.")
