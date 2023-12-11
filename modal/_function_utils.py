@@ -306,9 +306,15 @@ def get_referred_objects(f: Callable) -> List[Object]:
     TODO: this does not yet support Object contained by another object,
     e.g. a list of Objects in global scope.
     """
+    from .cls import Cls
+    from .functions import Function
+
     ret: List[Object] = []
     for obj in inspect.getclosurevars(f).globals.values():
-        if isinstance(obj, Object):
+        if isinstance(obj, (Function, Cls)):
+            # These are always attached to stubs, so we shouldn't do anything
+            pass
+        elif isinstance(obj, Object):
             ret.append(obj)
         elif inspect.isfunction(obj):
             ret += get_referred_objects(obj)

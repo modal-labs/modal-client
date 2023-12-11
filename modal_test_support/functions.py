@@ -231,6 +231,6 @@ other_volume = Volume.new()
 @stub.function(image=image, volumes={"/tmp/xyz": volume})
 def check_dep_hydration(x):
     assert image.is_hydrated
-    assert not other_image.is_hydrated
+    assert other_image.is_hydrated
     assert volume.is_hydrated
-    assert not other_volume.is_hydrated
+    assert other_volume.is_hydrated
