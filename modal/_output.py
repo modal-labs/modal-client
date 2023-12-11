@@ -78,7 +78,7 @@ def step_completed(message: str, is_substep: bool = False) -> RenderableType:
     return f"{symbol} {message}"
 
 
-def download_progress_bar():
+def download_progress_bar() -> Progress:
     """
     Returns a progress bar suitable for showing file download progress.
     Requires passing a `path: str` data field for rendering.
