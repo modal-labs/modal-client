@@ -310,7 +310,7 @@ def get_referred_objects(f: Callable) -> List[Object]:
     for obj in inspect.getclosurevars(f).globals.values():
         if isinstance(obj, Object):
             ret.append(obj)
-        elif callable(obj):
+        elif inspect.isfunction(obj):
             ret += get_referred_objects(obj)
 
     return ret
