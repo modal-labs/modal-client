@@ -26,4 +26,12 @@ def test_referred_objects():
 
 def test_referred_objects_recursive():
     objs: List[Object] = get_referred_objects(f2)
-    assert objs == [q1, q2]
+    assert set(objs) == set([q1, q2])
+
+
+def recursive():
+    recursive()
+
+
+def test_recursive():
+    get_referred_objects(recursive)

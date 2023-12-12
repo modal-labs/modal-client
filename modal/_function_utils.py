@@ -5,9 +5,10 @@ import site
 import sys
 import sysconfig
 import typing
+from collections import deque
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Callable, Dict, List, Optional, Type
+from typing import Callable, Dict, List, Optional, Set, Type
 
 from modal_proto import api_pb2
 
@@ -310,13 +311,19 @@ def get_referred_objects(f: Callable) -> List[Object]:
     from .functions import Function
 
     ret: List[Object] = []
-    for obj in inspect.getclosurevars(f).globals.values():
+    obj_queue: deque[Callable] = deque([f])
+    objs_seen: Set[Callable] = set([f])
+    while obj_queue:
+        obj = obj_queue.popleft()
         if isinstance(obj, (Function, Cls)):
             # These are always attached to stubs, so we shouldn't do anything
             pass
         elif isinstance(obj, Object):
             ret.append(obj)
         elif inspect.isfunction(obj):
-            ret += get_referred_objects(obj)
+            for dep_obj in inspect.getclosurevars(obj).globals.values():
+                if dep_obj not in objs_seen:
+                    objs_seen.add(dep_obj)
+                    obj_queue.append(dep_obj)
 
     return ret
