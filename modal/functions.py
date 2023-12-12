@@ -47,7 +47,7 @@ from ._blob_utils import (
     blob_download,
     blob_upload,
 )
-from ._function_utils import FunctionInfo, is_async
+from ._function_utils import FunctionInfo, get_referred_objects, is_async
 from ._location import parse_cloud_provider
 from ._mount_utils import validate_mount_points
 from ._output import OutputManager
@@ -68,7 +68,7 @@ from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import _Object, live_method, live_method_gen
+from .object import Object, _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
@@ -679,6 +679,12 @@ class _Function(_Object, type_prefix="fu"):
                 deps.append(nfs)
             for _, vol in validated_volumes:
                 deps.append(vol)
+
+            # Add implicit dependencies from the function's code
+            objs: list[Object] = get_referred_objects(info.raw_f)
+            _objs: list[_Object] = synchronizer._translate_in(objs)
+            deps += _objs
+
             return deps
 
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):

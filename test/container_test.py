@@ -851,5 +851,10 @@ def test_volume_commit_on_exit_doesnt_fail_container(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_function_dep_hydration(unix_servicer):
     deploy_stub_externally(unix_servicer, "modal_test_support.functions", "stub")
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "check_dep_hydration", deps=["im-1", "vo-1"])
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "check_dep_hydration",
+        deps=["im-1", "vo-1", "im-1", "im-2", "vo-1", "vo-2"],
+    )
     assert _unwrap_scalar(ret) is None
