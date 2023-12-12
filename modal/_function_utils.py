@@ -5,9 +5,10 @@ import site
 import sys
 import sysconfig
 import typing
+from collections import deque
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Dict, Optional, Type
+from typing import Callable, Dict, List, Optional, Set, Type
 
 from modal_proto import api_pb2
 
@@ -15,6 +16,7 @@ from ._serialization import serialize
 from .config import config, logger
 from .exception import InvalidError
 from .mount import _Mount
+from .object import Object
 
 ROOT_DIR = PurePosixPath("/root")
 
@@ -297,3 +299,31 @@ class FunctionInfo:
 
     def is_nullary(self):
         return all(param.default is not param.empty for param in self.signature.parameters.values())
+
+
+def get_referred_objects(f: Callable) -> List[Object]:
+    """Takes a function and returns any Modal Objects in global scope that it refers to.
+
+    TODO: this does not yet support Object contained by another object,
+    e.g. a list of Objects in global scope.
+    """
+    from .cls import Cls
+    from .functions import Function
+
+    ret: List[Object] = []
+    obj_queue: deque[Callable] = deque([f])
+    objs_seen: Set[Callable] = set([f])
+    while obj_queue:
+        obj = obj_queue.popleft()
+        if isinstance(obj, (Function, Cls)):
+            # These are always attached to stubs, so we shouldn't do anything
+            pass
+        elif isinstance(obj, Object):
+            ret.append(obj)
+        elif inspect.isfunction(obj):
+            for dep_obj in inspect.getclosurevars(obj).globals.values():
+                if dep_obj not in objs_seen:
+                    objs_seen.add(dep_obj)
+                    obj_queue.append(dep_obj)
+
+    return ret
