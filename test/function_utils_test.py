@@ -35,3 +35,15 @@ def recursive():
 
 def test_recursive():
     get_referred_objects(recursive)
+
+
+l = [q1, q2]
+
+
+def refers_list():
+    return len(l)
+
+
+def test_refers_list():
+    objs: List[Object] = get_referred_objects(refers_list)
+    assert objs == []  # This may return [q1, q2] in the future
