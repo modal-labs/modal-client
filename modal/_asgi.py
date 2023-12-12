@@ -18,7 +18,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager):
         # TODO: Add support for the ASGI lifecycle spec.
         # TODO: Cancel an ASGI app call if the initial data message is not received within a short timeout.
         messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
-        messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
+        messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(32)
 
         async def fetch_data_in():
             async for message in function_io_manager.get_data_in.aio(function_call_id):
