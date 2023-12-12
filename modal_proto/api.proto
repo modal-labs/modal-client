@@ -52,7 +52,7 @@ message DataChunk {
     bytes data = 2;
     string data_blob_id = 3;
   }
-  uint32 index = 4; // Index of this data chunk in the stream.
+  uint64 index = 4; // Index of this data chunk in the stream.
 }
 
 message FunctionCallPutDataRequest {
