@@ -312,7 +312,7 @@ def get_referred_objects(f: Callable) -> List[Object]:
 
     ret: List[Object] = []
     obj_queue: deque[Callable] = deque([f])
-    objs_seen: Set[Callable] = set([f])
+    objs_seen: Set[int] = set([id(f)])
     while obj_queue:
         obj = obj_queue.popleft()
         if isinstance(obj, (Function, Cls)):
@@ -322,8 +322,8 @@ def get_referred_objects(f: Callable) -> List[Object]:
             ret.append(obj)
         elif inspect.isfunction(obj):
             for dep_obj in inspect.getclosurevars(obj).globals.values():
-                if dep_obj not in objs_seen:
-                    objs_seen.add(dep_obj)
+                if id(dep_obj) not in objs_seen:
+                    objs_seen.add(id(dep_obj))
                     obj_queue.append(dep_obj)
 
     return ret
