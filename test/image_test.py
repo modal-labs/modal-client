@@ -8,7 +8,7 @@ from typing import List
 from unittest import mock
 
 from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu, method
-from modal.exception import InvalidError, NotFoundError
+from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
 
@@ -426,9 +426,8 @@ def test_image_gpu(client, servicer):
         layers = get_image_layers(stub["image"].object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_UNSPECIFIED
 
-    # TODO(erikbern): reenable this warning when we actually support different GPU types
-    # with pytest.warns(DeprecationError):
-    stub = Stub(image=Image.debian_slim().run_commands("echo 1", gpu=True))
+    with pytest.warns(DeprecationError):
+        stub = Stub(image=Image.debian_slim().run_commands("echo 1", gpu=True))
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_ANY
