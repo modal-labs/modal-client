@@ -148,6 +148,12 @@ class _Stub:
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
 
+        if indexed_objects:
+            deprecation_warning(
+                date(2023, 12, 13),
+                "Passing **kwargs to a stub is deprecated. In most cases, you can just define the objects in global scope.",
+            )
+
         for k, v in indexed_objects.items():
             self._validate_blueprint_value(k, v)
 
