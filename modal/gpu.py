@@ -5,7 +5,7 @@ from typing import Optional, Union
 
 from modal_proto import api_pb2
 
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError, deprecation_error, deprecation_warning
 
 
 @dataclass
@@ -175,6 +175,11 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
         if raise_on_true:
             deprecation_error(
                 date(2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
+            )
+        else:
+            # We didn't support targeting a GPU type for run_function until 2023-12-12
+            deprecation_warning(
+                date(2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
             )
         return Any()
     elif value is None or value is False:
