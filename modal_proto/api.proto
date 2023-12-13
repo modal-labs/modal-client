@@ -679,6 +679,11 @@ message ObjectDependency {
   string object_id = 1;
 }
 
+message CheckpointInfo {
+  string checksum = 1;
+  CheckpointStatus status = 2;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -755,11 +760,6 @@ message Function {
 
   bool checkpointing_enabled = 41;
 
-  message CheckpointInfo {
-    string checksum = 1;
-    CheckpointStatus status = 2;
-    AppState app_state = 3;
-  }
   CheckpointInfo checkpoint = 42;
   repeated ObjectDependency object_dependencies = 43;
 }
