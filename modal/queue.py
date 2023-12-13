@@ -5,6 +5,8 @@ import warnings
 from datetime import date
 from typing import Any, List, Optional
 
+from grpclib import GRPCError, Status
+
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
@@ -152,7 +154,7 @@ class _Queue(_Object, type_prefix="qu"):
         If there are fewer than `n_values` items in the queue, return all of them.
 
         If `block` is `True` (the default) and the queue is empty, `get` will wait indefinitely for
-        at least 1 object to be present, or until `timeout` if specified. Raises a native `queue.Empty`
+        at least 1 object to be present, or until `timeout` if specified. Raises the stdlib's `queue.Empty`
         exception if the `timeout` is reached.
 
         If `block` is `False`, `get` returns `None` immediately if the queue is empty. The `timeout` is
@@ -167,19 +169,63 @@ class _Queue(_Object, type_prefix="qu"):
             return await self._get_nonblocking(n_values)
 
     @live_method
-    async def put(self, v: Any) -> None:
-        """Add an object to the end of the queue."""
-        await self.put_many([v])
+    async def put(self, v: Any, block: bool = True, timeout: Optional[float] = None) -> None:
+        """Add an object to the end of the queue.
+
+        If `block` is `True` and the queue is full, this method will retry indefinitely or
+        until `timeout` if specified. Raises the stdlib's `queue.Full` exception if the `timeout` is reached.
+        If blocking it is not recommended to omit the `timeout`, as the operation could wait indefinitely.
+
+        If `block` is `False`, this method raises `queue.Full` immediately if the queue is full. The `timeout` is
+        ignored in this case."""
+        await self.put_many([v], block, timeout)
 
     @live_method
-    async def put_many(self, vs: List[Any]) -> None:
-        """Add several objects to the end of the queue."""
+    async def put_many(self, vs: List[Any], block: bool = True, timeout: Optional[float] = None) -> None:
+        """Add several objects to the end of the queue.
+
+        If `block` is `True` and the queue is full, this method will retry indefinitely or
+        until `timeout` if specified. Raises the stdlib's `queue.Full` exception if the `timeout` is reached.
+        If blocking it is not recommended to omit the `timeout`, as the operation could wait indefinitely.
+
+        If `block` is `False`, this method raises `queue.Full` immediately if the queue is full. The `timeout` is
+        ignored in this case."""
+        if block:
+            await self._put_many_blocking(vs, timeout)
+        else:
+            if timeout is not None:
+                warnings.warn("`timeout` argument is ignored for non-blocking put.")
+            await self._put_many_nonblocking(vs)
+
+    async def _put_many_blocking(self, vs: List[Any], timeout: Optional[float] = None):
+        vs_encoded = [serialize(v) for v in vs]
+
+        request = api_pb2.QueuePutRequest(
+            queue_id=self.object_id,
+            values=vs_encoded,
+        )
+        try:
+            await retry_transient_errors(
+                self._client.stub.QueuePut,
+                request,
+                # A full queue will return this status.
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                max_delay=30.0,
+                total_timeout=timeout,
+            )
+        except GRPCError as exc:
+            raise queue.Full(str(exc)) if exc.status == Status.RESOURCE_EXHAUSTED else exc
+
+    async def _put_many_nonblocking(self, vs: List[Any]):
         vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
             values=vs_encoded,
         )
-        await retry_transient_errors(self._client.stub.QueuePut, request)
+        try:
+            await retry_transient_errors(self._client.stub.QueuePut, request)
+        except GRPCError as exc:
+            raise queue.Full(exc.message) if exc.status == Status.RESOURCE_EXHAUSTED else exc
 
     @live_method
     async def len(self) -> int:
