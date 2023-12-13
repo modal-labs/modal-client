@@ -758,6 +758,7 @@ message Function {
   message CheckpointInfo {
     string checksum = 1;
     CheckpointStatus status = 2;
+    AppState app_state = 3;
   }
   CheckpointInfo checkpoint = 42;
   repeated ObjectDependency object_dependencies = 43;
