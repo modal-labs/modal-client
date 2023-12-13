@@ -16,12 +16,24 @@ def asgi_app_wrapper(asgi_app, function_io_manager):
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
 
         # TODO: Add support for the ASGI lifecycle spec.
-        # TODO: Cancel an ASGI app call if the initial data message is not received within a short timeout.
         messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
         messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
 
         async def fetch_data_in():
-            async for message in function_io_manager.get_data_in.aio(function_call_id):
+            # Cancel an ASGI app call if the initial message is not received within a short timeout.
+            #
+            # This initial message, "http.request" or "websocket.connect", should be sent
+            # immediately after starting the ASGI app's function call. If it is not received, that
+            # indicates a request cancellation or other abnormal circumstance.
+            message_gen = function_io_manager.get_data_in.aio(function_call_id)
+            try:
+                first_message = await asyncio.wait_for(message_gen.__anext__(), 5.0)
+            except asyncio.TimeoutError:
+                await messages_to_app.put({"type": "http.disconnect"})
+                return
+
+            await messages_to_app.put(first_message)
+            async for message in message_gen:
                 await messages_to_app.put(message)
 
         async def send(msg):
