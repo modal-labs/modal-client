@@ -107,7 +107,7 @@ class _Stub:
 
     _name: Optional[str]
     _description: Optional[str]
-    _blueprint: Dict[str, _Object]
+    _indexed_objects: Dict[str, _Object]
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
@@ -125,11 +125,11 @@ class _Stub:
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
-        **blueprint: _Object,  # any Modal Object dependencies (Dict, Queue, etc.)
+        **indexed_objects: _Object,  # any Modal Object dependencies (Dict, Queue, etc.)
     ) -> None:
         """Construct a new app stub, optionally with default image, mounts, secrets
 
-        Any "blueprint" objects are loaded as part of running or deploying the app,
+        Any "indexed_objects" objects are loaded as part of running or deploying the app,
         and are accessible by name on the running container app, e.g.:
         ```python
         stub = modal.Stub(key_value_store=modal.Dict.new())
@@ -148,12 +148,12 @@ class _Stub:
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
 
-        for k, v in blueprint.items():
+        for k, v in indexed_objects.items():
             self._validate_blueprint_value(k, v)
 
-        self._blueprint = blueprint
+        self._indexed_objects = indexed_objects
         if image is not None:
-            self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
+            self._indexed_objects["image"] = image  # backward compatibility since "image" used to be on the blueprint
 
         self._function_mounts = {}
         self._mounts = mounts
@@ -213,11 +213,11 @@ class _Stub:
             if self._container_app._has_object(tag):
                 self._container_app._hydrate_object(obj, tag)
 
-        self._blueprint[tag] = obj
+        self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
         # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
-        return self._blueprint[tag]
+        return self._indexed_objects[tag]
 
     def __setitem__(self, tag: str, obj: _Object):
         self._validate_blueprint_value(tag, obj)
@@ -230,11 +230,11 @@ class _Stub:
             # Hacky way to avoid certain issues, e.g. pickle will try to look this up
             raise AttributeError(f"Stub has no member {tag}")
         # Return a reference to an object that will be created in the future
-        return self._blueprint[tag]
+        return self._indexed_objects[tag]
 
     def __setattr__(self, tag: str, obj: _Object):
         # Note that only attributes defined in __annotations__ are set on the object itself,
-        # everything else is registered on the blueprint
+        # everything else is registered on the indexed_objects
         if tag in self.__annotations__:
             object.__setattr__(self, tag, obj)
         else:
@@ -245,15 +245,15 @@ class _Stub:
     def image(self) -> _Image:
         # Exists to get the type inference working for `stub.image`
         # Will also keep this one after we remove [get/set][item/attr]
-        return self._blueprint["image"]
+        return self._indexed_objects["image"]
 
     def get_objects(self) -> List[Tuple[str, _Object]]:
         """Used by the container app to initialize objects."""
-        return list(self._blueprint.items())
+        return list(self._indexed_objects.items())
 
     def _uncreate_all_objects(self):
         # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
-        for obj in self._blueprint.values():
+        for obj in self._indexed_objects.values():
             obj._unhydrate()
 
     @typechecked
@@ -299,14 +299,14 @@ class _Stub:
             yield self
 
     def _get_default_image(self):
-        if "image" in self._blueprint:
-            return self._blueprint["image"]
+        if "image" in self._indexed_objects:
+            return self._indexed_objects["image"]
         else:
             return _default_image
 
     @property
     def _pty_input_stream(self):
-        return self._blueprint.get("_pty_input_stream", None)
+        return self._indexed_objects.get("_pty_input_stream", None)
 
     def _add_pty_input_stream(self):
         if self._pty_input_stream:
@@ -314,7 +314,7 @@ class _Stub:
                 "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
             )
         else:
-            self._blueprint["_pty_input_stream"] = _Queue.new()
+            self._indexed_objects["_pty_input_stream"] = _Queue.new()
 
     def _get_watch_mounts(self):
         all_mounts = [
@@ -326,8 +326,8 @@ class _Stub:
         return [m for m in all_mounts if m.is_local()]
 
     def _add_function(self, function: _Function):
-        if function.tag in self._blueprint:
-            old_function = self._blueprint[function.tag]
+        if function.tag in self._indexed_objects:
+            old_function = self._indexed_objects[function.tag]
             if isinstance(old_function, _Function):
                 if not is_notebook():
                     logger.warning(
@@ -343,12 +343,12 @@ class _Stub:
     @property
     def registered_functions(self) -> Dict[str, _Function]:
         """All modal.Function objects registered on the stub."""
-        return {tag: obj for tag, obj in self._blueprint.items() if isinstance(obj, _Function)}
+        return {tag: obj for tag, obj in self._indexed_objects.items() if isinstance(obj, _Function)}
 
     @property
     def registered_classes(self) -> Dict[str, _Function]:
         """All modal.Cls objects registered on the stub."""
-        return {tag: obj for tag, obj in self._blueprint.items() if isinstance(obj, _Cls)}
+        return {tag: obj for tag, obj in self._indexed_objects.items() if isinstance(obj, _Cls)}
 
     @property
     def registered_entrypoints(self) -> Dict[str, _LocalEntrypoint]:
