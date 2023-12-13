@@ -1354,15 +1354,6 @@ class _Image(_Object, type_prefix="im"):
 
     # Live handle methods
 
-    def _is_inside(self) -> bool:
-        """Returns whether this container is active or not.
-
-        This is not meant to be called directly: see app.is_inside(image)
-        """
-        env_image_id = config.get("image_id")
-        logger.debug(f"Image._is_inside(): env_image_id={env_image_id} self.object_id={self.object_id}")
-        return self.object_id == env_image_id
-
     @contextlib.contextmanager
     def run_inside(self):
         env_image_id = config.get("image_id")
