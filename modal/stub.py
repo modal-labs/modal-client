@@ -257,7 +257,7 @@ class _Stub:
             obj._unhydrate()
 
     @typechecked
-    def is_inside(self, image: Optional[_Image] = None) -> bool:
+    def is_inside(self, image: Optional[_Image] = None):
         """Deprecated: use `Image.run_inside()` instead! Usage:
         ```
         my_image = modal.Image.debian_slim().pip_install("torch")
@@ -265,34 +265,7 @@ class _Stub:
             import torch
         ```
         """
-        deprecation_warning(date(2023, 11, 8), _Stub.is_inside.__doc__)
-
-        if self._container_app is None:
-            return False
-        elif self._container_app != _container_app:
-            return False
-        elif image is None:
-            # stub.app is set, which means we're inside this stub (no specific image)
-            return True
-
-        # We need to look up the image handle from the image provider
-        assert isinstance(image, _Image)
-        for tag, provider in self._blueprint.items():
-            if provider == image:
-                break
-        else:
-            raise InvalidError(
-                inspect.cleandoc(
-                    """`is_inside` only works for an image associated with an App. For instance:
-                    stub.image = Image.debian_slim()
-                    if stub.is_inside(stub.image):
-                        print("I'm inside!")
-                    """
-                )
-            )
-
-        assert isinstance(image, _Image)
-        return image._is_inside()
+        deprecation_error(date(2023, 11, 8), _Stub.is_inside.__doc__)
 
     @asynccontextmanager
     async def _set_local_app(self, app: _LocalApp) -> AsyncGenerator[None, None]:

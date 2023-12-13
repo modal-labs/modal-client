@@ -20,7 +20,7 @@ from grpclib.exceptions import GRPCError
 from modal import Client
 from modal._container_entrypoint import UserException, main
 from modal._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import InvalidError
 from modal.stub import _Stub
 from modal_proto import api_pb2
 
@@ -645,42 +645,6 @@ def test_image_run_function_no_warn(unix_servicer, caplog):
     )
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
-
-
-@skip_windows_unix_socket
-def test_is_inside(unix_servicer, caplog, capsys):
-    with pytest.warns(DeprecationError, match="run_inside"):
-        ret = _run_container(unix_servicer, "modal_test_support.is_inside", "foo")
-    assert _unwrap_scalar(ret) is None
-    assert len(caplog.messages) == 0
-    out, err = capsys.readouterr()
-    assert "in container!" in out
-    assert "in local" not in out
-
-
-@skip_windows_unix_socket
-def test_multistub_is_inside(unix_servicer, caplog, capsys):
-    with pytest.warns(DeprecationError, match="run_inside"):
-        ret = _run_container(unix_servicer, "modal_test_support.multistub_is_inside", "foo", stub_name="a")
-    assert _unwrap_scalar(ret) is None
-    assert len(caplog.messages) == 0
-    out, err = capsys.readouterr()
-    assert "inside a" in out
-    assert "inside b" not in out
-
-
-@skip_windows_unix_socket
-def test_multistub_is_inside_warning(unix_servicer, caplog, capsys):
-    with pytest.warns(DeprecationError, match="run_inside"):
-        ret = _run_container(unix_servicer, "modal_test_support.multistub_is_inside_warning", "foo")
-    assert _unwrap_scalar(ret) is None
-    assert len(caplog.messages) == 1
-    assert "You have more than one unnamed stub" in caplog.text
-    out, err = capsys.readouterr()
-    assert "inside a" in out
-    assert (
-        "inside b" in out
-    )  # can't determine which of two anonymous stubs is the active one at import time, so both will trigger
 
 
 SLEEP_TIME = 0.7
