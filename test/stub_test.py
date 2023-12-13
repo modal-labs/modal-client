@@ -16,10 +16,11 @@ from modal_test_support import module_1, module_2
 
 @pytest.mark.asyncio
 async def test_kwargs(servicer, client):
-    stub = Stub(
-        d=Dict.new(),
-        q=Queue.new(),
-    )
+    with pytest.warns(DeprecationError):
+        stub = Stub(
+            d=Dict.new(),
+            q=Queue.new(),
+        )
     async with stub.run(client=client):
         # TODO: interface to get type safe objects from live apps
         await stub["d"].put.aio("foo", "bar")  # type: ignore
@@ -49,9 +50,10 @@ async def test_attrs(servicer, client):
 @pytest.mark.asyncio
 async def test_stub_type_validation(servicer, client):
     with pytest.raises(InvalidError):
-        stub = Stub(
-            foo=4242,  # type: ignore
-        )
+        with pytest.warns(DeprecationError):
+            stub = Stub(
+                foo=4242,  # type: ignore
+            )
 
     stub = Stub()
 
@@ -223,18 +225,20 @@ def test_init_types():
         Stub(secrets=[{"foo": "bar"}])  # type: ignore
     with pytest.raises(InvalidError):
         # blueprint needs to use _Providers
-        Stub(some_arg=5)  # type: ignore
+        with pytest.warns(DeprecationError):
+            Stub(some_arg=5)  # type: ignore
     with pytest.raises(InvalidError):
         # should be an Image
         Stub(image=modal.Secret.from_dict())  # type: ignore
 
-    Stub(
-        image=modal.Image.debian_slim().pip_install("pandas"),
-        secrets=[modal.Secret.from_dict()],
-        mounts=[modal.Mount.from_local_file(__file__)],
-        some_dict=modal.Dict.new(),
-        some_queue=modal.Queue.new(),
-    )
+    with pytest.warns(DeprecationError):
+        Stub(
+            image=modal.Image.debian_slim().pip_install("pandas"),
+            secrets=[modal.Secret.from_dict()],
+            mounts=[modal.Mount.from_local_file(__file__)],
+            some_dict=modal.Dict.new(),
+            some_queue=modal.Queue.new(),
+        )
 
 
 def test_set_image_on_stub_as_attribute():
