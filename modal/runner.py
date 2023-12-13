@@ -92,7 +92,7 @@ async def _run_stub(
         try:
             # Create all members
             await app._create_all_objects(
-                stub._blueprint, app_state, environment_name, shell=shell, output_mgr=output_mgr
+                stub._indexed_objects, app_state, environment_name, shell=shell, output_mgr=output_mgr
             )
 
             # Update all functions client-side to have the output mgr
@@ -171,7 +171,7 @@ async def _serve_update(
         # Create objects
         output_mgr = OutputManager(None, True)
         await app._create_all_objects(
-            stub._blueprint, api_pb2.APP_STATE_UNSPECIFIED, environment_name, output_mgr=output_mgr
+            stub._indexed_objects, api_pb2.APP_STATE_UNSPECIFIED, environment_name, output_mgr=output_mgr
         )
 
         # Communicate to the parent process
@@ -253,7 +253,7 @@ async def _deploy_stub(
         try:
             # Create all members
             await app._create_all_objects(
-                stub._blueprint, post_init_state, environment_name=environment_name, output_mgr=output_mgr
+                stub._indexed_objects, post_init_state, environment_name=environment_name, output_mgr=output_mgr
             )
 
             # Deploy app

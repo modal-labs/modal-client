@@ -62,7 +62,7 @@ class _LocalApp:
 
     async def _create_all_objects(
         self,
-        blueprint: Dict[str, _Object],
+        indexed_objects: Dict[str, _Object],
         new_app_state: int,
         environment_name: str,
         shell: bool = False,
@@ -82,7 +82,7 @@ class _LocalApp:
             self._tag_to_object_id = {}
 
             # Assign all objects
-            for tag, obj in blueprint.items():
+            for tag, obj in indexed_objects.items():
                 # Reset object_id in case the app runs twice
                 # TODO(erikbern): clean up the interface
                 obj._unhydrate()
@@ -92,7 +92,7 @@ class _LocalApp:
             # functions have ids assigned to them when the function is serialized.
             # Note: when handles/objs are merged, all objects will need to get ids pre-assigned
             # like this in order to be referrable within serialized functions
-            for tag, obj in blueprint.items():
+            for tag, obj in indexed_objects.items():
                 existing_object_id = tag_to_object_id.get(tag)
                 # Note: preload only currently implemented for Functions, returns None otherwise
                 # this is to ensure that directly referenced functions from the global scope has
@@ -101,7 +101,7 @@ class _LocalApp:
                 if obj.object_id is not None:
                     tag_to_object_id[tag] = obj.object_id
 
-            for tag, obj in blueprint.items():
+            for tag, obj in indexed_objects.items():
                 existing_object_id = tag_to_object_id.get(tag)
                 await resolver.load(obj, existing_object_id)
                 self._tag_to_object_id[tag] = obj.object_id
