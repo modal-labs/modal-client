@@ -6,10 +6,11 @@ import sys
 
 
 def skip_windows(msg: str):
-    return pytest.mark.skipif(
-        platform.system() == "Windows",
-        reason=msg,
-    )
+    return pytest.mark.skipif(platform.system() == "Windows", reason=msg)
+
+
+def skip_macos(msg: str):
+    return pytest.mark.skipif(platform.system() == "Darwin", reason=msg)
 
 
 skip_windows_unix_socket = skip_windows("Windows doesn't have UNIX sockets")
