@@ -264,10 +264,10 @@ class _Stub:
 
     @typechecked
     def is_inside(self, image: Optional[_Image] = None):
-        """Deprecated: use `Image.run_inside()` instead! Usage:
+        """Deprecated: use `Image.imports()` instead! Usage:
         ```
         my_image = modal.Image.debian_slim().pip_install("torch")
-        with my_image.run_inside():
+        with my_image.imports():
             import torch
         ```
         """
