@@ -1355,7 +1355,7 @@ class _Image(_Object, type_prefix="im"):
     # Live handle methods
 
     @contextlib.contextmanager
-    def run_inside(self):
+    def imports(self):
         env_image_id = config.get("image_id")
         try:
             yield
@@ -1367,6 +1367,17 @@ class _Image(_Object, type_prefix="im"):
                 # Image is already initialized (we can remove this case later
                 # when we don't hydrate objects so early)
                 raise
+
+    def run_inside(self):
+        """`Image.run_inside` is deprecated - use `Image.imports` instead.
+
+        Usage:
+        ```
+        with image.imports():
+            import torch
+        ```
+        """
+        deprecation_error(date(2023, 12, 15), Image.run_inside.__doc__, pending=True)
 
 
 Image = synchronize_api(_Image)

@@ -516,11 +516,11 @@ def test_inside_ctx_unhydrated(client):
 
     with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": "im-123"}):
         # This should initially swallow the exception
-        with image_1.run_inside():
+        with image_1.imports():
             raise Exception("foo")
 
         # This one too
-        with image_2.run_inside():
+        with image_2.imports():
             raise Exception("bar")
 
         # Hydration of the image should raise the exception
@@ -542,9 +542,9 @@ def test_inside_ctx_hydrated(client):
 
         # Ctx manager should now raise right away
         with pytest.raises(Exception, match="baz"):
-            with image_1.run_inside():
+            with image_1.imports():
                 raise Exception("baz")
 
         # We're not inside this image so this should be swallowed
-        with image_2.run_inside():
+        with image_2.imports():
             raise Exception("bar")
