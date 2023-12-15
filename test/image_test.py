@@ -8,7 +8,7 @@ from typing import List
 from unittest import mock
 
 from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu, method
-from modal.exception import DeprecationError, InvalidError, NotFoundError
+from modal.exception import DeprecationError, InvalidError, NotFoundError, PendingDeprecationError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
 
@@ -517,14 +517,24 @@ def test_inside_ctx_unhydrated(client):
     with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": "im-123"}):
         # This should initially swallow the exception
         with image_1.imports():
-            raise Exception("foo")
+            raise ImportError("foo")
 
         # This one too
         with image_2.imports():
-            raise Exception("bar")
+            raise ImportError("bar")
+
+        # non-ImportErrors should trigger a warning
+        with pytest.warns(match="ImportError"):
+            with image_2.imports():
+                raise Exception("foo")
+
+        # Make sure run_inside works but is depreated
+        with pytest.warns(PendingDeprecationError, match="imports()"):
+            with image_1.run_inside():
+                pass
 
         # Hydration of the image should raise the exception
-        with pytest.raises(Exception, match="foo"):
+        with pytest.raises(ImportError, match="foo"):
             image_1._hydrate("im-123", client, None)
 
         # Should not raise since it's a different image
@@ -541,10 +551,10 @@ def test_inside_ctx_hydrated(client):
         image_2._hydrate("im-456", client, None)
 
         # Ctx manager should now raise right away
-        with pytest.raises(Exception, match="baz"):
+        with pytest.raises(ImportError, match="baz"):
             with image_1.imports():
-                raise Exception("baz")
+                raise ImportError("baz")
 
         # We're not inside this image so this should be swallowed
         with image_2.imports():
-            raise Exception("bar")
+            raise ImportError("bar")

@@ -24,7 +24,7 @@ from ._resolver import Resolver
 from ._serialization import serialize
 from .app import is_local
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -1367,6 +1367,8 @@ class _Image(_Object, type_prefix="im"):
                 # Image is already initialized (we can remove this case later
                 # when we don't hydrate objects so early)
                 raise
+            if not isinstance(exc, ImportError):
+                warnings.warn(f"Warning: caught a non-ImportError exception in an `imports()` block: {repr(exc)}")
 
     def run_inside(self):
         """`Image.run_inside` is deprecated - use `Image.imports` instead.
@@ -1377,7 +1379,8 @@ class _Image(_Object, type_prefix="im"):
             import torch
         ```
         """
-        deprecation_error(date(2023, 12, 15), Image.run_inside.__doc__, pending=True)
+        deprecation_warning(date(2023, 12, 15), Image.run_inside.__doc__, pending=True)
+        return self.imports()
 
 
 Image = synchronize_api(_Image)
