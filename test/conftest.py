@@ -143,6 +143,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox: subprocess.Popen = None
 
         self.token_flow_localhost_port = None
+        self.queue_max_len = 1_00
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -665,6 +666,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()
+        if len(self.queue) >= self.queue_max_len:
+            raise GRPCError(Status.RESOURCE_EXHAUSTED, f"Hit servicer's max len for Queues: {self.queue_max_len}")
         self.queue += request.values
         await stream.send_message(Empty())
 
