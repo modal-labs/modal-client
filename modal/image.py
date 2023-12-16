@@ -1379,7 +1379,7 @@ class _Image(_Object, type_prefix="im"):
             import torch
         ```
         """
-        deprecation_warning(date(2023, 12, 15), Image.run_inside.__doc__, pending=True)
+        deprecation_warning(date(2023, 12, 15), Image.run_inside.__doc__)
         return self.imports()
 
 
