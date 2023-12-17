@@ -8,7 +8,7 @@ from typing import List
 from unittest import mock
 
 from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu, method
-from modal.exception import DeprecationError, InvalidError, NotFoundError, PendingDeprecationError
+from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version
 from modal_proto import api_pb2
 
@@ -529,7 +529,7 @@ def test_inside_ctx_unhydrated(client):
                 raise Exception("foo")
 
         # Make sure run_inside works but is depreated
-        with pytest.warns(PendingDeprecationError, match="imports()"):
+        with pytest.warns(DeprecationError, match="imports()"):
             with image_1.run_inside():
                 pass
 
