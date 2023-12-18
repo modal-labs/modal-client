@@ -4,7 +4,7 @@ import pytest
 from unittest import mock
 
 import modal
-from modal.exception import InvalidError
+from modal.exception import InvalidError, VolumeUploadTimeoutError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 
@@ -200,3 +200,28 @@ async def test_volume_put_large_file(client, tmp_path, servicer, blob_server, *a
 
         _, blobs = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
+
+
+@pytest.mark.asyncio
+async def test_volume_put_file_timeout(client, tmp_path, servicer, blob_server, *args):
+    call_count = 0
+
+    def mount_put_file(_request):
+        nonlocal call_count
+        call_count += 1
+        return api_pb2.MountPutFileResponse(exists=False)
+
+    with servicer.intercept() as ctx:
+        ctx.override_default("MountPutFile", mount_put_file)
+        with mock.patch("modal._blob_utils.LARGE_FILE_LIMIT", 10):
+            with mock.patch("modal.volume.MOUNT_PUT_FILE_CLIENT_TIMEOUT", 0.5):
+                stub = modal.Stub()
+                stub.vol = modal.Volume.new()
+                local_file_path = tmp_path / "bigfile"
+                local_file_path.write_text("hello world, this is a lot of text")
+
+                async with stub.run(client=client):
+                    with pytest.raises(VolumeUploadTimeoutError):
+                        await stub.vol._add_local_file.aio(local_file_path)
+
+                assert call_count > 2
