@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import enum
 import inspect
 import os
 import pickle
@@ -1406,17 +1407,32 @@ def _set_current_context_ids(input_id: str, function_call_id: str) -> Callable[[
     return _reset_current_context_ids
 
 
+class _PartialFunctionFlags(enum.Flag):
+    FUNCTION = enum.auto()
+    BUILD = enum.auto()
+    ENTER = enum.auto()
+    EXIT = enum.auto()
+
+
 class _PartialFunction:
     """Intermediate function, produced by @method or @web_endpoint"""
+
+    raw_f: Callable[..., Any]
+    flags: _PartialFunctionFlags
+    webhook_config: Optional[api_pb2.WebhookConfig]
+    is_generator: Optional[bool]
+    keep_warm: Optional[int]
 
     def __init__(
         self,
         raw_f: Callable[..., Any],
+        flags: _PartialFunctionFlags,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
         keep_warm: Optional[int] = None,
     ):
         self.raw_f = raw_f
+        self.flags = flags
         self.webhook_config = webhook_config
         self.is_generator = is_generator
         self.keep_warm = keep_warm
@@ -1437,6 +1453,29 @@ class _PartialFunction:
                 f"Method or web function {self.raw_f} was never turned into a function."
                 " Did you forget a @stub.function or @stub.cls decorator?"
             )
+
+    def stack(self, flags) -> "_PartialFunction":
+        # Helper method used internally when stacking decorators
+        return _PartialFunction(
+            raw_f=self.raw_f,
+            flags=(self.flags | flags),
+            webhook_config=self.webhook_config,
+            keep_warm=self.keep_warm,
+        )
+
+
+def _find_partial_methods(user_cls, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
+    """Grabs all method on a user class"""
+    partial_functions: Dict[str, PartialFunction] = {}
+    for parent_cls in user_cls.mro():
+        if parent_cls is not object:
+            for k, v in parent_cls.__dict__.items():
+                if isinstance(v, PartialFunction):
+                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
+                    if partial_function.flags & flags:
+                        partial_functions[k] = partial_function
+
+    return partial_functions
 
 
 PartialFunction = synchronize_api(_PartialFunction)
@@ -1472,7 +1511,7 @@ def _method(
             raise InvalidError(
                 "Web endpoints on classes should not be wrapped by `@method`. Suggestion: remove the `@method` decorator."
             )
-        return _PartialFunction(raw_f, is_generator=is_generator, keep_warm=keep_warm)
+        return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
 
     return wrapper
 
@@ -1535,6 +1574,7 @@ def _web_endpoint(
 
         return _PartialFunction(
             raw_f,
+            _PartialFunctionFlags.FUNCTION,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
@@ -1593,6 +1633,7 @@ def _asgi_app(
 
         return _PartialFunction(
             raw_f,
+            _PartialFunctionFlags.FUNCTION,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
                 requested_suffix=label,
@@ -1649,6 +1690,7 @@ def _wsgi_app(
 
         return _PartialFunction(
             raw_f,
+            _PartialFunctionFlags.FUNCTION,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
                 requested_suffix=label,
@@ -1660,7 +1702,47 @@ def _wsgi_app(
     return wrapper
 
 
+@typechecked
+def _build(_warn_parentheses_missing=None) -> Callable[[Union[Callable[[], Any], _PartialFunction]], _PartialFunction]:
+    if _warn_parentheses_missing:
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
+
+    def wrapper(f: Union[Callable[[], Any], _PartialFunction]) -> _PartialFunction:
+        if isinstance(f, _PartialFunction):
+            return f.stack(_PartialFunctionFlags.BUILD)
+        else:
+            return _PartialFunction(f, _PartialFunctionFlags.BUILD)
+
+
+@typechecked
+def _enter(_warn_parentheses_missing=None) -> Callable[[Union[Callable[[], Any], _PartialFunction]], _PartialFunction]:
+    if _warn_parentheses_missing:
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
+
+    def wrapper(f: Union[Callable[[], Any], _PartialFunction]) -> _PartialFunction:
+        if isinstance(f, _PartialFunction):
+            return f.stack(_PartialFunctionFlags.ENTER)
+        else:
+            return _PartialFunction(f, _PartialFunctionFlags.ENTER)
+
+
+# TODO(erikbern): annotate this with the right argument types
+@typechecked
+def _exit(_warn_parentheses_missing=None) -> Callable[[Union[Callable[..., Any], _PartialFunction]], _PartialFunction]:
+    if _warn_parentheses_missing:
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
+
+    def wrapper(f: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
+        if isinstance(f, _PartialFunction):
+            return f.stack(_PartialFunctionFlags.EXIT)
+        else:
+            return _PartialFunction(f, _PartialFunctionFlags.EXIT)
+
+
 method = synchronize_api(_method)
 web_endpoint = synchronize_api(_web_endpoint)
 asgi_app = synchronize_api(_asgi_app)
 wsgi_app = synchronize_api(_wsgi_app)
+build = synchronize_api(_build)
+enter = synchronize_api(_enter)
+exit = synchronize_api(_exit)
