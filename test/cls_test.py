@@ -2,15 +2,16 @@
 import inspect
 import pytest
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
 
 from typing_extensions import assert_type
 
-from modal import Cls, Function, Stub, method
+from modal import Cls, Function, Stub, build, enter, exit, method
 from modal._serialization import deserialize
 from modal.app import ContainerApp
 from modal.cls import ClsMixin
 from modal.exception import DeprecationError, ExecutionError
+from modal.functions import _find_partial_methods, _PartialFunction, _PartialFunctionFlags
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support.base_class import BaseCls2
@@ -494,3 +495,35 @@ def test_keep_warm_depr():
 
     with pytest.warns(DeprecationError, match="@method"):
         stub.cls(keep_warm=2)(ClsWith2Methods)
+
+
+class ClsWithHandlers:
+    @build()
+    def my_build(self):
+        pass
+
+    @enter()
+    def my_enter(self):
+        pass
+
+    @build()
+    @enter()
+    def my_build_and_enter(self):
+        pass
+
+    @exit()
+    def my_exit(self, exc_type, exc, traceback):
+        pass
+
+
+def test_handlers():
+    pfs: Dict[str, _PartialFunction]
+
+    pfs = _find_partial_methods(ClsWithHandlers, _PartialFunctionFlags.BUILD)
+    assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]
+
+    pfs = _find_partial_methods(ClsWithHandlers, _PartialFunctionFlags.ENTER)
+    assert list(pfs.keys()) == ["my_enter", "my_build_and_enter"]
+
+    pfs = _find_partial_methods(ClsWithHandlers, _PartialFunctionFlags.EXIT)
+    assert list(pfs.keys()) == ["my_exit"]

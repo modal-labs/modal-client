@@ -1408,11 +1408,11 @@ def _set_current_context_ids(input_id: str, function_call_id: str) -> Callable[[
     return _reset_current_context_ids
 
 
-class _PartialFunctionFlags(enum.Flag):
-    FUNCTION = enum.auto()
-    BUILD = enum.auto()
-    ENTER = enum.auto()
-    EXIT = enum.auto()
+class _PartialFunctionFlags(enum.IntFlag):
+    FUNCTION: int = 1
+    BUILD: int = 2
+    ENTER: int = 4
+    EXIT: int = 8
 
 
 class _PartialFunction:
@@ -1704,31 +1704,39 @@ def _wsgi_app(
 
 
 @typechecked
-def _build(_warn_parentheses_missing=None) -> Callable[[Union[Callable[[], Any], _PartialFunction]], _PartialFunction]:
+def _build(
+    _warn_parentheses_missing=None,
+) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
 
-    def wrapper(f: Union[Callable[[], Any], _PartialFunction]) -> _PartialFunction:
+    def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             return f.add_flags(_PartialFunctionFlags.BUILD)
         else:
             return _PartialFunction(f, _PartialFunctionFlags.BUILD)
 
+    return wrapper
+
 
 @typechecked
-def _enter(_warn_parentheses_missing=None) -> Callable[[Union[Callable[[], Any], _PartialFunction]], _PartialFunction]:
+def _enter(
+    _warn_parentheses_missing=None,
+) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
 
-    def wrapper(f: Union[Callable[[], Any], _PartialFunction]) -> _PartialFunction:
+    def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             return f.add_flags(_PartialFunctionFlags.ENTER)
         else:
             return _PartialFunction(f, _PartialFunctionFlags.ENTER)
 
+    return wrapper
+
 
 # TODO(erikbern): last argument should be Optional[TracebackType]
-ExitHandlerType = Callable[[Optional[Type[BaseException]], Optional[BaseException], Any], None]
+ExitHandlerType = Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None]
 
 
 @typechecked
@@ -1738,6 +1746,8 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
 
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
         return _PartialFunction(f, _PartialFunctionFlags.EXIT)
+
+    return wrapper
 
 
 method = synchronize_api(_method)
