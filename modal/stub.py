@@ -629,6 +629,10 @@ class _Stub:
                 k: decorator(partial_function, user_cls) for k, partial_function in partial_functions.items()
             }
 
+            # Disable the warning that these are not wrapped
+            for partial_function in _find_partial_methods_for_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
+                partial_function.wrapped = True
+
             if len(functions) > 1 and keep_warm is not None:
                 deprecation_warning(
                     date(2023, 10, 20),

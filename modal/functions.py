@@ -1455,13 +1455,13 @@ class _PartialFunction:
 
     def add_flags(self, flags) -> "_PartialFunction":
         # Helper method used internally when stacking decorators
+        self.wrapped = True
         return _PartialFunction(
             raw_f=self.raw_f,
             flags=(self.flags | flags),
             webhook_config=self.webhook_config,
             keep_warm=self.keep_warm,
         )
-
 
 def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class"""
