@@ -11,7 +11,7 @@ from modal._serialization import deserialize
 from modal.app import ContainerApp
 from modal.cls import ClsMixin
 from modal.exception import DeprecationError, ExecutionError
-from modal.functions import _find_partial_methods, _PartialFunction, _PartialFunctionFlags
+from modal.functions import _find_partial_methods_for_cls, _PartialFunction, _PartialFunctionFlags
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support.base_class import BaseCls2
@@ -519,13 +519,13 @@ class ClsWithHandlers:
 def test_handlers():
     pfs: Dict[str, _PartialFunction]
 
-    pfs = _find_partial_methods(ClsWithHandlers, _PartialFunctionFlags.BUILD)
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.BUILD)
     assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]
 
-    pfs = _find_partial_methods(ClsWithHandlers, _PartialFunctionFlags.ENTER)
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER)
     assert list(pfs.keys()) == ["my_enter", "my_build_and_enter"]
 
-    pfs = _find_partial_methods(ClsWithHandlers, _PartialFunctionFlags.EXIT)
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.EXIT)
     assert list(pfs.keys()) == ["my_exit"]
 
 

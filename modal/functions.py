@@ -591,36 +591,27 @@ class _Function(_Object, type_prefix="fu"):
             if image:
                 image = image.apt_install("autossh")
 
-        build_functions = []
         if cls and not is_auto_snapshot:
-            # Experimental syntax – soon deprecated
-            if hasattr(info.cls, "__build__"):
-                build_functions.append(info.cls.__build__)
-            elif hasattr(info.cls, "__abuild__"):
-                build_functions.append(info.cls.__abuild__)
-
-            for pf in _find_partial_methods(info.cls, _PartialFunctionFlags.BUILD).values():
-                build_functions.append(pf.raw_f)
-
-        for build_function in build_functions:
-            snapshot_info = FunctionInfo(build_function, cls=info.cls)
-            snapshot_function = _Function.from_args(
-                snapshot_info,
-                stub=None,
-                image=image,
-                secret=secret,
-                secrets=secrets,
-                gpu=gpu,
-                mounts=mounts,
-                network_file_systems=network_file_systems,
-                volumes=volumes,
-                memory=memory,
-                timeout=timeout,
-                cpu=cpu,
-                is_builder_function=True,
-                is_auto_snapshot=True,
-            )
-            image = image.extend(build_function=snapshot_function, force_build=image.force_build)
+            build_functions = _find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD)
+            for build_function in build_functions:
+                snapshot_info = FunctionInfo(build_function, cls=info.cls)
+                snapshot_function = _Function.from_args(
+                    snapshot_info,
+                    stub=None,
+                    image=image,
+                    secret=secret,
+                    secrets=secrets,
+                    gpu=gpu,
+                    mounts=mounts,
+                    network_file_systems=network_file_systems,
+                    volumes=volumes,
+                    memory=memory,
+                    timeout=timeout,
+                    cpu=cpu,
+                    is_builder_function=True,
+                    is_auto_snapshot=True,
+                )
+                image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
         if interactive and concurrency_limit and concurrency_limit > 1:
             warnings.warn(
@@ -1472,7 +1463,7 @@ class _PartialFunction:
         )
 
 
-def _find_partial_methods(user_cls, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
+def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class"""
     partial_functions: Dict[str, PartialFunction] = {}
     for parent_cls in user_cls.mro():
@@ -1484,6 +1475,36 @@ def _find_partial_methods(user_cls, flags: _PartialFunctionFlags) -> Dict[str, _
                         partial_functions[k] = partial_function
 
     return partial_functions
+
+
+def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> List[Callable]:
+    """Grabs all method on a user class, and returns callables. Includes legacy methods."""
+    functions: List[Callable] = []
+
+    # Build up a list of legacy attributes to check
+    check_attrs: List[str] = []
+    if flags & _PartialFunctionFlags.BUILD:
+        check_attrs += ["__build__", "__abuild__"]
+    if flags & _PartialFunctionFlags.ENTER:
+        check_attrs += ["__enter__", "__aenter__"]
+    if flags & _PartialFunctionFlags.EXIT:
+        check_attrs += ["__exit__", "__aexit__"]
+
+    # Grab legacy lifecycle methods
+    for attr in check_attrs:
+        if hasattr(user_cls, attr):
+            functions.append(getattr(user_cls, attr))
+
+    # Grab new decorator-based methods
+    for pf in _find_partial_methods_for_cls(user_cls, flags).values():
+        functions.append(pf.raw_f)
+    return functions
+
+
+def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> List[Callable]:
+    """Grabs all methods for an object, and binds them to the class"""
+    user_cls: Type = type(user_obj)
+    return [meth.__get__(user_obj) for meth in _find_callables_for_cls(user_cls, flags)]
 
 
 PartialFunction = synchronize_api(_PartialFunction)

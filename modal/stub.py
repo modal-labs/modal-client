@@ -20,7 +20,13 @@ from .client import _Client
 from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import PartialFunction, _find_partial_methods, _Function, _PartialFunction, _PartialFunctionFlags
+from .functions import (
+    PartialFunction,
+    _find_partial_methods_for_cls,
+    _Function,
+    _PartialFunction,
+    _PartialFunctionFlags,
+)
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -616,7 +622,7 @@ class _Stub:
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
-            partial_functions: Dict[str, PartialFunction] = _find_partial_methods(
+            partial_functions: Dict[str, PartialFunction] = _find_partial_methods_for_cls(
                 user_cls, _PartialFunctionFlags.FUNCTION
             )
             functions: Dict[str, _Function] = {

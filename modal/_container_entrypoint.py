@@ -17,7 +17,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Optional, Type
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Type
 
 from grpclib import Status
 
@@ -44,7 +44,13 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
 from .exception import InvalidError
-from .functions import Function, _Function, _set_current_context_ids  # type: ignore
+from .functions import (  # type: ignore
+    Function,
+    _find_callables_for_obj,
+    _Function,
+    _PartialFunctionFlags,
+    _set_current_context_ids,
+)
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -487,12 +493,13 @@ def call_function_sync(
 ):
     # If this function is on a class, instantiate it and enter it
     if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-        if hasattr(imp_fun.obj, "__enter__"):
+        enter_methods: List[Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER)
+        for enter_method in enter_methods:
             # Call a user-defined method
             with function_io_manager.handle_user_exception():
-                imp_fun.obj.__enter__()
-        elif hasattr(imp_fun.obj, "__aenter__"):
-            logger.warning("Not running asynchronous enter/exit handlers with a sync function")
+                enter_res = enter_method()
+            if inspect.iscoroutine(enter_res):
+                logger.warning("Not running asynchronous enter/exit handlers with a sync function")
 
     try:
 
@@ -537,9 +544,11 @@ def call_function_sync(
             ):
                 run_inputs(input_id, function_call_id, args, kwargs)
     finally:
-        if imp_fun.obj is not None and hasattr(imp_fun.obj, "__exit__"):
-            with function_io_manager.handle_user_exception():
-                imp_fun.obj.__exit__(*sys.exc_info())
+        if imp_fun.obj is not None:
+            exit_methods: List[Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
+            for exit_method in exit_methods:
+                with function_io_manager.handle_user_exception():
+                    exit_method(*sys.exc_info())
 
 
 @wrap()
@@ -549,13 +558,13 @@ async def call_function_async(
 ):
     # If this function is on a class, instantiate it and enter it
     if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-        if hasattr(imp_fun.obj, "__aenter__"):
+        enter_methods: List[Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER)
+        for enter_method in enter_methods:
             # Call a user-defined method
-            async with function_io_manager.handle_user_exception.aio():
-                await imp_fun.obj.__aenter__()
-        elif hasattr(imp_fun.obj, "__enter__"):
-            async with function_io_manager.handle_user_exception.aio():
-                imp_fun.obj.__enter__()
+            with function_io_manager.handle_user_exception():
+                enter_res = enter_method()
+                if inspect.iscoroutine(enter_res):
+                    await enter_res
 
     try:
 
@@ -601,12 +610,13 @@ async def call_function_async(
                 await run_input(input_id, function_call_id, args, kwargs)
     finally:
         if imp_fun.obj is not None:
-            if hasattr(imp_fun.obj, "__aexit__"):
-                async with function_io_manager.handle_user_exception.aio():
-                    await imp_fun.obj.__aexit__(*sys.exc_info())
-            elif hasattr(imp_fun.obj, "__exit__"):
-                async with function_io_manager.handle_user_exception.aio():
-                    imp_fun.obj.__exit__(*sys.exc_info())
+            exit_methods: List[Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
+            for exit_method in exit_methods:
+                # Call a user-defined method
+                with function_io_manager.handle_user_exception():
+                    exit_res = exit_method(*sys.exc_info())
+                    if inspect.iscoroutine(exit_res):
+                        await exit_res
 
 
 @dataclass
