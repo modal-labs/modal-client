@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Dict
 
 from typing_extensions import assert_type
 
-from modal import Cls, Function, Stub, build, enter, exit, method
+from modal import Cls, Function, Image, Stub, build, enter, exit, method
 from modal._serialization import deserialize
 from modal.app import ContainerApp
 from modal.cls import ClsMixin
@@ -527,3 +527,25 @@ def test_handlers():
 
     pfs = _find_partial_methods(ClsWithHandlers, _PartialFunctionFlags.EXIT)
     assert list(pfs.keys()) == ["my_exit"]
+
+
+image = Image.debian_slim().pip_install("xyz")
+
+
+@stub.cls(image=image)
+class ClsWithBuild:
+    # @build()
+    def __build__(self):
+        pass
+
+    @method()
+    def method(self):
+        pass
+
+
+def test_build_image(client, servicer):
+    with stub.run(client=client):
+        f_def = servicer.app_functions[ClsWithBuild.method.object_id]
+        # The function image should have added a new layer with original image as the parent
+        f_image = servicer.images[f_def.image_id]
+        assert f_image.base_images[0].image_id == image.object_id
