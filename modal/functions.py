@@ -591,12 +591,19 @@ class _Function(_Object, type_prefix="fu"):
             if image:
                 image = image.apt_install("autossh")
 
-        if not is_auto_snapshot and (hasattr(info.cls, "__build__") or hasattr(info.cls, "__abuild__")):
+        build_functions = []
+        if not is_auto_snapshot:
+            # Experimental syntax – soon deprecated
             if hasattr(info.cls, "__build__"):
-                snapshot_info = FunctionInfo(info.cls.__build__, cls=info.cls)
-            else:
-                snapshot_info = FunctionInfo(info.cls.__abuild__, cls=info.cls)
+                build_functions.append(info.cls.__build__)
+            elif hasattr(info.cls, "__abuild__"):
+                build_functions.append(info.cls.__abuild__)
 
+            for pf in _find_partial_methods(info.cls, _PartialFunctionFlags.BUILD).values():
+                build_functions.append(pf.raw_f)
+
+        for build_function in build_functions:
+            snapshot_info = FunctionInfo(build_function, cls=info.cls)
             snapshot_function = _Function.from_args(
                 snapshot_info,
                 stub=None,

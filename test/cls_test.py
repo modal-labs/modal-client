@@ -534,8 +534,8 @@ image = Image.debian_slim().pip_install("xyz")
 
 @stub.cls(image=image)
 class ClsWithBuild:
-    # @build()
-    def __build__(self):
+    @build()
+    def build(self):
         pass
 
     @method()
