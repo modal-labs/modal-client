@@ -592,7 +592,7 @@ class _Function(_Object, type_prefix="fu"):
                 image = image.apt_install("autossh")
 
         build_functions = []
-        if not is_auto_snapshot:
+        if cls and not is_auto_snapshot:
             # Experimental syntax – soon deprecated
             if hasattr(info.cls, "__build__"):
                 build_functions.append(info.cls.__build__)
