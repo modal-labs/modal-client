@@ -2,7 +2,7 @@
 import inspect
 import pytest
 import threading
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Callable, Dict, List
 
 from typing_extensions import assert_type
 
@@ -11,7 +11,12 @@ from modal._serialization import deserialize
 from modal.app import ContainerApp
 from modal.cls import ClsMixin
 from modal.exception import DeprecationError, ExecutionError
-from modal.functions import _find_partial_methods_for_cls, _PartialFunction, _PartialFunctionFlags
+from modal.functions import (
+    _find_callables_for_obj,
+    _find_partial_methods_for_cls,
+    _PartialFunction,
+    _PartialFunctionFlags,
+)
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support.base_class import BaseCls2
@@ -552,3 +557,56 @@ def test_build_image(client, servicer):
         # The function image should have added a new layer with original image as the parent
         f_image = servicer.images[f_def.image_id]
         assert f_image.base_images[0].image_id == image.object_id
+
+
+class ClsWithLegacySyncMethods:
+    def __enter__(self):
+        return 42
+
+    @enter()
+    def my_enter(self):
+        return 43
+
+    def __exit__(self, exc_type, exc, tb):
+        return 44
+
+    @exit()
+    def my_exit(self, exc_type, exc, tb):
+        return 45
+
+
+def test_legacy_sync_methods():
+    obj = ClsWithLegacySyncMethods()
+
+    enter_methods: List[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
+    assert [meth() for meth in enter_methods] == [42, 43]
+
+    exit_methods: List[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+    assert [meth(None, None, None) for meth in exit_methods] == [44, 45]
+
+
+class ClsWithLegacyAsyncMethods:
+    async def __aenter__(self):
+        return 42
+
+    @enter()
+    async def my_enter(self):
+        return 43
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return 44
+
+    @exit()
+    async def my_exit(self, exc_type, exc, tb):
+        return 45
+
+
+@pytest.mark.asyncio
+async def test_legacy_async_methods():
+    obj = ClsWithLegacyAsyncMethods()
+
+    enter_methods: List[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
+    assert [await meth() for meth in enter_methods] == [42, 43]
+
+    exit_methods: List[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+    assert [await meth(None, None, None) for meth in exit_methods] == [44, 45]
