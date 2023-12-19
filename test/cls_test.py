@@ -529,10 +529,13 @@ def test_handlers():
     assert list(pfs.keys()) == ["my_exit"]
 
 
+handler_stub = Stub("handler-stub")
+
+
 image = Image.debian_slim().pip_install("xyz")
 
 
-@stub.cls(image=image)
+@handler_stub.cls(image=image)
 class ClsWithBuild:
     @build()
     def build(self):
@@ -544,7 +547,7 @@ class ClsWithBuild:
 
 
 def test_build_image(client, servicer):
-    with stub.run(client=client):
+    with handler_stub.run(client=client):
         f_def = servicer.app_functions[ClsWithBuild.method.object_id]
         # The function image should have added a new layer with original image as the parent
         f_image = servicer.images[f_def.image_id]
