@@ -17,3 +17,5 @@ def test_dict(servicer, client):
         assert stub.d.len() == 0
         with pytest.raises(KeyError):
             _ = stub.d["foo"]
+
+        assert stub.d.get("foo", default=True)

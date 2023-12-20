@@ -112,15 +112,15 @@ class _Dict(_Object, type_prefix="di"):
         await retry_transient_errors(self._client.stub.DictClear, req)
 
     @live_method
-    async def get(self, key: Any) -> Any:
+    async def get(self, key: Any, default: Optional[Any] = None) -> Any:
         """Get the value associated with a key.
 
-        Raises `KeyError` if the key does not exist.
+        Returns `default` if key does not exist. 
         """
         req = api_pb2.DictGetRequest(dict_id=self.object_id, key=serialize(key))
         resp = await retry_transient_errors(self._client.stub.DictGet, req)
         if not resp.found:
-            raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
+            return default
         return deserialize(resp.value, self._client)
 
     @live_method
@@ -143,7 +143,11 @@ class _Dict(_Object, type_prefix="di"):
 
         This function only works in a synchronous context.
         """
-        return await self.get(key)
+        value = await self.get(key)
+        if value is None:
+            raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
+
+        return value
 
     @live_method
     async def update(self, **kwargs) -> None:
