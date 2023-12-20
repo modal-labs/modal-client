@@ -115,7 +115,7 @@ class _Dict(_Object, type_prefix="di"):
     async def get(self, key: Any, default: Optional[Any] = None) -> Any:
         """Get the value associated with a key.
 
-        Returns `default` if key does not exist. 
+        Returns `default` if key does not exist.
         """
         req = api_pb2.DictGetRequest(dict_id=self.object_id, key=serialize(key))
         resp = await retry_transient_errors(self._client.stub.DictGet, req)
