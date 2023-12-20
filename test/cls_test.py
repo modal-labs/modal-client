@@ -2,7 +2,7 @@
 import inspect
 import pytest
 import threading
-from typing import TYPE_CHECKING, Callable, Dict, List
+from typing import TYPE_CHECKING, Callable, Dict
 
 from typing_extensions import assert_type
 

@@ -17,7 +17,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Type
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, Optional, Type
 
 from grpclib import Status
 
@@ -46,7 +46,6 @@ from .config import config, logger
 from .exception import InvalidError
 from .functions import (  # type: ignore
     Function,
-    PartialFunction,
     _find_callables_for_obj,
     _Function,
     _PartialFunctionFlags,

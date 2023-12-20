@@ -22,10 +22,8 @@ from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import (
     PartialFunction,
-    _find_partial_methods_for_cls,
     _Function,
     _PartialFunction,
-    _PartialFunctionFlags,
 )
 from .gpu import GPU_T
 from .image import _Image

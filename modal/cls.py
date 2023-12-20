@@ -11,7 +11,13 @@ from modal_utils.async_utils import synchronize_api, synchronizer
 from ._output import OutputManager
 from ._resolver import Resolver
 from .exception import deprecation_error
-from .functions import _Function, _PartialFunctionFlags, PartialFunction, _find_callables_for_cls, _find_partial_methods_for_cls
+from .functions import (
+    PartialFunction,
+    _find_callables_for_cls,
+    _find_partial_methods_for_cls,
+    _Function,
+    _PartialFunctionFlags,
+)
 from .object import _Object
 
 T = TypeVar("T")

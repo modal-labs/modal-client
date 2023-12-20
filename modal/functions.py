@@ -1463,6 +1463,7 @@ class _PartialFunction:
             keep_warm=self.keep_warm,
         )
 
+
 def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class"""
     partial_functions: Dict[str, PartialFunction] = {}
