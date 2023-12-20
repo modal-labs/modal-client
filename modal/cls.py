@@ -119,10 +119,12 @@ Obj = synchronize_api(_Obj)
 class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
     _functions: Dict[str, _Function]
+    _callables: Dict[str, Callable]
 
     def _initialize_from_empty(self):
         self._user_cls = None
-        self._base_functions = {}
+        self._functions = {}
+        self._callables = {}
         self._output_mgr: Optional[OutputManager] = None
 
     def _set_output_mgr(self, output_mgr: OutputManager):
@@ -130,18 +132,18 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _hydrate_metadata(self, metadata: Message):
         for method in metadata.methods:
-            if method.function_name in self._base_functions:
-                self._base_functions[method.function_name]._hydrate(
+            if method.function_name in self._functions:
+                self._functions[method.function_name]._hydrate(
                     method.function_id, self._client, method.function_handle_metadata
                 )
             else:
-                self._base_functions[method.function_name] = _Function._new_hydrated(
+                self._functions[method.function_name] = _Function._new_hydrated(
                     method.function_id, self._client, method.function_handle_metadata
                 )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
         class_handle_metadata = api_pb2.ClassHandleMetadata()
-        for f_name, f in self._base_functions.items():
+        for f_name, f in self._functions.items():
             class_handle_metadata.methods.append(
                 api_pb2.ClassMethod(
                     function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
@@ -150,10 +152,10 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
-    def from_local(user_cls, decorator: Callable[[PartialFunction, type], _Function]) -> "_Cls":
-        base_functions: Dict[str, _Function] = {}
+    def from_local(user_cls, stub, decorator: Callable[[PartialFunction, type], _Function]) -> "_Cls":
+        functions: Dict[str, _Function] = {}
         for k, partial_function in _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.FUNCTION).items():
-            base_functions[k] = decorator(partial_function, user_cls)
+            functions[k] = decorator(partial_function, user_cls)
 
         # Disable the warning that these are not wrapped
         for partial_function in _find_partial_methods_for_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
@@ -163,33 +165,27 @@ class _Cls(_Object, type_prefix="cs"):
         callables: Dict[str, Callable] = _find_callables_for_cls(user_cls, ~_PartialFunctionFlags(0))
 
         def _deps() -> List[_Function]:
-            return list(base_functions.values())
+            return list(functions.values())
 
         async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
-            for f_name, f in base_functions.items():
+            for f_name, f in functions.items():
                 req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
             resp = await resolver.client.stub.ClassCreate(req)
             provider._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
         cls = _Cls._from_loader(_load, rep, deps=_deps)
+        cls._stub = stub
         cls._user_cls = user_cls
-        cls._base_functions = base_functions
+        cls._functions = functions
         cls._callables = callables
-        setattr(cls._user_cls, "_modal_functions", base_functions)  # Needed for PartialFunction.__get__
+        setattr(cls._user_cls, "_modal_functions", functions)  # Needed for PartialFunction.__get__
         return cls
-
-    def get_user_fun(self, fun_name: str) -> Callable:
-        """Used by the container entrypoint to look up the underlying Python function."""
-        return self._callables[fun_name]
-
-    def get_base_function(self, k: str) -> _Function:
-        return self._base_functions[k]
 
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
-        return _Obj(self._user_cls, self._output_mgr, self._base_functions, args, kwargs)
+        return _Obj(self._user_cls, self._output_mgr, self._functions, args, kwargs)
 
     async def remote(self, *args, **kwargs):
         deprecation_error(
@@ -198,8 +194,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint
-        if k in self._base_functions:
-            return self._base_functions[k]
+        if k in self._functions:
+            return self._functions[k]
         return getattr(self._user_cls, k)
 
 

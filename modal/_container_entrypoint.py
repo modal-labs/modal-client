@@ -646,6 +646,8 @@ def import_function(
     module: Optional[ModuleType] = None
     cls: Optional[Type] = None
     fun: Callable
+    function: Optional[_Function] = None
+    active_stub: Optional[_Stub] = None
     pty_info: api_pb2.PTYInfo = function_def.pty_info
 
     if pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
@@ -663,28 +665,33 @@ def import_function(
 
         parts = qual_name.split(".")
         if len(parts) == 1:
+            # This is a function
             cls = None
-            fun = getattr(module, qual_name)
+            f = getattr(module, qual_name)
+            if isinstance(f, Function):
+                function = synchronizer._translate_in(f)
+                fun = function.get_raw_f()
+                active_stub = function._stub
+            else:
+                fun = f
         elif len(parts) == 2:
+            # This is a method on a class
             cls_name, fun_name = parts
             cls = getattr(module, cls_name)
             if isinstance(cls, Cls):
                 # The cls decorator is in global scope
-                fun = cls.get_user_fun(fun_name)
+                _cls = synchronizer._translate_in(cls)
+                fun = _cls._callables[fun_name]
+                function = _cls._functions.get(fun_name)
+                active_stub = _cls._stub
             else:
                 # This is a raw class
                 fun = getattr(cls, fun_name)
         else:
             raise InvalidError(f"Invalid function qualname {qual_name}")
 
-    # The decorator is typically in global scope, but may have been applied independently
-    active_stub: Optional[_Stub] = None
-    function: Optional[_Function] = None
-    if isinstance(fun, Function):
-        function = synchronizer._translate_in(fun)
-        fun = function.get_raw_f()
-        active_stub = function._stub
-    elif module is not None and not function_def.is_builder_function:
+    # If the cls/function decorator was applied in local scope, but the stub is global, we can look it up
+    if active_stub is None and function_def.stub_name:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated stubs - if there is only one with the indicated name, use that one
         matching_stubs = _Stub._all_stubs.get(function_def.stub_name, [])

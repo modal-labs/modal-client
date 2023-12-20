@@ -622,9 +622,9 @@ class _Stub:
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
-            cls: _Cls = _Cls.from_local(user_cls, decorator)
+            cls: _Cls = _Cls.from_local(user_cls, self, decorator)
 
-            if len(cls._base_functions) > 1 and keep_warm is not None:
+            if len(cls._functions) > 1 and keep_warm is not None:
                 deprecation_warning(
                     date(2023, 10, 20),
                     "`@stub.cls(keep_warm=...)` is deprecated when there is more than 1 method."
