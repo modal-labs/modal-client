@@ -45,14 +45,14 @@ def test_volume_duplicate_mount():
         stub.function(volumes={"/foo": volume, "/bar": volume})(dummy)
 
 
-@pytest.mark.parametrize("omit_reload", [False, True])
-def test_volume_commit(client, servicer, omit_reload):
+@pytest.mark.parametrize("skip_reload", [False, True])
+def test_volume_commit(client, servicer, skip_reload):
     stub = modal.Stub()
     stub.vol = modal.Volume.new()
 
     with servicer.intercept() as ctx:
-        ctx.add_response("VolumeCommit", api_pb2.VolumeCommitResponse(omit_reload=omit_reload))
-        ctx.add_response("VolumeCommit", api_pb2.VolumeCommitResponse(omit_reload=omit_reload))
+        ctx.add_response("VolumeCommit", api_pb2.VolumeCommitResponse(skip_reload=skip_reload))
+        ctx.add_response("VolumeCommit", api_pb2.VolumeCommitResponse(skip_reload=skip_reload))
 
         with stub.run(client=client):
             # Note that in practice this will not work unless run in a task.
@@ -64,8 +64,8 @@ def test_volume_commit(client, servicer, omit_reload):
             assert ctx.pop_request("VolumeCommit").volume_id == stub.vol.object_id
             assert ctx.pop_request("VolumeCommit").volume_id == stub.vol.object_id
 
-            # commit should implicitly reload on successful commit if omit_reload=False
-            assert servicer.volume_reloads[stub.vol.object_id] == 0 if omit_reload else 2
+            # commit should implicitly reload on successful commit if skip_reload=False
+            assert servicer.volume_reloads[stub.vol.object_id] == 0 if skip_reload else 2
 
 
 @pytest.mark.asyncio

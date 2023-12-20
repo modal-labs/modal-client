@@ -137,7 +137,7 @@ class _Volume(_Object, type_prefix="vo"):
             try:
                 # TODO(gongy): only apply indefinite retries on 504 status.
                 resp = await retry_transient_errors(self._client.stub.VolumeCommit, req, max_retries=90)
-                if not resp.omit_reload:
+                if not resp.skip_reload:
                     # Reload changes on successful commit.
                     await self._do_reload(lock=False)
             except GRPCError as exc:

@@ -1509,7 +1509,7 @@ message VolumeCommitRequest {
 }
 
 message VolumeCommitResponse {
-  bool omit_reload = 1;
+  bool skip_reload = 1;
 }
 
 message VolumeGetFileRequest {
