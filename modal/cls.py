@@ -11,7 +11,7 @@ from modal_utils.async_utils import synchronize_api, synchronizer
 from ._output import OutputManager
 from ._resolver import Resolver
 from .exception import deprecation_error
-from .functions import _Function
+from .functions import _Function, _PartialFunctionFlags, PartialFunction, _find_callables_for_cls, _find_partial_methods_for_cls
 from .object import _Object
 
 T = TypeVar("T")
@@ -150,7 +150,18 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
-    def from_local(user_cls, base_functions: Dict[str, _Function]) -> "_Cls":
+    def from_local(user_cls, decorator: Callable[[PartialFunction, type], _Function]) -> "_Cls":
+        base_functions: Dict[str, _Function] = {}
+        for k, partial_function in _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.FUNCTION).items():
+            base_functions[k] = decorator(partial_function, user_cls)
+
+        # Disable the warning that these are not wrapped
+        for partial_function in _find_partial_methods_for_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
+            partial_function.wrapped = True
+
+        # Get all callables
+        callables: Dict[str, Callable] = _find_callables_for_cls(user_cls, ~_PartialFunctionFlags(0))
+
         def _deps() -> List[_Function]:
             return list(base_functions.values())
 
@@ -165,12 +176,13 @@ class _Cls(_Object, type_prefix="cs"):
         cls = _Cls._from_loader(_load, rep, deps=_deps)
         cls._user_cls = user_cls
         cls._base_functions = base_functions
+        cls._callables = callables
         setattr(cls._user_cls, "_modal_functions", base_functions)  # Needed for PartialFunction.__get__
         return cls
 
-    def get_user_cls(self):
-        # Used by the container entrypoint
-        return self._user_cls
+    def get_user_fun(self, fun_name: str) -> Callable:
+        """Used by the container entrypoint to look up the underlying Python function."""
+        return self._callables[fun_name]
 
     def get_base_function(self, k: str) -> _Function:
         return self._base_functions[k]

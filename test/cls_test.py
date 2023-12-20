@@ -578,11 +578,11 @@ class ClsWithLegacySyncMethods:
 def test_legacy_sync_methods():
     obj = ClsWithLegacySyncMethods()
 
-    enter_methods: List[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
-    assert [meth() for meth in enter_methods] == [42, 43]
+    enter_methods: Dict[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
+    assert [meth() for meth in enter_methods.values()] == [42, 43]
 
-    exit_methods: List[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
-    assert [meth(None, None, None) for meth in exit_methods] == [44, 45]
+    exit_methods: Dict[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+    assert [meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
 
 
 class ClsWithLegacyAsyncMethods:
@@ -605,8 +605,8 @@ class ClsWithLegacyAsyncMethods:
 async def test_legacy_async_methods():
     obj = ClsWithLegacyAsyncMethods()
 
-    enter_methods: List[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
-    assert [await meth() for meth in enter_methods] == [42, 43]
+    enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
+    assert [await meth() for meth in enter_methods.values()] == [42, 43]
 
-    exit_methods: List[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
-    assert [await meth(None, None, None) for meth in exit_methods] == [44, 45]
+    exit_methods: Dict[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+    assert [await meth(None, None, None) for meth in exit_methods.values()] == [44, 45]

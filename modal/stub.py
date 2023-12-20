@@ -622,18 +622,9 @@ class _Stub:
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
-            partial_functions: Dict[str, PartialFunction] = _find_partial_methods_for_cls(
-                user_cls, _PartialFunctionFlags.FUNCTION
-            )
-            functions: Dict[str, _Function] = {
-                k: decorator(partial_function, user_cls) for k, partial_function in partial_functions.items()
-            }
+            cls: _Cls = _Cls.from_local(user_cls, decorator)
 
-            # Disable the warning that these are not wrapped
-            for partial_function in _find_partial_methods_for_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
-                partial_function.wrapped = True
-
-            if len(functions) > 1 and keep_warm is not None:
+            if len(cls._base_functions) > 1 and keep_warm is not None:
                 deprecation_warning(
                     date(2023, 10, 20),
                     "`@stub.cls(keep_warm=...)` is deprecated when there is more than 1 method."
@@ -641,7 +632,6 @@ class _Stub:
                 )
 
             tag: str = user_cls.__name__
-            cls: _Cls = _Cls.from_local(user_cls, functions)
             self._add_object(tag, cls)
             return cls
 

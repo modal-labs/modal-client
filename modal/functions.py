@@ -592,7 +592,7 @@ class _Function(_Object, type_prefix="fu"):
                 image = image.apt_install("autossh")
 
         if cls and not is_auto_snapshot:
-            build_functions = _find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD)
+            build_functions = list(_find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD).values())
             for build_function in build_functions:
                 snapshot_info = FunctionInfo(build_function, cls=info.cls)
                 snapshot_function = _Function.from_args(
@@ -1477,9 +1477,9 @@ def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) 
     return partial_functions
 
 
-def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> List[Callable]:
+def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, Callable]:
     """Grabs all method on a user class, and returns callables. Includes legacy methods."""
-    functions: List[Callable] = []
+    functions: Dict[str, Callable] = {}
 
     # Build up a list of legacy attributes to check
     check_attrs: List[str] = []
@@ -1493,18 +1493,19 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Lis
     # Grab legacy lifecycle methods
     for attr in check_attrs:
         if hasattr(user_cls, attr):
-            functions.append(getattr(user_cls, attr))
+            functions[attr] = getattr(user_cls, attr)
 
     # Grab new decorator-based methods
-    for pf in _find_partial_methods_for_cls(user_cls, flags).values():
-        functions.append(pf.raw_f)
+    for k, pf in _find_partial_methods_for_cls(user_cls, flags).items():
+        functions[k] = pf.raw_f
+
     return functions
 
 
-def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> List[Callable]:
+def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict[str, Callable]:
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: Type = type(user_obj)
-    return [meth.__get__(user_obj) for meth in _find_callables_for_cls(user_cls, flags)]
+    return {k: meth.__get__(user_obj) for k, meth in _find_callables_for_cls(user_cls, flags).items()}
 
 
 PartialFunction = synchronize_api(_PartialFunction)
