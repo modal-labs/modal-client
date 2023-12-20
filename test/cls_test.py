@@ -578,10 +578,10 @@ class ClsWithLegacySyncMethods:
 def test_legacy_sync_methods():
     obj = ClsWithLegacySyncMethods()
 
-    enter_methods: Dict[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
+    enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
     assert [meth() for meth in enter_methods.values()] == [42, 43]
 
-    exit_methods: Dict[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+    exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
     assert [meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
 
 
@@ -608,5 +608,5 @@ async def test_legacy_async_methods():
     enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
     assert [await meth() for meth in enter_methods.values()] == [42, 43]
 
-    exit_methods: Dict[Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+    exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
     assert [await meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
