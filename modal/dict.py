@@ -143,8 +143,9 @@ class _Dict(_Object, type_prefix="di"):
 
         This function only works in a synchronous context.
         """
-        value = await self.get(key)
-        if value is None:
+        NOT_FOUND = object()
+        value = await self.get(key, NOT_FOUND)
+        if value is NOT_FOUND:
             raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
 
         return value

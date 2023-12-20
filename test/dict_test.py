@@ -19,3 +19,5 @@ def test_dict(servicer, client):
             _ = stub.d["foo"]
 
         assert stub.d.get("foo", default=True)
+        stub.d["foo"] = None
+        assert stub.d["foo"] is None
