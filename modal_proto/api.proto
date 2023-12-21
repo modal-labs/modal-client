@@ -682,6 +682,7 @@ message ObjectDependency {
 message CheckpointInfo {
   string checksum = 1;
   CheckpointStatus status = 2;
+  string checkpoint_id = 3;
 }
 
 message Function {
