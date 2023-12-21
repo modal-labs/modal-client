@@ -9,7 +9,7 @@ from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._types import typechecked
-from modal_utils.async_utils import synchronize_api, synchronizer
+from modal_utils.async_utils import synchronize_api
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
@@ -20,7 +20,11 @@ from .client import _Client
 from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import PartialFunction, _Function, _PartialFunction
+from .functions import (
+    PartialFunction,
+    _Function,
+    _PartialFunction,
+)
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -616,22 +620,9 @@ class _Stub:
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
-            partial_functions: Dict[str, PartialFunction] = {}
-            functions: Dict[str, _Function] = {}
+            cls: _Cls = _Cls.from_local(user_cls, self, decorator)
 
-            for parent_cls in user_cls.mro():
-                if parent_cls is object:
-                    continue
-                for k, v in parent_cls.__dict__.items():
-                    if isinstance(v, PartialFunction):
-                        partial_functions[k] = v
-                        partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                        functions[k] = decorator(
-                            partial_function,
-                            user_cls,
-                        )
-
-            if len(functions) > 1 and keep_warm is not None:
+            if len(cls._functions) > 1 and keep_warm is not None:
                 deprecation_warning(
                     date(2023, 10, 20),
                     "`@stub.cls(keep_warm=...)` is deprecated when there is more than 1 method."
@@ -639,7 +630,6 @@ class _Stub:
                 )
 
             tag: str = user_cls.__name__
-            cls: _Cls = _Cls.from_local(user_cls, functions)
             self._add_object(tag, cls)
             return cls
 
