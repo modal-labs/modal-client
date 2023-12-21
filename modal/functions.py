@@ -1,15 +1,16 @@
 # Copyright Modal Labs 2022
 import asyncio
+import enum
 import inspect
 import os
 import pickle
 import time
-import typing
 import warnings
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date
 from typing import (
+    TYPE_CHECKING,
     Any,
     AsyncGenerator,
     AsyncIterable,
@@ -22,6 +23,7 @@ from typing import (
     List,
     Optional,
     Set,
+    Type,
     Union,
 )
 
@@ -78,7 +80,7 @@ from .volume import _Volume
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
 
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     import modal.stub
 
 
@@ -589,29 +591,27 @@ class _Function(_Object, type_prefix="fu"):
             if image:
                 image = image.apt_install("autossh")
 
-        if not is_auto_snapshot and (hasattr(info.cls, "__build__") or hasattr(info.cls, "__abuild__")):
-            if hasattr(info.cls, "__build__"):
-                snapshot_info = FunctionInfo(info.cls.__build__, cls=info.cls)
-            else:
-                snapshot_info = FunctionInfo(info.cls.__abuild__, cls=info.cls)
-
-            snapshot_function = _Function.from_args(
-                snapshot_info,
-                stub=None,
-                image=image,
-                secret=secret,
-                secrets=secrets,
-                gpu=gpu,
-                mounts=mounts,
-                network_file_systems=network_file_systems,
-                volumes=volumes,
-                memory=memory,
-                timeout=timeout,
-                cpu=cpu,
-                is_builder_function=True,
-                is_auto_snapshot=True,
-            )
-            image = image.extend(build_function=snapshot_function, force_build=image.force_build)
+        if cls and not is_auto_snapshot:
+            build_functions = list(_find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD).values())
+            for build_function in build_functions:
+                snapshot_info = FunctionInfo(build_function, cls=info.cls)
+                snapshot_function = _Function.from_args(
+                    snapshot_info,
+                    stub=None,
+                    image=image,
+                    secret=secret,
+                    secrets=secrets,
+                    gpu=gpu,
+                    mounts=mounts,
+                    network_file_systems=network_file_systems,
+                    volumes=volumes,
+                    memory=memory,
+                    timeout=timeout,
+                    cpu=cpu,
+                    is_builder_function=True,
+                    is_auto_snapshot=True,
+                )
+                image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
         if interactive and concurrency_limit and concurrency_limit > 1:
             warnings.warn(
@@ -1406,17 +1406,32 @@ def _set_current_context_ids(input_id: str, function_call_id: str) -> Callable[[
     return _reset_current_context_ids
 
 
+class _PartialFunctionFlags(enum.IntFlag):
+    FUNCTION: int = 1
+    BUILD: int = 2
+    ENTER: int = 4
+    EXIT: int = 8
+
+
 class _PartialFunction:
     """Intermediate function, produced by @method or @web_endpoint"""
+
+    raw_f: Callable[..., Any]
+    flags: _PartialFunctionFlags
+    webhook_config: Optional[api_pb2.WebhookConfig]
+    is_generator: Optional[bool]
+    keep_warm: Optional[int]
 
     def __init__(
         self,
         raw_f: Callable[..., Any],
+        flags: _PartialFunctionFlags,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
         keep_warm: Optional[int] = None,
     ):
         self.raw_f = raw_f
+        self.flags = flags
         self.webhook_config = webhook_config
         self.is_generator = is_generator
         self.keep_warm = keep_warm
@@ -1437,6 +1452,61 @@ class _PartialFunction:
                 f"Method or web function {self.raw_f} was never turned into a function."
                 " Did you forget a @stub.function or @stub.cls decorator?"
             )
+
+    def add_flags(self, flags) -> "_PartialFunction":
+        # Helper method used internally when stacking decorators
+        self.wrapped = True
+        return _PartialFunction(
+            raw_f=self.raw_f,
+            flags=(self.flags | flags),
+            webhook_config=self.webhook_config,
+            keep_warm=self.keep_warm,
+        )
+
+
+def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
+    """Grabs all method on a user class"""
+    partial_functions: Dict[str, PartialFunction] = {}
+    for parent_cls in user_cls.mro():
+        if parent_cls is not object:
+            for k, v in parent_cls.__dict__.items():
+                if isinstance(v, PartialFunction):
+                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
+                    if partial_function.flags & flags:
+                        partial_functions[k] = partial_function
+
+    return partial_functions
+
+
+def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, Callable]:
+    """Grabs all method on a user class, and returns callables. Includes legacy methods."""
+    functions: Dict[str, Callable] = {}
+
+    # Build up a list of legacy attributes to check
+    check_attrs: List[str] = []
+    if flags & _PartialFunctionFlags.BUILD:
+        check_attrs += ["__build__", "__abuild__"]
+    if flags & _PartialFunctionFlags.ENTER:
+        check_attrs += ["__enter__", "__aenter__"]
+    if flags & _PartialFunctionFlags.EXIT:
+        check_attrs += ["__exit__", "__aexit__"]
+
+    # Grab legacy lifecycle methods
+    for attr in check_attrs:
+        if hasattr(user_cls, attr):
+            functions[attr] = getattr(user_cls, attr)
+
+    # Grab new decorator-based methods
+    for k, pf in _find_partial_methods_for_cls(user_cls, flags).items():
+        functions[k] = pf.raw_f
+
+    return functions
+
+
+def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict[str, Callable]:
+    """Grabs all methods for an object, and binds them to the class"""
+    user_cls: Type = type(user_obj)
+    return {k: meth.__get__(user_obj) for k, meth in _find_callables_for_cls(user_cls, flags).items()}
 
 
 PartialFunction = synchronize_api(_PartialFunction)
@@ -1472,7 +1542,7 @@ def _method(
             raise InvalidError(
                 "Web endpoints on classes should not be wrapped by `@method`. Suggestion: remove the `@method` decorator."
             )
-        return _PartialFunction(raw_f, is_generator=is_generator, keep_warm=keep_warm)
+        return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
 
     return wrapper
 
@@ -1535,6 +1605,7 @@ def _web_endpoint(
 
         return _PartialFunction(
             raw_f,
+            _PartialFunctionFlags.FUNCTION,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
@@ -1593,6 +1664,7 @@ def _asgi_app(
 
         return _PartialFunction(
             raw_f,
+            _PartialFunctionFlags.FUNCTION,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
                 requested_suffix=label,
@@ -1649,6 +1721,7 @@ def _wsgi_app(
 
         return _PartialFunction(
             raw_f,
+            _PartialFunctionFlags.FUNCTION,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
                 requested_suffix=label,
@@ -1660,7 +1733,57 @@ def _wsgi_app(
     return wrapper
 
 
+@typechecked
+def _build(
+    _warn_parentheses_missing=None,
+) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
+    if _warn_parentheses_missing:
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
+
+    def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
+        if isinstance(f, _PartialFunction):
+            return f.add_flags(_PartialFunctionFlags.BUILD)
+        else:
+            return _PartialFunction(f, _PartialFunctionFlags.BUILD)
+
+    return wrapper
+
+
+@typechecked
+def _enter(
+    _warn_parentheses_missing=None,
+) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
+    if _warn_parentheses_missing:
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
+
+    def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
+        if isinstance(f, _PartialFunction):
+            return f.add_flags(_PartialFunctionFlags.ENTER)
+        else:
+            return _PartialFunction(f, _PartialFunctionFlags.ENTER)
+
+    return wrapper
+
+
+# TODO(erikbern): last argument should be Optional[TracebackType]
+ExitHandlerType = Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None]
+
+
+@typechecked
+def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _PartialFunction]:
+    if _warn_parentheses_missing:
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
+
+    def wrapper(f: ExitHandlerType) -> _PartialFunction:
+        return _PartialFunction(f, _PartialFunctionFlags.EXIT)
+
+    return wrapper
+
+
 method = synchronize_api(_method)
 web_endpoint = synchronize_api(_web_endpoint)
 asgi_app = synchronize_api(_asgi_app)
 wsgi_app = synchronize_api(_wsgi_app)
+build = synchronize_api(_build)
+enter = synchronize_api(_enter)
+exit = synchronize_api(_exit)

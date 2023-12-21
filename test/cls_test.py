@@ -2,15 +2,21 @@
 import inspect
 import pytest
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Dict
 
 from typing_extensions import assert_type
 
-from modal import Cls, Function, Stub, method
+from modal import Cls, Function, Image, Stub, build, enter, exit, method
 from modal._serialization import deserialize
 from modal.app import ContainerApp
 from modal.cls import ClsMixin
 from modal.exception import DeprecationError, ExecutionError
+from modal.functions import (
+    _find_callables_for_obj,
+    _find_partial_methods_for_cls,
+    _PartialFunction,
+    _PartialFunctionFlags,
+)
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support.base_class import BaseCls2
@@ -494,3 +500,113 @@ def test_keep_warm_depr():
 
     with pytest.warns(DeprecationError, match="@method"):
         stub.cls(keep_warm=2)(ClsWith2Methods)
+
+
+class ClsWithHandlers:
+    @build()
+    def my_build(self):
+        pass
+
+    @enter()
+    def my_enter(self):
+        pass
+
+    @build()
+    @enter()
+    def my_build_and_enter(self):
+        pass
+
+    @exit()
+    def my_exit(self, exc_type, exc, traceback):
+        pass
+
+
+def test_handlers():
+    pfs: Dict[str, _PartialFunction]
+
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.BUILD)
+    assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]
+
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER)
+    assert list(pfs.keys()) == ["my_enter", "my_build_and_enter"]
+
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.EXIT)
+    assert list(pfs.keys()) == ["my_exit"]
+
+
+handler_stub = Stub("handler-stub")
+
+
+image = Image.debian_slim().pip_install("xyz")
+
+
+@handler_stub.cls(image=image)
+class ClsWithBuild:
+    @build()
+    def build(self):
+        pass
+
+    @method()
+    def method(self):
+        pass
+
+
+def test_build_image(client, servicer):
+    with handler_stub.run(client=client):
+        f_def = servicer.app_functions[ClsWithBuild.method.object_id]
+        # The function image should have added a new layer with original image as the parent
+        f_image = servicer.images[f_def.image_id]
+        assert f_image.base_images[0].image_id == image.object_id
+
+
+class ClsWithLegacySyncMethods:
+    def __enter__(self):
+        return 42
+
+    @enter()
+    def my_enter(self):
+        return 43
+
+    def __exit__(self, exc_type, exc, tb):
+        return 44
+
+    @exit()
+    def my_exit(self, exc_type, exc, tb):
+        return 45
+
+
+def test_legacy_sync_methods():
+    obj = ClsWithLegacySyncMethods()
+
+    enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
+    assert [meth() for meth in enter_methods.values()] == [42, 43]
+
+    exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+    assert [meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
+
+
+class ClsWithLegacyAsyncMethods:
+    async def __aenter__(self):
+        return 42
+
+    @enter()
+    async def my_enter(self):
+        return 43
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return 44
+
+    @exit()
+    async def my_exit(self, exc_type, exc, tb):
+        return 45
+
+
+@pytest.mark.asyncio
+async def test_legacy_async_methods():
+    obj = ClsWithLegacyAsyncMethods()
+
+    enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
+    assert [await meth() for meth in enter_methods.values()] == [42, 43]
+
+    exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+    assert [await meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
