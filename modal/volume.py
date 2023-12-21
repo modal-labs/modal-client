@@ -126,7 +126,7 @@ class _Volume(_Object, type_prefix="vo"):
     async def commit(self):
         """Commit changes to the volume and fetch any other changes made to the volume by other containers.
 
-        Committing always triggers a reload after saving changes.
+        Unless background commits are enabled, committing always triggers a reload after saving changes.
 
         If successful, the changes made are now persisted in durable storage and available to other containers accessing the volume.
 
