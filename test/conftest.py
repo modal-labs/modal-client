@@ -803,7 +803,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if not req.volume_id.startswith("vo-"):
             raise GRPCError(Status.NOT_FOUND, f"invalid volume ID {req.volume_id}")
         self.volume_commits[req.volume_id] += 1
-        await stream.send_message(Empty())
+        await stream.send_message(api_pb2.VolumeCommitResponse(skip_reload=False))
 
     async def VolumeReload(self, stream):
         req = await stream.recv_message()
