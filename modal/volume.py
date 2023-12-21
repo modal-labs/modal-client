@@ -126,7 +126,7 @@ class _Volume(_Object, type_prefix="vo"):
     async def commit(self):
         """Commit changes to the volume and fetch any other changes made to the volume by other containers.
 
-        Committing always triggers a reload after saving changes.
+        Unless background commits are enabled, committing always triggers a reload after saving changes.
 
         If successful, the changes made are now persisted in durable storage and available to other containers accessing the volume.
 
@@ -136,9 +136,10 @@ class _Volume(_Object, type_prefix="vo"):
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
             try:
                 # TODO(gongy): only apply indefinite retries on 504 status.
-                _ = await retry_transient_errors(self._client.stub.VolumeCommit, req, max_retries=90)
-                # Reload changes on successful commit.
-                await self._do_reload(lock=False)
+                resp = await retry_transient_errors(self._client.stub.VolumeCommit, req, max_retries=90)
+                if not resp.skip_reload:
+                    # Reload changes on successful commit.
+                    await self._do_reload(lock=False)
             except GRPCError as exc:
                 raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
 

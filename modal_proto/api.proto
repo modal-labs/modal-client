@@ -1508,6 +1508,10 @@ message VolumeCommitRequest {
   string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
+message VolumeCommitResponse {
+  bool skip_reload = 1;
+}
+
 message VolumeGetFileRequest {
   string volume_id = 1;
   bytes path = 2;
@@ -1723,7 +1727,7 @@ service ModalClient {
 
   // Volumes
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
-  rpc VolumeCommit(VolumeCommitRequest) returns (google.protobuf.Empty);
+  rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);
