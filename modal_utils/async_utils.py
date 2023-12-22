@@ -3,6 +3,7 @@ import asyncio
 import concurrent.futures
 import functools
 import inspect
+import sys
 import time
 import typing
 from contextlib import asynccontextmanager
@@ -142,7 +143,13 @@ class TaskContext:
                 if task.done() or task in self._loops:
                     continue
 
-                logger.warning(f"Canceling remaining unfinished task {task}")
+                already_cancelling = False
+                if sys.version_info >= (3, 11):
+                    already_cancelling = task.cancelling() > 0
+
+                if not already_cancelling:
+                    logger.warning(f"Canceling remaining unfinished task: {task}")
+
                 task.cancel()
 
     async def __aexit__(self, exc_type, value, tb):
