@@ -46,7 +46,7 @@ volume_cli = Typer(
 
 def humanize_filesize(value: int) -> str:
     if value < 0:
-        raise ValueError("filesize should be >= 0")
+        raise ValueError("value should be >= 0")
     suffix = (" KiB", " MiB", " GiB", " TiB", " PiB", " EiB", " ZiB")
     format = "%.1f"
     base = 1024

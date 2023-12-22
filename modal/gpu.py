@@ -185,7 +185,7 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
     elif value is None or value is False:
         return None
     else:
-        raise InvalidError(f"Invalid GPU config: {value}. Value must be a string, a GPUConfig object or `None`.")
+        raise InvalidError(f"Invalid GPU config: {value}. Value must be a string, a `GPUConfig` object, or `None`.")
 
 
 def parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> api_pb2.GPUConfig:

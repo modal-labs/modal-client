@@ -146,7 +146,7 @@ class _Dict(_Object, type_prefix="di"):
         NOT_FOUND = object()
         value = await self.get(key, NOT_FOUND)
         if value is NOT_FOUND:
-            raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
+            raise KeyError(f"{key} not in dict {self.object_id}")
 
         return value
 
@@ -179,7 +179,7 @@ class _Dict(_Object, type_prefix="di"):
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
         resp = await retry_transient_errors(self._client.stub.DictPop, req)
         if not resp.found:
-            raise KeyError(f"KeyError: {key} not in dict {self.object_id}")
+            raise KeyError(f"{key} not in dict {self.object_id}")
         return deserialize(resp.value, self._client)
 
     @live_method
