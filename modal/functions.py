@@ -553,7 +553,7 @@ class _Function(_Object, type_prefix="fu"):
         if schedule is not None:
             if not info.is_nullary():
                 raise InvalidError(
-                    f"Function {raw_f} has a schedule, so it needs to support calling it with no arguments"
+                    f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
                 )
 
         all_mounts = [

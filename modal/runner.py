@@ -57,7 +57,7 @@ async def _run_stub(
     if stub._local_app:
         raise InvalidError(
             "App is already running and can't be started again.\n"
-            "You should not use `stub.run` or `run_stub` within a Modal local_entrypoint"
+            "You should not use `stub.run` or `run_stub` within a Modal `local_entrypoint`"
         )
 
     if stub.description is None:
