@@ -7,6 +7,7 @@ from typing import IO, AsyncIterator, List, Optional, Union
 
 from grpclib import GRPCError, Status
 
+import modal.exception
 from modal_proto import api_pb2
 from modal_utils.async_utils import ConcurrencyPool, asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
@@ -329,6 +330,9 @@ class _Volume(_Object, type_prefix="vo"):
                 response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
                 if response.exists:
                     break
+
+            if not response.exists:
+                raise modal.exception.VolumeUploadTimeoutError(f"Uploading of {file_spec.filename} timed out")
 
         return api_pb2.MountFile(
             filename=remote_filename,
