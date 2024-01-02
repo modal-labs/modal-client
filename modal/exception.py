@@ -48,6 +48,10 @@ class MountUploadTimeoutError(TimeoutError):
     """Raised when a Mount upload times out."""
 
 
+class VolumeUploadTimeoutError(TimeoutError):
+    """Raised when a Volume upload times out."""
+
+
 class AuthError(Error):
     """Raised when a client has missing or invalid authentication."""
 
