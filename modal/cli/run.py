@@ -1,12 +1,11 @@
 # Copyright Modal Labs 2022
 import asyncio
-import datetime
 import functools
 import inspect
 import re
 import sys
 import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import click
 import typer
@@ -31,20 +30,13 @@ class AnyParamType(click.ParamType):
         return value
 
 
-# Why do we need to support both types and the strings? Because something weird with
-# how __annotations__ works in Python (which inspect.signature uses). See #220.
 option_parsers = {
-    str: str,
     "str": str,
-    int: int,
     "int": int,
-    float: float,
     "float": float,
-    bool: bool,
     "bool": bool,
-    datetime.datetime: click.DateTime(),
     "datetime.datetime": click.DateTime(),
-    Any: AnyParamType(),
+    "Any": AnyParamType(),
 }
 
 
@@ -59,25 +51,37 @@ def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, inspect.Pa
     return {param.name: param for param in inspect.signature(f).parameters.values()}
 
 
+def _get_param_type_as_str(annot: Any) -> Tuple[str, bool]:
+    """Return param type as a string, handling various spellings for optional types."""
+    if annot is inspect.Signature.empty:
+        return "Any"
+    annot_str = str(annot)
+    m = re.match(r"typing.Optional\[([\w.]+)\]", annot_str)
+    if m is not None:
+        return m.group(1)
+    m = re.match(r"([\w.]+) \| None", annot_str)
+    if m is not None:
+        return m.group(1)
+    m = re.match(r"<class '([\w\.]+)'>", annot_str)
+    if m is not None:
+        return m.group(1)
+    return annot_str
+
+
 def _add_click_options(func, signature: Dict[str, inspect.Parameter]):
     """Adds @click.option based on function signature
 
     Kind of like typer, but using options instead of positional arguments
     """
     for param in signature.values():
-        param_type = Any if param.annotation is inspect.Signature.empty else param.annotation
-        param_is_optional = str(param_type).startswith("typing.Optional")
+        param_type_str = _get_param_type_as_str(param.annotation)
         param_name = param.name.replace("_", "-")
         cli_name = "--" + param_name
-        if param_type in (bool, "bool"):
+        if param_type_str == "bool":
             cli_name += "/--no-" + param_name
-        if param_is_optional:
-            m = re.match(r"typing.Optional\[(\w+)\]", str(param_type))
-            if m is not None:
-                param_type = m.group(1)
-        parser = option_parsers.get(param_type)
+        parser = option_parsers.get(param_type_str)
         if parser is None:
-            raise NoParserAvailable(repr(param_type))
+            raise NoParserAvailable(repr(param.annotation))
         kwargs: Any = {
             "type": parser,
         }
