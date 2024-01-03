@@ -1265,13 +1265,13 @@ class _Image(_Object, type_prefix="im"):
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
         force_build: bool = False,
     ) -> "_Image":
-        """Run user-defined function `raw_function` as an image build step. The function runs just like an ordinary Modal
+        """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
         function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `NetworkFileSystem`s, and resource requests) can
         be supplied to it. After it finishes execution, a snapshot of the resulting container file system is saved as an image.
 
         **Note**
 
-        Only the source code of `raw_function`, the contents of `**kwargs`, and any referenced *global* variables are used to determine whether the image has changed
+        Only the source code of `raw_f`, the contents of `**kwargs`, and any referenced *global* variables are used to determine whether the image has changed
         and needs to be rebuilt. If this function references other functions or variables, the image will not be rebuilt if you
         make changes to them. You can force a rebuild by changing the function's source code itself.
 
