@@ -3,6 +3,7 @@ import asyncio
 import datetime
 import functools
 import inspect
+import re
 import sys
 import time
 from typing import Any, Callable, Dict, Optional
@@ -65,10 +66,15 @@ def _add_click_options(func, signature: Dict[str, inspect.Parameter]):
     """
     for param in signature.values():
         param_type = Any if param.annotation is inspect.Signature.empty else param.annotation
+        param_is_optional = str(param_type).startswith("typing.Optional")
         param_name = param.name.replace("_", "-")
         cli_name = "--" + param_name
         if param_type in (bool, "bool"):
             cli_name += "/--no-" + param_name
+        if param_is_optional:
+            m = re.match(r"typing.Optional\[(\w+)\]", str(param_type))
+            if m is not None:
+                param_type = m.group(1)
         parser = option_parsers.get(param_type)
         if parser is None:
             raise NoParserAvailable(repr(param_type))
