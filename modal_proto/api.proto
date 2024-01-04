@@ -421,6 +421,18 @@ message ClassCreateResponse {
   ClassHandleMetadata handle_metadata = 2;
 }
 
+message ClassGetRequest {
+  string app_name = 1;
+  string object_tag = 2;
+  DeploymentNamespace namespace = 3;
+  string environment_name = 4;
+}
+
+message ClassGetResponse {
+  Object object = 1;
+}
+
+
 message ClassHandleMetadata {
   repeated ClassMethod methods = 1;
 }
@@ -813,6 +825,17 @@ message FunctionCreateResponse {
   WebUrlInfo web_url_info = 3;  // Deprecated - needed until 0.51 is the minimum version
   Function function = 4;
   FunctionHandleMetadata handle_metadata = 5;
+}
+
+message FunctionGetRequest {
+  string app_name = 1;
+  string object_tag = 2;
+  DeploymentNamespace namespace = 3;
+  string environment_name = 4;
+}
+
+message FunctionGetResponse {
+  Object object = 1;
 }
 
 message FunctionGetInputsItem {
@@ -1631,6 +1654,7 @@ service ModalClient {
 
   // Classes
   rpc ClassCreate(ClassCreateRequest) returns (ClassCreateResponse);
+  rpc ClassGet(ClassGetRequest) returns (ClassGetResponse);
 
   // Clients
   rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
@@ -1666,6 +1690,7 @@ service ModalClient {
   // Functions
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
+  rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
