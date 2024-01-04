@@ -19,7 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, Optional, Type
 
-from grpclib import Status
+from grpclib import GRPCError, Status
+from grpclib.exceptions import StreamTerminatedError
 
 from modal.stub import _Stub
 from modal_proto import api_pb2
@@ -29,7 +30,7 @@ from modal_utils.async_utils import (
     synchronize_api,
     synchronizer,
 )
-from modal_utils.grpc_utils import retry_transient_errors, unary_stream
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
@@ -174,6 +175,7 @@ class _FunctionIOManager:
     async def get_data_in(self, function_call_id: str) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
         last_index = 0
+        retries_remaining = 10
         while True:
             req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
             try:
@@ -187,8 +189,16 @@ class _FunctionIOManager:
                         message_bytes = chunk.data
                     message = deserialize_data_format(message_bytes, chunk.data_format, client)
                     yield message
-            except Exception:  # TODO: Catch specific exceptions versus transient errors.
-                await asyncio.sleep(0.1)
+            except (GRPCError, StreamTerminatedError) as exc:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, GRPCError):
+                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                            await asyncio.sleep(1.0)
+                            continue
+                    elif isinstance(exc, StreamTerminatedError):
+                        continue
+                raise
 
     @wrap()
     async def populate_input_blobs(self, item: api_pb2.FunctionInput):
