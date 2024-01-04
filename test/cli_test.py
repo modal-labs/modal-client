@@ -250,9 +250,14 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         (["run", f"{stub_file.as_posix()}::optional_arg", "--i=20"], "20 <class 'int'>"),
         (["run", f"{stub_file.as_posix()}::optional_arg"], "None <class 'NoneType'>"),
         (["run", f"{stub_file.as_posix()}::optional_arg_postponed"], "None <class 'NoneType'>"),
-        (["run", f"{stub_file.as_posix()}::optional_arg_pep604", "--i=20"], "20 <class 'int'>"),
-        (["run", f"{stub_file.as_posix()}::optional_arg_pep604"], "None <class 'NoneType'>"),
     ]
+    if sys.version_info >= (3, 10):
+        valid_call_args.extend(
+            [
+                (["run", f"{stub_file.as_posix()}::optional_arg_pep604", "--i=20"], "20 <class 'int'>"),
+                (["run", f"{stub_file.as_posix()}::optional_arg_pep604"], "None <class 'NoneType'>"),
+            ]
+        )
     for args, expected in valid_call_args:
         res = _run(args)
         assert expected in res.stdout
