@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 
 from modal import Stub, method
 
@@ -69,5 +69,5 @@ def optional_arg_fn(i: Optional[int] = None):
 
 
 @stub.local_entrypoint()
-def unparseable_annot(i: "int | str"):
+def unparseable_annot(i: Union[int, str]):
     pass
