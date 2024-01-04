@@ -1,15 +1,16 @@
 # Copyright Modal Labs 2022
 import asyncio
-import datetime
 import functools
 import inspect
+import re
 import sys
 import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, get_type_hints
 
 import click
 import typer
 from rich.console import Console
+from typing_extensions import TypedDict
 
 from ..config import config
 from ..environments import ensure_env
@@ -23,6 +24,13 @@ from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
 
 
+class ParameterMetadata(TypedDict):
+    name: str
+    default: Any
+    annotation: Any
+    type_hint: Any
+
+
 class AnyParamType(click.ParamType):
     name = "any"
 
@@ -30,20 +38,13 @@ class AnyParamType(click.ParamType):
         return value
 
 
-# Why do we need to support both types and the strings? Because something weird with
-# how __annotations__ works in Python (which inspect.signature uses). See #220.
 option_parsers = {
-    str: str,
     "str": str,
-    int: int,
     "int": int,
-    float: float,
     "float": float,
-    bool: bool,
     "bool": bool,
-    datetime.datetime: click.DateTime(),
     "datetime.datetime": click.DateTime(),
-    Any: AnyParamType(),
+    "Any": AnyParamType(),
 }
 
 
@@ -51,32 +52,64 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, inspect.Parameter]:
+def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, ParameterMetadata]:
+    try:
+        type_hints = get_type_hints(f)
+    except Exception as exc:
+        # E.g., if entrypoint type hints cannot be evaluated by local Python runtime
+        msg = "Unable to generate command line interface for app entrypoint. See traceback above for details."
+        raise RuntimeError(msg) from exc
+
     if is_method:
         self = None  # Dummy, doesn't matter
         f = functools.partial(f, self)
-    return {param.name: param for param in inspect.signature(f).parameters.values()}
+    signature: Dict[str, ParameterMetadata] = {}
+    for param in inspect.signature(f).parameters.values():
+        signature[param.name] = {
+            "name": param.name,
+            "default": param.default,
+            "annotation": param.annotation,
+            "type_hint": type_hints.get(param.name, "Any"),
+        }
+    return signature
 
 
-def _add_click_options(func, signature: Dict[str, inspect.Parameter]):
+def _get_param_type_as_str(annot: Any) -> str:
+    """Return annotation as a string, handling various spellings for optional types."""
+    annot_str = str(annot)
+    annot_patterns = [
+        r"typing\.Optional\[([\w.]+)\]",
+        r"typing\.Union\[([\w.]+), NoneType\]",
+        r"([\w.]+) \| None",
+        r"<class '([\w\.]+)'>",
+    ]
+    for pat in annot_patterns:
+        m = re.match(pat, annot_str)
+        if m is not None:
+            return m.group(1)
+    return annot_str
+
+
+def _add_click_options(func, signature: Dict[str, ParameterMetadata]):
     """Adds @click.option based on function signature
 
     Kind of like typer, but using options instead of positional arguments
     """
     for param in signature.values():
-        param_type = Any if param.annotation is inspect.Signature.empty else param.annotation
-        param_name = param.name.replace("_", "-")
+        param_type_str = _get_param_type_as_str(param["type_hint"])
+        param_name = param["name"].replace("_", "-")
         cli_name = "--" + param_name
-        if param_type in (bool, "bool"):
+        if param_type_str == "bool":
             cli_name += "/--no-" + param_name
-        parser = option_parsers.get(param_type)
+        parser = option_parsers.get(param_type_str)
         if parser is None:
-            raise NoParserAvailable(repr(param_type))
+            msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']!r}"
+            raise NoParserAvailable(msg)
         kwargs: Any = {
             "type": parser,
         }
-        if param.default is not inspect.Signature.empty:
-            kwargs["default"] = param.default
+        if param["default"] is not inspect.Signature.empty:
+            kwargs["default"] = param["default"]
         else:
             kwargs["required"] = True
 
@@ -100,7 +133,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    signature: Dict[str, inspect.Parameter]
+    signature: Dict[str, ParameterMetadata]
     if function.info.cls is not None:
         cls_signature = _get_signature(function.info.cls)
         fun_signature = _get_signature(function.info.raw_f, is_method=True)

@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 from datetime import datetime
+from typing import Optional, Union
 
 from modal import Stub, method
 
@@ -45,3 +46,28 @@ class ALifecycle:
     @method()
     def some_method_int(self, i: int):
         print(repr(i), type(i))
+
+
+@stub.local_entrypoint()
+def optional_arg(i: Optional[int] = None):
+    print(repr(i), type(i))
+
+
+@stub.local_entrypoint()
+def optional_arg_pep604(i: "int | None" = None):
+    print(repr(i), type(i))
+
+
+@stub.local_entrypoint()
+def optional_arg_postponed(i: "Optional[int]" = None):
+    print(repr(i), type(i))
+
+
+@stub.function()
+def optional_arg_fn(i: Optional[int] = None):
+    print(repr(i), type(i))
+
+
+@stub.local_entrypoint()
+def unparseable_annot(i: Union[int, str]):
+    pass
