@@ -70,7 +70,7 @@ from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import Object, _Object, live_method, live_method_gen
+from .object import Object, _AppObject, _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
@@ -494,7 +494,7 @@ class FunctionStats:
     num_total_runners: int
 
 
-class _Function(_Object, type_prefix="fu"):
+class _Function(_AppObject, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -704,7 +704,7 @@ class _Function(_Object, type_prefix="fu"):
             # Update the precreated function handle (todo: hack until we merge providers/handles)
             provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
 
