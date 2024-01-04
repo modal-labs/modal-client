@@ -33,7 +33,7 @@ class _Secret(_Object, type_prefix="st"):
         ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
         template_type="",  # internal use only
     ):
-        """Create a secret from a str-str dictionary.
+        """Create a secret from a str-str dictionary. Values can also be `None`, which is ignored.
 
         Usage:
         ```python
