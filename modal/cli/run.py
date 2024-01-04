@@ -53,7 +53,13 @@ class NoParserAvailable(InvalidError):
 
 
 def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, ParameterMetadata]:
-    type_hints = get_type_hints(f)
+    try:
+        type_hints = get_type_hints(f)
+    except Exception as exc:
+        # E.g., if entrypoint type hints cannot be evaluated by local Python runtime
+        msg = "Unable to generate command line interface for app entrypoint. See traceback above for details."
+        raise RuntimeError(msg) from exc
+
     if is_method:
         self = None  # Dummy, doesn't matter
         f = functools.partial(f, self)
