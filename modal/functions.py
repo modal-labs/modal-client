@@ -485,7 +485,7 @@ async def _map_invocation(
 
 
 # Wrapper type for api_pb2.FunctionStats
-@dataclass
+@dataclass(frozen=True)
 class FunctionStats:
     """Simple data structure storing stats for a running function."""
 
