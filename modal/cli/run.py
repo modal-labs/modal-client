@@ -59,6 +59,9 @@ def _get_param_type_as_str(annot: Any) -> str:
     m = re.match(r"typing.Optional\[([\w.]+)\]", annot_str)
     if m is not None:
         return m.group(1)
+    m = re.match(r"typing.Union\[([\w.]+), NoneType\]", annot_str)
+    if m is not None:
+        return m.group(1)
     m = re.match(r"([\w.]+) \| None", annot_str)
     if m is not None:
         return m.group(1)
