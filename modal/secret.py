@@ -31,7 +31,6 @@ class _Secret(_Object, type_prefix="st"):
         env_dict: Dict[
             str, Union[str, None]
         ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
-        template_type="",  # internal use only
     ):
         """Create a secret from a str-str dictionary. Values can also be `None`, which is ignored.
 
@@ -55,7 +54,6 @@ class _Secret(_Object, type_prefix="st"):
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,
                 env_dict=env_dict_filtered,
-                template_type=template_type,
                 existing_secret_id=existing_object_id,
             )
             try:
