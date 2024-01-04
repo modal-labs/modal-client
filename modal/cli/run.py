@@ -5,7 +5,7 @@ import inspect
 import re
 import sys
 import time
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
 import click
 import typer
@@ -51,8 +51,8 @@ def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, inspect.Pa
     return {param.name: param for param in inspect.signature(f).parameters.values()}
 
 
-def _get_param_type_as_str(annot: Any) -> Tuple[str, bool]:
-    """Return param type as a string, handling various spellings for optional types."""
+def _get_param_type_as_str(annot: Any) -> str:
+    """Return annotation as a string, handling various spellings for optional types."""
     if annot is inspect.Signature.empty:
         return "Any"
     annot_str = str(annot)
