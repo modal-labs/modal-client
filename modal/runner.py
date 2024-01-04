@@ -181,8 +181,10 @@ async def _serve_update(
         pass
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class DeployResult:
+    """Dataclass representing the result of deploying an app."""
+
     app_id: str
 
 

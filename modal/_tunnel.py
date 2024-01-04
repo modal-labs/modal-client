@@ -14,7 +14,7 @@ from .client import _Client
 from .exception import InvalidError, RemoteError
 
 
-@dataclass
+@dataclass(frozen=True)
 class Tunnel:
     """A port forwarded from within a running Modal container. Created by `modal.forward()`.
 

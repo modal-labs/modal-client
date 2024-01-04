@@ -8,7 +8,7 @@ from modal_proto import api_pb2
 from .exception import InvalidError, deprecation_error, deprecation_warning
 
 
-@dataclass
+@dataclass(frozen=True)
 class _GPUConfig:
     type: "api_pb2.GPUType.V"
     count: int
