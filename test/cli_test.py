@@ -272,6 +272,7 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir):
         (["run", f"{stub_file.as_posix()}::int_arg_fn", "--i=200"], "200 <class 'int'>"),
         (["run", f"{stub_file.as_posix()}::ALifecycle.some_method", "--i=hello"], "'hello' <class 'str'>"),
         (["run", f"{stub_file.as_posix()}::ALifecycle.some_method_int", "--i=42"], "42 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::optional_arg_fn"], "None <class 'NoneType'>"),
     ]
     for args, expected in valid_call_args:
         res = _run(args)
