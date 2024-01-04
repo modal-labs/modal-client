@@ -247,11 +247,29 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         (["run", f"{stub_file.as_posix()}::default_arg"], "10 <class 'int'>"),
         (["run", f"{stub_file.as_posix()}::unannotated_arg", "--i=2022-10-31"], "'2022-10-31' <class 'str'>"),
         (["run", f"{stub_file.as_posix()}::unannotated_default_arg"], "10 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::optional_arg", "--i=20"], "20 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::optional_arg"], "None <class 'NoneType'>"),
+        (["run", f"{stub_file.as_posix()}::optional_arg_postponed"], "None <class 'NoneType'>"),
     ]
+    if sys.version_info >= (3, 10):
+        valid_call_args.extend(
+            [
+                (["run", f"{stub_file.as_posix()}::optional_arg_pep604", "--i=20"], "20 <class 'int'>"),
+                (["run", f"{stub_file.as_posix()}::optional_arg_pep604"], "None <class 'NoneType'>"),
+            ]
+        )
     for args, expected in valid_call_args:
         res = _run(args)
         assert expected in res.stdout
         assert len(servicer.client_calls) == 0
+
+    if sys.version_info >= (3, 10):
+        res = _run(["run", f"{stub_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
+        assert "Parameter `i` has unparseable annotation: typing.Union[int, str]" in str(res.exception)
+
+    if sys.version_info <= (3, 10):
+        res = _run(["run", f"{stub_file.as_posix()}::optional_arg_pep604"], expected_exit_code=1)
+        assert "Unable to generate command line interface for app entrypoint." in str(res.exception)
 
 
 def test_run_parse_args_function(servicer, set_env_client, test_dir):
@@ -268,6 +286,7 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir):
         (["run", f"{stub_file.as_posix()}::int_arg_fn", "--i=200"], "200 <class 'int'>"),
         (["run", f"{stub_file.as_posix()}::ALifecycle.some_method", "--i=hello"], "'hello' <class 'str'>"),
         (["run", f"{stub_file.as_posix()}::ALifecycle.some_method_int", "--i=42"], "42 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::optional_arg_fn"], "None <class 'NoneType'>"),
     ]
     for args, expected in valid_call_args:
         res = _run(args)
