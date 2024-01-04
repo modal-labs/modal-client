@@ -2,6 +2,7 @@
 import os
 import pytest
 import tempfile
+from unittest import mock
 
 from modal import Secret, Stub
 from modal.exception import InvalidError
@@ -27,6 +28,19 @@ def test_secret_from_dotenv(servicer, client):
         with stub.run(client=client):
             assert stub.secret.object_id == "st-0"
             assert servicer.secrets["st-0"] == {"USER": "user", "PASSWORD": "abc123"}
+
+@mock.patch.dict(os.environ, {"FOO": "easy", "BAR": "1234"})
+def test_secret_from_local_environ(servicer, client):
+    stub = Stub()
+    stub.secret = Secret.from_local_environ(["FOO", "BAR"])
+    with stub.run(client=client):
+        assert stub.secret.object_id == "st-0"
+        assert servicer.secrets["st-0"] == {"FOO": "easy", "BAR": "1234"}
+
+    stub2 = Stub()
+    with pytest.raises(InvalidError, match="NOTFOUND"):
+        stub2.secret = Secret.from_local_environ(["FOO", "NOTFOUND"])
+
 
 
 def test_init_types():
