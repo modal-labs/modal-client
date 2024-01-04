@@ -556,6 +556,12 @@ class _Function(_Object, type_prefix="fu"):
                     f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
                 )
 
+        # TODO: remove when MOD-2043 is addressed and async debugging works.
+        if interactive and is_async(info.raw_f):
+            raise InvalidError("Interactive mode not supported for async functions")
+        elif interactive and is_generator:
+            raise InvalidError("Interactive mode not supported for generator functions")
+
         all_mounts = [
             _get_client_mount(),  # client
             *mounts,  # explicit mounts
