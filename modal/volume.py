@@ -182,7 +182,8 @@ class _Volume(_Object, type_prefix="vo"):
         """
         return [entry async for entry in self.iterdir(path)]
 
-    async def read_file(self, path: Union[str, bytes]) -> Union[AsyncIterator[bytes], None]:
+    @live_method_gen
+    async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
         """
         Read a file from the modal.Volume.
 
