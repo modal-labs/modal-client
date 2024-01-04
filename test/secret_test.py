@@ -31,4 +31,11 @@ def test_secret_from_dotenv(servicer, client):
 
 def test_init_types():
     with pytest.raises(InvalidError):
-        Secret.from_dict({"foo": None})  # type: ignore
+        Secret.from_dict({"foo": 1.0})  # type: ignore
+
+
+def test_secret_from_dict_none(servicer, client):
+    stub = Stub()
+    stub.secret = Secret.from_dict({"FOO": os.getenv("xyz"), "BAR": os.environ.get("abc"), "BAZ": "baz"})
+    with stub.run(client=client):
+        assert servicer.secrets["st-0"].env_dict == {"BAZ": "baz"}
