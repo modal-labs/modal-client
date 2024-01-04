@@ -81,7 +81,8 @@ def _add_click_options(func, signature: Dict[str, inspect.Parameter]):
             cli_name += "/--no-" + param_name
         parser = option_parsers.get(param_type_str)
         if parser is None:
-            raise NoParserAvailable(repr(param.annotation))
+            msg = f"Parameter `{param_name}` has unparseable annotation: {param.annotation!r}"
+            raise NoParserAvailable(msg)
         kwargs: Any = {
             "type": parser,
         }

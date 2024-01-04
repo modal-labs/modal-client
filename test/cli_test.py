@@ -257,6 +257,9 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         assert expected in res.stdout
         assert len(servicer.client_calls) == 0
 
+    res = _run(["run", f"{stub_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
+    assert "Parameter `i` has unparseable annotation: 'int | str'" in str(res.exception)
+
 
 def test_run_parse_args_function(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
