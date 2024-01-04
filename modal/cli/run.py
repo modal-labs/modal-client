@@ -5,7 +5,7 @@ import inspect
 import re
 import sys
 import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, TypedDict, get_type_hints
 
 import click
 import typer
@@ -21,6 +21,13 @@ from ..serving import serve_stub
 from ..stub import LocalEntrypoint, Stub
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
+
+
+class ParameterMetadata(TypedDict):
+    name: str
+    default: Any
+    annotation: Any
+    type_hint: Any
 
 
 class AnyParamType(click.ParamType):
@@ -44,21 +51,28 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, inspect.Parameter]:
+def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, ParameterMetadata]:
+    type_hints = get_type_hints(f)
     if is_method:
         self = None  # Dummy, doesn't matter
         f = functools.partial(f, self)
-    return {param.name: param for param in inspect.signature(f).parameters.values()}
+    signature: Dict[str, ParameterMetadata] = {}
+    for param in inspect.signature(f).parameters.values():
+        signature[param.name] = {
+            "name": param.name,
+            "default": param.default,
+            "annotation": param.annotation,
+            "type_hint": type_hints.get(param.name, "Any"),
+        }
+    return signature
 
 
 def _get_param_type_as_str(annot: Any) -> str:
     """Return annotation as a string, handling various spellings for optional types."""
-    if annot is inspect.Signature.empty:
-        return "Any"
     annot_str = str(annot)
     annot_patterns = [
-        r"typing.Optional\[([\w.]+)\]",
-        r"typing.Union\[([\w.]+), NoneType\]",
+        r"typing\.Optional\[([\w.]+)\]",
+        r"typing\.Union\[([\w.]+), NoneType\]",
         r"([\w.]+) \| None",
         r"<class '([\w\.]+)'>",
     ]
@@ -69,26 +83,26 @@ def _get_param_type_as_str(annot: Any) -> str:
     return annot_str
 
 
-def _add_click_options(func, signature: Dict[str, inspect.Parameter]):
+def _add_click_options(func, signature: Dict[str, ParameterMetadata]):
     """Adds @click.option based on function signature
 
     Kind of like typer, but using options instead of positional arguments
     """
     for param in signature.values():
-        param_type_str = _get_param_type_as_str(param.annotation)
-        param_name = param.name.replace("_", "-")
+        param_type_str = _get_param_type_as_str(param["type_hint"])
+        param_name = param["name"].replace("_", "-")
         cli_name = "--" + param_name
         if param_type_str == "bool":
             cli_name += "/--no-" + param_name
         parser = option_parsers.get(param_type_str)
         if parser is None:
-            msg = f"Parameter `{param_name}` has unparseable annotation: {param.annotation!r}"
+            msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']!r}"
             raise NoParserAvailable(msg)
         kwargs: Any = {
             "type": parser,
         }
-        if param.default is not inspect.Signature.empty:
-            kwargs["default"] = param.default
+        if param["default"] is not inspect.Signature.empty:
+            kwargs["default"] = param["default"]
         else:
             kwargs["required"] = True
 

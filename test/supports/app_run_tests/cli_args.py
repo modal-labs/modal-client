@@ -58,6 +58,11 @@ def optional_arg_pep604(i: "int | None" = None):
     print(repr(i), type(i))
 
 
+@stub.local_entrypoint()
+def optional_arg_postponed(i: "Optional[int]" = None):
+    print(repr(i), type(i))
+
+
 @stub.function()
 def optional_arg_fn(i: Optional[int] = None):
     print(repr(i), type(i))

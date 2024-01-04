@@ -249,6 +249,7 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         (["run", f"{stub_file.as_posix()}::unannotated_default_arg"], "10 <class 'int'>"),
         (["run", f"{stub_file.as_posix()}::optional_arg", "--i=20"], "20 <class 'int'>"),
         (["run", f"{stub_file.as_posix()}::optional_arg"], "None <class 'NoneType'>"),
+        (["run", f"{stub_file.as_posix()}::optional_arg_postponed"], "None <class 'NoneType'>"),
         (["run", f"{stub_file.as_posix()}::optional_arg_pep604", "--i=20"], "20 <class 'int'>"),
         (["run", f"{stub_file.as_posix()}::optional_arg_pep604"], "None <class 'NoneType'>"),
     ]
