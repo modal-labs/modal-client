@@ -51,3 +51,8 @@ class ALifecycle:
 @stub.local_entrypoint()
 def optional_arg(i: Optional[int] = None):
     print(repr(i), type(i))
+
+
+@stub.local_entrypoint()
+def optional_arg_pep604(i: "int | None" = None):
+    print(repr(i), type(i))
