@@ -5,11 +5,12 @@ import inspect
 import re
 import sys
 import time
-from typing import Any, Callable, Dict, Optional, TypedDict, get_type_hints
+from typing import Any, Callable, Dict, Optional, get_type_hints
 
 import click
 import typer
 from rich.console import Console
+from typing_extensions import TypedDict
 
 from ..config import config
 from ..environments import ensure_env
