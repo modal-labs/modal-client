@@ -429,7 +429,8 @@ message ClassGetRequest {
 }
 
 message ClassGetResponse {
-  Object object = 1;
+  string class_id = 1;
+  ClassHandleMetadata handle_metadata = 2;
 }
 
 
@@ -835,7 +836,8 @@ message FunctionGetRequest {
 }
 
 message FunctionGetResponse {
-  Object object = 1;
+  string function_id = 1;
+  FunctionHandleMetadata handle_metadata = 2;
 }
 
 message FunctionGetInputsItem {
