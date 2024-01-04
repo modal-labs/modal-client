@@ -56,18 +56,16 @@ def _get_param_type_as_str(annot: Any) -> str:
     if annot is inspect.Signature.empty:
         return "Any"
     annot_str = str(annot)
-    m = re.match(r"typing.Optional\[([\w.]+)\]", annot_str)
-    if m is not None:
-        return m.group(1)
-    m = re.match(r"typing.Union\[([\w.]+), NoneType\]", annot_str)
-    if m is not None:
-        return m.group(1)
-    m = re.match(r"([\w.]+) \| None", annot_str)
-    if m is not None:
-        return m.group(1)
-    m = re.match(r"<class '([\w\.]+)'>", annot_str)
-    if m is not None:
-        return m.group(1)
+    annot_patterns = [
+        r"typing.Optional\[([\w.]+)\]",
+        r"typing.Union\[([\w.]+), NoneType\]",
+        r"([\w.]+) \| None",
+        r"<class '([\w\.]+)'>",
+    ]
+    for pat in annot_patterns:
+        m = re.match(pat, annot_str)
+        if m is not None:
+            return m.group(1)
     return annot_str
 
 
