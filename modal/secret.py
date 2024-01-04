@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from grpclib import GRPCError, Status
 
@@ -12,7 +12,7 @@ from ._resolver import Resolver
 from .exception import InvalidError
 from .object import _Object
 
-ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, str]"
+ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, Union[str, None]]"
 
 
 class _Secret(_Object, type_prefix="st"):
@@ -29,7 +29,7 @@ class _Secret(_Object, type_prefix="st"):
     @staticmethod
     def from_dict(
         env_dict: Dict[
-            str, str
+            str, Union[str, None]
         ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
         template_type="",  # internal use only
     ):
@@ -42,15 +42,19 @@ class _Secret(_Object, type_prefix="st"):
             print(os.environ["FOO"])
         ```
         """
-        if not isinstance(env_dict, dict) or not all(
-            isinstance(k, str) and isinstance(v, str) for k, v in env_dict.items()
-        ):
+        if not isinstance(env_dict, dict):
+            raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
+
+        env_dict_filtered: dict[str, str] = {k: v for k, v in env_dict.items() if v is not None}
+        if not all(isinstance(k, str) for k in env_dict_filtered.keys()):
+            raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
+        if not all(isinstance(v, str) for v in env_dict_filtered.values()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
         async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretCreateRequest(
                 app_id=resolver.app_id,
-                env_dict=env_dict,
+                env_dict=env_dict_filtered,
                 template_type=template_type,
                 existing_secret_id=existing_object_id,
             )

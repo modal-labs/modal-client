@@ -11,10 +11,10 @@ from .supports.skip import skip_old_py
 
 def test_secret_from_dict(servicer, client):
     stub = Stub()
-    stub.secret = Secret.from_dict({"FOO": "hello, world"})
+    stub.secret = Secret.from_dict({"FOO": "hello, world", "BAR": None})
     with stub.run(client=client):
         assert stub.secret.object_id == "st-0"
-        assert servicer.secrets["st-0"].env_dict == {"FOO": "hello, world"}
+        assert servicer.secrets["st-0"].env_dict == {"FOO": "hello, world"}  # None is ignored
 
 
 @skip_old_py("python-dotenv requires python3.8 or higher", (3, 8))
@@ -31,4 +31,4 @@ def test_secret_from_dotenv(servicer, client):
 
 def test_init_types():
     with pytest.raises(InvalidError):
-        Secret.from_dict({"foo": None})  # type: ignore
+        Secret.from_dict({"foo": 1.0})  # type: ignore
