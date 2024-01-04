@@ -680,3 +680,22 @@ def test_deps_closurevars(client, servicer):
         f = servicer.app_functions[modal_f.object_id]
 
     assert set(d.object_id for d in f.object_dependencies) == set([nfs.object_id, image.object_id])
+
+
+async def async_interact_wit_me():
+    return 1
+
+
+def interact_wit_me():
+    return 1
+
+
+def test_interactive_mode():
+    stub = Stub()
+    with pytest.raises(InvalidError):
+        stub.function(image=Image.debian_slim(), interactive=True)(async_interact_wit_me)
+
+    with pytest.raises(InvalidError):
+        stub.function(image=Image.debian_slim(), interactive=True)(later_gen)
+
+    stub.function(image=Image.debian_slim(), interactive=True)(interact_wit_me)
