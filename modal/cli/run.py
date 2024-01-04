@@ -126,7 +126,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    signature: Dict[str, inspect.Parameter]
+    signature: Dict[str, ParameterMetadata]
     if function.info.cls is not None:
         cls_signature = _get_signature(function.info.cls)
         fun_signature = _get_signature(function.info.raw_f, is_method=True)
