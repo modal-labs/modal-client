@@ -919,7 +919,7 @@ class _Function(_Object, type_prefix="fu"):
         """Retrieve a function with a given name and tag.
 
         ```python
-        other_function = Function.from_name("other-app", "function")
+        other_function = modal.Function.from_name("other-app", "function")
         ```
         """
 
@@ -954,8 +954,8 @@ class _Function(_Object, type_prefix="fu"):
     ) -> "_Function":
         """Lookup a function with a given name and tag.
 
-        ```python notest
-        other_function = Function.lookup("other-app", "function")
+        ```python
+        other_function = modal.Function.lookup("other-app", "function")
         ```
         """
         obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)

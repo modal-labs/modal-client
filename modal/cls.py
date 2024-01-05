@@ -203,7 +203,7 @@ class _Cls(_Object, type_prefix="cs"):
         """Retrieve a class with a given name and tag.
 
         ```python
-        Class = Cls.from_name("other-app", "Class")
+        Class = modal.Cls.from_name("other-app", "Class")
         ```
         """
 
@@ -238,8 +238,8 @@ class _Cls(_Object, type_prefix="cs"):
     ) -> "_Cls":
         """Lookup a class with a given name and tag.
 
-        ```python notest
-        Class = Cls.lookup("other-app", "Class")
+        ```python
+        Class = modal.Cls.lookup("other-app", "Class")
         ```
         """
         obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
