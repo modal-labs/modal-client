@@ -63,6 +63,7 @@ from .exception import (
     ExecutionError,
     FunctionTimeoutError,
     InvalidError,
+    NotFoundError,
     RemoteError,
     deprecation_error,
 )
@@ -70,7 +71,7 @@ from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import Object, _AppObject, _Object, live_method, live_method_gen
+from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
@@ -494,7 +495,7 @@ class FunctionStats:
     num_total_runners: int
 
 
-class _Function(_AppObject, type_prefix="fu"):
+class _Function(_Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -906,6 +907,63 @@ class _Function(_AppObject, type_prefix="fu"):
         provider._is_method = True
 
         return provider
+
+    @classmethod
+    def from_name(
+        cls: Type["_Function"],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+    ) -> "_Function":
+        """Retrieve a function with a given name and tag.
+
+        ```python
+        other_function = Function.from_name("other-app", "function")
+        ```
+        """
+
+        async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+            request = api_pb2.FunctionGetRequest(
+                app_name=app_name,
+                object_tag=tag,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name, resolver),
+            )
+            try:
+                response = await retry_transient_errors(resolver.client.stub.FunctionGet, request)
+            except GRPCError as exc:
+                if exc.status == Status.NOT_FOUND:
+                    raise NotFoundError(exc.message)
+                else:
+                    raise
+
+            obj._hydrate(response.object.object_id, resolver.client, response.handle_metadata)
+
+        rep = f"Ref({app_name})"
+        return cls._from_loader(_load_remote, rep, is_another_app=True)
+
+    @classmethod
+    async def lookup(
+        cls: Type["_Function"],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> "_Function":
+        """Lookup a function with a given name and tag.
+
+        ```python notest
+        other_function = Function.lookup("other-app", "function")
+        ```
+        """
+        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
 
     @property
     def tag(self):
