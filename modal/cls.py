@@ -18,7 +18,7 @@ from .functions import (
     _Function,
     _PartialFunctionFlags,
 )
-from .object import _Object
+from .object import _AppObject
 
 T = TypeVar("T")
 
@@ -122,7 +122,7 @@ class _Obj:
 Obj = synchronize_api(_Obj)
 
 
-class _Cls(_Object, type_prefix="cs"):
+class _Cls(_AppObject, type_prefix="cs"):
     _user_cls: Optional[type]
     _functions: Dict[str, _Function]
     _callables: Dict[str, Callable]
@@ -173,7 +173,7 @@ class _Cls(_Object, type_prefix="cs"):
         def _deps() -> List[_Function]:
             return list(functions.values())
 
-        async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(provider: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
             for f_name, f in functions.items():
                 req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))

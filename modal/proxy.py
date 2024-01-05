@@ -1,10 +1,10 @@
 # Copyright Modal Labs 2022
 from modal_utils.async_utils import synchronize_api
 
-from .object import _Object
+from .object import _StatefulObject
 
 
-class _Proxy(_Object, type_prefix="pr"):
+class _Proxy(_StatefulObject, type_prefix="pr"):
     """
     Proxy objects are used to setup secure tunnel connections to a private remote address, for example
     a database.

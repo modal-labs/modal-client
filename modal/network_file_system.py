@@ -16,7 +16,7 @@ from modal_utils.hash_utils import get_sha256_hex
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
 from ._types import typechecked
-from .object import _Object, live_method, live_method_gen
+from .object import _StatefulObject, live_method, live_method_gen
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
@@ -40,7 +40,7 @@ def network_file_system_mount_protos(
     return network_file_system_mounts
 
 
-class _NetworkFileSystem(_Object, type_prefix="sv"):
+class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
     """A shared, writable file system accessible by one or more Modal functions.
 
     By attaching this file system as a mount to one or more functions, they can

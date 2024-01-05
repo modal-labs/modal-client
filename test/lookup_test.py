@@ -7,11 +7,9 @@ from modal.runner import deploy_stub
 
 
 def test_persistent_object(servicer, client):
-    stub = Stub()
-    stub["q_1"] = Queue.new()
-    deploy_stub(stub, "my-queue", client=client)
+    Queue.new()._deploy("my-queue", client=client)
 
-    q: Queue = Queue.lookup("my-queue", "q_1", client=client)
+    q: Queue = Queue.lookup("my-queue", client=client)
     assert isinstance(q, Queue)
     assert q.object_id == "qu-1"
 

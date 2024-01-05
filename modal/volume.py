@@ -16,10 +16,10 @@ from ._blob_utils import blob_iter, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import logger
 from .mount import MOUNT_PUT_FILE_CLIENT_TIMEOUT
-from .object import _Object, live_method, live_method_gen
+from .object import _StatefulObject, live_method, live_method_gen
 
 
-class _Volume(_Object, type_prefix="vo"):
+class _Volume(_StatefulObject, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
 
     The contents of a volume is exposed as a filesystem. You can use it to share data between different functions, or
