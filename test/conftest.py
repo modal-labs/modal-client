@@ -261,20 +261,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name)))
 
     async def AppLookupObject(self, stream):
+        # TODO(erikbern): remove soon
         request: api_pb2.AppLookupObjectRequest = await stream.recv_message()
         if not request.object_id:
             app_id = self.deployed_apps.get(request.app_name)
             if app_id is None:
                 raise GRPCError(Status.NOT_FOUND, f"can't find app {request.app_name}")
-            if request.object_tag:
-                app_objects = self.app_objects[app_id]
-                object_id = app_objects.get(request.object_tag)
-                if object_id is None:
-                    raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
-            else:
-                object_id = self.app_single_objects.get(app_id)
-                if object_id is None:
-                    raise GRPCError(Status.NOT_FOUND, "can't find single object for app")
+            assert not request.object_tag
+            object_id = self.app_single_objects.get(app_id)
+            if object_id is None:
+                raise GRPCError(Status.NOT_FOUND, "can't find single object for app")
         else:
             app_id = None
             object_id = request.object_id
@@ -350,6 +346,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.classes[class_id] = methods
         await stream.send_message(
             api_pb2.ClassCreateResponse(class_id=class_id, handle_metadata=self.get_class_metadata(class_id))
+        )
+
+    async def ClassGet(self, stream):
+        request: api_pb2.ClassGetRequest = await stream.recv_message()
+        app_id = self.deployed_apps.get(request.app_name)
+        app_objects = self.app_objects[app_id]
+        object_id = app_objects.get(request.object_tag)
+        if object_id is None:
+            raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
+        await stream.send_message(
+            api_pb2.ClassGetResponse(class_id=object_id, handle_metadata=self.get_class_metadata(object_id))
         )
 
     ### Client
@@ -492,6 +499,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     web_url=function.web_url,
                 ),
             )
+        )
+
+    async def FunctionGet(self, stream):
+        request: api_pb2.FunctionGetRequest = await stream.recv_message()
+        app_id = self.deployed_apps.get(request.app_name)
+        app_objects = self.app_objects[app_id]
+        object_id = app_objects.get(request.object_tag)
+        if object_id is None:
+            raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
+        await stream.send_message(
+            api_pb2.FunctionGetResponse(function_id=object_id, handle_metadata=self.get_function_metadata(object_id))
         )
 
     async def FunctionMap(self, stream):
