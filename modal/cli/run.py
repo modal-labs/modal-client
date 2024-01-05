@@ -14,7 +14,7 @@ from typing_extensions import TypedDict
 
 from ..config import config
 from ..environments import ensure_env
-from ..exception import InvalidError
+from ..exception import ExecutionError, InvalidError
 from ..functions import Function
 from ..image import Image
 from ..runner import deploy_stub, interactive_shell, run_stub
@@ -58,7 +58,7 @@ def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, ParameterM
     except Exception as exc:
         # E.g., if entrypoint type hints cannot be evaluated by local Python runtime
         msg = "Unable to generate command line interface for app entrypoint. See traceback above for details."
-        raise RuntimeError(msg) from exc
+        raise ExecutionError(msg) from exc
 
     if is_method:
         self = None  # Dummy, doesn't matter
