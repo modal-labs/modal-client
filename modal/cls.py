@@ -1,16 +1,19 @@
 # Copyright Modal Labs 2022
 import pickle
 from datetime import date
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
+from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api, synchronizer
+from modal_utils.grpc_utils import retry_transient_errors
 
 from ._output import OutputManager
 from ._resolver import Resolver
-from .exception import deprecation_error
+from .client import _Client
+from .exception import NotFoundError, deprecation_error
 from .functions import (
     PartialFunction,
     _find_callables_for_cls,
@@ -18,7 +21,7 @@ from .functions import (
     _Function,
     _PartialFunctionFlags,
 )
-from .object import _AppObject
+from .object import _get_environment_name, _Object
 
 T = TypeVar("T")
 
@@ -122,7 +125,7 @@ class _Obj:
 Obj = synchronize_api(_Obj)
 
 
-class _Cls(_AppObject, type_prefix="cs"):
+class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
     _functions: Dict[str, _Function]
     _callables: Dict[str, Callable]
@@ -188,6 +191,63 @@ class _Cls(_AppObject, type_prefix="cs"):
         cls._callables = callables
         setattr(cls._user_cls, "_modal_functions", functions)  # Needed for PartialFunction.__get__
         return cls
+
+    @classmethod
+    def from_name(
+        cls: Type["_Cls"],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+    ) -> "_Cls":
+        """Retrieve a class with a given name and tag.
+
+        ```python
+        Class = modal.Cls.from_name("other-app", "Class")
+        ```
+        """
+
+        async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+            request = api_pb2.ClassGetRequest(
+                app_name=app_name,
+                object_tag=tag,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name, resolver),
+            )
+            try:
+                response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
+            except GRPCError as exc:
+                if exc.status == Status.NOT_FOUND:
+                    raise NotFoundError(exc.message)
+                else:
+                    raise
+
+            obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
+
+        rep = f"Ref({app_name})"
+        return cls._from_loader(_load_remote, rep, is_another_app=True)
+
+    @classmethod
+    async def lookup(
+        cls: Type["_Cls"],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> "_Cls":
+        """Lookup a class with a given name and tag.
+
+        ```python
+        Class = modal.Cls.lookup("other-app", "Class")
+        ```
+        """
+        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
 
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
