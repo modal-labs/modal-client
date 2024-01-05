@@ -938,7 +938,7 @@ class _Function(_Object, type_prefix="fu"):
                 else:
                     raise
 
-            obj._hydrate(response.object.object_id, resolver.client, response.handle_metadata)
+            obj._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True)
