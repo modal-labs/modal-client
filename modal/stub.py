@@ -479,7 +479,7 @@ class _Stub:
         """Decorator to register a new Modal function with this stub."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg
-            raise InvalidError("`image` needs to be a positional argument: `@stub.function(image=image)`.")
+            raise InvalidError("`image` needs to be a keyword argument: `@stub.function(image=image)`.")
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.function()`.")
 
