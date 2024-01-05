@@ -14,10 +14,10 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from .exception import deprecation_error
-from .object import _Object, live_method
+from .object import _StatefulObject, live_method
 
 
-class _Queue(_Object, type_prefix="qu"):
+class _Queue(_StatefulObject, type_prefix="qu"):
     """Distributed, FIFO queue for data flow in Modal apps.
 
     The queue can contain any object serializable by `cloudpickle`, including Modal objects.

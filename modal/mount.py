@@ -26,7 +26,7 @@ from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import NotFoundError
-from .object import _Object
+from .object import _StatefulObject
 
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
@@ -131,7 +131,7 @@ class _MountDir(_MountEntry):
         return self.local_dir, None
 
 
-class _Mount(_Object, type_prefix="mo"):
+class _Mount(_StatefulObject, type_prefix="mo"):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
