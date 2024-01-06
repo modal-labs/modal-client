@@ -1116,6 +1116,10 @@ message SandboxListResponse {
   repeated SandboxInfo sandboxes = 1;
 }
 
+message SandboxHandleMetadata {
+  GenericResult result = 1;
+}
+
 message Image {
   repeated BaseImage base_images = 5;
   repeated string dockerfile_commands = 6;
@@ -1212,6 +1216,7 @@ message Object {
     FunctionHandleMetadata function_handle_metadata = 3;
     MountHandleMetadata mount_handle_metadata = 4;
     ClassHandleMetadata class_handle_metadata = 5;
+    SandboxHandleMetadata sandbox_handle_metadata = 6;
   }
 }
 
