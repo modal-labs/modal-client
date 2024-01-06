@@ -685,6 +685,20 @@ message CheckpointInfo {
   string checkpoint_id = 3;
 }
 
+
+message FunctionOptions {
+  repeated string secret_ids = 1;
+  repeated string mount_ids = 2;
+  Resources resources = 3;
+  FunctionRetryPolicy retry_policy = 4;
+  uint32 concurrency_limit = 5;
+  uint32 timeout_secs = 6;
+  uint32 task_idle_timeout_secs = 7;
+  uint32 warm_pool_size = 8;
+  repeated VolumeMount volume_mounts = 9;
+  uint32 allow_concurrent_inputs = 10;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -800,6 +814,7 @@ message FunctionPrecreateResponse {
 message FunctionBindParamsRequest {
   string function_id = 1;
   bytes serialized_params = 2;
+  FunctionOptions function_options = 3;
 }
 
 message FunctionBindParamsResponse {
