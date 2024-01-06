@@ -34,6 +34,7 @@ try:
     from .proxy import Proxy
     from .queue import Queue
     from .retries import Retries
+    from .sandbox import Sandbox
     from .schedule import Cron, Period
     from .secret import Secret
     from .shared_volume import SharedVolume
@@ -63,6 +64,7 @@ __all__ = [
     "Proxy",
     "Queue",
     "Retries",
+    "Sandbox",
     "Secret",
     "SharedVolume",
     "Stub",
