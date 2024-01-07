@@ -731,7 +731,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
 
     async def SandboxWait(self, stream):
-        self.sandbox.wait()
+        request: api_pb2.SandboxWaitRequest = await stream.recv_message()
+        try:
+            self.sandbox.wait(timeout=request.timeout)
+        except subprocess.TimeoutExpired:
+            await stream.send_message(api_pb2.SandboxWaitResponse())
+            return
+
         if self.sandbox.returncode != 0:
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=self.sandbox.returncode
@@ -740,6 +746,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
         self.sandbox_result = result
         await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
+
+    async def SandboxTerminate(self, stream):
+        self.sandbox.terminate()
+        await stream.send_message(api_pb2.SandboxTerminateResponse())
 
     ### Secret
 
