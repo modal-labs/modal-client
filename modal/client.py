@@ -240,6 +240,18 @@ class _Client:
                 return client
 
     @classmethod
+    async def from_credentials(cls, token_id: str, token_secret: str) -> "_Client":
+        """mdmd:hidden"""
+        client_type = api_pb2.CLIENT_TYPE_CLIENT
+        credentials = (token_id, token_secret)
+        server_url = config["server_url"]
+
+        client = _Client(server_url, client_type, credentials)
+        await client._open()
+        async_utils.on_shutdown(client._close())
+        return client
+
+    @classmethod
     def set_env_client(cls, client: Optional["_Client"]):
         """mdmd:hidden"""
         # Just used from tests.
