@@ -2,6 +2,7 @@
 import os
 from typing import Dict, List, Optional, Sequence, Union
 
+from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
@@ -158,10 +159,17 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             sandbox_id = create_resp.sandbox_id
             provider._hydrate(sandbox_id, resolver.client, None)
-            provider._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, resolver.client)
-            provider._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, resolver.client)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
+
+    def _hydrate_metadata(self, handle_metadata: Optional[Message]):
+        self._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, self._client)
+        self._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, self._client)
+        if handle_metadata is not None:
+            assert isinstance(handle_metadata, api_pb2.SandboxHandleMetadata)
+            self._result = handle_metadata.result
+        else:
+            self._result = None
 
     # Live handle methods
 
