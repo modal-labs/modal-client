@@ -45,13 +45,8 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
 from .exception import InvalidError
-from .functions import (  # type: ignore
-    Function,
-    _find_callables_for_obj,
-    _Function,
-    _PartialFunctionFlags,
-    _set_current_context_ids,
-)
+from .functions import Function, _Function, _set_current_context_ids
+from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 
 if TYPE_CHECKING:
     from types import ModuleType
