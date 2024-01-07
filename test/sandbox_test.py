@@ -20,6 +20,8 @@ def test_spawn_sandbox(client, servicer):
     with stub.run(client=client):
         sb = stub.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600)
 
+        assert sb.poll() is None
+
         t0 = time.time()
         sb.wait()
         # Test that we actually waited for the sandbox to finish.
@@ -29,6 +31,7 @@ def test_spawn_sandbox(client, servicer):
         assert sb.stderr.read() == "bye\n"
 
         assert sb.returncode == 42
+        assert sb.poll() == 42
 
 
 @skip_non_linux
@@ -92,3 +95,13 @@ def test_sandbox_from_id(client, servicer):
     sb2 = Sandbox.from_id(sb.object_id, client=client)
     assert sb2.stdout.read() == "foo\n"
     assert sb2.returncode == 42
+
+
+@skip_non_linux
+def test_sandbox_terminate(client, servicer):
+    with stub.run(client=client):
+        sb = stub.spawn_sandbox("bash", "-c", "sleep 10000")
+
+        sb.terminate()
+
+        assert sb.returncode != 0
