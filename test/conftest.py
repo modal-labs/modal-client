@@ -15,7 +15,7 @@ import tempfile
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -141,6 +141,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.sandbox_defs = []
         self.sandbox: subprocess.Popen = None
+        self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
         self.token_flow_localhost_port = None
         self.queue_max_len = 1_00
@@ -184,6 +185,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         elif object_id.startswith("mo-"):
             mount_handle_metadata = api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123")
             res = api_pb2.Object(mount_handle_metadata=mount_handle_metadata)
+
+        elif object_id.startswith("sb-"):
+            sandbox_handle_metadata = api_pb2.SandboxHandleMetadata(result=self.sandbox_result)
+            res = api_pb2.Object(sandbox_handle_metadata=sandbox_handle_metadata)
 
         else:
             res = api_pb2.Object()
@@ -733,6 +738,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         else:
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+        self.sandbox_result = result
         await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
 
     ### Secret

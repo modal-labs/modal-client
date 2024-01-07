@@ -6,7 +6,7 @@ import pytest
 import time
 from pathlib import Path
 
-from modal import Image, Mount, NetworkFileSystem, Secret, Stub
+from modal import Image, Mount, NetworkFileSystem, Sandbox, Secret, Stub
 from modal.exception import InvalidError
 
 stub = Stub()
@@ -81,3 +81,14 @@ def test_sandbox_nfs(client, servicer, tmpdir):
         stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs})
 
     assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
+
+
+@skip_non_linux
+def test_sandbox_from_id(client, servicer):
+    with stub.run(client=client):
+        sb = stub.spawn_sandbox("bash", "-c", "echo foo && exit 42", timeout=600)
+        sb.wait()
+
+    sb2 = Sandbox.from_id(sb.object_id, client=client)
+    assert sb2.stdout.read() == "foo\n"
+    assert sb2.returncode == 42
