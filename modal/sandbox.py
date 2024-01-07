@@ -173,7 +173,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     # Live handle methods
 
-    async def wait(self):
+    async def wait(self, raise_on_termination: bool = True):
         """Wait for the sandbox to finish running."""
 
         while True:
@@ -184,9 +184,33 @@ class _Sandbox(_Object, type_prefix="sb"):
 
                 if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
                     raise SandboxTimeoutError()
-                elif resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+                elif resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED and raise_on_termination:
                     raise SandboxTerminatedError()
                 break
+
+    async def terminate(self):
+        """Terminate sandbox execution.
+
+        This is a no-op if the sandbox has already finished running."""
+
+        await retry_transient_errors(
+            self._client.stub.SandboxTerminate, api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
+        )
+        await self.wait(raise_on_termination=False)
+
+    async def poll(self) -> Optional[int]:
+        """Check if the sandbox has finished running.
+
+        Returns `None` if the sandbox is still running, else returns the exit code.
+        """
+
+        req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=0)
+        resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
+
+        if resp.result.status:
+            self._result = resp.result
+
+        return self.returncode
 
     @property
     def stdout(self) -> _LogsReader:
