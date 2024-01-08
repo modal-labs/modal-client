@@ -1626,6 +1626,7 @@ message WebhookConfig {
   string requested_suffix = 4;
   WebhookAsyncMode async_mode = 5;
   repeated CustomDomainConfig custom_domains = 6;
+  bool debug = 7;
 }
 
 message WebUrlInfo {

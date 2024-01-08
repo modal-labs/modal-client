@@ -1630,6 +1630,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
+    debug: bool = False,  # Enable debug logging features on the endpoint.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Register a basic web endpoint with this application.
 
@@ -1665,8 +1666,6 @@ def _web_endpoint(
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
-        # self._loose_webhook_configs.add(raw_f)
-
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
@@ -1676,6 +1675,7 @@ def _web_endpoint(
                 requested_suffix=label,
                 async_mode=_response_mode,
                 custom_domains=_parse_custom_domains(custom_domains),
+                debug=debug,
             ),
         )
 

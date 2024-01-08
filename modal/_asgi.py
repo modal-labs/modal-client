@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import sys
 from typing import Any, Callable, Dict
 
 from asgiref.wsgi import WsgiToAsgi
@@ -97,13 +98,33 @@ def wsgi_app_wrapper(wsgi_app, function_io_manager):
     return asgi_app_wrapper(asgi_app, function_io_manager)
 
 
-def webhook_asgi_app(fn: Callable, method: str):
+async def webhook_request_validation_error_handler(request, exc):
+    from fastapi.exception_handlers import request_validation_exception_handler
+
+    body = "None" if exc.body is None else f"'{exc.body}'"
+    print(
+        f"Errors: {exc.errors()}\n"
+        f"{request.method} request to {request.url}\n"
+        f"Headers: {request.headers}\n"
+        f"Body: {body}\n"
+        f"Path Params: {request.path_params}\n"
+        f"Query Params: {request.query_params}\n"
+        f"Cookies: {request.cookies}\n",
+        file=sys.stderr,
+    )
+    return await request_validation_exception_handler(request, exc)
+
+
+def webhook_asgi_app(fn: Callable, method: str, debug: bool = False):
     """Return a FastAPI app wrapping a function handler."""
     # Pulls in `fastapi` module, which is slow to import.
     from fastapi import FastAPI
+    from fastapi.exceptions import RequestValidationError
     from fastapi.middleware.cors import CORSMiddleware
 
-    app = FastAPI(docs_url=None, redoc_url=None)
+    app = FastAPI(docs_url=None, redoc_url=None, debug=debug)
+    if debug:
+        app.add_exception_handler(RequestValidationError, webhook_request_validation_error_handler)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
