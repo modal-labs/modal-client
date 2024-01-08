@@ -76,7 +76,6 @@ enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_UNSPECIFIED = 0;
   DEPLOYMENT_NAMESPACE_WORKSPACE = 1;
   DEPLOYMENT_NAMESPACE_GLOBAL = 3;
-  DEPLOYMENT_NAMESPACE_PUBLISHED = 4;
 }
 
 enum FileDescriptor {
@@ -370,6 +369,9 @@ message AppLookupObjectRequest {
   string object_id = 5;
   string object_entity = 6;
   string environment_name = 7;
+
+  bool lookup_published = 8; // Lookup object on app published by another workspace
+  string workspace_name = 9;
 }
 
 message AppLookupObjectResponse {
