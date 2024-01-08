@@ -11,7 +11,7 @@ from modal._serialization import deserialize
 from modal.app import ContainerApp
 from modal.cls import ClsMixin
 from modal.exception import DeprecationError, ExecutionError
-from modal.functions import (
+from modal.partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_cls,
     _PartialFunction,

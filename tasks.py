@@ -146,6 +146,7 @@ def type_stubs(ctx):
         "modal.mount",
         "modal.network_file_system",
         "modal.object",
+        "modal.partial_function",
         "modal.proxy",
         "modal.queue",
         "modal.sandbox",

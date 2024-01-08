@@ -14,14 +14,14 @@ from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .exception import NotFoundError, deprecation_error
-from .functions import (
+from .functions import _Function
+from .object import _get_environment_name, _Object
+from .partial_function import (
     PartialFunction,
     _find_callables_for_cls,
     _find_partial_methods_for_cls,
-    _Function,
     _PartialFunctionFlags,
 )
-from .object import _get_environment_name, _Object
 
 T = TypeVar("T")
 
