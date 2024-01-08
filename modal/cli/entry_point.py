@@ -9,6 +9,7 @@ from rich.rule import Rule
 from . import run
 from .app import app_cli
 from .config import config_cli
+from .container import container_cli
 from .environment import environment_cli
 from .launch import launch_cli
 from .network_file_system import nfs_cli
@@ -79,6 +80,7 @@ def setup(profile: Optional[str] = None):
 
 entrypoint_cli_typer.add_typer(app_cli)
 entrypoint_cli_typer.add_typer(config_cli)
+entrypoint_cli_typer.add_typer(container_cli)
 entrypoint_cli_typer.add_typer(environment_cli)
 entrypoint_cli_typer.add_typer(launch_cli)
 entrypoint_cli_typer.add_typer(nfs_cli)

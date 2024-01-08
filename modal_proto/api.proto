@@ -540,6 +540,21 @@ message ContainerHeartbeatRequest {
 
 message ContainerCheckpointRequest {}
 
+message ContainerStats {
+  string app_id = 1;
+  string worker_id = 2;
+  string id = 3;
+  // todo(nathan): ??
+}
+
+message ContainerListRequest {
+  // todo(nathan): add env or something?
+}
+
+message ContainerListResponse {
+  repeated ContainerStats containers = 1;
+}
+
 message DictClearRequest {
   string dict_id = 1;
 }
@@ -1682,6 +1697,7 @@ service ModalClient {
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Container
+  rpc ContainerList(ContainerListRequest) returns (ContainerListResponse);
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Checkpointing
