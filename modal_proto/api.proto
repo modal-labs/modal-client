@@ -543,7 +543,6 @@ message ContainerCheckpointRequest {}
 message ContainerStats {
   string app_id = 1;
   string worker_id = 2;
-  string id = 3;
   // todo(nathan): ??
 }
 
