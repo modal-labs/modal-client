@@ -1084,6 +1084,8 @@ message Sandbox {
   repeated SharedVolumeMount nfs_mounts = 9;
 
   bool runtime_debug = 10; // For internal debugging use only.
+
+  bool restrict_network = 11;
 }
 
 message SandboxCreateRequest {
