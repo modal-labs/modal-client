@@ -116,7 +116,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         cpu: Optional[float] = None,
         memory: Optional[int] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        restrict_network: Optional[bool] = False,
+        restrict_network: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
