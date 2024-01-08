@@ -413,6 +413,9 @@ message ClassGetRequest {
   string object_tag = 2;
   DeploymentNamespace namespace = 3;
   string environment_name = 4;
+
+  bool lookup_published = 8; // Lookup object on app published by another workspace
+  string workspace_name = 9;
 }
 
 message ClassGetResponse {
