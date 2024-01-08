@@ -116,6 +116,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         cpu: Optional[float] = None,
         memory: Optional[int] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        restrict_network: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -152,6 +153,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 cloud_provider=cloud_provider,
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
+                restrict_network=restrict_network,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
