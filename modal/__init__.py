@@ -16,21 +16,11 @@ try:
     from .cls import Cls
     from .dict import Dict
     from .exception import Error
-    from .functions import (
-        Function,
-        asgi_app,
-        build,
-        current_function_call_id,
-        current_input_id,
-        enter,
-        exit,
-        method,
-        web_endpoint,
-        wsgi_app,
-    )
+    from .functions import Function, current_function_call_id, current_input_id
     from .image import Image
     from .mount import Mount, create_package_mounts
     from .network_file_system import NetworkFileSystem
+    from .partial_function import asgi_app, build, enter, exit, method, web_endpoint, wsgi_app
     from .proxy import Proxy
     from .queue import Queue
     from .retries import Retries

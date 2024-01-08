@@ -20,16 +20,13 @@ from .client import _Client
 from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import (
-    PartialFunction,
-    _Function,
-    _PartialFunction,
-)
+from .functions import _Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
+from .partial_function import PartialFunction, _PartialFunction
 from .proxy import _Proxy
 from .queue import _Queue
 from .retries import Retries
