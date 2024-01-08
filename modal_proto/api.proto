@@ -414,7 +414,7 @@ message ClassGetRequest {
   DeploymentNamespace namespace = 3;
   string environment_name = 4;
 
-  bool lookup_published = 8; // Lookup object on app published by another workspace
+  bool lookup_published = 8; // Lookup class on app published by another workspace
   string workspace_name = 9;
 }
 

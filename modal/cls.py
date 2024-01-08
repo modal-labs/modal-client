@@ -199,6 +199,7 @@ class _Cls(_Object, type_prefix="cs"):
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
+        workspace: Optional[str] = None,
     ) -> "_Cls":
         """Retrieve a class with a given name and tag.
 
@@ -213,6 +214,8 @@ class _Cls(_Object, type_prefix="cs"):
                 object_tag=tag,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
+                lookup_published=workspace is not None,
+                workspace_name=workspace,
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
@@ -235,6 +238,7 @@ class _Cls(_Object, type_prefix="cs"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
+        workspace: Optional[str] = None,
     ) -> "_Cls":
         """Lookup a class with a given name and tag.
 
@@ -242,7 +246,7 @@ class _Cls(_Object, type_prefix="cs"):
         Class = modal.Cls.lookup("other-app", "Class")
         ```
         """
-        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name, workspace=workspace)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
