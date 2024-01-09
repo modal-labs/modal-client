@@ -33,3 +33,14 @@ async def list():
         )
 
     display_table(column_names, rows, json=False, title="Active Containers")
+
+
+@container_cli.command("exec")
+@synchronizer.create_blocking
+async def exec(task_id: str, command: str):
+    """Execute a command inside an active container"""
+    client = await _Client.from_env()
+    res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(
+        api_pb2.ContainerExecRequest(task_id=task_id, command=command)
+    )
+    print(res)

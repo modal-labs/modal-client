@@ -540,6 +540,16 @@ message ContainerHeartbeatRequest {
 
 message ContainerCheckpointRequest {}
 
+message ContainerExecRequest {
+  string task_id = 1;
+  string command = 2;
+}
+
+message ContainerExecResponse {
+  // todo(nathan): maybe add a status field to signal container not found?
+  string message = 1;
+}
+
 message TaskStats {
   string task_id = 1;
   string app_id = 2;
@@ -1698,6 +1708,7 @@ service ModalClient {
 
   // Container
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
+  rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
 
   // Checkpointing
   rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);
