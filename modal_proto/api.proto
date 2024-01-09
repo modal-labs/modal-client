@@ -540,6 +540,19 @@ message ContainerHeartbeatRequest {
 
 message ContainerCheckpointRequest {}
 
+message TaskStats {
+  string task_id = 1;
+  string app_id = 2;
+  string app_description = 3;
+  double started_at = 4;
+}
+
+message TaskListRequest {}
+
+message TaskListResponse {
+  repeated TaskStats tasks = 1;
+}
+
 message DictClearRequest {
   string dict_id = 1;
 }
@@ -1765,6 +1778,7 @@ service ModalClient {
 
   // Tasks
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
+  rpc TaskList(TaskListRequest) returns (TaskListResponse);
 
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
