@@ -507,7 +507,7 @@ class _Stub:
 
                 if webhook_config:
                     if interactive:
-                        raise InvalidError(f"{interactive=} is not supported with web endpoint functions")
+                        raise InvalidError("interactive=True is not supported with web endpoint functions")
                     self._web_endpoints.append(info.get_tag())
             else:
                 info = FunctionInfo(f, serialized=serialized, name_override=name, cls=_cls)
