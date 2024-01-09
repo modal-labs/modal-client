@@ -18,17 +18,17 @@ container_cli = typer.Typer(name="container", help="Manage running containers.",
 async def list():
     """List all containers that are currently running"""
     client = await _Client.from_env()
-    res: api_pb2.ContainerListResponse = await client.stub.ContainerList(api_pb2.ContainerListRequest())
+    res: api_pb2.TaskListResponse = await client.stub.TaskList(api_pb2.TaskListRequest())
 
     column_names = ["Container ID", "App ID", "App Name", "Start time"]
     rows: List[List[Union[Text, str]]] = []
-    for container_stats in res.containers:
+    for task_stats in res.tasks:
         rows.append(
             [
-                container_stats.container_id,
-                container_stats.app_id,
-                container_stats.app_description,
-                timestamp_to_local(container_stats.started_at) if container_stats.started_at else "Pending",
+                task_stats.task_id,
+                task_stats.app_id,
+                task_stats.app_description,
+                timestamp_to_local(task_stats.started_at) if task_stats.started_at else "Pending",
             ]
         )
 

@@ -540,17 +540,17 @@ message ContainerHeartbeatRequest {
 
 message ContainerCheckpointRequest {}
 
-message ContainerStats {
-  string container_id = 1;
+message TaskStats {
+  string task_id = 1;
   string app_id = 2;
   string app_description = 3;
   double started_at = 4;
 }
 
-message ContainerListRequest {}
+message TaskListRequest {}
 
-message ContainerListResponse {
-  repeated ContainerStats containers = 1;
+message TaskListResponse {
+  repeated TaskStats tasks = 1;
 }
 
 message DictClearRequest {
@@ -1695,7 +1695,6 @@ service ModalClient {
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Container
-  rpc ContainerList(ContainerListRequest) returns (ContainerListResponse);
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Checkpointing
@@ -1777,6 +1776,7 @@ service ModalClient {
 
   // Tasks
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
+  rpc TaskList(TaskListRequest) returns (TaskListResponse);
 
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
