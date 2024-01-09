@@ -737,27 +737,28 @@ def import_function(
     else:
         obj = None
 
-    if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
-        # function returns an asgi_app, that we can use as a callable.
-        asgi_app = fun()
-        fun = asgi_app_wrapper(asgi_app, function_io_manager)
-        is_async = True
-        is_generator = True
-        data_format = api_pb2.DATA_FORMAT_ASGI
-    elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
-        # function returns an wsgi_app, that we can use as a callable.
-        wsgi_app = fun()
-        fun = wsgi_app_wrapper(wsgi_app, function_io_manager)
-        is_async = True
-        is_generator = True
-        data_format = api_pb2.DATA_FORMAT_ASGI
-    elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-        # function is webhook without an ASGI app. Create one for it.
-        asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
-        fun = asgi_app_wrapper(asgi_app, function_io_manager)
-        is_async = True
-        is_generator = True
-        data_format = api_pb2.DATA_FORMAT_ASGI
+    if not pty_info.pty_type:  # do not wrap PTY-enabled functions
+        if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
+            # function returns an asgi_app, that we can use as a callable.
+            asgi_app = fun()
+            fun = asgi_app_wrapper(asgi_app, function_io_manager)
+            is_async = True
+            is_generator = True
+            data_format = api_pb2.DATA_FORMAT_ASGI
+        elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
+            # function returns an wsgi_app, that we can use as a callable.
+            wsgi_app = fun()
+            fun = wsgi_app_wrapper(wsgi_app, function_io_manager)
+            is_async = True
+            is_generator = True
+            data_format = api_pb2.DATA_FORMAT_ASGI
+        elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+            # function is webhook without an ASGI app. Create one for it.
+            asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
+            fun = asgi_app_wrapper(asgi_app, function_io_manager)
+            is_async = True
+            is_generator = True
+            data_format = api_pb2.DATA_FORMAT_ASGI
 
     return ImportedFunction(
         obj,
