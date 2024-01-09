@@ -125,7 +125,7 @@ async def test_webhook_decorator_with_interactivity(servicer, client):
         with pytest.raises(InvalidError) as excinfo:
 
             @stub.function(serialized=True, interactive=True)
-            @dec()
+            @dec()  # type: ignore
             def web():
                 pass
 
