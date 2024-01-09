@@ -653,7 +653,7 @@ class _Stub:
         cloud: Optional[str] = None,
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
-        restrict_network: bool = False,  # Whether to restrict network access
+        block_network: bool = False,  # Whether to block network access
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -689,7 +689,7 @@ class _Stub:
             cpu=cpu,
             memory=memory,
             network_file_systems=network_file_systems,
-            restrict_network=restrict_network,
+            block_network=block_network,
         )
         await resolver.load(obj)
         return obj

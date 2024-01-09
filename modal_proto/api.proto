@@ -1085,7 +1085,7 @@ message Sandbox {
 
   bool runtime_debug = 10; // For internal debugging use only.
 
-  bool restrict_network = 11;
+  bool block_network = 11;
 }
 
 message SandboxCreateRequest {
