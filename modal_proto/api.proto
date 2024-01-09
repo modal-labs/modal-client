@@ -541,14 +541,13 @@ message ContainerHeartbeatRequest {
 message ContainerCheckpointRequest {}
 
 message ContainerStats {
-  string app_id = 1;
-  string worker_id = 2;
-  // todo(nathan): ??
+  string container_id = 1;
+  string app_id = 2;
+  string app_description = 3;
+  double started_at = 4;
 }
 
-message ContainerListRequest {
-  // todo(nathan): add env or something?
-}
+message ContainerListRequest {}
 
 message ContainerListResponse {
   repeated ContainerStats containers = 1;
