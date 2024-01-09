@@ -506,6 +506,8 @@ class _Stub:
                 keep_warm = f.keep_warm or keep_warm
 
                 if webhook_config:
+                    if interactive:
+                        raise InvalidError(f"{interactive=} is not supported with web endpoint functions")
                     self._web_endpoints.append(info.get_tag())
             else:
                 info = FunctionInfo(f, serialized=serialized, name_override=name, cls=_cls)
