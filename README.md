@@ -8,6 +8,8 @@ cloud compute from Python scripts on your local computer.
 See the [Modal documentation](http://modal.com/docs) for Python, with examples
 of how to use the library.
 
+The changelog is available [in this repository](CHANGELOG.md).
+
 ## Installation
 
 **This requires Python 3.7 – 3.11.** Install the package with:
