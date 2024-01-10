@@ -444,57 +444,6 @@ class _Mount(_StatefulObject, type_prefix="mo"):
                     )
         return mount
 
-    @staticmethod
-    def from_local_python_packages(*module_names: str) -> "_Mount":
-        """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
-        This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
-
-        **Usage**
-
-        ```python notest
-        import modal
-        import my_local_module
-
-        stub = modal.Stub()
-
-        @stub.function(mounts=[
-            modal.Mount.from_local_python_packages("my_local_module", "my_other_module"),
-        ])
-        def f():
-            my_local_module.do_stuff()
-        ```
-        """
-        from modal.app import is_local
-
-        # Don't re-run inside container.
-
-        mount = _Mount.new()
-        if not is_local():
-            return mount
-
-        for module_name in module_names:
-            mount_infos = get_module_mount_info(module_name)
-
-            if mount_infos == []:
-                raise NotFoundError(f"Module {module_name} not found.")
-
-            for mount_info in mount_infos:
-                is_package, base_path, module_mount_condition = mount_info
-                if is_package:
-                    mount = mount.add_local_dir(
-                        base_path,
-                        remote_path=f"/pkg/{module_name}",
-                        condition=module_mount_condition,
-                        recursive=True,
-                    )
-                else:
-                    remote_path = PurePosixPath("/pkg") / Path(base_path).name
-                    mount = mount.add_local_file(
-                        base_path,
-                        remote_path=remote_path,
-                    )
-        return mount
-
 
 Mount = synchronize_api(_Mount)
 
