@@ -416,8 +416,7 @@ def test_image_build_with_local_packages(client, servicer, tmp_path, monkeypatch
     monkeypatch.setenv(
         "MODAL_AUTOMOUNT", "0"
     )  # to ensure we don't accidentally pass the test due to other test imports
-    stub = Stub("dummy")
-    stub.image = Image.debian_slim().copy_local_python_packages("modal_test_support")
+    stub = Stub("dummy", image=Image.debian_slim().copy_local_python_packages("modal_test_support"))
 
     def expected_mount_request(build_request: api_pb2.MountBuildRequest):
         return any(f for f in build_request.files if f.filename == "/pkg/modal_test_support/module_1.py")
