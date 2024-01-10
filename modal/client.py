@@ -2,7 +2,7 @@
 import asyncio
 import platform
 import warnings
-from typing import Callable, Optional, Tuple, Dict
+from typing import Awaitable, Callable, Dict, Optional, Tuple
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
@@ -26,11 +26,22 @@ CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 
 
 def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], version: str) -> Dict[str, str]:
+    # This implements a simplified version of platform.platform() that's still machine-readable
+    uname: platform.uname_result = platform.uname()
+    if uname.system == "Darwin":
+        system, release = "macOS", platform.mac_ver()[0]
+    else:
+        system, release = uname.system, uname.release
+    platform_str = "-".join(s.replace("-", "_") for s in (system, release, uname.machine))
+
     metadata = {
         "x-modal-client-version": version,
         "x-modal-client-type": str(client_type),
+        "x-modal-python-version": platform.python_version(),
+        "x-modal-node": platform.node(),
+        "x-modal-platform": platform_str,
     }
-    if credentials and (client_type == api_pb2.CLIENT_TYPE_CLIENT or client_type == api_pb2.CLIENT_TYPE_WEB_SERVER):
+    if credentials and client_type == api_pb2.CLIENT_TYPE_CLIENT:
         token_id, token_secret = credentials
         metadata.update(
             {
@@ -72,6 +83,8 @@ class _Client:
     _client_from_env = None
     _client_from_env_lock = None
 
+    client_type: int
+
     def __init__(
         self,
         server_url,
@@ -86,12 +99,13 @@ class _Client:
         self.credentials = credentials
         self.version = version
         self.no_verify = no_verify
-        self._pre_stop: Optional[Callable[[], None]] = None
+        self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel = None
-        self._stub = None
+        self._stub: Optional[api_grpc.ModalClientStub] = None
 
     @property
-    def stub(self):
+    def stub(self) -> Optional[api_grpc.ModalClientStub]:
+        """mdmd:hidden"""
         return self._stub
 
     async def _open(self):
@@ -112,7 +126,10 @@ class _Client:
         if self._channel is not None:
             self._channel.close()
 
-    def set_pre_stop(self, pre_stop: Callable[[], None]):
+        # Remove cached client.
+        self.set_env_client(None)
+
+    def set_pre_stop(self, pre_stop: Callable[[], Awaitable[None]]):
         """mdmd:hidden"""
         # hack: stub.serve() gets into a losing race with the `on_shutdown` client
         # teardown when an interrupt signal is received (eg. KeyboardInterrupt).
@@ -138,7 +155,7 @@ class _Client:
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
-                    f"The client version {self.version} is too old. Please update to the latest package on PyPi: https://pypi.org/project/modal-client"
+                    f"The client version {self.version} is too old. Please update to the latest package on PyPi: https://pypi.org/project/modal"
                 )
             elif exc.status == Status.UNAUTHENTICATED:
                 raise AuthError(exc.message)
@@ -159,35 +176,20 @@ class _Client:
 
     @classmethod
     async def verify(cls, server_url, credentials):
+        """mdmd:hidden"""
         async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials):
             pass  # Will call ClientHello
 
     @classmethod
     async def unauthenticated_client(cls, server_url: str):
+        """mdmd:hidden"""
         # Create a connection with no credentials
         # To be used with the token flow
         return _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, None, no_verify=True)
 
-    async def start_token_flow(self) -> Tuple[str, str]:
-        # Create token creation request
-        # Send some strings identifying the computer (these are shown to the user for security reasons)
-        req = api_pb2.TokenFlowCreateRequest(
-            node_name=platform.node(),
-            platform_name=platform.platform(),
-        )
-        resp = await self.stub.TokenFlowCreate(req)
-        return (resp.token_flow_id, resp.web_url)
-
-    async def finish_token_flow(self, token_flow_id) -> Tuple[str, str]:
-        # Wait for token forever
-        while True:
-            req = api_pb2.TokenFlowWaitRequest(token_flow_id=token_flow_id, timeout=15.0)
-            resp = await self.stub.TokenFlowWait(req)
-            if not resp.timeout:
-                return (resp.token_id, resp.token_secret)
-
     @classmethod
     async def from_env(cls, _override_config=None) -> "_Client":
+        """mdmd:hidden"""
         if _override_config:
             # Only used for testing
             c = _override_config
@@ -238,8 +240,21 @@ class _Client:
                 return client
 
     @classmethod
-    def set_env_client(cls, client):
-        """Just used from tests."""
+    async def from_credentials(cls, token_id: str, token_secret: str) -> "_Client":
+        """mdmd:hidden"""
+        client_type = api_pb2.CLIENT_TYPE_CLIENT
+        credentials = (token_id, token_secret)
+        server_url = config["server_url"]
+
+        client = _Client(server_url, client_type, credentials)
+        await client._open()
+        async_utils.on_shutdown(client._close())
+        return client
+
+    @classmethod
+    def set_env_client(cls, client: Optional["_Client"]):
+        """mdmd:hidden"""
+        # Just used from tests.
         cls._client_from_env = client
 
 

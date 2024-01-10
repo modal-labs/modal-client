@@ -1,203 +1,177 @@
 # Copyright Modal Labs 2022
-from datetime import date
 import uuid
-from typing import Awaitable, Callable, Generic, Optional, Type, TypeVar
+from functools import wraps
+from typing import Awaitable, Callable, ClassVar, Dict, List, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
-from modal._types import typechecked
 
+from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import retry_transient_errors, get_proto_oneof
+from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
-from ._object_meta import ObjectMeta
+from ._deployments import deploy_single_object
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
-from .exception import InvalidError, NotFoundError, deprecation_error
+from .exception import ExecutionError, InvalidError, NotFoundError
 
-H = TypeVar("H", bound="_Handle")
+O = TypeVar("O", bound="_Object")
 
-_BLOCKING_H = synchronize_api(H)
+_BLOCKING_O = synchronize_api(O)
 
 
-class _Handle(metaclass=ObjectMeta):
-    """mdmd:hidden The shared base class of any synced/distributed object in Modal.
+def _get_environment_name(environment_name: Optional[str], resolver: Optional[Resolver] = None) -> Optional[str]:
+    if environment_name:
+        return environment_name
+    elif resolver and resolver.environment_name:
+        return resolver.environment_name
+    else:
+        return config.get("environment")
 
-    Examples of objects include Modal primitives like Images and Functions, as
-    well as distributed data structures like Queues or Dicts.
-    """
 
-    _type_prefix: str
+class _Object:
+    _type_prefix: ClassVar[Optional[str]] = None
+    _prefix_to_type: ClassVar[Dict[str, type]] = {}
 
-    def __init__(self):
-        raise Exception("__init__ disallowed, use proper classmethods")
+    # For constructors
+    _load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]]
+    _preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]]
+    _rep: str
+    _is_another_app: bool
+    _hydrate_lazily: bool
+    _deps: Optional[Callable[..., List["_Object"]]]
 
-    def _init(self):
-        self._client = None
-        self._object_id = None
-        self._is_hydrated = False
+    # For hydrated objects
+    _object_id: str
+    _client: _Client
+    _is_hydrated: bool
 
     @classmethod
-    def _new(cls: Type[H]) -> H:
-        obj = _Handle.__new__(cls)
-        obj._init()
-        obj._initialize_from_empty()
-        return obj
+    def __init_subclass__(cls, type_prefix: Optional[str] = None):
+        super().__init_subclass__()
+        if type_prefix is not None:
+            cls._type_prefix = type_prefix
+            cls._prefix_to_type[type_prefix] = cls
+
+    def __init__(self, *args, **kwargs):
+        raise InvalidError(f"Class {type(self).__name__} has no constructor. Use class constructor methods instead.")
+
+    def _init(
+        self,
+        rep: str,
+        load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
+        is_another_app: bool = False,
+        preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
+        hydrate_lazily: bool = False,
+        deps: Optional[Callable[..., List["_Object"]]] = None,
+    ):
+        self._local_uuid = str(uuid.uuid4())
+        self._load = load
+        self._preload = preload
+        self._rep = rep
+        self._is_another_app = is_another_app
+        self._hydrate_lazily = hydrate_lazily
+        self._deps = deps
+
+        self._object_id = None
+        self._client = None
+        self._is_hydrated = False
+
+        self._initialize_from_empty()
+
+    def _unhydrate(self):
+        self._object_id = None
+        self._client = None
+        self._is_hydrated = False
 
     def _initialize_from_empty(self):
-        pass  # default implementation
+        # default implementation, can be overriden in subclasses
+        pass
 
-    def _hydrate(self, client: _Client, object_id: str, handle_metadata: Optional[Message]):
-        self._client = client
+    def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
+        assert isinstance(object_id, str)
+        if not object_id.startswith(self._type_prefix):
+            raise ExecutionError(
+                f"Can not hydrate {type(self)}:"
+                f" it has type prefix {self._type_prefix}"
+                f" but the object_id starts with {object_id[:3]}"
+            )
         self._object_id = object_id
-        if handle_metadata:
-            self._hydrate_metadata(handle_metadata)
+        self._client = client
+        self._hydrate_metadata(metadata)
         self._is_hydrated = True
 
-    def is_hydrated(self) -> bool:
-        # A hydrated Handle is fully functional and linked to a live object in an app
-        # To hydrate Handles, run an app using stub.run() or look up the object from a running app using <HandleClass>.lookup()
-        return self._is_hydrated
-
-    def _hydrate_metadata(self, handle_metadata: Message):
+    def _hydrate_metadata(self, metadata: Optional[Message]):
         # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
         pass
 
-    def _get_handle_metadata(self) -> Optional[Message]:
+    def _get_metadata(self) -> Optional[Message]:
         # return the necessary metadata from this handle to be able to re-hydrate in another context if one is needed
         # used to provide a handle's handle_metadata for serializing/pickling a live handle
         # the object_id is already provided by other means
-        return None
+        return
+
+    def _init_from_other(self, other: O):
+        # Transient use case, see Dict, Queue, and SharedVolume
+        self._init(other._rep, other._load, other._is_another_app, other._preload)
 
     @classmethod
-    def _from_id(cls: Type[H], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> H:
+    def _from_loader(
+        cls,
+        load: Callable[[O, Resolver, Optional[str]], Awaitable[None]],
+        rep: str,
+        is_another_app: bool = False,
+        preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
+        hydrate_lazily: bool = False,
+        deps: Optional[Callable[..., List["_Object"]]] = None,
+    ):
+        # TODO(erikbern): flip the order of the two first arguments
+        obj = _Object.__new__(cls)
+        obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps)
+        return obj
+
+    @classmethod
+    def _new_hydrated(cls: Type[O], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> O:
         if cls._type_prefix is not None:
             # This is called directly on a subclass, e.g. Secret.from_id
             if not object_id.startswith(cls._type_prefix + "-"):
                 raise InvalidError(f"Object {object_id} does not start with {cls._type_prefix}")
-            object_cls = cls
+            prefix = cls._type_prefix
         else:
             # This is called on the base class, e.g. Handle.from_id
             parts = object_id.split("-")
             if len(parts) != 2:
                 raise InvalidError(f"Object id {object_id} has no dash in it")
             prefix = parts[0]
-            if prefix not in ObjectMeta.prefix_to_type:
+            if prefix not in cls._prefix_to_type:
                 raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
-            object_cls = ObjectMeta.prefix_to_type[prefix]
 
-        # Instantiate object and return
-        obj = object_cls._new()
-        obj._hydrate(client, object_id, handle_metadata)
+        # Instantiate provider
+        obj_cls = cls._prefix_to_type[prefix]
+        obj = _Object.__new__(obj_cls)
+        rep = f"Object({object_id})"  # TODO(erikbern): dumb
+        obj._init(rep)
+        obj._hydrate(object_id, client, handle_metadata)
+
         return obj
 
     @classmethod
-    async def from_id(cls: Type[H], object_id: str, client: Optional[_Client] = None) -> H:
-        """Get an object of this type from a unique object id (retrieved from `obj.object_id`)"""
+    async def from_id(cls: Type[O], object_id: str, client: Optional[_Client] = None) -> O:
+        """Retrieve an object from its unique ID (accessed through `obj.object_id`)."""
         # This is used in a few examples to construct FunctionCall objects
-        # TODO(erikbern): this should probably be on the provider?
         if client is None:
             client = await _Client.from_env()
-        app_lookup_object_response: api_pb2.AppLookupObjectResponse = await client.stub.AppLookupObject(
-            api_pb2.AppLookupObjectRequest(object_id=object_id)
+        response: api_pb2.AppLookupObjectResponse = await retry_transient_errors(
+            client.stub.AppLookupObject, api_pb2.AppLookupObjectRequest(object_id=object_id)
         )
 
-        handle_metadata = get_proto_oneof(app_lookup_object_response, "handle_metadata_oneof")
-        return cls._from_id(object_id, client, handle_metadata)
+        handle_metadata = get_proto_oneof(response.object, "handle_metadata_oneof")
+        return cls._new_hydrated(object_id, client, handle_metadata)
 
-    @property
-    def object_id(self) -> str:
-        """A unique object id for this instance. Can be used to retrieve the object using `.from_id()`"""
-        return self._object_id
-
-    @classmethod
-    async def from_app(
-        cls: Type[H],
-        app_name: str,
-        tag: Optional[str] = None,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-    ) -> H:
-        """Returns a handle to a tagged object in a deployment on Modal."""
-        if environment_name is None:
-            environment_name = config.get("environment")
-
-        if client is None:
-            client = await _Client.from_env()
-        request = api_pb2.AppLookupObjectRequest(
-            app_name=app_name,
-            object_tag=tag,
-            namespace=namespace,
-            object_entity=cls._type_prefix,
-            environment_name=environment_name,
-        )
-        try:
-            response = await retry_transient_errors(client.stub.AppLookupObject, request)
-            if not response.object_id:
-                # Legacy error message: remove soon
-                raise NotFoundError(response.error_message)
-        except GRPCError as exc:
-            if exc.status == Status.NOT_FOUND:
-                raise NotFoundError(exc.message)
-            else:
-                raise
-
-        handle_metadata = get_proto_oneof(response, "handle_metadata_oneof")
-        return cls._from_id(response.object_id, client, handle_metadata)
-
-
-Handle = synchronize_api(_Handle)
-
-
-P = TypeVar("P", bound="_Provider")
-
-_BLOCKING_P = synchronize_api(P)
-
-
-class _Provider(Generic[H]):
-    _load: Callable[[Resolver, Optional[str]], Awaitable[H]]
-    _preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]]
-
-    def __init__(self):
-        raise Exception("__init__ disallowed, use proper classmethods")
-
-    def _init(
-        self,
-        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
-        rep: str,
-        is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
-    ):
-        self._local_uuid = str(uuid.uuid4())
-        self._load = load
-        self._preload = preload
-        self._rep = rep
-        self._is_persisted_ref = is_persisted_ref
-
-    def _init_from_other(self, other: "_Provider"):
-        # Transient use case, see Dict, Queue, and SharedVolume
-        self._init(other._load, other._rep, other._is_persisted_ref, other._preload)
-
-    @classmethod
-    def _from_loader(
-        cls,
-        load: Callable[[Resolver, Optional[str]], Awaitable[H]],
-        rep: str,
-        is_persisted_ref: bool = False,
-        preload: Optional[Callable[[Resolver, Optional[str]], Awaitable[H]]] = None,
-    ):
-        obj = _Handle.__new__(cls)
-        obj._init(load, rep, is_persisted_ref, preload)
-        return obj
-
-    @classmethod
-    def _get_handle_cls(cls) -> Type[H]:
-        (base,) = cls.__orig_bases__  # type: ignore
-        (handle_cls,) = base.__args__
-        return handle_cls
+    def _hydrate_from_other(self, other: O):
+        self._hydrate(other._object_id, other._client, other._get_metadata())
 
     def __repr__(self):
         return self._rep
@@ -207,150 +181,179 @@ class _Provider(Generic[H]):
         """mdmd:hidden"""
         return self._local_uuid
 
+    @property
+    def object_id(self):
+        """mdmd:hidden"""
+        return self._object_id
+
+    @property
+    def is_hydrated(self) -> bool:
+        """mdmd:hidden"""
+        return self._is_hydrated
+
+    @property
+    def deps(self) -> Callable[..., List["_Object"]]:
+        return self._deps if self._deps is not None else lambda: []
+
+    async def resolve(self):
+        """mdmd:hidden"""
+        if self._is_hydrated:
+            return
+        elif not self._hydrate_lazily:
+            raise ExecutionError(
+                "Object has not been hydrated and doesn't support lazy hydration."
+                " This might happen if an object is defined on a different stub,"
+                " or if it's on the same stub but it didn't get created because it"
+                " wasn't defined in global scope."
+            )
+        else:
+            resolver = Resolver()
+            await resolver.load(self)
+
+
+class _StatefulObject(_Object):
+    # This base class is used for _Volume, _Dict, _Queue, _Secret, _NetworkFileSystem
+    # This is a temporary class needed until we rewrite AppLookupObject to be specific to each class.
+    # At that point, we can "push down" each of these methods into each class.
+    # These classes all have in common that they are always looked up using a single app name.
+
     async def _deploy(
         self,
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-    ) -> H:
+    ) -> None:
         """
-        Note 1: this uses the single-object app method, which we're planning to get rid of later
-        Note 2: still considering this an "internal" method, but we'll make it "official" later
+        Note: still considering this an "internal" method, but we'll make it "official" later
         """
-        from .app import _App
-
-        if environment_name is None:
-            environment_name = config.get("environment")
-
         if client is None:
             client = await _Client.from_env()
 
-        handle_cls = self._get_handle_cls()
-        object_entity = handle_cls._type_prefix
-        app = await _App._init_from_name(client, label, namespace, environment_name=environment_name)
-        handle = await app.create_one_object(self, environment_name)
-        await app.deploy(label, namespace, object_entity)  # TODO(erikbern): not needed if the app already existed
-        return handle
-
-    def persist(
-        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ):
-        """`Provider.persist` is deprecated for generic objects. See `SharedVolume.persisted` or `Dict.persisted`."""
-        # Note: this method is overridden in SharedVolume in Dict to print a warning
-        deprecation_error(
-            date(2023, 6, 30),
-            self.persist.__doc__,
+        await deploy_single_object(
+            self, self._type_prefix, client, label, namespace, _get_environment_name(environment_name)
         )
 
     @typechecked
     def _persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ):
-        if environment_name is None:
-            environment_name = config.get("environment")
-
-        async def _load_persisted(resolver: Resolver, existing_object_id: Optional[str]) -> H:
-            return await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
+        async def _load_persisted(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+            await self._deploy(
+                label, namespace, resolver.client, environment_name=_get_environment_name(environment_name)
+            )
+            obj._hydrate_from_other(self)
 
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"
-        return cls._from_loader(_load_persisted, rep, is_persisted_ref=True)
+        return cls._from_loader(_load_persisted, rep, is_another_app=True)
 
     @classmethod
     def from_name(
-        cls: Type[P],
+        cls: Type[O],
         app_name: str,
-        tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
-    ) -> P:
-        """Returns a reference to an Modal object of any type
+    ) -> O:
+        """Retrieve an object with a given name.
 
-        Useful for referring to already created/deployed objects, e.g., Secrets
+        Useful for referencing secrets, as well as calling a function from a different app.
+        Use this when attaching the object to a stub or function.
 
-        ```python
-        import modal
+        **Examples**
 
-        stub = modal.Stub()
-
-        @stub.function(secret=modal.Secret.from_name("my-secret-name"))
-        def some_function():
-            pass
+        ```python notest
+        stub.my_secret = Secret.from_name("my-secret")
+        stub.my_volume = Volume.from_name("my-volume")
+        stub.my_queue = Queue.from_name("my-queue")
+        stub.my_dict = Dict.from_name("my-dict")
         ```
         """
 
-        async def _load_remote(resolver: Resolver, existing_object_id: Optional[str]) -> H:
-            nonlocal environment_name
-            handle_cls = cls._get_handle_cls()
-            if environment_name is None:
-                # resolver always has an environment name, associated with the current app setup
-                # fall back on that one if no explicit environment was set in the call itself
-                environment_name = resolver._environment_name
-
-            handle: H = await handle_cls.from_app(
-                app_name, tag, namespace, client=resolver.client, environment_name=environment_name
+        async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+            request = api_pb2.AppLookupObjectRequest(
+                app_name=app_name,
+                namespace=namespace,
+                object_entity=cls._type_prefix,
+                environment_name=_get_environment_name(environment_name, resolver),
             )
-            return handle
+            try:
+                response = await retry_transient_errors(resolver.client.stub.AppLookupObject, request)
+            except GRPCError as exc:
+                if exc.status == Status.NOT_FOUND:
+                    raise NotFoundError(exc.message)
+                else:
+                    raise
+
+            handle_metadata = get_proto_oneof(response.object, "handle_metadata_oneof")
+            obj._hydrate(response.object.object_id, resolver.client, handle_metadata)
 
         rep = f"Ref({app_name})"
-        return cls._from_loader(_load_remote, rep)
+        return cls._from_loader(_load_remote, rep, is_another_app=True)
 
     @classmethod
     async def lookup(
-        cls: Type[P],
+        cls: Type[O],
         app_name: str,
-        tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-    ) -> H:
-        """
-        General purpose method to retrieve Modal objects such as
-        functions, shared volumes, and secrets.
+    ) -> O:
+        """Lookup an object with a given name.
+
+        This is a general-purpose method for objects like functions, network file systems,
+        and secrets. It gives a reference to the object in a running app.
+
+        **Examples**
+
         ```python notest
-        import modal
-        square = modal.Function.lookup("my-shared-app", "square")
-        assert square(3) == 9
-        vol = modal.SharedVolume.lookup("my-shared-volume")
-        for chunk in vol.read_file("my_db_dump.csv"):
-            ...
+        my_secret = Secret.lookup("my-secret")
+        my_volume = Volume.lookup("my-volume")
+        my_queue = Queue.lookup("my-queue")
+        my_dict = Dict.lookup("my-dict")
         ```
         """
-        handle_cls = cls._get_handle_cls()
-        handle: H = await handle_cls.from_app(app_name, tag, namespace, client, environment_name=environment_name)
-        return handle
+        obj = cls.from_name(app_name, namespace=namespace, environment_name=environment_name)
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
 
     @classmethod
     async def _exists(
-        cls: Type[P],
+        cls: Type[O],
         app_name: str,
-        tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
     ) -> bool:
-        """
-        Internal for now - will make this "public" later.
-        """
-        if client is None:
-            client = await _Client.from_env()
-        handle_cls = cls._get_handle_cls()
-        request = api_pb2.AppLookupObjectRequest(
-            app_name=app_name,
-            object_tag=tag,
-            namespace=namespace,
-            object_entity=handle_cls._type_prefix,
-        )
+        """Internal for now - will make this "public" later."""
         try:
-            response = await retry_transient_errors(client.stub.AppLookupObject, request)
-            return bool(response.object_id)  # old code path - change to `return True` shortly
-        except GRPCError as exc:
-            if exc.status == Status.NOT_FOUND:
-                return False
-            else:
-                raise
+            await cls.lookup(app_name, namespace, client, environment_name)
+            return True
+        except NotFoundError:
+            return False
 
 
-# Dumb but needed becauase it's in the hierarchy
-synchronize_api(Generic, __name__)  # erases base Generic type...
-Provider = synchronize_api(_Provider, target_module=__name__)
+Object = synchronize_api(_Object, target_module=__name__)
+StatefulObject = synchronize_api(_StatefulObject, target_module=__name__)
+
+
+def live_method(method):
+    @wraps(method)
+    async def wrapped(self, *args, **kwargs):
+        await self.resolve()
+        return await method(self, *args, **kwargs)
+
+    return wrapped
+
+
+def live_method_gen(method):
+    @wraps(method)
+    async def wrapped(self, *args, **kwargs):
+        await self.resolve()
+        async for item in method(self, *args, **kwargs):
+            yield item
+
+    return wrapped

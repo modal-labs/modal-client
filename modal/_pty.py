@@ -5,11 +5,14 @@ import functools
 import os
 import platform
 import select
+import signal
 import sys
 import traceback
 from typing import Optional, Tuple, no_type_check
 
-from modal.queue import _QueueHandle
+import rich
+
+from modal.queue import _Queue
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, asyncify
 
@@ -61,12 +64,19 @@ def raw_terminal():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
+def _child_sig_handler(signum, frame):
+    assert signum == signal.SIGCHLD
+    if os.environ.get("MODAL_FUNCTION_RUNTIME") == "gvisor":
+        raise KeyboardInterrupt(f"Received {signal.strsignal(signum)}. Interrupting pty.")
+
+
 @no_type_check
 def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
     """Modified from pty.spawn, so we can set the window size on the forked FD
     and run a custom function in the forked child process."""
 
     import pty
+    import termios
     import tty
 
     pid, master_fd = pty.fork()
@@ -82,20 +92,23 @@ def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
             )
         os._exit(0)
 
+    # https://github.com/google/gvisor/issues/9333
+    signal.signal(signal.SIGCHLD, _child_sig_handler)
+
     if pty_info.winsz_rows or pty_info.winsz_cols:
         set_winsz(master_fd, pty_info.winsz_rows, pty_info.winsz_cols)
 
     try:
         mode = tty.tcgetattr(pty.STDIN_FILENO)
-        tty.setraw(pty.STDIN_FILENO)
+        tty.setraw(pty.STDIN_FILENO, when=termios.TCSANOW)
         restore = 1
     except tty.error:  # This is the same as termios.error
         restore = 0
     try:
         pty._copy(master_fd, pty._read, pty._read)
-    except OSError:
+    except (KeyboardInterrupt, OSError):
         if restore:
-            tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
+            tty.tcsetattr(pty.STDIN_FILENO, tty.TCSANOW, mode)
 
     os.close(master_fd)
     return os.waitpid(pid, 0)[1]
@@ -114,10 +127,14 @@ def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
         def _read():
             while True:
                 try:
-                    char = queue.get()
-                    if char is None:
+                    data_segments = queue.get_many(1024)
+                    assert data_segments  # cannot be empty, since we read in blocking mode
+                    if data_segments[-1] is None:
+                        if len(data_segments) > 1:
+                            writer.write(b"".join(data_segments[:-1]))
+                            writer.flush()
                         return
-                    writer.write(char)
+                    writer.write(b"".join(data_segments))
                     writer.flush()
                 except asyncio.CancelledError:
                     return
@@ -137,20 +154,21 @@ def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
     return wrapped_fn
 
 
-def get_pty_info() -> api_pb2.PTYInfo:
+def get_pty_info(shell: bool) -> api_pb2.PTYInfo:
     rows, cols = get_winsz(sys.stdin.fileno())
     return api_pb2.PTYInfo(
-        enabled=True,
+        enabled=True,  # TODO(erikbern): deprecated
         winsz_rows=rows,
         winsz_cols=cols,
         env_term=os.environ.get("TERM"),
         env_colorterm=os.environ.get("COLORTERM"),
         env_term_program=os.environ.get("TERM_PROGRAM"),
+        pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL if shell else api_pb2.PTYInfo.PTY_TYPE_FUNCTION,
     )
 
 
 @contextlib.asynccontextmanager
-async def write_stdin_to_pty_stream(queue: _QueueHandle):
+async def write_stdin_to_pty_stream(queue: _Queue):
     if platform.system() == "Windows":
         raise InvalidError("Interactive mode is not currently supported on Windows.")
 
@@ -159,7 +177,7 @@ async def write_stdin_to_pty_stream(queue: _QueueHandle):
     set_nonblocking(sys.stdin.fileno())
 
     @asyncify
-    def _read_char() -> Optional[bytes]:
+    def _read_stdin() -> Optional[bytes]:
         nonlocal quit_pipe_read
         # TODO: Windows support.
         (readable, _, _) = select.select([sys.stdin.buffer, quit_pipe_read], [], [])
@@ -168,12 +186,11 @@ async def write_stdin_to_pty_stream(queue: _QueueHandle):
         return sys.stdin.buffer.read()
 
     async def _write():
-        await queue.put(b"\n")
         while True:
-            char = await _read_char()
-            if char is None:
+            data = await _read_stdin()
+            if data is None:
                 return
-            await queue.put(char)
+            await queue.put(data)
 
     async with TaskContext(grace=0.1) as tc:
         write_task = tc.create_task(_write())
@@ -186,9 +203,9 @@ async def write_stdin_to_pty_stream(queue: _QueueHandle):
 def exec_cmd(cmd: str = None):
     run_cmd = cmd or os.environ.get("SHELL", "sh")
 
-    print(f"Spawning {run_cmd}.")
+    rich.print(f"[yellow]Spawning [bold]{run_cmd}[/bold][/yellow]")
 
     # TODO: support args.
     argv = [run_cmd]
 
-    os.execlp(argv[0], *argv)
+    os.execvp(argv[0], argv)

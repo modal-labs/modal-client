@@ -1,2 +1,2 @@
-# Copyright Modal Labs 2023
-build_number = 2597
+# Copyright Modal Labs 2024
+build_number = 4496

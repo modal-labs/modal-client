@@ -13,6 +13,7 @@ import datetime
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 from invoke import task
 
@@ -28,7 +29,7 @@ def protoc(ctx):
         + " --python_out=. --grpclib_python_out=. --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     )
     print(py_protoc)
-    ctx.run(f"{py_protoc} -I . modal_proto/api.proto")
+    ctx.run(f"{py_protoc} -I . " "modal_proto/api.proto " "modal_proto/options.proto ")
 
 
 @task
@@ -73,10 +74,10 @@ def check_copyright(ctx, fix=False):
 
 
 @task
-def update_build_number(ctx, new_build_number):
-    new_build_number = int(new_build_number)
+def update_build_number(ctx, new_build_number: Optional[int] = None):
     from modal_version import build_number as current_build_number
 
+    new_build_number = int(new_build_number) if new_build_number else current_build_number + 1
     assert new_build_number > current_build_number
     with open("modal_version/_version_generated.py", "w") as f:
         f.write(
@@ -104,20 +105,20 @@ setup(version="{__version__}")
         f.write(
             f"""\
 [metadata]
-name = modal
+name = modal-client
 author = Modal Labs
-author_email = erik@modal.com
-description = Dummy alias that requires modal-client
-long_description = This package is a dummy package that just requires the modal-client package.
-            If you're looking for the active learning framework [modAL](https://modal-python.readthedocs.io/en/latest/),
-            it's now available using the package name `modAL-python`.
+author_email = support@modal.com
+description = Legacy name for the Modal client
+long_description = This is a legacy compatibility package that just requires the `modal` client library.
+            In versions before 0.51, the official name of the client library was called `modal-client`.
+            We have renamed it to `modal`, but this library is kept updated for compatibility.
 long_description_content_type = text/markdown
 project_urls =
     Homepage = https://modal.com
 
 [options]
 install_requires =
-    modal-client=={__version__}
+    modal=={__version__}
 """
         )
     with open("alias-package/pyproject.toml", "w") as f:
@@ -133,20 +134,24 @@ build-backend = "setuptools.build_meta"
 @task
 def type_stubs(ctx):
     # we only generate type stubs for modules that contain synchronicity wrapped types
+    # TODO(erikbern): can we automate this list?
     modules = [
         "modal.app",
         "modal.client",
+        "modal.cls",
         "modal.dict",
+        "modal.environments",
         "modal.functions",
         "modal.image",
         "modal.mount",
         "modal.network_file_system",
         "modal.object",
+        "modal.partial_function",
         "modal.proxy",
         "modal.queue",
+        "modal.sandbox",
         "modal.secret",
         "modal.stub",
         "modal.volume",
-        "modal.environments",
     ]
     subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])

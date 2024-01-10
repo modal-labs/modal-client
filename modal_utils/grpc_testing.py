@@ -2,8 +2,8 @@
 import contextlib
 import inspect
 import logging
-from collections import defaultdict, Counter
-from typing import Any, List, Tuple, Callable, Dict
+from collections import Counter, defaultdict
+from typing import Any, Callable, Dict, List, Tuple
 
 from grpclib import GRPCError, Status
 
@@ -89,6 +89,7 @@ class InterceptionContext:
     def __init__(self):
         self.calls: List[Tuple[str, Any]] = []  # List[Tuple[method_name, message]]
         self.custom_responses: Dict[str, List[Tuple[Callable[[Any], bool], List[Any]]]] = defaultdict(list)
+        self.custom_defaults: Dict[str, Callable[[Any], Any]] = {}
 
     def add_recv(self, method_name: str, msg):
         self.calls.append((method_name, msg))
@@ -98,6 +99,18 @@ class InterceptionContext:
     ):
         # adds one response to a queue of responses for requests of the specified type
         self.custom_responses[method_name].append((request_filter, [first_payload]))
+
+    def override_default(self, method_name: str, responder: Callable[[Any], Any]):
+        """Replace the default handler for a method. E.g.
+
+        ```python notest
+        with servicer.intercept() as ctx:
+            ctx.add_response("SomeMethod", lambda _req: api_pb2.SomeMethodResponse(foo=123))
+        ```
+
+        Responses added via `.add_response()` take precedence.
+        """
+        self.custom_defaults[method_name] = responder
 
     def next_custom_responder(self, method_name, request):
         method_responses = self.custom_responses[method_name]
@@ -114,7 +127,10 @@ class InterceptionContext:
                 self.custom_responses[method_name] = method_responses[:i] + method_responses[i + 1 :]
                 break
         else:
-            return None
+            custom_default = self.custom_defaults.get(method_name)
+            if not custom_default:
+                return None
+            next_response_messages = [custom_default(request)]
 
         async def responder(servicer_self, stream):
             try:

@@ -1,54 +1,65 @@
 # Copyright Modal Labs 2022
-import typing
-from datetime import date
 import inspect
 import os
-import sys
+import typing
 import warnings
-from typing import AsyncGenerator, Callable, Dict, List, Optional, Union, Any, Sequence
+from datetime import date
+from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
 from synchronicity.async_wrap import asynccontextmanager
+
 from modal._types import typechecked
-
-from modal_proto import api_pb2
-
-from modal_utils.async_utils import synchronize_api, synchronizer
-from .retries import Retries
+from modal_utils.async_utils import synchronize_api
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
 from ._output import OutputManager
-from .app import _App, _container_app, is_local
+from ._resolver import Resolver
+from .app import _container_app, _ContainerApp, _LocalApp, is_local
 from .client import _Client
-from .cls import make_remote_cls_constructors
+from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function, _FunctionHandle, PartialFunction, _PartialFunction
+from .functions import _Function
 from .gpu import GPU_T
-from .image import _Image, _ImageHandle
+from .image import _Image
 from .mount import _Mount
-from .object import _Provider
+from .network_file_system import _NetworkFileSystem
+from .object import _Object
+from .partial_function import PartialFunction, _PartialFunction
 from .proxy import _Proxy
 from .queue import _Queue
+from .retries import Retries
 from .runner import _run_stub
+from .sandbox import _Sandbox
 from .schedule import Schedule
 from .secret import _Secret
-from .network_file_system import _NetworkFileSystem
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
 
 
-class LocalEntrypoint:
-    raw_f: Callable[..., Any]
+class _LocalEntrypoint:
+    _info: FunctionInfo
     _stub: "_Stub"
 
-    def __init__(self, raw_f, stub):
-        self.raw_f = raw_f  # type: ignore
+    def __init__(self, info, stub):
+        self._info = info  # type: ignore
         self._stub = stub
 
     def __call__(self, *args, **kwargs):
-        return self.raw_f(*args, **kwargs)
+        return self._info.raw_f(*args, **kwargs)
+
+    @property
+    def info(self) -> FunctionInfo:
+        return self._info
+
+    @property
+    def stub(self) -> "_Stub":
+        return self._stub
+
+
+LocalEntrypoint = synchronize_api(_LocalEntrypoint)
 
 
 def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[typing.Any], error_msg: str):
@@ -96,17 +107,16 @@ class _Stub:
     """
 
     _name: Optional[str]
-    _description: str
-    _app_id: str
-    _blueprint: Dict[str, _Provider]
+    _description: Optional[str]
+    _indexed_objects: Dict[str, _Object]
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
-    _function_handles: Dict[str, _FunctionHandle]
     _web_endpoints: List[str]  # Used by the CLI
-    _local_entrypoints: Dict[str, LocalEntrypoint]
-    _app: Optional[_App]
-    _all_stubs: typing.ClassVar[Dict[str, List["_Stub"]]] = {}
+    _local_entrypoints: Dict[str, _LocalEntrypoint]
+    _container_app: Optional[_ContainerApp]
+    _local_app: Optional[_LocalApp]
+    _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
 
     @typechecked
     def __init__(
@@ -116,14 +126,14 @@ class _Stub:
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
-        **blueprint: _Provider,  # any Modal Object dependencies (Dict, Queue, etc.)
+        **indexed_objects: _Object,  # any Modal Object dependencies (Dict, Queue, etc.)
     ) -> None:
         """Construct a new app stub, optionally with default image, mounts, secrets
 
-        Any "blueprint" objects are loaded as part of running or deploying the app,
+        Any "indexed_objects" objects are loaded as part of running or deploying the app,
         and are accessible by name on the running container app, e.g.:
         ```python
-        stub = modal.Stub(key_value_store=modal.Dict())
+        stub = modal.Stub(key_value_store=modal.Dict.new())
 
         @stub.function()
         def store_something(key: str, value: str):
@@ -139,38 +149,35 @@ class _Stub:
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
 
-        for k, v in blueprint.items():
+        if indexed_objects:
+            deprecation_warning(
+                date(2023, 12, 13),
+                "Passing **kwargs to a stub is deprecated. In most cases, you can just define the objects in global scope.",
+            )
+
+        for k, v in indexed_objects.items():
             self._validate_blueprint_value(k, v)
 
-        self._blueprint = blueprint
+        self._indexed_objects = indexed_objects
         if image is not None:
-            self._blueprint["image"] = image  # backward compatibility since "image" used to be on the blueprint
+            self._indexed_objects["image"] = image  # backward compatibility since "image" used to be on the blueprint
 
         self._function_mounts = {}
         self._mounts = mounts
         self._secrets = secrets
-        self._function_handles: Dict[str, _FunctionHandle] = {}
         self._local_entrypoints = {}
         self._web_endpoints = []
-
-        self._app = None
+        self._local_app = None  # when this is the launcher process
+        self._container_app = None  # when this is inside a container
 
         string_name = self._name or ""
-        existing_stubs = _Stub._all_stubs.setdefault(string_name, [])
 
         if not is_local() and _container_app._stub_name == string_name:
-            if len(existing_stubs) == 1:  # warn the first time we reach a duplicate stub name for the active stub
-                if self._name is None:
-                    warning_sub_message = "unnamed stub"
-                else:
-                    warning_sub_message = f"stub with the same name ('{self._name}')"
-                logger.warning(
-                    f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
-                )
+            _container_app._associate_stub_container(self)
             # note that all stubs with the correct name will get the container app assigned
-            self._app = _container_app
+            self._container_app = _container_app
 
-        _Stub._all_stubs[string_name].append(self)
+        _Stub._all_stubs.setdefault(string_name, []).append(self)
 
     @property
     def name(self) -> Optional[str]:
@@ -178,98 +185,102 @@ class _Stub:
         return self._name
 
     @property
-    def app(self) -> Optional[_App]:
-        """Reference to the currently running app, if any."""
-        return self._app
+    def app(self):
+        """`stub.app` is deprecated: use e.g. `stub.obj` instead of `stub.app.obj`
+        if you need to access objects on the running app.
+        """
+        deprecation_error(date(2023, 9, 11), _Stub.app.__doc__)
 
     @property
-    def description(self) -> str:
+    def app_id(self) -> Optional[str]:
+        """Return the app_id, if the stub is running."""
+        if self._container_app:
+            return self._container_app._app_id
+        elif self._local_app:
+            return self._local_app._app_id
+        else:
+            return None
+
+    @property
+    def description(self) -> Optional[str]:
         """The Stub's `name`, if available, or a fallback descriptive identifier."""
-        return self._description or self._infer_app_desc()
+        return self._description
+
+    def set_description(self, description: str):
+        self._description = description
 
     def _validate_blueprint_value(self, key: str, value: Any):
-        if not isinstance(value, _Provider):
+        if not isinstance(value, _Object):
             raise InvalidError(f"Stub attribute {key} with value {value} is not a valid Modal object")
 
-    def _infer_app_desc(self):
-        if is_notebook():
-            # when running from a notebook the sys.argv for the kernel will
-            # be really long and not very helpful
-            return "Notebook"  # TODO: use actual name of notebook
+    def _add_object(self, tag, obj):
+        if self._container_app:
+            # If this is inside a container, then objects can be defined after app initialization.
+            # So we may have to initialize objects once they get bound to the stub.
+            if self._container_app._has_object(tag):
+                self._container_app._hydrate_object(obj, tag)
 
-        if is_local():
-            script_filename = os.path.split(sys.argv[0])[-1]
-            args = [script_filename] + sys.argv[1:]
-            return " ".join(args)
-        else:
-            # in a container we rarely use the description, but nice to have a fallback
-            # instead of displaying "_container_entrypoint.py [base64 garbage]"
-            return "[unnamed app]"
+        self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
         # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
-        return self._blueprint[tag]
+        return self._indexed_objects[tag]
 
-    def __setitem__(self, tag: str, obj: _Provider):
+    def __setitem__(self, tag: str, obj: _Object):
         self._validate_blueprint_value(tag, obj)
         # Deprecated ?
-        self._blueprint[tag] = obj
+        self._add_object(tag, obj)
 
-    def __getattr__(self, tag: str) -> _Provider:
+    def __getattr__(self, tag: str) -> _Object:
         assert isinstance(tag, str)
         if tag.startswith("__"):
             # Hacky way to avoid certain issues, e.g. pickle will try to look this up
             raise AttributeError(f"Stub has no member {tag}")
         # Return a reference to an object that will be created in the future
-        return self._blueprint[tag]
+        return self._indexed_objects[tag]
 
-    def __setattr__(self, tag: str, obj: _Provider):
+    def __setattr__(self, tag: str, obj: _Object):
         # Note that only attributes defined in __annotations__ are set on the object itself,
-        # everything else is registered on the blueprint
+        # everything else is registered on the indexed_objects
         if tag in self.__annotations__:
             object.__setattr__(self, tag, obj)
         else:
             self._validate_blueprint_value(tag, obj)
-            self._blueprint[tag] = obj
+            self._add_object(tag, obj)
+
+    @property
+    def image(self) -> _Image:
+        # Exists to get the type inference working for `stub.image`
+        # Will also keep this one after we remove [get/set][item/attr]
+        return self._indexed_objects["image"]
+
+    def get_objects(self) -> List[Tuple[str, _Object]]:
+        """Used by the container app to initialize objects."""
+        return list(self._indexed_objects.items())
+
+    def _uncreate_all_objects(self):
+        # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
+        for obj in self._indexed_objects.values():
+            obj._unhydrate()
 
     @typechecked
-    def is_inside(self, image: Optional[_Image] = None) -> bool:
-        """Returns if the program is currently running inside a container for this app."""
-        if self._app is None:
-            return False
-        elif self._app != _container_app:
-            return False
-        elif image is None:
-            # stub.app is set, which means we're inside this stub (no specific image)
-            return True
-
-        # We need to look up the image handle from the image provider
-        assert isinstance(image, _Image)
-        for tag, provider in self._blueprint.items():
-            if provider == image:
-                image_handle = self._app[tag]
-                break
-        else:
-            raise InvalidError(
-                inspect.cleandoc(
-                    """`is_inside` only works for an image associated with an App. For instance:
-                    stub.image = DebianSlim()
-                    if stub.is_inside(stub.image):
-                        print("I'm inside!")
-                    """
-                )
-            )
-
-        assert isinstance(image_handle, _ImageHandle)
-        return image_handle._is_inside()
+    def is_inside(self, image: Optional[_Image] = None):
+        """Deprecated: use `Image.imports()` instead! Usage:
+        ```
+        my_image = modal.Image.debian_slim().pip_install("torch")
+        with my_image.imports():
+            import torch
+        ```
+        """
+        deprecation_error(date(2023, 11, 8), _Stub.is_inside.__doc__)
 
     @asynccontextmanager
-    async def _set_app(self, app: _App) -> AsyncGenerator[None, None]:
-        self._app = app
+    async def _set_local_app(self, app: _LocalApp) -> AsyncGenerator[None, None]:
+        self._local_app = app
         try:
             yield
         finally:
-            self._app = None
+            self._local_app = None
 
     @asynccontextmanager
     async def run(
@@ -279,80 +290,51 @@ class _Stub:
         show_progress: bool = True,
         detach: bool = False,
         output_mgr: Optional[OutputManager] = None,
-    ) -> AsyncGenerator[_App, None]:
+    ) -> AsyncGenerator["_Stub", None]:
         """Context manager that runs an app on Modal.
 
         Use this as the main entry point for your Modal application. All calls
         to Modal functions should be made within the scope of this context
         manager, and they will correspond to the current app.
 
-        See the documentation for the [`App`](modal.App) class for more details.
+        Note that this method used to return a separate "App" object. This is
+        no longer useful since you can use the stub itself for access to all
+        objects. For backwards compatibility reasons, it returns the same stub.
         """
         # TODO(erikbern): deprecate this one too?
-        async with _run_stub(self, client, stdout, show_progress, detach, output_mgr) as app:
-            yield app
-
-    @typechecked
-    async def deploy(
-        self,
-        name: Optional[
-            str
-        ] = None,  # Unique name of the deployment. Subsequent deploys with the same name overwrites previous ones. Falls back to the app name
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        client=None,
-        stdout=None,
-        show_progress=True,
-        object_entity: str = "ap",
-    ) -> _App:
-        """`stub.deploy` is deprecated and no longer supported. Use the `modal deploy` command instead.
-
-        For programmatic usage, use `modal.runner.deploy_stub`
-        """
-        deprecation_error(
-            date(2023, 5, 9),
-            self.deploy.__doc__,
-        )
+        async with _run_stub(self, client, stdout, show_progress, detach, output_mgr):
+            yield self
 
     def _get_default_image(self):
-        if "image" in self._blueprint:
-            return self._blueprint["image"]
+        if "image" in self._indexed_objects:
+            return self._indexed_objects["image"]
         else:
             return _default_image
 
     @property
     def _pty_input_stream(self):
-        return self._blueprint.get("_pty_input_stream", None)
+        return self._indexed_objects.get("_pty_input_stream", None)
+
+    def _add_pty_input_stream(self):
+        if self._pty_input_stream:
+            warnings.warn(
+                "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
+            )
+        else:
+            self._indexed_objects["_pty_input_stream"] = _Queue.new()
 
     def _get_watch_mounts(self):
         all_mounts = [
             *self._mounts,
         ]
-        for function_handle in self.registered_functions.values():
-            # TODO(elias): This is quite ugly and should be refactored once we merge Function/FunctionHandle
-            function = self[function_handle._info.get_tag()]
+        for function in self.registered_functions.values():
             all_mounts.extend(function._all_mounts)
 
         return [m for m in all_mounts if m.is_local()]
 
-    def _get_function_handle(self, info: FunctionInfo) -> _FunctionHandle:
-        """This can either return a hydrated or an unhydrated _FunctionHandle
-
-        If called from within a container_app that has this function handle,
-        it will return a Hydrated funciton handle, but in all other contexts
-        it will be unhydrated.
-        """
-        tag = info.get_tag()
-        if tag in self._function_handles:
-            return self._function_handles[tag]
-
-        function_handle = _FunctionHandle._new()
-        function_handle._initialize_from_local(self, info)
-        self._function_handles[tag] = function_handle
-        return function_handle  # note that the function handle is not yet hydrated at this point:
-
     def _add_function(self, function: _Function):
-        if function.tag in self._blueprint:
-            old_function = self._blueprint[function.tag]
+        if function.tag in self._indexed_objects:
+            old_function = self._indexed_objects[function.tag]
             if isinstance(old_function, _Function):
                 if not is_notebook():
                     logger.warning(
@@ -362,15 +344,21 @@ class _Stub:
                     )
             else:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
-        self._blueprint[function.tag] = function
+
+        self._add_object(function.tag, function)
 
     @property
-    def registered_functions(self) -> Dict[str, _FunctionHandle]:
+    def registered_functions(self) -> Dict[str, _Function]:
         """All modal.Function objects registered on the stub."""
-        return self._function_handles
+        return {tag: obj for tag, obj in self._indexed_objects.items() if isinstance(obj, _Function)}
 
     @property
-    def registered_entrypoints(self) -> Dict[str, LocalEntrypoint]:
+    def registered_classes(self) -> Dict[str, _Function]:
+        """All modal.Cls objects registered on the stub."""
+        return {tag: obj for tag, obj in self._indexed_objects.items() if isinstance(obj, _Cls)}
+
+    @property
+    def registered_entrypoints(self) -> Dict[str, _LocalEntrypoint]:
         """All local CLI entrypoints registered on the stub."""
         return self._local_entrypoints
 
@@ -379,7 +367,9 @@ class _Stub:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return self._web_endpoints
 
-    def local_entrypoint(self, name: Optional[str] = None) -> Callable[[Callable[..., Any]], None]:
+    def local_entrypoint(
+        self, _warn_parentheses_missing=None, *, name: Optional[str] = None
+    ) -> Callable[[Callable[..., Any]], None]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -392,7 +382,7 @@ class _Stub:
         ```python
         @stub.local_entrypoint()
         def main():
-            some_modal_function.call()
+            some_modal_function.remote()
         ```
 
         You can call the function using `modal run` directly from the CLI:
@@ -427,10 +417,18 @@ class _Stub:
         information on usage.
 
         """
+        if _warn_parentheses_missing:
+            raise InvalidError("Did you forget parentheses? Suggestion: `@stub.local_entrypoint()`.")
+        if name is not None and not isinstance(name, str):
+            raise InvalidError("Invalid value for `name`: Must be string.")
 
         def wrapped(raw_f: Callable[..., Any]) -> None:
+            info = FunctionInfo(raw_f)
             tag = name if name is not None else raw_f.__qualname__
-            entrypoint = self._local_entrypoints[tag] = LocalEntrypoint(raw_f, self)
+            if tag in self._local_entrypoints:
+                # TODO: get rid of this limitation.
+                raise InvalidError(f"Duplicate local entrypoint name: {tag}. Local entrypoint names must be unique.")
+            entrypoint = self._local_entrypoints[tag] = _LocalEntrypoint(info, self)
             return entrypoint
 
         return wrapped
@@ -438,6 +436,8 @@ class _Stub:
     @typechecked
     def function(
         self,
+        _warn_parentheses_missing=None,
+        *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
@@ -449,94 +449,90 @@ class _Stub:
             Union[str, os.PathLike], _NetworkFileSystem
         ] = {},  # Deprecated, use `network_file_systems` instead
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        concurrency_limit: Optional[
+            int
+        ] = None,  # An optional maximum number of concurrent containers running the function (use keep_warm for minimum).
+        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
-        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
+        keep_warm: Optional[
+            int
+        ] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
         name: Optional[str] = None,  # Sets the Modal name of the function within the stub
         is_generator: Optional[
             bool
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-        _cls: Optional[type] = None,  # Used for methods only
-    ) -> Callable[[Union[_PartialFunction, Callable[..., Any]]], _FunctionHandle]:
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+        checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+        _allow_background_volume_commits: bool = False,
+    ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
+        if isinstance(_warn_parentheses_missing, _Image):
+            # Handle edge case where maybe (?) some users passed image as a positional arg
+            raise InvalidError("`image` needs to be a keyword argument: `@stub.function(image=image)`.")
+        if _warn_parentheses_missing:
+            raise InvalidError("Did you forget parentheses? Suggestion: `@stub.function()`.")
+
         if image is None:
             image = self._get_default_image()
 
         secrets = [*self._secrets, *secrets]
 
         if shared_volumes:
-            deprecation_warning(
+            deprecation_error(
                 date(2023, 7, 5),
                 "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
             )
-            network_file_systems = {**network_file_systems, **shared_volumes}
 
-        def wrapped(f: Union[_PartialFunction, Callable[..., Any]]) -> _FunctionHandle:
-            is_generator_override: Optional[bool] = is_generator
+        def wrapped(
+            f: Union[_PartialFunction, Callable[..., Any]],
+            _cls: Optional[type] = None,  # Used for methods only
+        ) -> _Function:
+            nonlocal keep_warm, is_generator
 
             if isinstance(f, _PartialFunction):
                 f.wrapped = True
-                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
+                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name, cls=_cls)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
-                is_generator_override = f.is_generator
+                is_generator = f.is_generator
+                keep_warm = f.keep_warm or keep_warm
+
                 if webhook_config:
+                    if interactive:
+                        raise InvalidError("interactive=True is not supported with web endpoint functions")
                     self._web_endpoints.append(info.get_tag())
             else:
-                info = FunctionInfo(f, serialized=serialized, name_override=name)
+                info = FunctionInfo(f, serialized=serialized, name_override=name, cls=_cls)
                 webhook_config = None
                 raw_f = f
 
             if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
-                deprecation_error(
-                    date(2023, 4, 20),
-                    inspect.cleandoc(
-                        """@stub.function on methods is deprecated and no longer supported.
-
-                        Use the @stub.cls and @method decorators. Usage:
-
-                        ```
-                        @stub.cls(cpu=8)
-                        class MyCls:
-                            @method()
-                            def f(self):
-                                ...
-                        ```
-                        """
-                    ),
+                raise InvalidError(
+                    "`stub.function` on methods is not allowed. See https://modal.com/docs/guide/lifecycle-functions instead"
                 )
 
-            function_handle = self._get_function_handle(info)
-
-            if is_generator_override is None:
-                is_generator_override = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+            if is_generator is None:
+                is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
             if interactive:
-                if self._pty_input_stream:
-                    warnings.warn(
-                        "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
-                    )
-                else:
-                    self._blueprint["_pty_input_stream"] = _Queue.new()
+                self._add_pty_input_stream()
 
             function = _Function.from_args(
-                function_handle,
                 info,
                 stub=self,
                 image=image,
                 secret=secret,
                 secrets=secrets,
                 schedule=schedule,
-                is_generator=is_generator_override,
+                is_generator=is_generator,
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
@@ -546,6 +542,7 @@ class _Stub:
                 proxy=proxy,
                 retries=retries,
                 concurrency_limit=concurrency_limit,
+                allow_concurrent_inputs=allow_concurrent_inputs,
                 container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
                 cpu=cpu,
@@ -555,72 +552,19 @@ class _Stub:
                 cloud=cloud,
                 webhook_config=webhook_config,
                 cls=_cls,
+                checkpointing_enabled=checkpointing_enabled,
+                allow_background_volume_commits=_allow_background_volume_commits,
             )
 
             self._add_function(function)
-            return function_handle
+            return function
 
         return wrapped
 
-    @typechecked
-    def web_endpoint(
-        self,
-        method: str = "GET",  # REST method for the created endpoint.
-        label: Optional[
-            str
-        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
-        """`stub.web_endpoint` is deprecated and no longer supported. Use `modal.web_endpoint` instead. Usage:
-
-        ```python
-        from modal import Stub, web_endpoint
-
-        stub = Stub()
-        @stub.function(cpu=42)
-        @web_endpoint(method="POST")
-        def my_function():
-            ...
-        ```"""
-        deprecation_error(
-            date(2023, 4, 18),
-            self.web_endpoint.__doc__,
-        )
-
-    @typechecked
-    def asgi_app(
-        self,
-        label: Optional[
-            str
-        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
-        """`stub.asgi_app` is deprecated and no longer supported. Use `modal.asgi_app` instead."""
-        deprecation_error(date(2023, 4, 18), self.asgi_app.__doc__)
-
-    @typechecked
-    def wsgi_app(
-        self,
-        label: Optional[
-            str
-        ] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-        wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    ):
-        """`stub.wsgi_app` is deprecated and no longer supported. Use `modal.wsgi_app` instead."""
-        deprecation_error(date(2023, 4, 18), self.wsgi_app.__doc__)
-
-    async def interactive_shell(self, cmd=None, image=None, **kwargs):
-        """`stub.interactive_shell` is deprecated and no longer supported. Use the `modal shell` command instead.
-
-        For programmatic usage, use `modal.runner.interactive_shell`
-        """
-        deprecation_error(
-            date(2023, 5, 9),
-            self.interactive_shell.__doc__,
-        )
-
     def cls(
         self,
+        _warn_parentheses_missing=None,
+        *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
         secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
@@ -631,69 +575,64 @@ class _Stub:
             Union[str, os.PathLike], _NetworkFileSystem
         ] = {},  # Deprecated, use `network_file_systems` instead
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        allow_cross_region_volumes: bool = False,  # Whether using shared volumes from other regions is allowed.
+        allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
+        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, auto.
-    ) -> Callable[[CLS_T], CLS_T]:
-        def wrapper(user_cls: CLS_T) -> CLS_T:
-            partial_functions: Dict[str, PartialFunction] = {}
-            function_handles: Dict[str, _FunctionHandle] = {}
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+        checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+    ) -> Callable[[CLS_T], _Cls]:
+        if _warn_parentheses_missing:
+            raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
 
-            for k, v in user_cls.__dict__.items():
-                if isinstance(v, PartialFunction):
-                    partial_functions[k] = v
-                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                    function_handles[k] = self.function(
-                        _cls=user_cls,
-                        image=image,
-                        secret=secret,
-                        secrets=secrets,
-                        gpu=gpu,
-                        serialized=serialized,
-                        mounts=mounts,
-                        shared_volumes=shared_volumes,
-                        network_file_systems=network_file_systems,
-                        allow_cross_region_volumes=allow_cross_region_volumes,
-                        volumes=volumes,
-                        cpu=cpu,
-                        memory=memory,
-                        proxy=proxy,
-                        retries=retries,
-                        concurrency_limit=concurrency_limit,
-                        container_idle_timeout=container_idle_timeout,
-                        timeout=timeout,
-                        interactive=interactive,
-                        keep_warm=keep_warm,
-                        cloud=cloud,
-                    )(partial_function)
+        decorator: Callable[[PartialFunction, type], _Function] = self.function(
+            image=image,
+            secret=secret,
+            secrets=secrets,
+            gpu=gpu,
+            serialized=serialized,
+            mounts=mounts,
+            shared_volumes=shared_volumes,
+            network_file_systems=network_file_systems,
+            allow_cross_region_volumes=allow_cross_region_volumes,
+            volumes=volumes,
+            cpu=cpu,
+            memory=memory,
+            proxy=proxy,
+            retries=retries,
+            concurrency_limit=concurrency_limit,
+            allow_concurrent_inputs=allow_concurrent_inputs,
+            container_idle_timeout=container_idle_timeout,
+            timeout=timeout,
+            interactive=interactive,
+            keep_warm=keep_warm,
+            cloud=cloud,
+            checkpointing_enabled=checkpointing_enabled,
+        )
 
-            _PartialFunction.initialize_cls(user_cls, function_handles)
-            remote = make_remote_cls_constructors(user_cls, partial_functions, function_handles)
-            user_cls.remote = remote
-            return user_cls
+        def wrapper(user_cls: CLS_T) -> _Cls:
+            cls: _Cls = _Cls.from_local(user_cls, self, decorator)
+
+            if len(cls._functions) > 1 and keep_warm is not None:
+                deprecation_warning(
+                    date(2023, 10, 20),
+                    "`@stub.cls(keep_warm=...)` is deprecated when there is more than 1 method."
+                    " Use `@method(keep_warm=...)` on each method instead!",
+                )
+
+            tag: str = user_cls.__name__
+            self._add_object(tag, cls)
+            return cls
 
         return wrapper
-
-    def _hydrate_function_handles(self, client: _Client, container_app: _App):
-        for tag, obj in container_app._tag_to_object.items():
-            if isinstance(obj, _FunctionHandle):
-                function_id = obj.object_id
-                handle_metadata = obj._get_handle_metadata()
-                if tag not in self._function_handles:
-                    # this could happen if a sibling function decoration is lazy loaded at a later than function import
-                    # assigning the app's hydrated function handle ensures it will be used for the later decoration return value
-                    self._function_handles[tag] = obj
-                else:
-                    self._function_handles[tag]._hydrate(client, function_id, handle_metadata)
 
     def _get_deduplicated_function_mounts(self, mounts: Dict[str, _Mount]):
         cached_mounts = []
@@ -702,6 +641,60 @@ class _Stub:
                 self._function_mounts[root_path] = mount
             cached_mounts.append(self._function_mounts[root_path])
         return cached_mounts
+
+    async def spawn_sandbox(
+        self,
+        *entrypoint_args: str,
+        image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
+        mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
+        secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
+        workdir: Optional[str] = None,  # Working directory of the sandbox.
+        gpu: GPU_T = None,
+        cloud: Optional[str] = None,
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        block_network: bool = False,  # Whether to block network access
+    ) -> _Sandbox:
+        """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
+
+        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandbox), which can be used to interact with the running sandbox.
+
+        Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
+        """
+        from .sandbox import _Sandbox
+        from .stub import _default_image
+
+        if self._local_app:
+            app_id = self._local_app.app_id
+            environment_name = self._local_app._environment_name
+            client = self._local_app.client
+        elif self._container_app:
+            app_id = self._container_app.app_id
+            environment_name = self._container_app._environment_name
+            client = self._container_app.client
+        else:
+            raise InvalidError("`stub.spawn_sandbox` requires a running app.")
+
+        # TODO(erikbern): pulling a lot of app internals here, let's clean up shortly
+        resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
+        obj = _Sandbox._new(
+            entrypoint_args,
+            image=image or _default_image,
+            mounts=mounts,
+            secrets=secrets,
+            timeout=timeout,
+            workdir=workdir,
+            gpu=gpu,
+            cloud=cloud,
+            cpu=cpu,
+            memory=memory,
+            network_file_systems=network_file_systems,
+            block_network=block_network,
+        )
+        await resolver.load(obj)
+        return obj
 
 
 Stub = synchronize_api(_Stub)

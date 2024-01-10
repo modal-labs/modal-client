@@ -1,9 +1,11 @@
 # Copyright Modal Labs 2022
 import queue  # The system library
-from datetime import date
 import time
 import warnings
+from datetime import date
 from typing import Any, List, Optional
+
+from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
@@ -11,21 +13,74 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
-from .exception import deprecation_warning
-from .object import _Handle, _Provider
+from .exception import deprecation_error
+from .object import _StatefulObject, live_method
 
 
-class _QueueHandle(_Handle, type_prefix="qu"):
-    """Handle for interacting with the contents of a `Queue`
+class _Queue(_StatefulObject, type_prefix="qu"):
+    """Distributed, FIFO queue for data flow in Modal apps.
+
+    The queue can contain any object serializable by `cloudpickle`, including Modal objects.
+
+    **Usage**
+
+    Create a new `Queue` with `Queue.new()`, then assign it to a stub or function.
 
     ```python
-    stub.some_dict = modal.Queue.new()
+    from modal import Queue, Stub
 
-    if __name__ == "__main__":
-        with stub.run() as app:
-            app.some_dict.put({"some": "object"})
+    stub = Stub()
+    stub.my_queue = Queue.new()
+
+    @stub.local_entrypoint()
+    def main():
+        stub.my_queue.put("some value")
+        stub.my_queue.put(123)
+
+        assert stub.my_queue.get() == "some value"
+        assert stub.my_queue.get() == 123
     ```
+
+    For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
     """
+
+    @staticmethod
+    def new():
+        """Create an empty Queue."""
+
+        async def _load(provider: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
+            request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
+            response = await resolver.client.stub.QueueCreate(request)
+            provider._hydrate(response.queue_id, resolver.client, None)
+
+        return _Queue._from_loader(_load, "Queue()")
+
+    def __init__(self):
+        """mdmd:hidden"""
+        deprecation_error(date(2023, 6, 27), "`Queue()` is deprecated. Please use `Queue.new()` instead.")
+        obj = _Queue.new()
+        self._init_from_other(obj)
+
+    @staticmethod
+    def persisted(
+        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ) -> "_Queue":
+        """Deploy a Modal app containing this object.
+
+        The deployed object can then be imported from other apps, or by calling
+        `Queue.from_name(label)` from that same app.
+
+        **Examples**
+
+        ```python notest
+        # In one app:
+        stub.queue = Queue.persisted("my-queue")
+
+        # Later, in another app or Python file:
+        stub.queue = Queue.from_name("my-queue")
+        ```
+        """
+        return _Queue.new()._persist(label, namespace, environment_name)
 
     async def _get_nonblocking(self, n_values: int) -> List[Any]:
         request = api_pb2.QueueGetRequest(
@@ -68,12 +123,13 @@ class _QueueHandle(_Handle, type_prefix="qu"):
 
         raise queue.Empty()
 
+    @live_method
     async def get(self, block: bool = True, timeout: Optional[float] = None) -> Optional[Any]:
         """Remove and return the next object in the queue.
 
         If `block` is `True` (the default) and the queue is empty, `get` will wait indefinitely for
-        an object, or until `timeout` if a `timeout` is specified. Raises the native Python `queue.Empty`
-        exception if the `timeout` is reached.
+        an object, or until `timeout` if specified. Raises a native `queue.Empty` exception
+        if the `timeout` is reached.
 
         If `block` is `False`, `get` returns `None` immediately if the queue is empty. The `timeout` is
         ignored in this case.
@@ -91,13 +147,15 @@ class _QueueHandle(_Handle, type_prefix="qu"):
         else:
             return None
 
+    @live_method
     async def get_many(self, n_values: int, block: bool = True, timeout: Optional[float] = None) -> List[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
+        If there are fewer than `n_values` items in the queue, return all of them.
+
         If `block` is `True` (the default) and the queue is empty, `get` will wait indefinitely for
-        the next object, or until `timeout` if a `timeout` is specified. Raises the native Python `queue.Empty`
-        exception if the `timeout` is reached. Returns as many objects as are available (less then `n_values`)
-        as soon as the queue becomes non-empty.
+        at least 1 object to be present, or until `timeout` if specified. Raises the stdlib's `queue.Empty`
+        exception if the `timeout` is reached.
 
         If `block` is `False`, `get` returns `None` immediately if the queue is empty. The `timeout` is
         ignored in this case.
@@ -110,53 +168,71 @@ class _QueueHandle(_Handle, type_prefix="qu"):
                 warnings.warn("Timeout is ignored for non-blocking get.")
             return await self._get_nonblocking(n_values)
 
-    async def put(self, v: Any) -> None:
-        """Add an object to the end of the queue."""
+    @live_method
+    async def put(self, v: Any, block: bool = True, timeout: Optional[float] = None) -> None:
+        """Add an object to the end of the queue.
 
-        await self.put_many([v])
+        If `block` is `True` and the queue is full, this method will retry indefinitely or
+        until `timeout` if specified. Raises the stdlib's `queue.Full` exception if the `timeout` is reached.
+        If blocking it is not recommended to omit the `timeout`, as the operation could wait indefinitely.
 
-    async def put_many(self, vs: List[Any]) -> None:
-        """Add several objects to the end of the queue."""
+        If `block` is `False`, this method raises `queue.Full` immediately if the queue is full. The `timeout` is
+        ignored in this case."""
+        await self.put_many([v], block, timeout)
 
+    @live_method
+    async def put_many(self, vs: List[Any], block: bool = True, timeout: Optional[float] = None) -> None:
+        """Add several objects to the end of the queue.
+
+        If `block` is `True` and the queue is full, this method will retry indefinitely or
+        until `timeout` if specified. Raises the stdlib's `queue.Full` exception if the `timeout` is reached.
+        If blocking it is not recommended to omit the `timeout`, as the operation could wait indefinitely.
+
+        If `block` is `False`, this method raises `queue.Full` immediately if the queue is full. The `timeout` is
+        ignored in this case."""
+        if block:
+            await self._put_many_blocking(vs, timeout)
+        else:
+            if timeout is not None:
+                warnings.warn("`timeout` argument is ignored for non-blocking put.")
+            await self._put_many_nonblocking(vs)
+
+    async def _put_many_blocking(self, vs: List[Any], timeout: Optional[float] = None):
         vs_encoded = [serialize(v) for v in vs]
 
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
             values=vs_encoded,
         )
+        try:
+            await retry_transient_errors(
+                self._client.stub.QueuePut,
+                request,
+                # A full queue will return this status.
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                max_delay=30.0,
+                total_timeout=timeout,
+            )
+        except GRPCError as exc:
+            raise queue.Full(str(exc)) if exc.status == Status.RESOURCE_EXHAUSTED else exc
 
-        await retry_transient_errors(self._client.stub.QueuePut, request)
+    async def _put_many_nonblocking(self, vs: List[Any]):
+        vs_encoded = [serialize(v) for v in vs]
+        request = api_pb2.QueuePutRequest(
+            queue_id=self.object_id,
+            values=vs_encoded,
+        )
+        try:
+            await retry_transient_errors(self._client.stub.QueuePut, request)
+        except GRPCError as exc:
+            raise queue.Full(exc.message) if exc.status == Status.RESOURCE_EXHAUSTED else exc
 
-
-QueueHandle = synchronize_api(_QueueHandle)
-
-
-class _Queue(_Provider[_QueueHandle]):
-    """A distributed, FIFO Queue available to Modal apps.
-
-    The queue can contain any object serializable by `cloudpickle`.
-    """
-
-    @staticmethod
-    def new():
-        async def _load(resolver: Resolver, existing_object_id: Optional[str]) -> _QueueHandle:
-            request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
-            response = await resolver.client.stub.QueueCreate(request)
-            return _QueueHandle._from_id(response.queue_id, resolver.client, None)
-
-        return _Queue._from_loader(_load, "Queue()")
-
-    def __init__(self):
-        """`Queue({...})` is deprecated. Please use `Queue.new({...})` instead."""
-        deprecation_warning(date(2023, 6, 27), self.__init__.__doc__)
-        obj = _Queue.new()
-        self._init_from_other(obj)
-
-    @staticmethod
-    def persisted(
-        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ) -> "_Queue":
-        return _Queue.new()._persist(label, namespace, environment_name)
+    @live_method
+    async def len(self) -> int:
+        """Return the number of objects in the queue."""
+        request = api_pb2.QueueLenRequest(queue_id=self.object_id)
+        response = await retry_transient_errors(self._client.stub.QueueLen, request)
+        return response.len
 
 
 Queue = synchronize_api(_Queue)

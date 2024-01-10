@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+import platform
 import socket
 import time
-import platform
 import urllib.parse
 import uuid
 from typing import (
@@ -18,8 +18,9 @@ from typing import (
     cast,
 )
 
-import grpclib.events
 import grpclib.client
+import grpclib.config
+import grpclib.events
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
@@ -163,8 +164,13 @@ def create_channel(
         channel_cls = grpclib.client.Channel
 
     channel: grpclib.client.Channel
+    config = grpclib.config.Configuration(
+        http2_connection_window_size=64 * 1024 * 1024,  # 64 MiB
+        http2_stream_window_size=64 * 1024 * 1024,  # 64 MiB
+    )
+
     if o.scheme == "unix":
-        channel = channel_cls(path=o.path)  # probably pointless to use a pool ever
+        channel = channel_cls(path=o.path, config=config)  # probably pointless to use a pool ever
     elif o.scheme in ("http", "https"):
         target = o.netloc
         parts = target.split(":")
@@ -172,7 +178,7 @@ def create_channel(
         ssl = o.scheme.endswith("s")
         host = parts[0]
         port = int(parts[1]) if len(parts) == 2 else 443 if ssl else 80
-        channel = channel_cls(host, port, ssl=ssl)
+        channel = channel_cls(host, port, ssl=ssl, config=config)
     else:
         raise Exception(f"Unknown scheme: {o.scheme}")
 
@@ -185,6 +191,8 @@ def create_channel(
 
         if inject_tracing_context is not None:
             inject_tracing_context(cast(Dict[str, str], event.metadata))
+
+        logger.debug(f"Sending request to {event.method_name}")
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
     return channel
@@ -210,7 +218,6 @@ async def retry_transient_errors(
     delay_factor: float = 2,
     max_retries: Optional[int] = 3,
     additional_status_codes: list = [],
-    ignore_errors: list = [],
     attempt_timeout: Optional[float] = None,  # timeout for each attempt
     total_timeout: Optional[float] = None,  # timeout for the entire function call
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)

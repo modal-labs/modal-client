@@ -11,9 +11,9 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 import modal
-from modal.environments import ensure_env
-from modal.cli.utils import timestamp_to_local, display_table, ENV_OPTION
+from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import Client, _Client
+from modal.environments import ensure_env
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
@@ -53,7 +53,7 @@ def create(
     env_dict = {}
     for arg in keyvalues:
         if "=" in arg:
-            key, value = arg.split("=")
+            key, value = arg.split("=", 1)
             if value == "-":
                 value = get_text_from_editor(key)
             env_dict[key] = value

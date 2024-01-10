@@ -5,9 +5,10 @@ import site
 import sys
 import sysconfig
 import typing
+from collections import deque
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Dict, Optional, Type
+from typing import Callable, Dict, List, Optional, Set, Type
 
 from modal_proto import api_pb2
 
@@ -15,6 +16,7 @@ from ._serialization import serialize
 from .config import config, logger
 from .exception import InvalidError
 from .mount import _Mount
+from .object import Object
 
 ROOT_DIR = PurePosixPath("/root")
 
@@ -78,17 +80,47 @@ def is_global_function(function_qual_name):
     return "<locals>" not in function_qual_name.split(".")
 
 
+def is_async(function):
+    # TODO: this is somewhat hacky. We need to know whether the function is async or not in order to
+    # coerce the input arguments to the right type. The proper way to do is to call the function and
+    # see if you get a coroutine (or async generator) back. However at this point, it's too late to
+    # coerce the type. For now let's make a determination based on inspecting the function definition.
+    # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
+    # wraps async code or similar. Let's revisit this shortly.
+    if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
+        return True
+    elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
+        return False
+    else:
+        raise RuntimeError(f"Function {function} is a strange type {type(function)}")
+
+
 class FunctionInfo:
     """Class the helps us extract a bunch of information about a function."""
 
     # TODO: we should have a bunch of unit tests for this
     # TODO: if the function is declared in a local scope, this function still "works": we should throw an exception
-    def __init__(self, f, serialized=False, name_override: Optional[str] = None):
+    def __init__(self, f, serialized=False, name_override: Optional[str] = None, cls: Optional[Type] = None):
         self.raw_f = f
-        # TODO(erikbern): if f.__qualname__ != f.__name__,  we should infer the class name instead
-        self.function_name = name_override if name_override is not None else f.__qualname__
+        self.cls = cls
+
+        if name_override is not None:
+            self.function_name = name_override
+        elif f.__qualname__ != f.__name__ and not serialized:
+            # Class function.
+            if len(f.__qualname__.split(".")) > 2:
+                raise InvalidError("@stub.cls classes must be defined in global scope")
+            self.function_name = f"{cls.__name__}.{f.__name__}"
+        else:
+            self.function_name = f.__qualname__
+
         self.signature = inspect.signature(f)
-        module = inspect.getmodule(f)
+
+        # If it's a cls, the @method could be defined in a base class in a different file.
+        if cls is not None:
+            module = inspect.getmodule(cls)
+        else:
+            module = inspect.getmodule(f)
 
         if getattr(module, "__package__", None) and not serialized:
             # This is a "real" module, eg. examples.logs.f
@@ -118,7 +150,9 @@ class FunctionInfo:
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
-            self.file = os.path.abspath(inspect.getfile(f))
+
+            # If it's a cls, the @method could be defined in a base class in a different file.
+            self.file = os.path.abspath(inspect.getfile(module))
             self.module_name = inspect.getmodulename(self.file)
             self.base_dir = os.path.dirname(self.file)
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
@@ -151,6 +185,14 @@ class FunctionInfo:
         serialized_bytes = serialize(self.raw_f)
         logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
         return serialized_bytes
+
+    def get_globals(self):
+        from cloudpickle.cloudpickle import _extract_code_globals
+
+        func = self.raw_f
+        f_globals_ref = _extract_code_globals(func.__code__)
+        f_globals = {k: func.__globals__[k] for k in f_globals_ref if k in func.__globals__}
+        return f_globals
 
     def get_mounts(self) -> Dict[str, _Mount]:
         """
@@ -259,21 +301,29 @@ class FunctionInfo:
         return all(param.default is not param.empty for param in self.signature.parameters.values())
 
 
-def load_function_from_module(module, qual_name):
-    # The function might be defined inside a class scope (e.g mymodule.MyClass.f)
-    objs: list[Any] = [module]
-    if not is_global_function(qual_name):
-        raise LocalFunctionError("Attempted to load a function defined in a function scope")
+def get_referred_objects(f: Callable) -> List[Object]:
+    """Takes a function and returns any Modal Objects in global scope that it refers to.
 
-    for path in qual_name.split("."):
-        # if a serialized function is defined within a function scope
-        # we can't load it from the module and detect a class
-        objs.append(getattr(objs[-1], path))
+    TODO: this does not yet support Object contained by another object,
+    e.g. a list of Objects in global scope.
+    """
+    from .cls import Cls
+    from .functions import Function
 
-    # If this function is defined on a class, return that too
-    cls: Optional[Type] = None
-    fun: Callable = objs[-1]
-    if len(objs) >= 3:
-        cls = objs[-2]
+    ret: List[Object] = []
+    obj_queue: deque[Callable] = deque([f])
+    objs_seen: Set[int] = set([id(f)])
+    while obj_queue:
+        obj = obj_queue.popleft()
+        if isinstance(obj, (Function, Cls)):
+            # These are always attached to stubs, so we shouldn't do anything
+            pass
+        elif isinstance(obj, Object):
+            ret.append(obj)
+        elif inspect.isfunction(obj):
+            for dep_obj in inspect.getclosurevars(obj).globals.values():
+                if id(dep_obj) not in objs_seen:
+                    objs_seen.add(id(dep_obj))
+                    obj_queue.append(dep_obj)
 
-    return cls, fun
+    return ret

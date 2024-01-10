@@ -20,7 +20,7 @@ class StatusRow:
     def __init__(self, progress: Optional[Tree]):
         from ._output import (
             step_progress,
-        )  # Lazy import to only import `rich` when necessary.
+        )
 
         self._spinner = None
         self._step_node = None
@@ -35,7 +35,7 @@ class StatusRow:
             step_progress_update(self._spinner, message)
 
     def finish(self, message):
-        from ._output import step_progress_update, step_completed
+        from ._output import step_completed, step_progress_update
 
         if self._step_node is not None:
             step_progress_update(self._spinner, message)
@@ -47,20 +47,29 @@ class Resolver:
     # since that leads to circular dependencies
     _tree: Tree
     _local_uuid_to_future: Dict[str, Future]
-    _environment_name: str
+    _environment_name: Optional[str]
+    _app_id: Optional[str]
 
-    def __init__(self, output_mgr, client, environment_name: str, app_id: Optional[str] = None):
-        from ._output import step_progress
+    def __init__(
+        self,
+        client=None,
+        *,
+        output_mgr=None,
+        environment_name: Optional[str] = None,
+        app_id: Optional[str] = None,
+        shell: Optional[bool] = False,
+    ):
         from rich.tree import Tree
+
+        from ._output import step_progress
 
         self._output_mgr = output_mgr
         self._local_uuid_to_future = {}
         self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
-
-        # Accessible by objects
         self._client = client
         self._app_id = app_id
         self._environment_name = environment_name
+        self._shell = shell
 
     @property
     def app_id(self) -> str:
@@ -72,9 +81,17 @@ class Resolver:
     def client(self):
         return self._client
 
-    async def preload(self, obj, existing_object_id: Optional[str] = None):
+    @property
+    def environment_name(self):
+        return self._environment_name
+
+    @property
+    def shell(self):
+        return self._shell
+
+    async def preload(self, obj, existing_object_id: Optional[str]):
         if obj._preload is not None:
-            return await obj._preload(self, existing_object_id)
+            await obj._preload(obj, self, existing_object_id)
 
     async def load(self, obj, existing_object_id: Optional[str] = None):
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
@@ -82,8 +99,13 @@ class Resolver:
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
-                created_obj = await obj._load(self, existing_object_id)
-                if existing_object_id is not None and created_obj.object_id != existing_object_id:
+                # Wait for all its dependencies
+                # TODO(erikbern): do we need existing_object_id for those?
+                await asyncio.gather(*[self.load(dep) for dep in obj.deps()])
+
+                # Load the object itself
+                await obj._load(obj, self, existing_object_id)
+                if existing_object_id is not None and obj.object_id != existing_object_id:
                     # TODO(erikbern): ignoring images is an ugly fix to a problem that's on the server.
                     # Unlike every other object, images are not assigned random ids, but rather an
                     # id given by the hash of its contents. This means we can't _force_ an image to
@@ -92,13 +114,13 @@ class Resolver:
                     #
                     # Persisted refs are ignored because their life cycle is managed independently.
                     # The same tag on an app can be pointed at different objects.
-                    if not obj._is_persisted_ref and not existing_object_id.startswith("im-"):
+                    if not obj._is_another_app and not existing_object_id.startswith("im-"):
                         raise Exception(
                             f"Tried creating an object using existing id {existing_object_id}"
-                            f" but it has id {created_obj.object_id}"
+                            f" but it has id {obj.object_id}"
                         )
 
-                return created_obj
+                return obj
 
             cached_future = asyncio.create_task(loader())
             self._local_uuid_to_future[obj.local_uuid] = cached_future

@@ -49,6 +49,8 @@ def proxy_tunnel(info: api_pb2.ProxyInfo):
             "ServerAliveInterval=5",  # seconds before client sends keepalive to server
             "-o",
             "ServerAliveCountMax=1",  # number of failures before terminating ssh (autossh will restart)
+            "-o",
+            "LogLevel=ERROR",  # disable warning "Permanently added '...' to the list of known hosts."
         ]
         p = subprocess.Popen(cmd)
 

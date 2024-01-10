@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-"""Modal intentionally keeps configurability to a minimum.
+r"""Modal intentionally keeps configurability to a minimum.
 
 The main configuration options are the API tokens: the token id and the token secret.
 These can be configured in two ways:
@@ -79,8 +79,6 @@ from datetime import date
 
 import toml
 
-
-from ._traceback import setup_rich_traceback
 from .exception import deprecation_error
 
 # Locate config file and read it
@@ -155,8 +153,11 @@ _SETTINGS = {
     "profiling_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
+    "function_runtime_debug": _Setting(False, transform=lambda x: x not in ("", "0")),  # For internal debugging use.
     "environment": _Setting(),
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
+    "worker_id": _Setting(),  # For internal debugging use.
+    "restore_state_path": _Setting("/opt/modal/restore-state.json"),
 }
 
 
@@ -189,7 +190,13 @@ class Config:
         # Override setting in this process by overriding environment variable for the setting
         #
         # Does NOT write back to settings file etc.
-        os.environ["MODAL_" + key.upper()] = value
+        try:
+            self.get(key)
+            os.environ["MODAL_" + key.upper()] = value
+        except KeyError:
+            # Override env vars not available in config, e.g. NVIDIA_VISIBLE_DEVICES.
+            # This is used for restoring env vars from a checkpoint.
+            os.environ[key.upper()] = value
 
     def __getitem__(self, key):
         return self.get(key)
@@ -237,7 +244,3 @@ warnings.filterwarnings(
     category=DeprecationWarning,
     module="modal",
 )
-
-# Set up rich tracebacks, but only on user's end.
-if _user_config:
-    setup_rich_traceback()

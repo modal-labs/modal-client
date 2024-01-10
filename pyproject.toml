@@ -14,15 +14,13 @@ no_strict_optional = true
 namespace_packages = true
 
 [[tool.mypy.overrides]]
-module = [
-    "ddtrace.*",
-]
+module = ["ddtrace.*"]
 check_untyped_defs = false
 follow_imports = "skip"
 
 [tool.pytest.ini_options]
 timeout = 300
-env = ["MODAL_SENTRY_DSN="]
+addopts = "--ignore=modal/cli/programs"
 filterwarnings = [
     "error::DeprecationWarning",
     "error::modal.exception.DeprecationError",
@@ -33,28 +31,22 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-exclude = [
-    '.venv',
-    '.git',
-    '__pycache__',
-    'proto',
-    'build',
-    'modal_proto',
-
-]
-ignore = [
-    'E501',
-    'E741',
-]
-# Enable these Pyflakes codes by default.
-select = [
-    'E',
-    'F',
-    'W',
-]
-
+exclude = ['.venv', '.git', '__pycache__', 'proto', 'build', 'modal_proto']
+ignore = ['E501', 'E741']
+select = ['E', 'F', 'W', 'I']
 line-length = 120
 
 [tool.ruff.per-file-ignores]
 "*_test.py" = ['E712']
-"client_test/supports/notebooks/*.py" = ['E402']
+"test/supports/notebooks/*.py" = ['E402']
+
+[tool.ruff.isort]
+combine-as-imports = true
+known-first-party = [
+    "modal",
+    "modal_base_images",
+    "modal_proto",
+    "modal_utils",
+    "modal_version",
+]
+extra-standard-library = ["pytest"]
