@@ -115,6 +115,9 @@ jobs:
       - name: Bump the version number
         run: inv update-build-number -n $GITHUB_RUN_NUMBER
 
+      - name: Update the changelog
+        run: inv update-changelog
+
       - uses: EndBug/add-and-commit@v9
         with:
           add: modal_version/_version_generated.py

@@ -2,6 +2,7 @@
 # Copyright (c) Modal Labs 2022
 
 import inspect
+import re
 import subprocess
 
 if not hasattr(inspect, "getargspec"):
@@ -15,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import requests
 from invoke import task
 
 year = datetime.date.today().year
@@ -155,3 +157,61 @@ def type_stubs(ctx):
         "modal.volume",
     ]
     subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
+
+
+@task
+def update_changelog(ctx):
+    # Parse the most recent commit message for a GitHub PR number
+    res = ctx.run("git log --pretty=format:%s -n 1", hide="stdout")
+    m = re.search(r"\(#(\d+)\)$", res.stdout)
+    if m:
+        pull_number = m.group(1)
+    else:
+        print("Aborting: No PR number in commit message")
+        return
+
+    # Get the corresponding PR description via the GitHub API
+    url = f"https://api.github.com/repos/modal-labs/modal-client/pulls/{pull_number}"
+    headers = {"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github.v3+json"}
+    response = requests.get(url, headers=headers).json()
+    pr_description = response.get("body")
+    if pr_description is None:
+        print("Aborting: No PR description in response from GitHub API")
+        return
+
+    # Parse the PR description to get a changelog update
+    comment_pattern = r"<!--.+?-->"
+    pr_description = re.sub(comment_pattern, "", pr_description)
+
+    changelog_pattern = r"## Changelog\s*(.+?)(?:<!--|#|$)"
+    m = re.search(changelog_pattern, pr_description, flags=re.DOTALL)
+    if m:
+        update = m.group(1).strip()
+    else:
+        print("Aborting: No changelog section in PR description")
+        return
+    if not update:
+        print("Aborting: Empty changelog in PR description")
+        return
+
+    # Read the existing changelog and split after the header so we can prepend new content
+    with open("CHANGELOG.md", "r") as fid:
+        content = fid.read()
+
+    token_pattern = "<!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->"
+    m = re.search(token_pattern, content)
+    if m:
+        break_idx = m.span()[1]
+        header = content[:break_idx]
+        previous_changelog = content[break_idx:]
+    else:
+        print("Aborting: Could not find token in existing changelog to mark insertion spot")
+
+    # Build the new changelog and write it out
+    from modal_version import __version__
+
+    date = datetime.now().strftime("%Y-%m-%d")
+    new_section = f"## {__version__} ({date})\n\n{update}"
+    final_content = f"{header}\n\n{new_section}\n\n{previous_changelog}"
+    with open("CHANGELOG.md", "w") as fid:
+        fid.write(final_content)
