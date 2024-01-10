@@ -135,7 +135,7 @@ class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
     _functions: Dict[str, _Function]
     _callables: Dict[str, Callable]
-    _from_other_workspace: Optional[bool]
+    _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
 
     def _initialize_from_empty(self):
         self._user_cls = None
