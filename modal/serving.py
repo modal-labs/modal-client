@@ -6,7 +6,7 @@ import platform
 import sys
 from multiprocessing.context import SpawnProcess
 from multiprocessing.synchronize import Event
-from typing import AsyncGenerator, Optional
+from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
 
 from synchronicity import Interface
 
@@ -14,11 +14,15 @@ from modal_utils.async_utils import TaskContext, asyncify, synchronize_api, sync
 
 from ._output import OutputManager
 from ._watcher import watch
-from .app import _App
 from .cli.import_refs import import_stub
 from .client import _Client
 from .config import config
 from .runner import _run_stub, serve_update
+
+if TYPE_CHECKING:
+    from .stub import _Stub
+else:
+    _Stub = TypeVar("_Stub")
 
 
 def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event, environment_name: str):
@@ -96,18 +100,15 @@ def _get_clean_stub_description(stub_ref: str) -> str:
 
 @contextlib.asynccontextmanager
 async def _serve_stub(
+    stub: "_Stub",
     stub_ref: str,
     stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
     _watcher: Optional[AsyncGenerator[None, None]] = None,  # for testing
     environment_name: Optional[str] = None,
-) -> AsyncGenerator[_App, None]:
+) -> AsyncGenerator["_Stub", None]:
     if environment_name is None:
         environment_name = config.get("environment")
-
-    stub = import_stub(stub_ref)
-    if stub._description is None:
-        stub._description = _get_clean_stub_description(stub_ref)
 
     client = await _Client.from_env()
 
@@ -118,11 +119,11 @@ async def _serve_stub(
         mounts_to_watch = stub._get_watch_mounts()
         watcher = watch(mounts_to_watch, output_mgr)
 
-    async with _run_stub(stub, client=client, output_mgr=output_mgr, environment_name=environment_name) as app:
-        client.set_pre_stop(app.disconnect)
+    async with _run_stub(stub, client=client, output_mgr=output_mgr, environment_name=environment_name):
+        client.set_pre_stop(stub._local_app.disconnect)
         async with TaskContext(grace=0.1) as tc:
-            tc.create_task(_run_watch_loop(stub_ref, app.app_id, output_mgr, watcher, environment_name))
-            yield app
+            tc.create_task(_run_watch_loop(stub_ref, stub.app_id, output_mgr, watcher, environment_name))
+            yield stub
 
 
 serve_stub = synchronize_api(_serve_stub)

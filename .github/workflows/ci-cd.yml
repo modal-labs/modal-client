@@ -5,9 +5,6 @@ on: push
 env:
   TERM: linux
   TERMINFO: /etc/terminfo
-  # Can't be set in `pytest-env` because pytest imports the client for filterwarnings
-  # before it applies the env vars for the plugin.
-  MODAL_SENTRY_DSN: ""
   PYTHONIOENCODING: utf-8
 
 jobs:
@@ -49,11 +46,10 @@ jobs:
         run: pip install -e .
 
       - name: Run client tests
-        run: pytest -v -s client_test
+        run: pytest -v -s
 
       - name: Run docstring tests
-        run: pytest -s --markdown-docs -m markdown-docs modal --ignore modal/aio.py
-
+        run: pytest -s --markdown-docs -m markdown-docs modal
 
   publish-base-images:
     name: |
@@ -86,6 +82,9 @@ jobs:
       - name: Build client package (installs all dependencies)
         run: pip install -e .
 
+      - name: Set the Modal environment
+        run: modal config set-environment main
+
       - name: Publish base images
         run: |
           python -m modal_base_images.${{ matrix.image-name }} ${{ matrix.python-version }}
@@ -114,7 +113,7 @@ jobs:
           version: "3.10"
 
       - name: Bump the version number
-        run: inv update-build-number $GITHUB_RUN_NUMBER
+        run: inv update-build-number -n $GITHUB_RUN_NUMBER
 
       - uses: EndBug/add-and-commit@v9
         with:
@@ -142,22 +141,25 @@ jobs:
         working-directory: alias-package
         run: python setup.py bdist_wheel
 
+      - name: Set the Modal environment
+        run: modal config set-environment main
+
       - name: Publish client mount
         env:
           MODAL_LOGLEVEL: DEBUG
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: python -m modal_base_images.client_mount
+        run: python -m modal_base_images.base_mounts
 
       - name: Upload to PyPI
         env:
-          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: twine upload dist/* --non-interactive
 
       - name: Upload alias package to PyPI
         env:
-          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         working-directory: alias-package
         run: twine upload dist/* --non-interactive

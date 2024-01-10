@@ -1,17 +1,21 @@
 # Copyright Modal Labs 2022
+import subprocess
+from typing import Optional
+
 import typer
+from rich.console import Console
+from rich.rule import Rule
 
-from modal.cli import run
-from modal.cli.environment import environment_cli
-
-from ._shared_volume import vol_cli as old_vol_cli
+from . import run
 from .app import app_cli
 from .config import config_cli
+from .environment import environment_cli
+from .launch import launch_cli
 from .network_file_system import nfs_cli
 from .profile import profile_cli
 from .secret import secret_cli
-from .token import token_cli
-from .volume import vol_cli
+from .token import _new_token, token_cli
+from .volume import volume_cli
 
 
 def version_callback(value: bool):
@@ -43,24 +47,55 @@ def modal(
     pass
 
 
+def check_path():
+    """Checks whether the `modal` executable is on the path and usable."""
+    url = "https://modal.com/docs/guide/troubleshooting#command-not-found-errors"
+    try:
+        subprocess.run(["modal", "--help"], capture_output=True)
+        # TODO(erikbern): check returncode?
+        return
+    except FileNotFoundError:
+        text = (
+            "[red]The `[white]modal[/white]` command was not found on your path!\n"
+            "You may need to add it to your path or use `[white]python -m modal[/white]` as a workaround.[/red]\n"
+        )
+    except PermissionError:
+        text = (
+            "[red]The `[white]modal[/white]` command is not executable!\n"
+            "You may need to give it permissions or use `[white]python -m modal[/white]` as a workaround.[/red]\n"
+        )
+    text += "See more information here:\n\n" f"[link={url}]{url}[/link]\n"
+    console = Console()
+    console.print(text)
+    console.print(Rule(style="white"))
+
+
+def setup(profile: Optional[str] = None):
+    check_path()
+
+    # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
+    _new_token(profile=profile, next_url="/home")
+
+
 entrypoint_cli_typer.add_typer(app_cli)
 entrypoint_cli_typer.add_typer(config_cli)
 entrypoint_cli_typer.add_typer(environment_cli)
-entrypoint_cli_typer.add_typer(old_vol_cli)
+entrypoint_cli_typer.add_typer(launch_cli)
 entrypoint_cli_typer.add_typer(nfs_cli)
-entrypoint_cli_typer.add_typer(vol_cli)
 entrypoint_cli_typer.add_typer(profile_cli)
 entrypoint_cli_typer.add_typer(secret_cli)
 entrypoint_cli_typer.add_typer(token_cli)
+entrypoint_cli_typer.add_typer(volume_cli)
 
 entrypoint_cli_typer.command("deploy", help="Deploy a Modal stub as an application.", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
-entrypoint_cli_typer.command("shell", no_args_is_help=True)(run.shell)
+entrypoint_cli_typer.command("setup", help="Bootstrap Modal's configuration.")(setup)
+entrypoint_cli_typer.command("shell")(run.shell)
 
 entrypoint_cli = typer.main.get_command(entrypoint_cli_typer)
 entrypoint_cli.add_command(run.run, name="run")  # type: ignore
 entrypoint_cli.list_commands(None)  # type: ignore
 
 if __name__ == "__main__":
-    # this module is only called from tests, otherwise the parent package __init__.py is used as the entrypoint
+    # this module is only called from tests, otherwise the parent package __main__.py is used as the entrypoint
     entrypoint_cli()

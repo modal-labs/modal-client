@@ -1,9 +1,10 @@
 # Copyright Modal Labs 2023
 import os
 import time
-from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, BinaryIO, List, Optional, Union
+from typing import AsyncIterator, BinaryIO, List, Optional, Tuple, Union
+
+from grpclib import GRPCError, Status
 
 import modal
 from modal._location import parse_cloud_provider
@@ -15,22 +16,31 @@ from modal_utils.hash_utils import get_sha256_hex
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
 from ._types import typechecked
-from .exception import deprecation_warning
-from .object import _Handle, _Provider
+from .object import _StatefulObject, live_method, live_method_gen
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
 )  # 10 min max for transferring files (does not include upload time to s3)
 
 
-class _NetworkFileSystemHandle(_Handle, type_prefix="sv"):
-    pass
+def network_file_system_mount_protos(
+    validated_network_file_systems: List[Tuple[str, "_NetworkFileSystem"]],
+    allow_cross_region_volumes: bool,
+) -> List[api_pb2.SharedVolumeMount]:
+    network_file_system_mounts = []
+    # Relies on dicts being ordered (true as of Python 3.6).
+    for path, volume in validated_network_file_systems:
+        network_file_system_mounts.append(
+            api_pb2.SharedVolumeMount(
+                mount_path=path,
+                shared_volume_id=volume.object_id,
+                allow_cross_region=allow_cross_region_volumes,
+            )
+        )
+    return network_file_system_mounts
 
 
-NetworkFileSystemHandle = synchronize_api(_NetworkFileSystemHandle)
-
-
-class _NetworkFileSystem(_Provider, type_prefix="sv"):
+class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
     """A shared, writable file system accessible by one or more Modal functions.
 
     By attaching this file system as a mount to one or more functions, they can
@@ -78,11 +88,11 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
     def new(cloud: Optional[str] = None) -> "_NetworkFileSystem":
         """Construct a new network file system, which is empty by default."""
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _NetworkFileSystemHandle):
+        async def _load(provider: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
-                handle._hydrate(existing_object_id, resolver.client, None)
+                provider._hydrate(existing_object_id, resolver.client, None)
                 return
 
             cloud_provider = parse_cloud_provider(cloud) if cloud else None
@@ -91,7 +101,7 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
             req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=cloud_provider)
             resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
             status_row.finish("Created network file system.")
-            handle._hydrate(resp.shared_volume_id, resolver.client, None)
+            provider._hydrate(resp.shared_volume_id, resolver.client, None)
 
         return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
 
@@ -102,25 +112,24 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ) -> "_NetworkFileSystem":
-        """Deploy a Modal app containing this object. This object can then be imported from other apps using
-        the returned reference, or by calling `modal.NetworkFileSystem.from_name(label)` (or the equivalent method
-        on respective class).
+        """Deploy a Modal app containing this object.
 
-        **Example Usage**
+        The deployed object can then be imported from other apps, or by calling
+        `NetworkFileSystem.from_name(label)` from that same app.
 
-        ```python
-        import modal
+        **Examples**
 
-        volume = modal.NetworkFileSystem.persisted("my-volume")
+        ```python notest
+        # In one app:
+        volume = NetworkFileSystem.persisted("my-volume")
 
-        stub = modal.Stub()
+        # Later, in another app or Python file:
+        volume = NetworkFileSystem.from_name("my-volume")
 
-        # Volume refers to the same object, even across instances of `stub`.
         @stub.function(network_file_systems={"/vol": volume})
         def f():
             pass
         ```
-
         """
         return _NetworkFileSystem.new(cloud)._persist(label, namespace, environment_name)
 
@@ -130,13 +139,11 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
-    ) -> "_NetworkFileSystem":
+    ):
         """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.persisted("my-volume")` instead."""
-        deprecation_warning(date(2023, 6, 30), self.persist.__doc__)
         return self.persisted(label, namespace, environment_name, cloud)
 
-    # Methods on live handles
-
+    @live_method
     async def write_file(self, remote_path: str, fp: BinaryIO) -> int:
         """Write from a file object to a path on the network file system, atomically.
 
@@ -174,16 +181,21 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
 
         return data_size  # might be better if this is returned from the server
 
+    @live_method_gen
     async def read_file(self, path: str) -> AsyncIterator[bytes]:
         """Read a file from the network file system"""
         req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self.object_id, path=path)
-        response = await retry_transient_errors(self._client.stub.SharedVolumeGetFile, req)
+        try:
+            response = await retry_transient_errors(self._client.stub.SharedVolumeGetFile, req)
+        except GRPCError as exc:
+            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
         if response.WhichOneof("data_oneof") == "data":
             yield response.data
         else:
             async for data in blob_iter(response.data_blob_id, self._client.stub):
                 yield data
 
+    @live_method_gen
     async def iterdir(self, path: str) -> AsyncIterator[api_pb2.SharedVolumeListFilesEntry]:
         """Iterate over all files in a directory in the network file system.
 
@@ -196,6 +208,7 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
             for entry in batch.entries:
                 yield entry
 
+    @live_method
     async def add_local_file(
         self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
     ):
@@ -208,6 +221,7 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
         with local_path.open("rb") as local_file:
             return await self.write_file(remote_path, local_file)
 
+    @live_method
     async def add_local_dir(
         self,
         local_path: Union[Path, str],
@@ -230,6 +244,7 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
 
         await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=True)
 
+    @live_method
     async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
         """List all files in a directory in the network file system.
 
@@ -239,6 +254,7 @@ class _NetworkFileSystem(_Provider, type_prefix="sv"):
         """
         return [entry async for entry in self.iterdir(path)]
 
+    @live_method
     async def remove_file(self, path: str, recursive=False):
         """Remove a file in a network file system."""
         req = api_pb2.SharedVolumeRemoveFileRequest(shared_volume_id=self.object_id, path=path, recursive=recursive)

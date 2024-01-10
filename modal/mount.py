@@ -26,13 +26,41 @@ from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import NotFoundError
-from .object import _Handle, _Provider
+from .object import _StatefulObject
 
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
+# Supported releases and versions for python-build-standalone.
+#
+# These can be updated safely, but changes will trigger a rebuild for all images
+# that rely on `add_python()` in their constructor.
+PYTHON_STANDALONE_VERSIONS: typing.Dict[str, typing.Tuple[str, str]] = {
+    "3.8": ("20230826", "3.8.17"),
+    "3.9": ("20230826", "3.9.18"),
+    "3.10": ("20230826", "3.10.13"),
+    "3.11": ("20230826", "3.11.5"),
+}
 
-def client_mount_name():
+
+def client_mount_name() -> str:
+    """Get the deployed name of the client package mount."""
     return f"modal-client-mount-{__version__}"
+
+
+def python_standalone_mount_name(version: str) -> str:
+    """Get the deployed name of the python-build-standalone mount."""
+    if "-" in version:  # default to glibc
+        version, libc = version.split("-")
+    else:
+        libc = "gnu"
+    if version not in PYTHON_STANDALONE_VERSIONS:
+        raise modal.exception.InvalidError(
+            f"Unsupported standalone python version: {version}, supported values are {list(PYTHON_STANDALONE_VERSIONS.keys())}"
+        )
+    if libc not in ("gnu", "musl"):
+        raise modal.exception.InvalidError(f"Unsupported libc identifier: {libc}")
+    release, full_version = PYTHON_STANDALONE_VERSIONS[version]
+    return f"python-build-standalone.{release}.{full_version}-{libc}"
 
 
 class _MountEntry(metaclass=abc.ABCMeta):
@@ -103,20 +131,7 @@ class _MountDir(_MountEntry):
         return self.local_dir, None
 
 
-class _MountHandle(_Handle, type_prefix="mo"):
-    """Store content checksum for uploaded Mount"""
-
-    _content_checksum_sha256_hex: Optional[str]
-
-    def _hydrate_metadata(self, handle_metadata: Message):
-        assert isinstance(handle_metadata, api_pb2.MountHandleMetadata)
-        self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
-
-
-MountHandle = synchronize_api(_MountHandle)
-
-
-class _Mount(_Provider, type_prefix="mo"):
+class _Mount(_StatefulObject, type_prefix="mo"):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
@@ -139,6 +154,8 @@ class _Mount(_Provider, type_prefix="mo"):
 
     _entries: List[_MountEntry]
 
+    _content_checksum_sha256_hex: Optional[str]
+
     @staticmethod
     def _from_entries(*entries: _MountEntry) -> "_Mount":
         rep = f"Mount({entries})"
@@ -150,11 +167,17 @@ class _Mount(_Provider, type_prefix="mo"):
 
     @staticmethod
     def new() -> "_Mount":
+        """mdmd:hidden"""
         return _Mount._from_entries()
 
     @property
     def entries(self):
+        """mdmd:hidden"""
         return self._entries
+
+    def _hydrate_metadata(self, handle_metadata: Optional[Message]):
+        assert isinstance(handle_metadata, api_pb2.MountHandleMetadata)
+        self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
 
     def is_local(self) -> bool:
         """mdmd:hidden"""
@@ -167,12 +190,16 @@ class _Mount(_Provider, type_prefix="mo"):
         self,
         local_path: Union[str, Path],
         *,
-        remote_path: Union[str, PurePosixPath, None] = None,  # Where the directory is placed within in the mount
-        condition: Optional[
-            Callable[[str], bool]
-        ] = None,  # Filter function for file selection, default to include all files
-        recursive: bool = True,  # add files from subdirectories as well
+        # Where the directory is placed within in the mount
+        remote_path: Union[str, PurePosixPath, None] = None,
+        # Filter function for file selection; defaults to including all files
+        condition: Optional[Callable[[str], bool]] = None,
+        # add files from subdirectories as well
+        recursive: bool = True,
     ) -> "_Mount":
+        """
+        Add a local directory to the `Mount` object.
+        """
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
@@ -199,10 +226,26 @@ class _Mount(_Provider, type_prefix="mo"):
     def from_local_dir(
         local_path: Union[str, Path],
         *,
-        remote_path: Union[str, PurePosixPath, None] = None,  # Where the directory is placed within in the mount
-        condition: Optional[Callable[[str], bool]] = None,  # Filter function for file selection - default all files
-        recursive: bool = True,  # add files from subdirectories as well
+        # Where the directory is placed within in the mount
+        remote_path: Union[str, PurePosixPath, None] = None,
+        # Filter function for file selection - default all files
+        condition: Optional[Callable[[str], bool]] = None,
+        # add files from subdirectories as well
+        recursive: bool = True,
     ) -> "_Mount":
+        """
+        Create a `Mount` from a local directory.
+
+        **Usage**
+
+        ```python
+        assets = modal.Mount.from_local_dir(
+            "~/assets",
+            condition=lambda pth: not ".venv" in pth,
+            remote_path="/assets",
+        )
+        ```
+        """
         return _Mount._from_entries().add_local_dir(
             local_path, remote_path=remote_path, condition=condition, recursive=recursive
         )
@@ -211,6 +254,9 @@ class _Mount(_Provider, type_prefix="mo"):
     def add_local_file(
         self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None
     ) -> "_Mount":
+        """
+        Add a local file to the `Mount` object.
+        """
         local_path = Path(local_path)
         if remote_path is None:
             remote_path = local_path.name
@@ -226,6 +272,19 @@ class _Mount(_Provider, type_prefix="mo"):
     @staticmethod
     @typechecked
     def from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
+        """
+        Create a `Mount` mounting a single local file.
+
+        **Usage**
+
+        ```python
+        # Mount the DBT profile in user's home directory into container.
+        dbt_profiles = modal.Mount.from_local_file(
+            local_path="~/profiles.yml",
+            remote_path="/root/dbt_profile/profiles.yml"),
+        )
+        ```
+        """
         return _Mount._from_entries().add_local_file(local_path, remote_path=remote_path)
 
     @staticmethod
@@ -246,7 +305,7 @@ class _Mount(_Provider, type_prefix="mo"):
                 futs.append(loop.run_in_executor(exe, get_file_upload_spec, local_filename, remote_filename))
 
             logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
-            for i, fut in enumerate(asyncio.as_completed(futs)):
+            for fut in asyncio.as_completed(futs):
                 try:
                     yield await fut
                 except FileNotFoundError as exc:
@@ -256,9 +315,9 @@ class _Mount(_Provider, type_prefix="mo"):
     @staticmethod
     async def _load_mount(
         entries: List[_MountEntry],
+        provider: "_Mount",
         resolver: Resolver,
         existing_object_id: Optional[str],
-        handle: _MountHandle,
     ):
         # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
         t0 = time.time()
@@ -277,7 +336,11 @@ class _Mount(_Provider, type_prefix="mo"):
             )
 
             remote_filename = file_spec.mount_filename
-            mount_file = api_pb2.MountFile(filename=remote_filename, sha256_hex=file_spec.sha256_hex)
+            mount_file = api_pb2.MountFile(
+                filename=remote_filename,
+                sha256_hex=file_spec.sha256_hex,
+                mode=file_spec.mode,
+            )
 
             if file_spec.sha256_hex in uploaded_hashes:
                 return mount_file
@@ -308,7 +371,7 @@ class _Mount(_Provider, type_prefix="mo"):
                 if response.exists:
                     return mount_file
 
-            raise modal.exception.TimeoutError(f"Mounting of {file_spec.filename} timed out")
+            raise modal.exception.MountUploadTimeoutError(f"Mounting of {file_spec.filename} timed out")
 
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
@@ -328,8 +391,7 @@ class _Mount(_Provider, type_prefix="mo"):
         status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
-        handle._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
-        return handle
+        provider._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
 
     @staticmethod
     def from_local_python_packages(*module_names: str) -> "_Mount":
@@ -476,14 +538,18 @@ def _get_client_mount():
         return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
 
+_create_package_mounts_deprecation_msg = (
+    "modal.create_package_mounts() is being deprecated, use modal.Mount.from_local_python_packages() instead"
+)
+
+
 @typechecked
-def _create_package_mounts(module_names: Sequence[str]) -> List[_Mount]:
-    modal.exception.deprecation_warning(
+def _create_package_mounts(module_names: Sequence[str]):
+    f"""{_create_package_mounts_deprecation_msg}"""
+    modal.exception.deprecation_error(
         date(2023, 7, 19),
-        "modal.create_package_mounts() is being deprecated, use modal.Mount.from_local_python_packages() instead",
-        pending=True,
+        _create_package_mounts_deprecation_msg,
     )
-    return [_Mount.from_local_python_packages(*module_names)]
 
 
 create_package_mounts = synchronize_api(_create_package_mounts)
