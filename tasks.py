@@ -197,7 +197,6 @@ def update_changelog(ctx):
     # Read the existing changelog and split after the header so we can prepend new content
     with open("CHANGELOG.md", "r") as fid:
         content = fid.read()
-
     token_pattern = "<!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->"
     m = re.search(token_pattern, content)
     if m:
@@ -211,7 +210,7 @@ def update_changelog(ctx):
     from modal_version import __version__
 
     date = datetime.now().strftime("%Y-%m-%d")
-    new_section = f"## {__version__} ({date})\n\n{update}"
+    new_section = f"### {__version__} ({date})\n\n{update}"
     final_content = f"{header}\n\n{new_section}\n\n{previous_changelog}"
     with open("CHANGELOG.md", "w") as fid:
         fid.write(final_content)
