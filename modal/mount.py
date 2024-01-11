@@ -22,6 +22,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info
 from modal_version import __version__
 
+from . import is_local
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
 from .config import config, logger
@@ -493,6 +494,8 @@ class _Mount(_StatefulObject, type_prefix="mo"):
             my_local_module.do_stuff()
         ```
         """
+        if not is_local():
+            return _Mount._from_entries()  # empty/non-mountable mount in case it's used from within a container
         return _Mount._from_entries(*[_MountedPythonModule(module_name) for module_name in module_names])
 
 

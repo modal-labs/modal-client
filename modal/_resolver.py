@@ -94,13 +94,7 @@ class Resolver:
             await obj._preload(obj, self, existing_object_id)
 
     async def load(self, obj, existing_object_id: Optional[str] = None):
-        from modal.object import _Provider
-
-        if isinstance(obj, _Provider):
-            local_uuid = obj.local_uuid
-        else:
-            raise AttributeError(f"obj is {obj!r}, which is not a Modal object")
-        cached_future = self._local_uuid_to_future.get(local_uuid)
+        cached_future = self._local_uuid_to_future.get(obj.local_uuid)
 
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
