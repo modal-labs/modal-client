@@ -52,7 +52,13 @@ class _Obj:
     _local_obj_constr: Optional[Callable[[], Any]]
 
     def __init__(
-        self, user_cls: type, output_mgr: Optional[OutputManager], base_functions: Dict[str, _Function], args, kwargs
+        self,
+        user_cls: type,
+        output_mgr: Optional[OutputManager],
+        base_functions: Dict[str, _Function],
+        from_other_workspace: bool,
+        args,
+        kwargs,
     ):
         for i, arg in enumerate(args):
             check_picklability(i + 1, arg)
@@ -61,7 +67,7 @@ class _Obj:
 
         self._functions = {}
         for k, fun in base_functions.items():
-            self._functions[k] = fun.from_parametrized(self, args, kwargs)
+            self._functions[k] = fun.from_parametrized(self, from_other_workspace, args, kwargs)
             self._functions[k]._set_output_mgr(output_mgr)
 
         # Used for construction local object lazily
@@ -129,11 +135,13 @@ class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
     _functions: Dict[str, _Function]
     _callables: Dict[str, Callable]
+    _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
 
     def _initialize_from_empty(self):
         self._user_cls = None
         self._functions = {}
         self._callables = {}
+        self._from_other_workspace = None
         self._output_mgr: Optional[OutputManager] = None
 
     def _set_output_mgr(self, output_mgr: OutputManager):
@@ -189,6 +197,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls._user_cls = user_cls
         cls._functions = functions
         cls._callables = callables
+        cls._from_other_workspace = False
         setattr(cls._user_cls, "_modal_functions", functions)  # Needed for PartialFunction.__get__
         return cls
 
@@ -199,6 +208,7 @@ class _Cls(_Object, type_prefix="cs"):
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
+        workspace: Optional[str] = None,
     ) -> "_Cls":
         """Retrieve a class with a given name and tag.
 
@@ -213,6 +223,8 @@ class _Cls(_Object, type_prefix="cs"):
                 object_tag=tag,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
+                lookup_published=workspace is not None,
+                workspace_name=workspace,
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
@@ -225,7 +237,9 @@ class _Cls(_Object, type_prefix="cs"):
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
-        return cls._from_loader(_load_remote, rep, is_another_app=True)
+        cls = cls._from_loader(_load_remote, rep, is_another_app=True)
+        cls._from_other_workspace = bool(workspace is not None)
+        return cls
 
     @classmethod
     async def lookup(
@@ -235,6 +249,7 @@ class _Cls(_Object, type_prefix="cs"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
+        workspace: Optional[str] = None,
     ) -> "_Cls":
         """Lookup a class with a given name and tag.
 
@@ -242,7 +257,7 @@ class _Cls(_Object, type_prefix="cs"):
         Class = modal.Cls.lookup("other-app", "Class")
         ```
         """
-        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name, workspace=workspace)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
@@ -251,7 +266,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
-        return _Obj(self._user_cls, self._output_mgr, self._functions, args, kwargs)
+        return _Obj(self._user_cls, self._output_mgr, self._functions, self._from_other_workspace, args, kwargs)
 
     async def remote(self, *args, **kwargs):
         deprecation_error(
