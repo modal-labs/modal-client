@@ -291,6 +291,7 @@ message AppDeployRequest {
   DeploymentNamespace namespace = 2;
   string name = 3;
   string object_entity = 4;
+  bool public = 5;
 }
 
 message AppDeployResponse {
