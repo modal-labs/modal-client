@@ -84,5 +84,5 @@ def app_logs(app_id: str):
 async def stop(app_id: str):
     """Stop an app."""
     client = await _Client.from_env()
-    req = api_pb2.AppStopRequest(app_id=app_id)
+    req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
     await client.stub.AppStop(req)

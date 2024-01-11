@@ -5,7 +5,7 @@ import asyncio
 import time
 from datetime import date
 
-from modal import Stub, asgi_app, method, web_endpoint
+from modal import Image, Stub, Volume, asgi_app, current_function_call_id, current_input_id, method, web_endpoint
 from modal.exception import deprecation_warning
 
 SLEEP_DELAY = 0.1
@@ -127,8 +127,11 @@ def fastapi_app():
 
 @stub.cls()
 class Cls:
+    def __init__(self):
+        self._k = 11
+
     def __enter__(self):
-        self._k = 111
+        self._k += 100
 
     @method()
     def f(self, x):
@@ -148,14 +151,14 @@ class Cls:
 
 @stub.function()
 def check_sibling_hydration(x):
-    assert square.is_hydrated()
-    assert Cls().f.is_hydrated()
-    assert Cls().web.is_hydrated()
+    assert square.is_hydrated
+    assert Cls().f.is_hydrated
+    assert Cls().web.is_hydrated
     assert Cls().web.web_url
-    assert Cls().generator.is_hydrated()
+    assert Cls().generator.is_hydrated
     assert Cls().generator.is_generator
-    assert fastapi_app.is_hydrated()
-    assert fun_returning_gen.is_hydrated()
+    assert fastapi_app.is_hydrated
+    assert fun_returning_gen.is_hydrated
     assert fun_returning_gen.is_generator
 
 
@@ -169,18 +172,65 @@ class ParamCls:
     def f(self, z: int):
         return f"{self.x} {self.y} {z}"
 
+    @method()
+    def g(self, z):
+        return self.f.local(z)
+
 
 @stub.function(allow_concurrent_inputs=5)
 def sleep_700_sync(x):
     time.sleep(0.7)
-    return x * x
+    return x * x, current_input_id(), current_function_call_id()
 
 
 @stub.function(allow_concurrent_inputs=5)
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
-    return x * x
+    return x * x, current_input_id(), current_function_call_id()
 
 
 def unassociated_function(x):
     return 100 - x
+
+
+class BaseCls:
+    def __enter__(self):
+        self.x = 2
+
+    @method()
+    def run(self, y):
+        return self.x * y
+
+
+@stub.cls()
+class DerivedCls(BaseCls):
+    pass
+
+
+@stub.function()
+def cube(x):
+    # Note: this ends up calling the servicer fixture,
+    # which always just returns the sum of the squares of the inputs,
+    # regardless of the actual funtion.
+    assert square.is_hydrated
+    return square.remote(x) * x
+
+
+@stub.function()
+def function_calling_method(x, y, z):
+    obj = ParamCls(x, y)
+    return obj.f.remote(z)
+
+
+image = Image.debian_slim().pip_install("xyz")
+other_image = Image.debian_slim().pip_install("abc")
+volume = Volume.new()
+other_volume = Volume.new()
+
+
+@stub.function(image=image, volumes={"/tmp/xyz": volume})
+def check_dep_hydration(x):
+    assert image.is_hydrated
+    assert other_image.is_hydrated
+    assert volume.is_hydrated
+    assert other_volume.is_hydrated

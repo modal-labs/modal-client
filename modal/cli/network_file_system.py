@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import asyncio
 import os
 import shutil
 import sys
@@ -7,7 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Optional, Tuple
+from typing import Optional
 
 import typer
 from click import UsageError
@@ -21,6 +20,7 @@ from typer import Typer
 import modal
 from modal._location import display_location
 from modal._output import step_completed, step_progress
+from modal.cli._download import _glob_download
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -32,7 +32,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 
 
-nfs_cli = Typer(name="nfs", help="Read and edit modal.NetworkFileSystem volumes.", no_args_is_help=True)
+nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
 
 
 @nfs_cli.command(name="list", help="List the names of all network file systems.")
@@ -171,51 +171,6 @@ class CliError(Exception):
         self.message = message
 
 
-async def _glob_download(volume: _NetworkFileSystem, remote_glob_path: str, local_destination: Path, overwrite: bool):
-    q: asyncio.Queue[Tuple[Optional[Path], Optional[api_pb2.SharedVolumeListFilesEntry]]] = asyncio.Queue()
-
-    async def producer():
-        async for entry in volume.iterdir(remote_glob_path):
-            output_path = local_destination / entry.path
-            if output_path.exists():
-                if overwrite:
-                    if entry.type == api_pb2.SharedVolumeListFilesEntry.FILE:
-                        os.remove(output_path)
-                    else:
-                        shutil.rmtree(output_path)
-                else:
-                    raise CliError(
-                        f"Output path '{output_path}' already exists. Use --force to overwrite the output directory"
-                    )
-            await q.put((output_path, entry))
-        for _ in range(10):
-            await q.put((None, None))
-
-    async def consumer():
-        while 1:
-            output_path, entry = await q.get()
-            if output_path is None:
-                return
-            try:
-                if entry.type == api_pb2.SharedVolumeListFilesEntry.FILE:
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    with output_path.open("wb") as fp:
-                        b = 0
-                        async for chunk in volume.read_file(entry.path):
-                            b += fp.write(chunk)
-
-                    print(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
-            finally:
-                q.task_done()
-
-    tasks = []
-    tasks.append(asyncio.create_task(producer()))
-    for _ in range(10):
-        tasks.append(asyncio.create_task(consumer()))
-
-    await asyncio.gather(*tasks)
-
-
 @nfs_cli.command(name="get")
 @synchronizer.create_blocking
 async def get(
@@ -242,11 +197,17 @@ async def get(
     destination = Path(local_destination)
     volume = await _volume_from_name(volume_name)
 
+    def is_file_fn(entry):
+        return entry.type == FileType.FILE
+
     if "*" in remote_path:
-        try:
-            await _glob_download(volume, remote_path, destination, force)
-        except CliError as exc:
-            print(exc.message)
+        await _glob_download(
+            volume,
+            is_file_fn,
+            remote_path,
+            destination,
+            force,
+        )
         return
 
     if destination != PIPE_PATH:

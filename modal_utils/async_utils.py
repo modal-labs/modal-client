@@ -3,6 +3,7 @@ import asyncio
 import concurrent.futures
 import functools
 import inspect
+import sys
 import time
 import typing
 from contextlib import asynccontextmanager
@@ -103,6 +104,10 @@ class TaskContext:
         self._tasks: set[asyncio.Task] = set()
         self._exited: asyncio.Event = asyncio.Event()  # Used to stop infinite loops
 
+    @property
+    def exited(self) -> bool:
+        return self._exited.is_set()
+
     async def __aenter__(self):
         await self.start()
         return self
@@ -138,7 +143,13 @@ class TaskContext:
                 if task.done() or task in self._loops:
                     continue
 
-                logger.warning(f"Canceling remaining unfinished task {task}")
+                already_cancelling = False
+                if sys.version_info >= (3, 11):
+                    already_cancelling = task.cancelling() > 0
+
+                if not already_cancelling:
+                    logger.warning(f"Canceling remaining unfinished task: {task}")
+
                 task.cancel()
 
     async def __aexit__(self, exc_type, value, tb):
@@ -337,10 +348,28 @@ class ConcurrencyPool:
 
     async def run_coros(self, coros: typing.Iterable[typing.Coroutine], return_exceptions=False):
         async def blocking_wrapper(coro):
-            async with self.semaphore:
-                return await coro
+            # Not using async with on the semaphore is intentional here - if return_exceptions=False
+            # manual release prevents starting extraneous tasks after exceptions.
+            await self.semaphore.acquire()
+            try:
+                res = await coro
+                self.semaphore.release()
+                return res
+            except BaseException as e:
+                if return_exceptions:
+                    self.semaphore.release()
+                raise e
 
-        return await asyncio.gather(*coros, return_exceptions=return_exceptions)
+        # asyncio.gather() is weird - it doesn't cancel outstanding awaitables on exceptions when
+        # return_exceptions=False --> wrap the coros in tasks are cancel them explicitly on exception.
+        tasks = [asyncio.create_task(blocking_wrapper(coro)) for coro in coros]
+        g = asyncio.gather(*tasks, return_exceptions=return_exceptions)
+        try:
+            return await g
+        except BaseException as e:
+            for t in tasks:
+                t.cancel()
+            raise e
 
 
 @asynccontextmanager

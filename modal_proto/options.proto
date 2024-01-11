@@ -1,0 +1,17 @@
+// Defines custom options used internally at Modal.
+// Custom options must be in the range 50000-99999.
+// Reference: https://protobuf.dev/programming-guides/proto2/#customoptions
+syntax = "proto3";
+
+import "google/protobuf/descriptor.proto";
+
+package modal.options;
+
+extend google.protobuf.FieldOptions {
+  optional bool audit_target_attr = 50000;
+}
+
+extend google.protobuf.MethodOptions {
+  optional string audit_event_name = 50000;
+  optional string audit_event_description = 50001;
+}

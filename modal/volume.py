@@ -1,32 +1,25 @@
 # Copyright Modal Labs 2023
 import asyncio
-from typing import AsyncIterator, List, Optional
+import time
+from contextlib import nullcontext
+from pathlib import Path, PurePosixPath
+from typing import IO, AsyncIterator, List, Optional, Union
 
+from grpclib import GRPCError, Status
+
+import modal.exception
 from modal_proto import api_pb2
-from modal_utils.async_utils import asyncnullcontext, synchronize_api
+from modal_utils.async_utils import ConcurrencyPool, asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 
+from ._blob_utils import blob_iter, blob_upload_file, get_file_upload_spec
 from ._resolver import Resolver
-from .object import _Handle, _Provider
+from .config import logger
+from .mount import MOUNT_PUT_FILE_CLIENT_TIMEOUT
+from .object import _StatefulObject, live_method, live_method_gen
 
 
-class _VolumeHandle(_Handle, type_prefix="vo"):
-    """Handle to a `Volume` object."""
-
-    _lock: asyncio.Lock
-
-    def _initialize_from_empty(self):
-        # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
-        # some unlikely circumstances.
-        # *: You can bypass this by creating multiple handles to the same volume, e.g. via lookup. But this
-        # covers the typical case = good enough.
-        self._lock = asyncio.Lock()
-
-
-VolumeHandle = synchronize_api(_VolumeHandle)
-
-
-class _Volume(_Provider, type_prefix="vo"):
+class _Volume(_StatefulObject, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
 
     The contents of a volume is exposed as a filesystem. You can use it to share data between different functions, or
@@ -68,22 +61,31 @@ class _Volume(_Provider, type_prefix="vo"):
     ```
     """
 
+    _lock: asyncio.Lock
+
+    def _initialize_from_empty(self):
+        # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
+        # some unlikely circumstances.
+        # *: You can bypass this by creating multiple handles to the same volume, e.g. via lookup. But this
+        # covers the typical case = good enough.
+        self._lock = asyncio.Lock()
+
     @staticmethod
     def new() -> "_Volume":
         """Construct a new volume, which is empty by default."""
 
-        async def _load(resolver: Resolver, existing_object_id: Optional[str], handle: _VolumeHandle):
+        async def _load(provider: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
-                handle._hydrate(existing_object_id, resolver.client, None)
+                provider._hydrate(existing_object_id, resolver.client, None)
                 return
 
             status_row.message("Creating volume...")
             req = api_pb2.VolumeCreateRequest(app_id=resolver.app_id)
             resp = await retry_transient_errors(resolver.client.stub.VolumeCreate, req)
             status_row.finish("Created volume.")
-            handle._hydrate(resp.volume_id, resolver.client, None)
+            provider._hydrate(resp.volume_id, resolver.client, None)
 
         return _Volume._from_loader(_load, "Volume()")
 
@@ -115,28 +117,34 @@ class _Volume(_Provider, type_prefix="vo"):
         """
         return _Volume.new()._persist(label, namespace, environment_name)
 
-    # Methods on live handles
-
+    @live_method
     async def _do_reload(self, lock=True):
-        async with self._handle._lock if lock else asyncnullcontext():
+        async with self._lock if lock else asyncnullcontext():
             req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
             _ = await retry_transient_errors(self._client.stub.VolumeReload, req)
 
+    @live_method
     async def commit(self):
         """Commit changes to the volume and fetch any other changes made to the volume by other containers.
 
-        Committing always triggers a reload after saving changes.
+        Unless background commits are enabled, committing always triggers a reload after saving changes.
 
         If successful, the changes made are now persisted in durable storage and available to other containers accessing the volume.
 
         Committing will fail if there are open files for the volume.
         """
-        async with self._handle._lock:
+        async with self._lock:
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
-            _ = await retry_transient_errors(self._client.stub.VolumeCommit, req)
-            # Reload changes on successful commit.
-            await self._do_reload(lock=False)
+            try:
+                # TODO(gongy): only apply indefinite retries on 504 status.
+                resp = await retry_transient_errors(self._client.stub.VolumeCommit, req, max_retries=90)
+                if not resp.skip_reload:
+                    # Reload changes on successful commit.
+                    await self._do_reload(lock=False)
+            except GRPCError as exc:
+                raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
 
+    @live_method
     async def reload(self):
         """Make latest committed state of volume available in the running container.
 
@@ -146,8 +154,12 @@ class _Volume(_Provider, type_prefix="vo"):
 
         Reloading will fail if there are open files for the volume.
         """
-        await self._do_reload()
+        try:
+            await self._do_reload()
+        except GRPCError as exc:
+            raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
 
+    @live_method_gen
     async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
         """Iterate over all files in a directory in the volume.
 
@@ -155,11 +167,12 @@ class _Volume(_Provider, type_prefix="vo"):
         * Passing a file path returns a list containing only that file's listing description
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
-        req = api_pb2.VolumeListFilesRequest(volume_id=self._object_id, path=path)
+        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path)
         async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
             for entry in batch.entries:
                 yield entry
 
+    @live_method
     async def listdir(self, path: str) -> List[api_pb2.VolumeListFilesEntry]:
         """List all files under a path prefix in the modal.Volume.
 
@@ -168,6 +181,165 @@ class _Volume(_Provider, type_prefix="vo"):
         * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
         """
         return [entry async for entry in self.iterdir(path)]
+
+    @live_method_gen
+    async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
+        """
+        Read a file from the modal.Volume.
+
+        **Example:**
+
+        ```python notest
+        vol = modal.Volume.lookup("my-modal-volume")
+        data = b""
+        for chunk in vol.read_file("1mb.csv"):
+            data += chunk
+        print(len(data))  # == 1024 * 1024
+        ```
+        """
+        if isinstance(path, str):
+            path = path.encode("utf-8")
+        req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
+        try:
+            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+        except GRPCError as exc:
+            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
+        if response.WhichOneof("data_oneof") == "data":
+            yield response.data
+            return
+        else:
+            async for data in blob_iter(response.data_blob_id, self._client.stub):
+                yield data
+
+    @live_method
+    async def read_file_into_fileobj(self, path: Union[str, bytes], fileobj: IO[bytes], progress: bool = False) -> int:
+        """mdmd:hidden
+
+        Read volume file into file-like IO object, with support for progress display.
+        Used by modal CLI. In future will replace current generator implementation of `read_file` method.
+        """
+        if isinstance(path, str):
+            path = path.encode("utf-8")
+
+        if progress:
+            from ._output import download_progress_bar
+
+            progress_bar = download_progress_bar()
+            task_id = progress_bar.add_task("download", path=path.decode(), start=False)
+            progress_bar.console.log(f"Requesting {path.decode()}")
+        else:
+            progress_bar = nullcontext()
+            task_id = None
+
+        req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
+        try:
+            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+        except GRPCError as exc:
+            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
+        if response.WhichOneof("data_oneof") == "data":
+            n = fileobj.write(response.data)
+            if n != len(response.data):
+                raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
+            return len(response.data)
+
+        written = 0
+        if progress:
+            progress_bar.update(task_id, total=int(response.size))
+            progress_bar.start_task(task_id)
+        with progress_bar:
+            async for data in blob_iter(response.data_blob_id, self._client.stub):
+                n = fileobj.write(data)
+                if n != len(data):
+                    raise IOError(f"failed to write {len(data)} bytes to output. Wrote {n}.")
+                written += n
+                if progress:
+                    progress_bar.update(task_id, advance=n)
+            if written != response.size:
+                raise IOError(f"truncated read. expected to read {response.size} total but only read {written}")
+            if progress:
+                progress_bar.console.log(f"Wrote {written} bytes to '{path.decode()}'")
+        return written
+
+    @live_method
+    async def remove_file(self, path: Union[str, bytes], recursive: bool = False) -> None:
+        """Remove a file or directory from a volume."""
+        if isinstance(path, str):
+            path = path.encode("utf-8")
+        req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
+        await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+
+    @live_method
+    async def _add_local_file(
+        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+    ):
+        mount_file = await self._upload_file(local_path, remote_path)
+        request = api_pb2.VolumePutFilesRequest(volume_id=self.object_id, files=[mount_file])
+        await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)
+
+    @live_method
+    async def _add_local_dir(
+        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+    ):
+        _local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = PurePosixPath("/", _local_path.name).as_posix()
+        else:
+            remote_path = PurePosixPath(remote_path).as_posix()
+
+        assert _local_path.is_dir()
+
+        def gen_transfers():
+            for subpath in _local_path.rglob("*"):
+                if subpath.is_dir():
+                    continue
+                relpath_str = subpath.relative_to(_local_path).as_posix()
+                yield self._upload_file(subpath, PurePosixPath(remote_path, relpath_str))
+
+        files = await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=False)
+        request = api_pb2.VolumePutFilesRequest(volume_id=self.object_id, files=files)
+        await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)
+
+    @live_method
+    async def _upload_file(
+        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+    ) -> api_pb2.MountFile:
+        local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = PurePosixPath("/", local_path.name).as_posix()
+        else:
+            remote_path = PurePosixPath(remote_path).as_posix()
+
+        file_spec = get_file_upload_spec(local_path, str(remote_path))
+        remote_filename = file_spec.mount_filename
+
+        request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
+        response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
+
+        if not response.exists:
+            if file_spec.use_blob:
+                logger.debug(f"Creating blob file for {file_spec.filename} ({file_spec.size} bytes)")
+                with open(file_spec.filename, "rb") as fp:
+                    blob_id = await blob_upload_file(fp, self._client.stub)
+                logger.debug(f"Uploading blob file {file_spec.filename} as {remote_filename}")
+                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
+            else:
+                logger.debug(f"Uploading file {file_spec.filename} to {remote_filename} ({file_spec.size} bytes)")
+                request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
+
+            start_time = time.monotonic()
+            while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
+                response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
+                if response.exists:
+                    break
+
+            if not response.exists:
+                raise modal.exception.VolumeUploadTimeoutError(f"Uploading of {file_spec.filename} timed out")
+
+        return api_pb2.MountFile(
+            filename=remote_filename,
+            sha256_hex=file_spec.sha256_hex,
+            mode=file_spec.mode,
+        )
 
 
 Volume = synchronize_api(_Volume)

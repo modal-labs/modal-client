@@ -30,4 +30,4 @@ jobs:
       - run: python -m pip install --upgrade pip && pip install httpx
       # prettier-ignore
       - run:
-          python3 .github/workflows/pr_autoapprove.py "${{ github.event.pull_request.title }}" "${{ github.event.pull_request.number }}"
+          python3 .github/workflows/pr_autoapprove.py ${{ toJSON(github.event.pull_request.title) }} "${{ github.event.pull_request.number }}"
