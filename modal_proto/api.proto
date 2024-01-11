@@ -286,12 +286,18 @@ message AppStopRequest {
   AppStopSource source = 2;
 }
 
+enum AppDeployVisibility {
+  APP_DEPLOY_VISIBILITY_UNSPECIFIED = 0;
+  APP_DEPLOY_VISIBILITY_WORKSPACE = 1;
+  APP_DEPLOY_VISIBILITY_PUBLIC = 2;
+}
+
 message AppDeployRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string name = 3;
   string object_entity = 4;
-  bool public = 5;
+  AppDeployVisibility visibility = 5;
 }
 
 message AppDeployResponse {

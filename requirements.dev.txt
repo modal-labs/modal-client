@@ -14,9 +14,11 @@ pytest-env~=0.6.2
 pytest-markdown-docs==0.4.3
 pytest-timeout~=2.1.0
 python-dotenv~=1.0.0;python_version>='3.8'
+requests~=2.31.0
 ruff==0.0.277
 types-croniter~=1.0.8
 types-python-dateutil~=2.8.10
+types-requests~=2.31.0
 types-setuptools~=57.4.11
 types-six==1.16.21
 types-toml~=0.10.4
