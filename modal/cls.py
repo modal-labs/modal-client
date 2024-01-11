@@ -160,6 +160,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._functions = other._functions
         self._options = other._options
         self._callables = other._callables
+        self._from_other_workspace = other._from_other_workspace
         self._output_mgr: Optional[OutputManager] = other._output_mgr
 
     def _set_output_mgr(self, output_mgr: OutputManager):
@@ -272,7 +273,7 @@ class _Cls(_Object, type_prefix="cs"):
         allow_background_volume_commits: bool = False,
     ) -> "_Cls":
         # TODO(gongy): figure out a cleaner way to clone a _Cls
-        cls = _Cls.from_other(self)
+        cls = _Cls._from_other(self)
         cls._initialize_from_other(self)
 
         retry_policy = _parse_retries(retries)
