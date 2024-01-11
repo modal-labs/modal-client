@@ -92,7 +92,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_mount_files = 0
         self.files_name2sha = {}
         self.files_sha2data = {}
-        self.mount_content: dict[str, str] = {}  # dict[mount_id, dict[filename, sha]]
+        self.mount_content: dict[str, dict[str, str]] = {}  # dict[mount_id, dict[filename, sha]]
         self.function_id_for_function_call = {}
         self.client_calls = {}
         self.function_is_running = False
