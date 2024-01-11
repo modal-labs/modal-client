@@ -262,7 +262,7 @@ class _Cls(_Object, type_prefix="cs"):
         return cls
 
     def with_options(
-        self: Type["_Cls"],
+        self: "_Cls",
         secrets: Collection[_Secret] = (),
         gpu: GPU_T = None,
         mounts: Collection[_Mount] = (),
@@ -276,7 +276,7 @@ class _Cls(_Object, type_prefix="cs"):
         allow_background_volume_commits: bool = False,
     ) -> "_Cls":
         # TODO(gongy): figure out a cleaner way to clone a _Cls
-        cls = _Cls._from_loader(self, self._load, self._rep)
+        cls = _Cls.from_other(self)
         cls._initialize_from_other(self)
 
         validated_volumes = _validate_volumes(volumes)

@@ -90,6 +90,10 @@ class _Object:
         # default implementation, can be overriden in subclasses
         pass
 
+    def _initialize_from_other(self, other):
+        # default implementation, can be overriden in subclasses
+        pass
+
     def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
         assert isinstance(object_id, str)
         if not object_id.startswith(self._type_prefix):
@@ -247,6 +251,17 @@ class _StatefulObject(_Object):
         cls = type(self)
         rep = f"PersistedRef<{self}>({label})"
         return cls._from_loader(_load_persisted, rep, is_another_app=True)
+
+    @classmethod
+    def from_other(cls: Type[O], other: _Object):
+        """Clone a given hydrated object."""
+
+        # Object to clone must already be hydrated, otherwise from_loader is more suitable.
+        assert other._hydrated
+
+        obj = _Object.__new__(cls)
+        obj._initialize_from_other(other)
+        return obj
 
     @classmethod
     def from_name(
