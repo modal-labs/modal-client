@@ -545,9 +545,14 @@ message ContainerExecRequest {
   string command = 2;
 }
 
+message ContainerExecGetOutputRequest {
+  string exec_id = 1;
+  float timeout = 2;
+  string last_entry_id = 3;
+}
+
 message ContainerExecResponse {
-  // todo(nathan): maybe add a status field to signal container not found?
-  string message = 1;
+  string exec_id = 1;
 }
 
 message TaskStats {
@@ -1677,6 +1682,13 @@ message WebUrlInfo {
   bool label_stolen = 3;
 }
 
+// Used for `modal container exec`
+message RuntimeOutputMessage {
+  // only stdout / stderr is used
+  FileDescriptor file_descriptor = 1;
+  string message = 2;
+}
+
 
 service ModalClient {
   // Apps
@@ -1708,7 +1720,9 @@ service ModalClient {
 
   // Container
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
+  // todo(nathan): should both of these just be renamed to Task?
   rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
+  rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputMessage);
 
   // Checkpointing
   rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);
