@@ -915,7 +915,6 @@ class _Function(_Object, type_prefix="fu"):
                     " created because it wasn't defined in global scope."
                 )
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
-            print(f"Sending FunctionBindParams with {options}!")
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=self._object_id,
                 serialized_params=serialized_params,
