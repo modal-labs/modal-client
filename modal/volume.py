@@ -341,5 +341,18 @@ class _Volume(_StatefulObject, type_prefix="vo"):
             mode=file_spec.mode,
         )
 
+    @live_method
+    async def _copy_file(self, src_path: Union[str, bytes], dst_path: Union[str, bytes]) -> None:
+        """
+        Copy a file within the volume from src_path to dst_path.
+        """
+        if isinstance(src_path, str):
+            src_path = src_path.encode("utf-8")
+        if isinstance(dst_path, str):
+            dst_path = dst_path.encode("utf-8")
+
+        request = api_pb2.VolumeCopyFileRequest(volume_id=self.object_id, src_path=src_path, dst_path=dst_path)
+        await retry_transient_errors(self._client.stub.VolumeCopyFile, request, base_delay=1)
+
 
 Volume = synchronize_api(_Volume)

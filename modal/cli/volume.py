@@ -264,3 +264,19 @@ async def rm(
         if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
             raise UsageError(exc.message)
         raise
+
+
+@volume_cli.command(name="cp", help="Copy a file within a volume.")
+@synchronizer.create_blocking
+async def cp(
+    volume_name: str,
+    src_path: str,
+    dst_path: str,
+    env: Optional[str] = ENV_OPTION,
+):
+    ensure_env(env)
+    volume = await _Volume.lookup(volume_name, environment_name=env)
+    if not isinstance(volume, _Volume):
+        raise UsageError("The specified app entity is not a modal.Volume")
+
+    await volume._copy_file(src_path, dst_path)
