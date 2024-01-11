@@ -709,7 +709,7 @@ message CheckpointInfo {
 }
 
 message FunctionOptions {
-  repeated string secret_ids = 1; // Currently not supported
+  repeated string secret_ids = 1;
   repeated string mount_ids = 2; // Currently not supported
   optional Resources resources = 3;
   optional FunctionRetryPolicy retry_policy = 4;
@@ -720,6 +720,7 @@ message FunctionOptions {
   repeated VolumeMount volume_mounts = 9;
   optional uint32 allow_concurrent_inputs = 10;
   bool replace_volume_mounts = 11;
+  bool replace_secret_ids = 11;
 }
 
 message Function {
