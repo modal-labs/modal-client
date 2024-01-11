@@ -881,7 +881,9 @@ class _Function(_Object, type_prefix="fu"):
 
         return obj
 
-    def from_parametrized(self, obj, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_Function":
+    def from_parametrized(
+        self, obj, from_other_workspace: bool, args: Iterable[Any], kwargs: Dict[str, Any]
+    ) -> "_Function":
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if not self.is_hydrated:
                 raise ExecutionError(
@@ -898,7 +900,7 @@ class _Function(_Object, type_prefix="fu"):
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
 
         provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
-        if len(args) + len(kwargs) == 0 and self.is_hydrated:
+        if len(args) + len(kwargs) == 0 and not from_other_workspace and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
             provider._hydrate_from_other(self)
         provider._is_remote_cls_method = True  # TODO(erikbern): deprecated
