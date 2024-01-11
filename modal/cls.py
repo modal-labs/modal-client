@@ -2,7 +2,7 @@
 import os
 import pickle
 from datetime import date
-from typing import Any, Callable, Collection, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -20,7 +20,6 @@ from .functions import (
     _validate_volumes,
 )
 from .gpu import GPU_T, parse_gpu_config
-from .mount import _Mount
 from .object import _get_environment_name, _Object
 from .partial_function import (
     PartialFunction,
@@ -30,7 +29,6 @@ from .partial_function import (
     _PartialFunctionFlags,
 )
 from .retries import Retries
-from .secret import _Secret
 from .volume import _Volume
 
 T = TypeVar("T")
@@ -263,9 +261,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     def with_options(
         self: "_Cls",
-        secrets: Collection[_Secret] = (),
         gpu: GPU_T = None,
-        mounts: Collection[_Mount] = (),
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
@@ -279,7 +275,6 @@ class _Cls(_Object, type_prefix="cs"):
         cls = _Cls.from_other(self)
         cls._initialize_from_other(self)
 
-        validated_volumes = _validate_volumes(volumes)
         retry_policy = _parse_retries(retries)
         resources = api_pb2.Resources(gpu_config=parse_gpu_config(gpu)) if gpu else None
 
@@ -289,18 +284,18 @@ class _Cls(_Object, type_prefix="cs"):
                 volume_id=volume.object_id,
                 allow_background_commits=allow_background_volume_commits,
             )
-            for path, volume in validated_volumes
+            for path, volume in _validate_volumes(volumes)
         ]
+        replace_volume_mounts = len(volume_mounts) > 0
 
         cls._options = api_pb2.FunctionOptions(
-            secret_ids=[secret.object_id for secret in secrets],
-            mount_ids=[mount.object_id for mount in mounts],
             resources=resources,
             retry_policy=retry_policy,
             concurrency_limit=concurrency_limit,
             timeout_secs=timeout,
             task_idle_timeout_secs=container_idle_timeout,
             warm_pool_size=keep_warm,
+            replace_volume_mounts=replace_volume_mounts,
             volume_mounts=volume_mounts,
             allow_concurrent_inputs=allow_concurrent_inputs,
         )
