@@ -253,6 +253,9 @@ def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
+    public: bool = typer.Option(
+        False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
+    ),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -262,7 +265,15 @@ def deploy(
     if name is None:
         name = stub.name
 
-    deploy_stub(stub, name=name, environment_name=env)
+    if public:
+        if not click.confirm(
+            "⚠️ Public apps are a beta feature. ⚠️\n"
+            "Making an app public will allow any user (including from outside your workspace) to look up and use your functions.\n"
+            "Are you sure you want your app to be public?"
+        ):
+            return
+
+    deploy_stub(stub, name=name, environment_name=env, public=public)
 
 
 def serve(
