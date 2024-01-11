@@ -8,7 +8,7 @@ import typing
 from collections import deque
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Callable, Dict, List, Optional, Set, Type
+from typing import Callable, List, Optional, Set, Type
 
 from modal_proto import api_pb2
 
@@ -186,7 +186,7 @@ class FunctionInfo:
         f_globals = {k: func.__globals__[k] for k in f_globals_ref if k in func.__globals__}
         return f_globals
 
-    def get_main_mounts(self) -> Dict[str, _Mount]:
+    def get_main_mounts(self) -> List[_Mount]:
         """
         Includes:
         * Implicit mount of the function itself (the module or package that the function is part of)
