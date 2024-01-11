@@ -12,3 +12,8 @@ Check these boxes or delete any item (or this section) if not relevant for this 
 
 Note on protobuf: protobuf message changes in one place may have impact to
 multiple entities (client, server, worker, database). See points above.
+
+
+## Changelog
+
+<!-- If relevant, include a brief user-facing description of what's new in this version. -->
