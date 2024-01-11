@@ -274,10 +274,6 @@ class _Cls(_Object, type_prefix="cs"):
         keep_warm: Optional[int] = None,
         allow_background_volume_commits: bool = False,
     ) -> "_Cls":
-        # TODO(gongy): figure out a cleaner way to clone a _Cls
-        cls = _Cls._from_other(self)
-        cls._initialize_from_other(self)
-
         retry_policy = _parse_retries(retries)
         resources = api_pb2.Resources(gpu_config=parse_gpu_config(gpu)) if gpu else None
 
@@ -291,6 +287,7 @@ class _Cls(_Object, type_prefix="cs"):
         ]
         replace_volume_mounts = len(volume_mounts) > 0
 
+        cls = _Cls._from_other(self)
         cls._options = api_pb2.FunctionOptions(
             replace_secret_ids=bool(secrets),
             secret_ids=[secret.object_id for secret in secrets],
