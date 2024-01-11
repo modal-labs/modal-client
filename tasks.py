@@ -209,7 +209,7 @@ def update_changelog(ctx):
     # Build the new changelog and write it out
     from modal_version import __version__
 
-    date = datetime.now().strftime("%Y-%m-%d")
+    date = datetime.datetime.now().strftime("%Y-%m-%d")
     new_section = f"### {__version__} ({date})\n\n{update}"
     final_content = f"{header}\n\n{new_section}\n\n{previous_changelog}"
     with open("CHANGELOG.md", "w") as fid:
