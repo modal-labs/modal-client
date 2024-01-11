@@ -2,7 +2,7 @@
 import os
 import pickle
 from datetime import date
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Collection, Dict, List, Optional, Type, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -29,6 +29,7 @@ from .partial_function import (
     _PartialFunctionFlags,
 )
 from .retries import Retries
+from .secret import _Secret
 from .volume import _Volume
 
 T = TypeVar("T")
@@ -263,6 +264,7 @@ class _Cls(_Object, type_prefix="cs"):
     def with_options(
         self: "_Cls",
         gpu: GPU_T = None,
+        secrets: Collection[_Secret] = (),
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
@@ -290,6 +292,8 @@ class _Cls(_Object, type_prefix="cs"):
         replace_volume_mounts = len(volume_mounts) > 0
 
         cls._options = api_pb2.FunctionOptions(
+            replace_secret_ids=bool(secrets),
+            secret_ids=[secret.object_id for secret in secrets],
             resources=resources,
             retry_policy=retry_policy,
             concurrency_limit=concurrency_limit,
