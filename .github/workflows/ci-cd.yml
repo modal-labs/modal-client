@@ -96,6 +96,8 @@ jobs:
     needs: [client-test]
     runs-on: ubuntu-20.04
     concurrency: publish-client
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Generate token for Github PR Bot
         id: generate_token
