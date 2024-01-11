@@ -398,18 +398,34 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
     dockerfile.write("COPY . /dummy\n")
     dockerfile.close()
 
-    stub["copy"] = Image.debian_slim().copy_local_dir(tmp_path, remote_path="/dummy")
     stub["from_dockerfile"] = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
     stub["dockerfile_commands"] = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
+    stub["copy"] = Image.debian_slim().copy_local_dir(
+        tmp_path, remote_path="/dummy"
+    )  # this creates another mount under the hood
 
     with stub.run(client=client):
-        for image_name, expected_layer in [("copy", 0), ("dockerfile_commands", 1), ("from_dockerfile", 0)]:
+        assert servicer.n_mounts == 2  # one for `data_mount` and one implicitly created by copy_local_dir
+        for image_name, expected_layer in [("dockerfile_commands", 1), ("from_dockerfile", 0)]:
             layers = get_image_layers(stub[image_name].object_id, servicer)
-            assert layers[expected_layer].context_mount_id == "mo-123", f"error in {image_name}"
+            # assert layers[expected_layer].context_mount_id == "mo-123", f"error in {image_name}"
             assert "COPY . /dummy" in layers[expected_layer].dockerfile_commands
+            layer_context_mount_id = layers[expected_layer].context_mount_id
+            context_mount_files = servicer.mount_content[layer_context_mount_id].keys()
+            assert set(context_mount_files) == {"/data.txt", "/data/sub"}
 
         files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
         assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
+
+        # in the copy_local_dir case, the mount will have the destination prefix already inserted
+        # and the copy will simply copy the mount to the root
+        layers = get_image_layers(stub["copy"].object_id, servicer)
+        assert "COPY . /" in layers[0].dockerfile_commands
+        context_mount_files = servicer.mount_content[layers[0].context_mount_id].keys()
+        assert set(context_mount_files) == {
+            "/dummy/data.txt",
+            "/dummy/data/sub",
+        }  # in this case the mount already has the destination prefix
 
 
 def test_image_env(client, servicer):

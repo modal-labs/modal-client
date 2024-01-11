@@ -397,7 +397,7 @@ class _Image(_Object, type_prefix="im"):
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) in a `Dockerfile`.
         """
         mount = _Mount.from_local_dir(local_path, remote_path=remote_path)
-        return self.copy_mount(mount, remote_path=".")
+        return self.copy_mount(mount, remote_path="/")
 
     @typechecked
     def pip_install(
