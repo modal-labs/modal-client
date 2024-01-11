@@ -720,7 +720,7 @@ message FunctionOptions {
   repeated VolumeMount volume_mounts = 9;
   optional uint32 allow_concurrent_inputs = 10;
   bool replace_volume_mounts = 11;
-  bool replace_secret_ids = 11;
+  bool replace_secret_ids = 12;
 }
 
 message Function {
