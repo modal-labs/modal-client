@@ -506,25 +506,19 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
                     mount_handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
                 )
             ),
-            request_filter=lambda req: req.app_name.startswith("modal-client-mount"),
+            request_filter=lambda req: req.app_name.startswith("modal-client-mount")
+            and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
             "AppLookupObject",
             api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="sv-123")),
-            request_filter=lambda req: req.app_name == "volume_app",
+            request_filter=lambda req: req.app_name == "volume_app"
+            and req.environment_name == "some_weird_default_env",
         )
         _run(command + [str(stub_file)])
 
     app_create: api_pb2.AppCreateRequest = ctx.pop_request("AppCreate")
     assert app_create.environment_name == "some_weird_default_env"
-
-    app_lookup_object: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
-    assert app_lookup_object.app_name.startswith("modal-client-mount")
-    assert app_lookup_object.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
-
-    app_lookup_object2: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
-    assert app_lookup_object2.app_name == "volume_app"
-    assert app_lookup_object2.environment_name == "some_weird_default_env"
 
 
 def test_cls(servicer, set_env_client, test_dir):
