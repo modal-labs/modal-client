@@ -1698,7 +1698,10 @@ message RuntimeOutputMessage {
 }
 
 message RuntimeInputMessage {
+  // todo(nathan): make sure to also support resizing window, etc
   string message = 1;
+  // this is filled in by the server
+  string entry_id = 2;
 }
 
 

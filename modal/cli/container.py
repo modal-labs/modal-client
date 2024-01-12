@@ -103,7 +103,7 @@ async def handle_exec_output(client: _Client, exec_id: str):
 
         req = api_pb2.ContainerExecGetOutputRequest(
             exec_id=exec_id,
-            timeout=0.5,
+            timeout=55,
             last_entry_id=last_entry_id,
         )
         async for message in unary_stream(client.stub.ContainerExecGetOutput, req):
