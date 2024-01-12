@@ -551,6 +551,11 @@ message ContainerExecGetOutputRequest {
   string last_entry_id = 3;
 }
 
+message ContainerExecPutInputRequest {
+  string exec_id = 1;
+  RuntimeInputMessage input = 2;
+}
+
 message ContainerExecResponse {
   string exec_id = 1;
 }
@@ -1692,6 +1697,10 @@ message RuntimeOutputMessage {
   bool eof = 5;
 }
 
+message RuntimeInputMessage {
+  string message = 1;
+}
+
 
 service ModalClient {
   // Apps
@@ -1726,6 +1735,7 @@ service ModalClient {
   // todo(nathan): should both of these just be renamed to Task?
   rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
   rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputMessage);
+  rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
 
   // Checkpointing
   rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);

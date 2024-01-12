@@ -1,16 +1,20 @@
 # Copyright Modal Labs 2022
 
+import asyncio
 import os
+import select
+import sys
 from typing import List, Union
 
 import typer
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.text import Text
 
+from modal._pty import raw_terminal, set_nonblocking
 from modal.cli.utils import display_table, timestamp_to_local
 from modal.client import _Client
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronizer
+from modal_utils.async_utils import asyncify, synchronizer
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
 container_cli = typer.Typer(name="container", help="Manage running containers.", no_args_is_help=True)
@@ -51,6 +55,46 @@ async def exec(task_id: str, command: str):
         print("failed to execute command, unclear why")
         return
 
+    # todo(nathan): feels like a context manager might be more appropriate?
+    stream_stdin_task = asyncio.create_task(handle_exec_input(client, res.exec_id))
+    try:
+        await handle_exec_output(client, res.exec_id)
+    except Exception as e:
+        stream_stdin_task.cancel()
+        raise e
+
+
+async def handle_exec_input(client: _Client, exec_id: str):
+    """Streams CLI stdin to exec stdin."""
+    try:
+        set_nonblocking(sys.stdin.fileno())
+
+        @asyncify
+        def _read_stdin() -> bytes:
+            (readable, _, _) = select.select([sys.stdin.buffer], [], [])
+            return sys.stdin.buffer.read()
+
+        with raw_terminal():
+            while True:
+                data = await _read_stdin()
+
+                # ctrl-c. todo(nathan): better way to detect this?
+                if 0x03 in data:
+                    break
+
+                await client.stub.ContainerExecPutInput(
+                    api_pb2.ContainerExecPutInputRequest(
+                        exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data)
+                    )
+                )
+    except Exception as e:
+        # todo(nathan): figure out a better way to deal with errors here
+        print("Error: failed to read input", e)
+        raise e
+
+
+async def handle_exec_output(client: _Client, exec_id: str):
+    """Streams exec output to stdout."""
     last_entry_id = ""
     completed = False
 
@@ -58,7 +102,7 @@ async def exec(task_id: str, command: str):
         nonlocal last_entry_id, completed
 
         req = api_pb2.ContainerExecGetOutputRequest(
-            exec_id=res.exec_id,
+            exec_id=exec_id,
             timeout=0.5,
             last_entry_id=last_entry_id,
         )
