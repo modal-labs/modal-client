@@ -225,3 +225,51 @@ async def test_volume_put_file_timeout(client, tmp_path, servicer, blob_server, 
                         await stub.vol._add_local_file.aio(local_file_path)
 
                 assert call_count > 2
+
+
+@pytest.mark.asyncio
+async def test_volume_copy(client, tmp_path, servicer, blob_server, *args):
+    # setup
+    stub = modal.Stub()
+    stub.vol = modal.Volume.new()
+
+    ## test 1: copy src path to dst path ##
+    src_path = "original.txt"
+    dst_path = "copied.txt"
+    local_file_path = tmp_path / src_path
+    local_file_path.write_text("test copy")
+
+    with stub.run(client=client):
+        # add local file to volume
+        await stub.vol._add_local_file.aio(local_file_path, src_path)
+        object_id = stub.vol.object_id
+
+        # copy file from src_path to dst_path
+        stub.vol.copy_files([src_path], dst_path)
+
+    assert servicer.volume_files[object_id].keys() == {src_path, dst_path}
+
+    assert servicer.volume_files[object_id][src_path].data == b"test copy"
+    assert servicer.volume_files[object_id][dst_path].data == b"test copy"
+
+    ## test 2: copy multiple files into a directory ##
+    file_paths = ["file1.txt", "file2.txt"]
+
+    with stub.run(client=client):
+        for file_path in file_paths:
+            local_file_path = tmp_path / file_path
+            local_file_path.write_text("test copy")
+            await stub.vol._add_local_file.aio(local_file_path, file_path)
+            object_id = stub.vol.object_id
+
+        stub.vol.copy_files(file_paths, "test_dir")
+
+    assert servicer.volume_files[object_id].keys() == {
+        "file1.txt",
+        "file2.txt",
+        "test_dir/file1.txt",
+        "test_dir/file2.txt",
+    }
+
+    assert servicer.volume_files[object_id]["test_dir/file1.txt"].data == b"test copy"
+    assert servicer.volume_files[object_id]["test_dir/file2.txt"].data == b"test copy"
