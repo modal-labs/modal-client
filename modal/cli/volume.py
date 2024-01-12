@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Optional
+from typing import List, Optional
 
 from click import UsageError
 from grpclib import GRPCError, Status
@@ -270,13 +270,12 @@ async def rm(
 @synchronizer.create_blocking
 async def cp(
     volume_name: str,
-    src_path: str,
-    dst_path: str,
+    paths: List[str],  # accepts multiple paths
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
     volume = await _Volume.lookup(volume_name, environment_name=env)
     if not isinstance(volume, _Volume):
         raise UsageError("The specified app entity is not a modal.Volume")
-
-    await volume._copy_file(src_path, dst_path)
+    *src_paths, dst_path = paths
+    await volume.copy_files(src_paths, dst_path)
