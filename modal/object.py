@@ -121,7 +121,7 @@ class _Object:
         # Transient use case, see Dict, Queue, and SharedVolume
         self._init(other._rep, other._load, other._is_another_app, other._preload)
 
-    def clone(self) -> O:
+    def clone(self: O) -> O:
         """Clone a given hydrated object."""
 
         # Object to clone must already be hydrated, otherwise from_loader is more suitable.
