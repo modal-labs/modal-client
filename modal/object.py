@@ -240,7 +240,7 @@ class _StatefulObject(_Object):
     ):
         async def _load_persisted(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
             await self._deploy(
-                label, namespace, resolver.client, environment_name=_get_environment_name(environment_name)
+                label, namespace, resolver.client, environment_name=_get_environment_name(environment_name, resolver)
             )
             obj._hydrate_from_other(self)
 
