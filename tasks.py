@@ -183,7 +183,7 @@ def update_changelog(ctx):
     comment_pattern = r"<!--.+?-->"
     pr_description = re.sub(comment_pattern, "", pr_description, flags=re.DOTALL)
 
-    changelog_pattern = r"## Changelog\s*(.+?)(?:^#|$)"
+    changelog_pattern = r"## Changelog\s*(.+)$"
     m = re.search(changelog_pattern, pr_description, flags=re.DOTALL)
     if m:
         update = m.group(1).strip()
