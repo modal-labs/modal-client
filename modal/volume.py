@@ -350,8 +350,8 @@ class _Volume(_StatefulObject, type_prefix="vo"):
         if isinstance(dst_path, str):
             dst_path = dst_path.encode("utf-8")
 
-        request = api_pb2.VolumeCopyRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
-        await retry_transient_errors(self._client.stub.VolumeCopyFile, request, base_delay=1)
+        request = api_pb2.VolumeCopyFilesRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
+        await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
 
 
 Volume = synchronize_api(_Volume)
