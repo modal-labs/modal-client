@@ -22,6 +22,7 @@ from typing import (
     List,
     Optional,
     Set,
+    Tuple,
     Type,
     Union,
 )
@@ -493,6 +494,48 @@ class FunctionStats:
     num_total_runners: int
 
 
+def _parse_retries(
+    retries: Optional[Union[int, Retries]],
+    raw_f: Optional[Callable] = None,
+) -> Optional[api_pb2.FunctionRetryPolicy]:
+    if isinstance(retries, int):
+        return Retries(
+            max_retries=retries,
+            initial_delay=1.0,
+            backoff_coefficient=1.0,
+        )._to_proto()
+    elif isinstance(retries, Retries):
+        return retries._to_proto()
+    elif retries is None:
+        return None
+    else:
+        err_object = f"Function {raw_f}" if raw_f else "Function"
+        raise InvalidError(
+            f"{err_object} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
+        )
+
+
+def _validate_volumes(
+    volumes: Dict[Union[str, os.PathLike], _Volume]
+) -> List[Tuple[str, Union[_Volume, _NetworkFileSystem]]]:
+    if not isinstance(volumes, dict):
+        raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
+
+    validated_volumes = validate_mount_points("Volume", volumes)
+    # We don't support mounting a volume in more than one location
+    volume_to_paths: Dict[_Volume, List[str]] = {}
+    for path, volume in validated_volumes:
+        volume_to_paths.setdefault(volume, []).append(path)
+    for paths in volume_to_paths.values():
+        if len(paths) > 1:
+            conflicting = ", ".join(paths)
+            raise InvalidError(
+                f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
+            )
+
+    return validated_volumes
+
+
 class _Function(_Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -574,20 +617,7 @@ class _Function(_Object, type_prefix="fu"):
         if secret:
             secrets = [secret, *secrets]
 
-        if isinstance(retries, int):
-            retry_policy = Retries(
-                max_retries=retries,
-                initial_delay=1.0,
-                backoff_coefficient=1.0,
-            )._to_proto()
-        elif isinstance(retries, Retries):
-            retry_policy = retries._to_proto()
-        elif retries is None:
-            retry_policy = None
-        else:
-            raise InvalidError(
-                f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
-            )
+        retry_policy = _parse_retries(retries, raw_f)
 
         gpu_config = parse_gpu_config(gpu)
 
@@ -647,19 +677,7 @@ class _Function(_Object, type_prefix="fu"):
                 raise InvalidError("Webhooks cannot be generators")
 
         # Validate volumes
-        if not isinstance(volumes, dict):
-            raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
-        validated_volumes = validate_mount_points("Volume", volumes)
-        # We don't support mounting a volume in more than one location
-        volume_to_paths: Dict[_Volume, List[str]] = {}
-        for path, volume in validated_volumes:
-            volume_to_paths.setdefault(volume, []).append(path)
-        for paths in volume_to_paths.values():
-            if len(paths) > 1:
-                conflicting = ", ".join(paths)
-                raise InvalidError(
-                    f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
-                )
+        validated_volumes = _validate_volumes(volumes)
 
         # Validate NFS
         if not isinstance(network_file_systems, dict):
@@ -882,7 +900,12 @@ class _Function(_Object, type_prefix="fu"):
         return obj
 
     def from_parametrized(
-        self, obj, from_other_workspace: bool, args: Iterable[Any], kwargs: Dict[str, Any]
+        self,
+        obj,
+        from_other_workspace: bool,
+        options: Optional[api_pb2.FunctionOptions],
+        args: Iterable[Any],
+        kwargs: Dict[str, Any],
     ) -> "_Function":
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if not self.is_hydrated:
@@ -895,6 +918,7 @@ class _Function(_Object, type_prefix="fu"):
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=self._object_id,
                 serialized_params=serialized_params,
+                function_options=options,
             )
             response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
