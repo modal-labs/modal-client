@@ -1646,9 +1646,9 @@ message VolumeRemoveFileRequest {
   bool recursive = 3;
 }
 
-message VolumeCopyFileRequest {
+message VolumeCopyRequest {
   string volume_id = 1;
-  bytes src_path = 2;
+  repeated bytes src_paths = 2;
   bytes dst_path = 3;
 }
 
@@ -1810,5 +1810,5 @@ service ModalClient {
   rpc VolumePutFiles(VolumePutFilesRequest) returns (google.protobuf.Empty);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
-  rpc VolumeCopyFile(VolumeCopyFileRequest) returns (google.protobuf.Empty);
+  rpc VolumeCopyFile(VolumeCopyRequest) returns (google.protobuf.Empty);
 }
