@@ -287,7 +287,7 @@ class _Cls(_Object, type_prefix="cs"):
         ]
         replace_volume_mounts = len(volume_mounts) > 0
 
-        cls = _Cls._from_other(self)
+        cls = self.clone()
         cls._options = api_pb2.FunctionOptions(
             replace_secret_ids=bool(secrets),
             secret_ids=[secret.object_id for secret in secrets],
