@@ -1685,8 +1685,11 @@ message WebUrlInfo {
 // Used for `modal container exec`
 message RuntimeOutputMessage {
   // only stdout / stderr is used
-  FileDescriptor file_descriptor = 1;
-  string message = 2;
+  string entry_id = 1;
+  double timestamp = 2;
+  FileDescriptor file_descriptor = 3;
+  string message = 4;
+  bool eof = 5;
 }
 
 
