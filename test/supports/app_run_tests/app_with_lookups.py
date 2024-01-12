@@ -3,7 +3,9 @@ import modal
 
 stub = modal.Stub("my-app")
 
+nfs = modal.NetworkFileSystem.lookup("volume_app")
 
-@stub.function(network_file_systems={"/vol": modal.NetworkFileSystem.from_name("volume_app")})
+
+@stub.function()
 def foo():
     print("foo")

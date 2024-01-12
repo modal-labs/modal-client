@@ -192,6 +192,11 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
 
 class RunGroup(click.Group):
     def get_command(self, ctx, func_ref):
+        # note: get_command here is run before the "group logic" in the `run` logic below
+        # so to ensure that `env` has been globally populated before user code is loaded, it
+        # needs to be handled here, and not in the `run` logic below
+        ctx.ensure_object(dict)
+        ctx.obj["env"] = ensure_env(ctx.params["env"])
         function_or_entrypoint = import_function(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
         stub: Stub = function_or_entrypoint.stub
         if stub.description is None:
@@ -246,7 +251,6 @@ def run(ctx, detach, quiet, env):
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
-    ctx.obj["env"] = env
 
 
 def deploy(
