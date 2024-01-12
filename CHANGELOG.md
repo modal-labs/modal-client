@@ -6,4 +6,6 @@ The client library is still in pre-1.0 development, and sometimes breaking chang
 
 We appreciate your patience while we speedily work towards a stable release of the client.
 
+## Latest
+
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
