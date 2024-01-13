@@ -54,10 +54,11 @@ class StubFilesFilter(DefaultFilter):
         return super().__call__(change, path)
 
 
-async def _watch_paths(paths: Set[Path], watch_filter: StubFilesFilter):
+async def _watch_paths(paths: Set[Path], watch_filter: StubFilesFilter) -> AsyncGenerator[Set[str], None]:
     try:
         async for changes in awatch(*paths, step=500, watch_filter=watch_filter):
-            yield changes
+            changed_paths = {stringpath for _, stringpath in changes}
+            yield changed_paths
     except RuntimeError:
         # Thrown by watchfiles from Rust, when the generator is closed externally.
         pass
@@ -91,10 +92,10 @@ def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], StubFilesF
     return paths, watch_filter
 
 
-async def watch(mounts: List[_Mount], output_mgr: OutputManager) -> AsyncGenerator[None, None]:
+async def watch(mounts: List[_Mount], output_mgr: OutputManager) -> AsyncGenerator[Set[str], None]:
     paths, watch_filter = _watch_args_from_mounts(mounts)
 
     _print_watched_paths(paths, output_mgr)
 
-    async for event in _watch_paths(paths, watch_filter):
-        yield
+    async for updated_paths in _watch_paths(paths, watch_filter):
+        yield updated_paths
