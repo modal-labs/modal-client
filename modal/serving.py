@@ -6,11 +6,12 @@ import platform
 import sys
 from multiprocessing.context import SpawnProcess
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
+from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, TypeVar
 
 from synchronicity import Interface
 
 from modal_utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
+from modal_utils.logger import logger
 
 from ._output import OutputManager
 from ._watcher import watch
@@ -63,7 +64,11 @@ async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, ti
 
 
 async def _run_watch_loop(
-    stub_ref: str, app_id: str, output_mgr: OutputManager, watcher: AsyncGenerator[None, None], environment_name: str
+    stub_ref: str,
+    app_id: str,
+    output_mgr: OutputManager,
+    watcher: AsyncGenerator[Set[str], None],
+    environment_name: str,
 ):
     unsupported_msg = None
     if platform.system() == "Windows":
@@ -81,7 +86,8 @@ async def _run_watch_loop(
     else:
         curr_proc = None
         try:
-            async for _ in watcher:
+            async for trigger_files in watcher:
+                logger.debug(f"The following files triggered an app update: {', '.join(trigger_files)}")
                 await _terminate(curr_proc, output_mgr)
                 curr_proc = await _restart_serve(stub_ref, existing_app_id=app_id, environment_name=environment_name)
         finally:
@@ -104,7 +110,7 @@ async def _serve_stub(
     stub_ref: str,
     stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
-    _watcher: Optional[AsyncGenerator[None, None]] = None,  # for testing
+    _watcher: Optional[AsyncGenerator[Set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
 ) -> AsyncGenerator["_Stub", None]:
     if environment_name is None:
