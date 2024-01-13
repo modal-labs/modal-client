@@ -79,6 +79,8 @@ from datetime import date
 
 import toml
 
+from modal_utils.logger import configure_logger
+
 from .exception import deprecation_error
 
 # Locate config file and read it
@@ -137,6 +139,7 @@ class _Setting(typing.NamedTuple):
 
 _SETTINGS = {
     "loglevel": _Setting("WARNING", lambda s: s.upper()),
+    "log_format": _Setting("STRING", lambda s: s.upper()),
     "server_url": _Setting("https://api.modal.com"),
     "token_id": _Setting(),
     "token_secret": _Setting(),
@@ -213,12 +216,7 @@ config = Config()
 # Logging
 
 logger = logging.getLogger("modal-client")
-ch = logging.StreamHandler()
-log_level_numeric = logging.getLevelName(config["loglevel"])
-logger.setLevel(log_level_numeric)
-ch.setLevel(log_level_numeric)
-ch.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z"))
-logger.addHandler(ch)
+configure_logger(logger, config["loglevel"], config["log_format"])
 
 # Utils to write config
 
