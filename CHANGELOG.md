@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4590 (2024-01-13)
+
+`modal serve`: Setting MODAL_LOGLEVEL=DEBUG now displays which files cause an app reload during serve
+
+
+
 ### 0.56.4570 (2024-01-12)
 
 - `modal run` cli command now properly propagates `--env` values to object lookups in global scope of user code
