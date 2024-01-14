@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 from modal_proto import api_pb2
 
@@ -68,14 +68,26 @@ class A100(_GPUConfig):
         self,
         *,
         count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
-        memory: int = 0,  # Set this to 80 if you want to use the 80GB version. Otherwise defaults to 40.
+        memory: int = 0,  # Deprecated. Use `memory_gb` instead.
+        memory_gb: Union[Literal["80"], Literal["40"], None] = None,  # Select GiB configuration of GPU device.
     ):
         if memory == 20:
-            raise ValueError("A100 20GB is unsupported, consider A10 or A100 40GB instead")
+            raise ValueError("A100 20GB is unsupported, consider `modal.A10G` or `modal.A100(memory_gb='40')` instead")
+        elif memory and memory_gb:
+            raise ValueError("Cannot specify both `memory` and `memory_gb`. Just specify `memory_gb`.")
 
-        allowed_memory_values = {0, 40, 80}
+        memory = memory or 40
+        memory_gb = memory_gb or "40"
+        allowed_memory_values = {40, 80}
+
         if memory not in allowed_memory_values:
             raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
+        if memory_gb not in {str(m) for m in allowed_memory_values}:
+            raise ValueError(
+                f"memory_mb='{memory_gb}' is invalid. A100s can only have memory values of {allowed_memory_values}."
+            )
+        else:
+            memory = int(memory_gb)
 
         if memory == 80:
             super().__init__(api_pb2.GPU_TYPE_A100_80GB, count, memory)
@@ -165,6 +177,8 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
 
         if value.lower() == "a100-20g":
             return A100(memory=20, count=count)  # Triggers unsupported error underneath.
+        elif value.lower() == "a100-80gb":
+            return A100(memory_gb="80", count=count)
         elif value.lower() not in STRING_TO_GPU_CONFIG:
             raise InvalidError(
                 f"Invalid GPU type: {value}. Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive)."
