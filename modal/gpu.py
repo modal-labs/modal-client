@@ -179,6 +179,8 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
 
         if value.lower() == "a100-20g":
             return A100(memory=20, count=count)  # Triggers unsupported error underneath.
+        elif value.lower() == "a100-40gb":
+            return A100(memory_gb="40", count=count)
         elif value.lower() == "a100-80gb":
             return A100(memory_gb="80", count=count)
         elif value.lower() not in STRING_TO_GPU_CONFIG:
