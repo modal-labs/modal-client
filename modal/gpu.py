@@ -73,23 +73,22 @@ class A100(_GPUConfig):
             Literal["80"], Literal["40"], None
         ] = None,  # Select GiB configuration of GPU device. Defaults to 40GiB.
     ):
+        allowed_memory_values = {40, 80}
         if memory == 20:
             raise ValueError("A100 20GB is unsupported, consider `modal.A10G` or `modal.A100(memory_gb='40')` instead")
         elif memory and memory_gb:
             raise ValueError("Cannot specify both `memory` and `memory_gb`. Just specify `memory_gb`.")
-
-        memory = memory or 40
-        memory_gb = memory_gb or "40"
-        allowed_memory_values = {40, 80}
-
-        if memory not in allowed_memory_values:
-            raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
-        if memory_gb not in {str(m) for m in allowed_memory_values}:
-            raise ValueError(
-                f"memory_mb='{memory_gb}' is invalid. A100s can only have memory values of {allowed_memory_values}."
-            )
-        else:
+        elif memory:
+            if memory not in allowed_memory_values:
+                raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
+        elif memory_gb:
+            if memory_gb not in {str(m) for m in allowed_memory_values}:
+                raise ValueError(
+                    f"memory_mb='{memory_gb}' is invalid. A100s can only have memory values of {allowed_memory_values}."
+                )
             memory = int(memory_gb)
+        else:
+            memory = 40
 
         if memory == 80:
             super().__init__(api_pb2.GPU_TYPE_A100_80GB, count, memory)
