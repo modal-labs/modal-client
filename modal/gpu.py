@@ -69,7 +69,9 @@ class A100(_GPUConfig):
         *,
         count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
         memory: int = 0,  # Deprecated. Use `memory_gb` instead.
-        memory_gb: Union[Literal["80"], Literal["40"], None] = None,  # Select GiB configuration of GPU device.
+        memory_gb: Union[
+            Literal["80"], Literal["40"], None
+        ] = None,  # Select GiB configuration of GPU device. Defaults to 40GiB.
     ):
         if memory == 20:
             raise ValueError("A100 20GB is unsupported, consider `modal.A10G` or `modal.A100(memory_gb='40')` instead")
