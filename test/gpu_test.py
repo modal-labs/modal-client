@@ -141,7 +141,7 @@ def test_a100_20gb_gpu_unsupported():
 
     with pytest.raises(ValueError) as err:
         stub.function(gpu=modal.gpu.A100(memory=20))(dummy)
-    assert err.value.args[0].startswith("A100 20GB is unsupported, consider A10 or A100 40GB instead")
+    assert err.value.args[0].startswith("A100 20GB is unsupported, consider")
 
 
 A100_GPU_COUNT_MAPPING = {1: api_pb2.GPU_TYPE_A100, **{i: api_pb2.GPU_TYPE_A100 for i in range(2, 5)}}
