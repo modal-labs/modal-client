@@ -11,7 +11,7 @@ import typer
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.text import Text
 
-from modal._pty import raw_terminal, set_nonblocking
+from modal._pty import get_pty_info, raw_terminal, set_nonblocking
 from modal.cli.utils import display_table, timestamp_to_local
 from modal.client import _Client
 from modal_proto import api_pb2
@@ -49,7 +49,7 @@ async def exec(task_id: str, command: str):
     """Execute a command inside an active container"""
     client = await _Client.from_env()
     res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(
-        api_pb2.ContainerExecRequest(task_id=task_id, command=command)
+        api_pb2.ContainerExecRequest(task_id=task_id, command=command, pty_info=get_pty_info(shell=True))
     )
     if res.exec_id is None:
         # todo(nathan): proper error message?
@@ -124,7 +124,6 @@ async def handle_exec_output(client: _Client, exec_id: str):
         try:
             await _get_output()
         except (GRPCError, StreamTerminatedError) as exc:
-            # todo(nathan): consider debounce?
             if isinstance(exc, GRPCError):
                 if exc.status in RETRYABLE_GRPC_STATUS_CODES:
                     continue
