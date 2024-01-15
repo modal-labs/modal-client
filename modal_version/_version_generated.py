@@ -1,2 +1,2 @@
 # Copyright Modal Labs 2024
-build_number = 4590
+build_number = 4597
