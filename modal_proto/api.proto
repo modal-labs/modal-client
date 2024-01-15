@@ -1690,11 +1690,14 @@ message WebUrlInfo {
 // Used for `modal container exec`
 message RuntimeOutputMessage {
   // only stdout / stderr is used
+  FileDescriptor file_descriptor = 1;
+  string message = 2;
+}
+
+message RuntimeOutputBatch {
   string entry_id = 1;
-  double timestamp = 2;
-  FileDescriptor file_descriptor = 3;
-  string message = 4;
-  bool eof = 5;
+  repeated RuntimeOutputMessage items = 2;
+  bool eof = 3;
 }
 
 message RuntimeInputMessage {
@@ -1737,7 +1740,7 @@ service ModalClient {
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
   // todo(nathan): should both of these just be renamed to Task?
   rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
-  rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputMessage);
+  rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputBatch);
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
 
   // Checkpointing

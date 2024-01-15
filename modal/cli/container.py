@@ -106,17 +106,19 @@ async def handle_exec_output(client: _Client, exec_id: str):
             timeout=55,
             last_entry_id=last_entry_id,
         )
-        async for message in unary_stream(client.stub.ContainerExecGetOutput, req):
-            if message.eof:
+        async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
+            for message in batch.items:
+                assert message.file_descriptor in [1, 2]
+
+                # todo(nathan): deal with resource temporarily unavailable error when there's too much output
+                os.write(message.file_descriptor, str.encode(message.message))
+
+            if batch.eof:
                 completed = True
                 break
 
-            assert message.file_descriptor in [1, 2]
-
-            os.write(message.file_descriptor, str.encode(message.message))
-
-            if message.entry_id:
-                last_entry_id = message.entry_id
+            if batch.entry_id:
+                last_entry_id = batch.entry_id
 
     while not completed:
         try:
