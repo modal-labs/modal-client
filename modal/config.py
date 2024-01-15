@@ -149,6 +149,7 @@ _SETTINGS = {
     "image_python_version": _Setting(),
     "image_id": _Setting(),
     "automount": _Setting(True, transform=lambda x: x not in ("", "0")),
+    "automount_exclude": _Setting([], transform=lambda x: x.replace(" ", "").split(",")),
     "tracing_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
     "profiling_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
     "heartbeat_interval": _Setting(15, float),
