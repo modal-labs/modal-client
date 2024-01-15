@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
 from datetime import date
-from typing import Literal, Optional, Union
+from typing import Optional, Union
 
 from modal_proto import api_pb2
 
@@ -69,9 +69,7 @@ class A100(_GPUConfig):
         *,
         count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
         memory: int = 0,  # Deprecated. Use `memory_gb` instead.
-        memory_gb: Union[
-            Literal["80"], Literal["40"], None
-        ] = None,  # Select GiB configuration of GPU device. Defaults to 40GiB.
+        memory_gb: Union[str, None] = None,  # Select GiB configuration of GPU device: "40" or "80". Defaults to "40".
     ):
         allowed_memory_values = {40, 80}
         if memory == 20:
