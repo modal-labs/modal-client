@@ -721,6 +721,7 @@ message FunctionOptions {
   optional uint32 allow_concurrent_inputs = 10;
   bool replace_volume_mounts = 11;
   bool replace_secret_ids = 12;
+  bool block_network = 13;
 }
 
 message Function {
@@ -801,6 +802,8 @@ message Function {
 
   CheckpointInfo checkpoint = 42;
   repeated ObjectDependency object_dependencies = 43;
+
+  bool block_network = 44;
 }
 
 message FunctionHandleMetadata {

@@ -471,6 +471,7 @@ class _Stub:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+        block_network: bool = False,  # Whether to block network access
         _allow_background_volume_commits: bool = False,
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
@@ -554,6 +555,7 @@ class _Stub:
                 cls=_cls,
                 checkpointing_enabled=checkpointing_enabled,
                 allow_background_volume_commits=_allow_background_volume_commits,
+                block_network=block_network,
             )
 
             self._add_function(function)
