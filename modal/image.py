@@ -36,7 +36,7 @@ _from_dockerhub_deprecation_msg = "`Image.from_dockerhub` is deprecated. Use `Im
 
 def _validate_python_version(version: str) -> None:
     components = version.split(".")
-    supported_versions = {"3.11", "3.10", "3.9", "3.8"}
+    supported_versions = {"3.12", "3.11", "3.10", "3.9", "3.8"}
     if len(components) == 2 and version in supported_versions:
         return
     elif len(components) == 3:
@@ -60,6 +60,7 @@ def _dockerhub_python_version(python_version=None):
     # We use the same major/minor version, but the highest micro version
     # See https://hub.docker.com/_/python
     latest_micro_version = {
+        "3.12": "1",
         "3.11": "0",
         "3.10": "8",
         "3.9": "15",
@@ -984,7 +985,7 @@ class _Image(_Object, type_prefix="im"):
 
         If your image does not come with Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, and `3.11`. For Alpine-based images, use `3.8-musl` through `3.11-musl`, which
+        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
         are statically-linked Python installations.
 
         You may also use `setup_dockerfile_commands` to run Dockerfile commands before the
@@ -1002,7 +1003,7 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_registry("python:3.11-slim-bookworm")
         modal.Image.from_registry("ubuntu:22.04", add_python="3.11")
-        modal.Image.from_registry("alpine:3.18.3", add_python="3.11-musl")
+        modal.Image.from_registry("alpine:3.18.3", add_python="3.12-musl")
         ```
         """
         requirements_path = _get_client_requirements_path()
@@ -1134,13 +1135,13 @@ class _Image(_Object, type_prefix="im"):
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, and `3.11`. For Alpine-based images, use `3.8-musl` through `3.11-musl`, which
+        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
         are statically-linked Python installations.
 
         **Example**
 
         ```python
-        image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.10")
+        image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.12")
         ```
         """
 
