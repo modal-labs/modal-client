@@ -801,6 +801,8 @@ message Function {
 
   CheckpointInfo checkpoint = 42;
   repeated ObjectDependency object_dependencies = 43;
+
+  bool block_network = 44;
 }
 
 message FunctionHandleMetadata {
