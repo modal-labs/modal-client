@@ -721,7 +721,6 @@ message FunctionOptions {
   optional uint32 allow_concurrent_inputs = 10;
   bool replace_volume_mounts = 11;
   bool replace_secret_ids = 12;
-  bool block_network = 13;
 }
 
 message Function {
