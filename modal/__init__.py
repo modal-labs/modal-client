@@ -1,11 +1,4 @@
 # Copyright Modal Labs 2022
-import sys
-
-if sys.version_info >= (3, 12):
-    raise RuntimeError(
-        "This version of Modal does not support Python 3.12+. See https://github.com/modal-labs/modal-client/issues/1056"
-    )
-
 
 from modal_version import __version__
 
