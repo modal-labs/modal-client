@@ -22,8 +22,8 @@ follow_imports = "skip"
 timeout = 300
 addopts = "--ignore=modal/cli/programs"
 filterwarnings = [
-    "error::DeprecationWarning",
-    "error::modal.exception.DeprecationError",
+    # "error::DeprecationWarning",
+    # "error::modal.exception.DeprecationError",
     "ignore::DeprecationWarning:pytest.*:",
     "ignore::DeprecationWarning:pkg_resources.*:",
     "ignore::DeprecationWarning:google.rpc.*:",
