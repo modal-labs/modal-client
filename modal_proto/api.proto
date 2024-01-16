@@ -6,6 +6,19 @@ import "modal_proto/options.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/wrappers.proto";
 
+enum AppDeployVisibility {
+  APP_DEPLOY_VISIBILITY_UNSPECIFIED = 0;
+  APP_DEPLOY_VISIBILITY_WORKSPACE = 1;
+  APP_DEPLOY_VISIBILITY_PUBLIC = 2;
+}
+
+enum AppDisconnectReason {
+  APP_DISCONNECT_REASON_UNSPECIFIED = 0;
+  APP_DISCONNECT_REASON_LOCAL_EXCEPTION = 1;
+  APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT = 2;
+  APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED = 3;
+  APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION = 4;
+}
 
 // NOTE: make sure to update the frontend if we add a new state here
 // https://github.com/modal-labs/modal/blob/main/frontend/src/routes/(dashboard)/%5B%5Bworkspace%5D%5D/apps/+page.svelte#L95
@@ -36,6 +49,28 @@ enum AppState {
   APP_STATE_DETACHED_DISCONNECTED = 8;
 }
 
+enum AppStopSource {
+  APP_STOP_SOURCE_UNSPECIFIED = 0;
+  APP_STOP_SOURCE_CLI = 1;
+  APP_STOP_SOURCE_PYTHON_CLIENT = 2;
+  APP_STOP_SOURCE_WEB = 3;
+}
+
+enum CertificateStatus {
+  CERTIFICATE_STATUS_PENDING = 0;
+  CERTIFICATE_STATUS_ISSUED = 1;
+  CERTIFICATE_STATUS_FAILED = 2;
+  CERTIFICATE_STATUS_REVOKED = 3;
+}
+
+enum CheckpointStatus {
+  CHECKPOINT_STATUS_UNSPECIFIED = 0;
+  CHECKPOINT_STATUS_PENDING = 1;
+  CHECKPOINT_STATUS_PROCESSING = 2;
+  CHECKPOINT_STATUS_READY = 3;
+  CHECKPOINT_STATUS_FAILED = 4;
+}
+
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
@@ -43,6 +78,14 @@ enum ClientType {
   CLIENT_TYPE_CONTAINER = 3;
   CLIENT_TYPE_SERVER = 4 [deprecated=true];
   CLIENT_TYPE_WEB_SERVER = 5;
+}
+
+enum CloudProvider {
+  CLOUD_PROVIDER_UNSPECIFIED = 0;
+  CLOUD_PROVIDER_AWS = 1;
+  CLOUD_PROVIDER_GCP = 2;
+  CLOUD_PROVIDER_AUTO = 3;
+  CLOUD_PROVIDER_OCI = 4;
 }
 
 // Chunks of data that can be streamed in and out of tasks.
@@ -68,6 +111,12 @@ enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_GLOBAL = 3;
 }
 
+enum DNSRecordType {
+  DNS_RECORD_TYPE_A = 0;
+  DNS_RECORD_TYPE_TXT = 1;
+  DNS_RECORD_TYPE_CNAME = 2;
+}
+
 enum FileDescriptor {
   FILE_DESCRIPTOR_UNSPECIFIED = 0;
   FILE_DESCRIPTOR_STDOUT = 1;
@@ -75,17 +124,42 @@ enum FileDescriptor {
   FILE_DESCRIPTOR_INFO = 3;
 }
 
-
 enum FunctionCallType {
   FUNCTION_CALL_TYPE_UNSPECIFIED = 0;
   FUNCTION_CALL_TYPE_UNARY = 1;
   FUNCTION_CALL_TYPE_MAP = 2;
 }
 
+enum GPUType {
+  GPU_TYPE_UNSPECIFIED = 0;
+  GPU_TYPE_T4 = 1;
+  GPU_TYPE_A100 = 2;
+  GPU_TYPE_A10G = 3;
+  GPU_TYPE_ANY = 4;
+  GPU_TYPE_A100_20G = 5 [deprecated=true];
+  GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
+  GPU_TYPE_INFERENTIA2 = 7 [deprecated=true];
+  GPU_TYPE_A100_80GB = 8;
+  GPU_TYPE_L4 = 9;
+}
+
+enum ProgressType {
+  IMAGE_SNAPSHOT_UPLOAD = 0;  // TODO(erikbern): shouldn't be zero, and needs prefix
+  FUNCTION_QUEUED = 1;  // TODO(erikbern): needs_prefix
+}
+
 enum RateLimitInterval {
   RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
   RATE_LIMIT_INTERVAL_SECOND = 1;
   RATE_LIMIT_INTERVAL_MINUTE = 2;
+}
+
+enum RegistryAuthType {
+  REGISTRY_AUTH_TYPE_UNSPECIFIED = 0; // Older clients send this instead of "public".
+  REGISTRY_AUTH_TYPE_AWS = 1;
+  REGISTRY_AUTH_TYPE_GCP = 2;
+  REGISTRY_AUTH_TYPE_PUBLIC = 3;
+  REGISTRY_AUTH_TYPE_STATIC_CREDS = 4;
 }
 
 enum TaskState {
@@ -237,14 +311,6 @@ message Asgi {
   }
 }
 
-enum AppDisconnectReason {
-  APP_DISCONNECT_REASON_UNSPECIFIED = 0;
-  APP_DISCONNECT_REASON_LOCAL_EXCEPTION = 1;
-  APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT = 2;
-  APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED = 3;
-  APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION = 4;
-}
-
 message AppClientDisconnectRequest {
   string app_id = 1;
   AppDisconnectReason reason = 2;
@@ -265,23 +331,11 @@ message AppCreateResponse {
   string app_logs_url = 2;
 }
 
-enum AppStopSource {
-  APP_STOP_SOURCE_UNSPECIFIED = 0;
-  APP_STOP_SOURCE_CLI = 1;
-  APP_STOP_SOURCE_PYTHON_CLIENT = 2;
-  APP_STOP_SOURCE_WEB = 3;
-}
-
 message AppStopRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   AppStopSource source = 2;
 }
 
-enum AppDeployVisibility {
-  APP_DEPLOY_VISIBILITY_UNSPECIFIED = 0;
-  APP_DEPLOY_VISIBILITY_WORKSPACE = 1;
-  APP_DEPLOY_VISIBILITY_PUBLIC = 2;
-}
 
 message AppDeployRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
@@ -449,14 +503,6 @@ message EnvironmentUpdateRequest {
   google.protobuf.StringValue web_suffix = 3;
 }
 
-enum RegistryAuthType {
-  REGISTRY_AUTH_TYPE_UNSPECIFIED = 0; // Older clients send this instead of "public".
-  REGISTRY_AUTH_TYPE_AWS = 1;
-  REGISTRY_AUTH_TYPE_GCP = 2;
-  REGISTRY_AUTH_TYPE_PUBLIC = 3;
-  REGISTRY_AUTH_TYPE_STATIC_CREDS = 4;
-}
-
 message ImageRegistryConfig {
   RegistryAuthType registry_auth_type = 1;
   string secret_id = 2;
@@ -610,12 +656,6 @@ message DictUpdateRequest {
 message DictUpdateResponse {
 }
 
-enum DNSRecordType {
-  DNS_RECORD_TYPE_A = 0;
-  DNS_RECORD_TYPE_TXT = 1;
-  DNS_RECORD_TYPE_CNAME = 2;
-}
-
 message DNSRecord {
   DNSRecordType type = 1;
   string name = 2;
@@ -632,13 +672,6 @@ message DomainCreateResponse {
 }
 
 message DomainListRequest {
-}
-
-enum CertificateStatus {
-  CERTIFICATE_STATUS_PENDING = 0;
-  CERTIFICATE_STATUS_ISSUED = 1;
-  CERTIFICATE_STATUS_FAILED = 2;
-  CERTIFICATE_STATUS_REVOKED = 3;
 }
 
 message Domain {
@@ -674,14 +707,6 @@ message PTYInfo {
     PTY_TYPE_SHELL = 2;  // Replace function with shell
   }
   PTYType pty_type = 7;
-}
-
-enum CheckpointStatus {
-  CHECKPOINT_STATUS_UNSPECIFIED = 0;
-  CHECKPOINT_STATUS_PENDING = 1;
-  CHECKPOINT_STATUS_PROCESSING = 2;
-  CHECKPOINT_STATUS_READY = 3;
-  CHECKPOINT_STATUS_FAILED = 4;
 }
 
 message ObjectDependency {
@@ -1311,19 +1336,6 @@ message RateLimit {
   RateLimitInterval interval = 2;
 }
 
-enum GPUType {
-  GPU_TYPE_UNSPECIFIED = 0;
-  GPU_TYPE_T4 = 1;
-  GPU_TYPE_A100 = 2;
-  GPU_TYPE_A10G = 3;
-  GPU_TYPE_ANY = 4;
-  GPU_TYPE_A100_20G = 5 [deprecated=true];
-  GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
-  GPU_TYPE_INFERENTIA2 = 7 [deprecated=true];
-  GPU_TYPE_A100_80GB = 8;
-  GPU_TYPE_L4 = 9;
-}
-
 message GPUConfig {
   GPUType type = 1;
   uint32 count = 2;
@@ -1334,15 +1346,6 @@ message Resources {
   uint32 memory_mb = 2;
   uint32 milli_cpu = 3;
   GPUConfig gpu_config = 4;
-}
-
-
-enum CloudProvider {
-  CLOUD_PROVIDER_UNSPECIFIED = 0;
-  CLOUD_PROVIDER_AWS = 1;
-  CLOUD_PROVIDER_GCP = 2;
-  CLOUD_PROVIDER_AUTO = 3;
-  CLOUD_PROVIDER_OCI = 4;
 }
 
 message Schedule {
@@ -1484,11 +1487,6 @@ message TaskLogs {
   TaskProgress task_progress = 9;
   string function_call_id = 10;
   string input_id = 11;
-}
-
-enum ProgressType {
-  IMAGE_SNAPSHOT_UPLOAD = 0;  // TODO(erikbern): shouldn't be zero, and needs prefix
-  FUNCTION_QUEUED = 1;  // TODO(erikbern): needs_prefix
 }
 
 message TaskListRequest {}
