@@ -69,6 +69,15 @@ def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[ty
         raise InvalidError(error_msg)
 
 
+def check_path_dict(
+    dct: typing.Dict[typing.Union[str, os.PathLike], typing.Any], item_type: typing.Type, error_msg: str
+):
+    if not isinstance(dct, dict):
+        raise InvalidError(error_msg)
+    if not all(isinstance(v, item_type) for v in dct.values()):
+        raise InvalidError(error_msg)
+
+
 CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
 
 
@@ -112,6 +121,7 @@ class _Stub:
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
+    _volumes: Dict[Union[str, os.PathLike], _Volume]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, _LocalEntrypoint]
     _container_app: Optional[_ContainerApp]
@@ -126,6 +136,7 @@ class _Stub:
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
+        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # default volumes for all functions
         **indexed_objects: _Object,  # any Modal Object dependencies (Dict, Queue, etc.)
     ) -> None:
         """Construct a new app stub, optionally with default image, mounts, secrets
@@ -144,8 +155,10 @@ class _Stub:
         self._name = name
         self._description = name
 
-        check_sequence(mounts, _Mount, "mounts has to be a list or tuple of Mount/AioMount objects")
-        check_sequence(secrets, _Secret, "secrets has to be a list or tuple of Secret/AioSecret objects")
+        check_sequence(mounts, _Mount, "mounts has to be a list or tuple of Mount objects")
+        check_sequence(secrets, _Secret, "secrets has to be a list or tuple of Secret objects")
+        check_path_dict(volumes, _Volume, "volumes has to be a dict of Volume objects")
+
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
 
@@ -165,6 +178,7 @@ class _Stub:
         self._function_mounts = {}
         self._mounts = mounts
         self._secrets = secrets
+        self._volumes = volumes
         self._local_entrypoints = {}
         self._web_endpoints = []
         self._local_app = None  # when this is the launcher process
@@ -537,7 +551,7 @@ class _Stub:
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
                 allow_cross_region_volumes=allow_cross_region_volumes,
-                volumes=volumes,
+                volumes={**self._volumes, **volumes},
                 memory=memory,
                 proxy=proxy,
                 retries=retries,
