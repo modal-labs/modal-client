@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4616 (2024-01-16)
+
+* modal.Stub now takes a `volumes` argument for setting the default volumes of all the stub's functions, similarly to the `mounts` and `secrets` argument.
+
+
+
 ### 0.56.4590 (2024-01-13)
 
 `modal serve`: Setting MODAL_LOGLEVEL=DEBUG now displays which files cause an app reload during serve
