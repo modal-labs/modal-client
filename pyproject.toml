@@ -27,6 +27,7 @@ filterwarnings = [
     "ignore::DeprecationWarning:pytest.*:",
     "ignore::DeprecationWarning:pkg_resources.*:",
     "ignore::DeprecationWarning:google.rpc.*:",
+    "ignore:Type google._upb._message.MessageMapContainer:DeprecationWarning",
     "ignore:.*pkg_resources.*:DeprecationWarning::",
 ]
 
