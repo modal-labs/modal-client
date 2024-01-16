@@ -591,6 +591,7 @@ class _Stub:
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+        block_network: bool = False,  # Whether to block network access
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
@@ -618,6 +619,7 @@ class _Stub:
             keep_warm=keep_warm,
             cloud=cloud,
             checkpointing_enabled=checkpointing_enabled,
+            block_network=block_network,
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
