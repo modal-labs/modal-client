@@ -55,16 +55,6 @@ message DataChunk {
   uint64 index = 4; // Index of this data chunk in the stream.
 }
 
-message FunctionCallPutDataRequest {
-  string function_call_id = 1;
-  repeated DataChunk data_chunks = 2;
-}
-
-message FunctionCallGetDataRequest {
-  string function_call_id = 1;
-  uint32 last_index = 2;
-}
-
 // Which data format a binary message is encoded with.
 enum DataFormat {
   DATA_FORMAT_UNSPECIFIED = 0; // Equivalent to PICKLE in client version 0.52 and earlier.
@@ -84,6 +74,7 @@ enum FileDescriptor {
   FILE_DESCRIPTOR_STDERR = 2;
   FILE_DESCRIPTOR_INFO = 3;
 }
+
 
 enum FunctionCallType {
   FUNCTION_CALL_TYPE_UNSPECIFIED = 0;
@@ -547,17 +538,12 @@ message ContainerHeartbeatRequest {
 
 message ContainerCheckpointRequest {}
 
-message TaskStats {
-  string task_id = 1;
-  string app_id = 2;
-  string app_description = 3;
-  double started_at = 4;
+message CustomDomainConfig {
+  string name = 1;
 }
 
-message TaskListRequest {}
-
-message TaskListResponse {
-  repeated TaskStats tasks = 1;
+message CustomDomainInfo {
+  string url = 1;
 }
 
 message DictClearRequest {
@@ -706,6 +692,16 @@ message CheckpointInfo {
   string checksum = 1;
   CheckpointStatus status = 2;
   string checkpoint_id = 3;
+}
+
+message FunctionCallPutDataRequest {
+  string function_call_id = 1;
+  repeated DataChunk data_chunks = 2;
+}
+
+message FunctionCallGetDataRequest {
+  string function_call_id = 1;
+  uint32 last_index = 2;
 }
 
 message FunctionOptions {
@@ -1495,11 +1491,10 @@ enum ProgressType {
   FUNCTION_QUEUED = 1;  // TODO(erikbern): needs_prefix
 }
 
-message TaskProgress {
-  uint64 len = 1;
-  uint64 pos = 2;
-  ProgressType progress_type = 3;
-  string description = 4;
+message TaskListRequest {}
+
+message TaskListResponse {
+  repeated TaskStats tasks = 1;
 }
 
 message TaskLogsBatch {
@@ -1513,8 +1508,22 @@ message TaskLogsBatch {
   bool eof = 14;
 }
 
+message TaskProgress {
+  uint64 len = 1;
+  uint64 pos = 2;
+  ProgressType progress_type = 3;
+  string description = 4;
+}
+
 message TaskResultRequest {
   modal.client.GenericResult result = 2;
+}
+
+message TaskStats {
+  string task_id = 1;
+  string app_id = 2;
+  string app_description = 3;
+  double started_at = 4;
 }
 
 message TokenFlowCreateRequest {
@@ -1659,14 +1668,6 @@ message VolumeMount {
   string volume_id = 1;
   string mount_path = 2;
   bool allow_background_commits = 3;
-}
-
-message CustomDomainConfig {
-  string name = 1;
-}
-
-message CustomDomainInfo {
-  string url = 1;
 }
 
 message WebhookConfig {
