@@ -8,6 +8,7 @@ import warnings
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date
+from pathlib import PurePosixPath
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -516,7 +517,7 @@ def _parse_retries(
 
 
 def _validate_volumes(
-    volumes: Dict[Union[str, os.PathLike], _Volume]
+    volumes: Dict[Union[str, PurePosixPath], _Volume]
 ) -> List[Tuple[str, Union[_Volume, _NetworkFileSystem]]]:
     if not isinstance(volumes, dict):
         raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
