@@ -70,14 +70,13 @@ def some_func():
 @nfs_cli.command(name="create", help="Create a named network file system.")
 def create(
     name: str,
-    cloud: str = typer.Option("aws", help="Cloud provider to create the file system in. One of aws|gcp."),
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = modal.NetworkFileSystem.new(cloud=cloud)
+    volume = modal.NetworkFileSystem.new()
     volume._deploy(name, environment_name=env)
     console = Console()
-    console.print(f"Created volume '{name}' in {cloud.upper()}. \n\nCode example:\n")
+    console.print(f"Created volume '{name}'. \n\nCode example:\n")
     usage = Syntax(gen_usage_code(name), "python")
     console.print(usage)
 
