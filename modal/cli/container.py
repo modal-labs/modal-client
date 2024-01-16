@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import errno
 import os
 import select
 import sys
@@ -98,6 +99,23 @@ async def handle_exec_output(client: _Client, exec_id: str):
     last_entry_id = ""
     completed = False
 
+    def write_data(fd, data):
+        loop = asyncio.get_event_loop()
+        future = loop.create_future()
+
+        def try_write():
+            try:
+                nbytes = os.write(fd, data)
+                loop.remove_writer(fd)
+                future.set_result(nbytes)
+            except OSError as e:
+                if e.errno != errno.EAGAIN:
+                    future.set_exception(e)
+                    raise
+
+        loop.add_writer(fd, try_write)
+        return future
+
     async def _get_output():
         nonlocal last_entry_id, completed
 
@@ -109,9 +127,9 @@ async def handle_exec_output(client: _Client, exec_id: str):
         async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
             for message in batch.items:
                 assert message.file_descriptor in [1, 2]
+                assert message.file_descriptor == 1
 
-                # todo(nathan): deal with resource temporarily unavailable error when there's too much output
-                os.write(message.file_descriptor, str.encode(message.message))
+                await write_data(message.file_descriptor, str.encode(message.message))
 
             if batch.eof:
                 completed = True
