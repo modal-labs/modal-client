@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import inspect
-import os
 import typing
 import warnings
 from datetime import date
+from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
 from synchronicity.async_wrap import asynccontextmanager
@@ -20,7 +20,7 @@ from .client import _Client
 from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function
+from .functions import _Function, _validate_volumes
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -69,15 +69,6 @@ def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[ty
         raise InvalidError(error_msg)
 
 
-def check_path_dict(
-    dct: typing.Dict[typing.Union[str, os.PathLike], typing.Any], item_type: typing.Type, error_msg: str
-):
-    if not isinstance(dct, dict):
-        raise InvalidError(error_msg)
-    if not all(isinstance(v, item_type) for v in dct.values()):
-        raise InvalidError(error_msg)
-
-
 CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
 
 
@@ -121,7 +112,7 @@ class _Stub:
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
-    _volumes: Dict[Union[str, os.PathLike], _Volume]
+    _volumes: Dict[Union[str, PurePosixPath], _Volume]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, _LocalEntrypoint]
     _container_app: Optional[_ContainerApp]
@@ -136,7 +127,7 @@ class _Stub:
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # default volumes for all functions
+        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
         **indexed_objects: _Object,  # any Modal Object dependencies (Dict, Queue, etc.)
     ) -> None:
         """Construct a new app stub, optionally with default image, mounts, secrets
@@ -157,7 +148,7 @@ class _Stub:
 
         check_sequence(mounts, _Mount, "mounts has to be a list or tuple of Mount objects")
         check_sequence(secrets, _Secret, "secrets has to be a list or tuple of Secret objects")
-        check_path_dict(volumes, _Volume, "volumes has to be a dict of Volume objects")
+        _validate_volumes(volumes)
 
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
@@ -460,11 +451,11 @@ class _Stub:
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[
-            Union[str, os.PathLike], _NetworkFileSystem
+            Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Deprecated, use `network_file_systems` instead
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
+        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -586,11 +577,11 @@ class _Stub:
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[
-            Union[str, os.PathLike], _NetworkFileSystem
+            Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Deprecated, use `network_file_systems` instead
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
+        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -662,7 +653,7 @@ class _Stub:
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
