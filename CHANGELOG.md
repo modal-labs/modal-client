@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4649 (2024-01-17)
+
+- Dropped support for building Python 3.7 based `modal.Image`s. Python 3.7 is end-of-life since late June 2023.
+
+
+
 ### 0.56.4620 (2024-01-16)
 
 * modal.Stub.function now takes a `block_network` argument.
