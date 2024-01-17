@@ -12,7 +12,7 @@ import typer
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.text import Text
 
-from modal._pty import get_pty_info, raw_terminal, set_nonblocking
+from modal._pty import get_pty_info, set_nonblocking
 from modal.cli.utils import display_table, timestamp_to_local
 from modal.client import _Client
 from modal_proto import api_pb2
@@ -88,8 +88,9 @@ async def handle_exec_input(client: _Client, exec_id: str):
             )
 
     write_task = asyncio.create_task(_write())
-    with raw_terminal():
-        yield
+
+    yield
+
     os.write(quit_pipe_write, b"\n")
     write_task.cancel()
 
@@ -127,7 +128,6 @@ async def handle_exec_output(client: _Client, exec_id: str):
         async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
             for message in batch.items:
                 assert message.file_descriptor in [1, 2]
-                assert message.file_descriptor == 1
 
                 await write_data(message.file_descriptor, str.encode(message.message))
 
