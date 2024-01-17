@@ -4,6 +4,7 @@ import math
 import pytest
 import time
 
+from google.protobuf.duration_pb2 import Duration
 from grpclib import GRPCError, Status
 
 from modal_proto import api_grpc, api_pb2
@@ -137,5 +138,21 @@ async def test_retry_transient_errors(servicer):
         assert await retry_transient_errors(client_stub.BlobCreate, req, max_retries=None, total_timeout=3)
     total_time = time.time() - t0
     assert total_time <= 3.1
+
+    # Respect possibly retryable errors.
+    # Fail 2 times retryably -> should still succeed
+    retry_info = api_pb2.RetryInfo(retry_delay=Duration(seconds=1))
+    servicer.fail_blob_create = [GRPCError(Status.RESOURCE_EXHAUSTED, "foobar", [retry_info])] * 2
+    assert await retry_transient_errors(client_stub.BlobCreate, req)
+    assert servicer.blob_create_metadata.get("x-idempotency-key")
+    assert servicer.blob_create_metadata.get("x-retry-attempt") == "2"
+    # Fail 2 times retryably and 1 time un-retryably -> should fail
+    servicer.fail_blob_create = [GRPCError(Status.RESOURCE_EXHAUSTED, "foobar")] + (
+        [GRPCError(Status.RESOURCE_EXHAUSTED, "foobar", [retry_info])] * 2
+    )
+    with pytest.raises(GRPCError):
+        assert await retry_transient_errors(client_stub.BlobCreate, req)
+    assert servicer.blob_create_metadata.get("x-idempotency-key")
+    assert servicer.blob_create_metadata.get("x-retry-attempt") == "2"
 
     channel.close()
