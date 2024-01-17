@@ -220,7 +220,7 @@ async def unary_stream(
             yield item
 
 
-def get_grpc_error_retry_delay(e: GRPCError) -> int | None:
+def get_grpc_error_retry_delay(e: GRPCError) -> Optional[int]:
     """Returns the recommended retry delay in secs if error is retryable. Otherwise, `None`."""
     if not e.details:
         return None
