@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import inspect
-import os
 import typing
 import warnings
 from datetime import date
+from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
 from synchronicity.async_wrap import asynccontextmanager
@@ -20,7 +20,7 @@ from .client import _Client
 from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function
+from .functions import _Function, _validate_volumes
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -112,6 +112,7 @@ class _Stub:
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
+    _volumes: Dict[Union[str, PurePosixPath], _Volume]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, _LocalEntrypoint]
     _container_app: Optional[_ContainerApp]
@@ -126,6 +127,7 @@ class _Stub:
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
+        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
         **indexed_objects: _Object,  # any Modal Object dependencies (Dict, Queue, etc.)
     ) -> None:
         """Construct a new app stub, optionally with default image, mounts, secrets
@@ -144,8 +146,10 @@ class _Stub:
         self._name = name
         self._description = name
 
-        check_sequence(mounts, _Mount, "mounts has to be a list or tuple of Mount/AioMount objects")
-        check_sequence(secrets, _Secret, "secrets has to be a list or tuple of Secret/AioSecret objects")
+        check_sequence(mounts, _Mount, "mounts has to be a list or tuple of Mount objects")
+        check_sequence(secrets, _Secret, "secrets has to be a list or tuple of Secret objects")
+        _validate_volumes(volumes)
+
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
 
@@ -165,6 +169,7 @@ class _Stub:
         self._function_mounts = {}
         self._mounts = mounts
         self._secrets = secrets
+        self._volumes = volumes
         self._local_entrypoints = {}
         self._web_endpoints = []
         self._local_app = None  # when this is the launcher process
@@ -446,11 +451,11 @@ class _Stub:
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[
-            Union[str, os.PathLike], _NetworkFileSystem
+            Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Deprecated, use `network_file_systems` instead
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
+        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -471,6 +476,7 @@ class _Stub:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+        block_network: bool = False,  # Whether to block network access
         _allow_background_volume_commits: bool = False,
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
@@ -506,6 +512,8 @@ class _Stub:
                 keep_warm = f.keep_warm or keep_warm
 
                 if webhook_config:
+                    if interactive:
+                        raise InvalidError("interactive=True is not supported with web endpoint functions")
                     self._web_endpoints.append(info.get_tag())
             else:
                 info = FunctionInfo(f, serialized=serialized, name_override=name, cls=_cls)
@@ -535,7 +543,7 @@ class _Stub:
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
                 allow_cross_region_volumes=allow_cross_region_volumes,
-                volumes=volumes,
+                volumes={**self._volumes, **volumes},
                 memory=memory,
                 proxy=proxy,
                 retries=retries,
@@ -552,6 +560,7 @@ class _Stub:
                 cls=_cls,
                 checkpointing_enabled=checkpointing_enabled,
                 allow_background_volume_commits=_allow_background_volume_commits,
+                block_network=block_network,
             )
 
             self._add_function(function)
@@ -570,11 +579,11 @@ class _Stub:
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[
-            Union[str, os.PathLike], _NetworkFileSystem
+            Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Deprecated, use `network_file_systems` instead
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
+        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -587,6 +596,7 @@ class _Stub:
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+        block_network: bool = False,  # Whether to block network access
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
@@ -614,6 +624,7 @@ class _Stub:
             keep_warm=keep_warm,
             cloud=cloud,
             checkpointing_enabled=checkpointing_enabled,
+            block_network=block_network,
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
@@ -646,7 +657,7 @@ class _Stub:
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,

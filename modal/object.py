@@ -90,6 +90,10 @@ class _Object:
         # default implementation, can be overriden in subclasses
         pass
 
+    def _initialize_from_other(self, other):
+        # default implementation, can be overriden in subclasses
+        pass
+
     def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
         assert isinstance(object_id, str)
         if not object_id.startswith(self._type_prefix):
@@ -116,6 +120,16 @@ class _Object:
     def _init_from_other(self, other: O):
         # Transient use case, see Dict, Queue, and SharedVolume
         self._init(other._rep, other._load, other._is_another_app, other._preload)
+
+    def clone(self: O) -> O:
+        """Clone a given hydrated object."""
+
+        # Object to clone must already be hydrated, otherwise from_loader is more suitable.
+        assert self._is_hydrated
+
+        obj = _Object.__new__(type(self))
+        obj._initialize_from_other(self)
+        return obj
 
     @classmethod
     def _from_loader(
@@ -240,7 +254,7 @@ class _StatefulObject(_Object):
     ):
         async def _load_persisted(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
             await self._deploy(
-                label, namespace, resolver.client, environment_name=_get_environment_name(environment_name)
+                label, namespace, resolver.client, environment_name=_get_environment_name(environment_name, resolver)
             )
             obj._hydrate_from_other(self)
 

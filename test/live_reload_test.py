@@ -33,7 +33,7 @@ def test_file_changes_trigger_reloads(stub_ref, server_url_env, servicer):
 
     async def fake_watch():
         for i in range(3):
-            yield
+            yield {"/some/file"}
         watcher_done.set()
 
     with serve_stub(stub, stub_ref, _watcher=fake_watch()):

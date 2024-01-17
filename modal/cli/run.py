@@ -157,7 +157,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
                 # TODO(erikbern): this code is a bit hacky
                 cls_kwargs = {k: kwargs[k] for k in cls_signature}
                 fun_kwargs = {k: kwargs[k] for k in fun_signature}
-                method = function.from_parametrized(None, tuple(), cls_kwargs)
+                method = function.from_parametrized(None, False, None, tuple(), cls_kwargs)
                 method.remote(**fun_kwargs)
 
     with_click_options = _add_click_options(f, signature)
@@ -192,6 +192,11 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
 
 class RunGroup(click.Group):
     def get_command(self, ctx, func_ref):
+        # note: get_command here is run before the "group logic" in the `run` logic below
+        # so to ensure that `env` has been globally populated before user code is loaded, it
+        # needs to be handled here, and not in the `run` logic below
+        ctx.ensure_object(dict)
+        ctx.obj["env"] = ensure_env(ctx.params["env"])
         function_or_entrypoint = import_function(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
         stub: Stub = function_or_entrypoint.stub
         if stub.description is None:
@@ -246,13 +251,16 @@ def run(ctx, detach, quiet, env):
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
-    ctx.obj["env"] = env
 
 
 def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
+    public: bool = typer.Option(
+        False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
+    ),
+    skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -262,7 +270,15 @@ def deploy(
     if name is None:
         name = stub.name
 
-    deploy_stub(stub, name=name, environment_name=env)
+    if public and not skip_confirm:
+        if not click.confirm(
+            "⚠️ Public apps are a beta feature. ⚠️\n"
+            "Making an app public will allow any user (including from outside your workspace) to look up and use your functions.\n"
+            "Are you sure you want your app to be public?"
+        ):
+            return
+
+    deploy_stub(stub, name=name, environment_name=env, public=public)
 
 
 def serve(
