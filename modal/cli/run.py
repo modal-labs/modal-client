@@ -260,6 +260,7 @@ def deploy(
     public: bool = typer.Option(
         False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
     ),
+    skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -269,7 +270,7 @@ def deploy(
     if name is None:
         name = stub.name
 
-    if public:
+    if public and not skip_confirm:
         if not click.confirm(
             "⚠️ Public apps are a beta feature. ⚠️\n"
             "Making an app public will allow any user (including from outside your workspace) to look up and use your functions.\n"
