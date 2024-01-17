@@ -26,6 +26,7 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
+from modal_proto.api_pb2 import RetryInfo
 from modal_version import __version__
 
 from .logger import logger
@@ -138,6 +139,15 @@ RETRYABLE_GRPC_STATUS_CODES = [
     Status.CANCELLED,
     Status.INTERNAL,
 ]
+# These status codes *may* be paired with retry info.
+# If they are, then use that info to retry. Otherwise, don't retry.
+MAYBE_RETRYABLE_GRPC_STATUS_CODES = {
+    Status.RESOURCE_EXHAUSTED,
+}
+# Log the gRPC error message for these status codes.
+LOGGED_GRPC_STATUS_CODES = {
+    Status.RESOURCE_EXHAUSTED,
+}
 
 
 def create_channel(
@@ -210,6 +220,18 @@ async def unary_stream(
             yield item
 
 
+def get_grpc_error_retry_delay(e: GRPCError) -> int | None:
+    """Returns the recommended retry delay in secs if error is retryable. Otherwise, `None`."""
+    if not e.details:
+        return None
+    for detail in e.details:
+        if isinstance(detail, RetryInfo):
+            # TODO: ignores nanos
+            return detail.retry_delay.seconds
+    else:
+        return None
+
+
 async def retry_transient_errors(
     fn,
     *args,
@@ -254,8 +276,16 @@ async def retry_transient_errors(
         try:
             return await fn(*args, metadata=metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, socket.gaierror, asyncio.TimeoutError) as exc:
+            if isinstance(exc, GRPCError) and exc.status in LOGGED_GRPC_STATUS_CODES:
+                logger.warning(exc.message)
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
-                raise exc
+                grpc_retry_delay = (
+                    get_grpc_error_retry_delay(exc) if exc.status in MAYBE_RETRYABLE_GRPC_STATUS_CODES else None
+                )
+                if grpc_retry_delay is None:
+                    raise exc
+                else:
+                    delay = max(grpc_retry_delay, delay)
 
             if max_retries is not None and n_retries >= max_retries:
                 raise exc

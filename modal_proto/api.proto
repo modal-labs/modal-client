@@ -1272,8 +1272,8 @@ message Resources {
 
 // Used in RESOURCE_EXHAUSTED errors to differentiate
 // retryable and non-retryable version of that error status.
-// Idea taken from googleapis:
-// github.com/googleapis/googleapis/blob/8781c9414dc1543ae0198f727b4d15020eceabf6/google/rpc/error_details.proto#L91C9-L91C18
+// Lifted from googleapis as an alternative to using the google-common-protos PyPi package.
+// ref: github.com/googleapis/googleapis/blob/master/google/rpc/error_details.proto
 message RetryInfo {
   google.protobuf.Duration retry_delay = 1;
 }
