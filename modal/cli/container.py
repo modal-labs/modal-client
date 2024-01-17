@@ -60,7 +60,7 @@ async def exec(task_id: str, command: str):
         await handle_exec_output(client, res.exec_id)
 
 
-# todo(nathan): duplicated code in _pty.py
+# note: this is very similar to code in _pty.py.
 @contextlib.asynccontextmanager
 async def handle_exec_input(client: _Client, exec_id: str):
     quit_pipe_read, quit_pipe_write = os.pipe()
@@ -147,10 +147,3 @@ async def handle_exec_output(client: _Client, exec_id: str):
             elif isinstance(exc, StreamTerminatedError):
                 continue
             raise
-
-
-@container_cli.command("connect")
-@synchronizer.create_blocking
-async def connect(task_id: str):
-    """Connects to a container and spawns /bin/bash."""
-    # todo(nathan): copy code from above
