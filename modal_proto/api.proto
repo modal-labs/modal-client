@@ -3,6 +3,7 @@ syntax = "proto3";
 package modal.client;
 
 import "modal_proto/options.proto";
+import "google/protobuf/duration.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/wrappers.proto";
 
@@ -1267,6 +1268,14 @@ message Resources {
   uint32 memory_mb = 2;
   uint32 milli_cpu = 3;
   GPUConfig gpu_config = 4;
+}
+
+// Used in RESOURCE_EXHAUSTED errors to differentiate
+// retryable and non-retryable version of that error status.
+// Idea taken from googleapis:
+// github.com/googleapis/googleapis/blob/8781c9414dc1543ae0198f727b4d15020eceabf6/google/rpc/error_details.proto#L91C9-L91C18
+message RetryInfo {
+  google.protobuf.Duration retry_delay = 1;
 }
 
 message Sandbox {
