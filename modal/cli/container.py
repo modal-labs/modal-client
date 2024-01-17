@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import errno
 import os
+import platform
 import select
 import sys
 from typing import List, Optional, Union
@@ -48,6 +49,10 @@ async def list():
 @synchronizer.create_blocking
 async def exec(task_id: str, command: str):
     """Execute a command inside an active container"""
+    if platform.system() == "Windows":
+        print("container exec is not currently supported on Windows.")
+        return
+
     client = await _Client.from_env()
     res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(
         api_pb2.ContainerExecRequest(task_id=task_id, command=command, pty_info=get_pty_info(shell=True))
