@@ -97,7 +97,7 @@ class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
                 return
 
             if cloud:
-                deprecation_warning(date(2024, 1, 13), "Argument `cloud` is deprecated (has no effect).")
+                deprecation_warning(date(2024, 1, 17), "Argument `cloud` is deprecated (has no effect).")
 
             status_row.message("Creating network file system...")
             req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id)
