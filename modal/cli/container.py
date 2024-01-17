@@ -52,9 +52,8 @@ async def exec(task_id: str, command: str):
     res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(
         api_pb2.ContainerExecRequest(task_id=task_id, command=command, pty_info=get_pty_info(shell=True))
     )
-    if res.exec_id is None:
-        # todo(nathan): proper error message?
-        print("failed to execute command, unclear why")
+    if res.exec_id == "":
+        print(f"Failed to execute command. Is the container ID ({task_id}) correct?")
         return
 
     async with handle_exec_input(client, res.exec_id):
