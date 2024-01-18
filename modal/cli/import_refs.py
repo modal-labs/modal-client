@@ -9,7 +9,6 @@ import dataclasses
 import importlib
 import inspect
 import sys
-from pathlib import Path
 from typing import Any, Optional, Union
 
 import click
@@ -50,24 +49,7 @@ def import_file_or_module(file_or_module: str):
         # This seems to happen when running from a CLI
         sys.path.insert(0, "")
     if file_or_module.endswith(".py"):
-        # walk to the closest python package in the path and add that to the path
-        # before importing, in case of imports etc. of other modules in that package
-        # are needed
-
-        # Let's first assume this is not part of any package
         module_name = inspect.getmodulename(file_or_module)
-
-        # Look for any __init__.py in a parent directory and maybe change the module name
-        directory = Path(file_or_module).parent
-        module_path = [inspect.getmodulename(file_or_module)]
-        while directory.parent != directory:
-            parent = directory.parent
-            module_path.append(directory.name)
-            if (directory / "__init__.py").exists():
-                # We identified a package, let's store a new module name
-                module_name = ".".join(reversed(module_path))
-            directory = parent
-
         # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
         spec = importlib.util.spec_from_file_location(module_name, file_or_module)
         module = importlib.util.module_from_spec(spec)
