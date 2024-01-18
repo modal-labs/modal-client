@@ -30,7 +30,7 @@ def configure_logger(logger: logging.Logger, log_level: str, log_format: str):
     logger.addHandler(ch)
 
 
-log_level = os.environ.get("MODAL_LOGLEVEL", "WARNING")
+log_level = os.environ.get("MODAL_LOGLEVEL", "INFO")
 log_format = os.environ.get("MODAL_LOG_FORMAT", "STRING")
 
 logger = logging.getLogger("modal-utils")

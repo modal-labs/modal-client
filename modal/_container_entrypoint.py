@@ -225,16 +225,20 @@ class _FunctionIOManager:
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self._input_concurrency
 
+            logger.info(f"{iteration=} Acquiring slot to fetch and run input.")
             await self._semaphore.acquire()
+            logger.info(f"{iteration=} Acquired slot to fetch and run input.")
             try:
                 # If number of active inputs is at max queue size, this will block.
                 yielded = False
                 with trace("get_inputs"):
                     set_span_tag("iteration", str(iteration))  # force this to be a tag string
                     iteration += 1
+                    logger.info(f"{iteration=} Sending request to fetch an input.")
                     response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
                         self._client.stub.FunctionGetInputs, request
                     )
+                    logger.info(f"{iteration=} Successfully received response to fetch an input.")
 
                 if response.rate_limit_sleep_duration:
                     logger.info(
@@ -256,7 +260,9 @@ class _FunctionIOManager:
                             input_pb = item.input
 
                         # If yielded, allow semaphore to be released via push_outputs
+                        logger.info(f"{iteration=} Yielding input.")
                         yield (item.input_id, item.function_call_id, input_pb)
+                        logger.info(f"{iteration=} Yielded input.")
                         yielded = True
 
                         if item.input.final_input:
@@ -264,6 +270,7 @@ class _FunctionIOManager:
                             break
             finally:
                 if not yielded:
+                    logger.info(f"{iteration=} Releasing slot as no input was fetched.")
                     self._semaphore.release()
 
     async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[tuple[str, str, Any, Any]]:
@@ -399,6 +406,7 @@ class _FunctionIOManager:
     async def complete_call(self, started_at):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
+        logger.info("Releasing slot as input was finished.")
         self._semaphore.release()
 
     async def push_output(self, input_id, started_at: float, output_index: int, data: Any, data_format: int) -> None:
@@ -607,7 +615,9 @@ async def call_function_async(
                 async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
                     imp_fun.input_concurrency
                 ):
+                    logger.info("Adding input to run as a new asyncio task.")
                     execution_context.create_task(run_input(input_id, function_call_id, args, kwargs))
+                    logger.info("Successfully added input to run as a new asyncio task.")
         else:
             async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
                 imp_fun.input_concurrency

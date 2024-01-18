@@ -252,6 +252,7 @@ async def retry_transient_errors(
         else:
             timeout = None
         try:
+            logger.info(f"Sending gRPC request {fn.name}")
             return await fn(*args, metadata=metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, socket.gaierror, asyncio.TimeoutError) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
