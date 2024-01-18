@@ -6,6 +6,19 @@ import "modal_proto/options.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/wrappers.proto";
 
+enum AppDeployVisibility {
+  APP_DEPLOY_VISIBILITY_UNSPECIFIED = 0;
+  APP_DEPLOY_VISIBILITY_WORKSPACE = 1;
+  APP_DEPLOY_VISIBILITY_PUBLIC = 2;
+}
+
+enum AppDisconnectReason {
+  APP_DISCONNECT_REASON_UNSPECIFIED = 0;
+  APP_DISCONNECT_REASON_LOCAL_EXCEPTION = 1;
+  APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT = 2;
+  APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED = 3;
+  APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION = 4;
+}
 
 // NOTE: make sure to update the frontend if we add a new state here
 // https://github.com/modal-labs/modal/blob/main/frontend/src/routes/(dashboard)/%5B%5Bworkspace%5D%5D/apps/+page.svelte#L95
@@ -36,6 +49,28 @@ enum AppState {
   APP_STATE_DETACHED_DISCONNECTED = 8;
 }
 
+enum AppStopSource {
+  APP_STOP_SOURCE_UNSPECIFIED = 0;
+  APP_STOP_SOURCE_CLI = 1;
+  APP_STOP_SOURCE_PYTHON_CLIENT = 2;
+  APP_STOP_SOURCE_WEB = 3;
+}
+
+enum CertificateStatus {
+  CERTIFICATE_STATUS_PENDING = 0;
+  CERTIFICATE_STATUS_ISSUED = 1;
+  CERTIFICATE_STATUS_FAILED = 2;
+  CERTIFICATE_STATUS_REVOKED = 3;
+}
+
+enum CheckpointStatus {
+  CHECKPOINT_STATUS_UNSPECIFIED = 0;
+  CHECKPOINT_STATUS_PENDING = 1;
+  CHECKPOINT_STATUS_PROCESSING = 2;
+  CHECKPOINT_STATUS_READY = 3;
+  CHECKPOINT_STATUS_FAILED = 4;
+}
+
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
@@ -45,24 +80,12 @@ enum ClientType {
   CLIENT_TYPE_WEB_SERVER = 5;
 }
 
-// Chunks of data that can be streamed in and out of tasks.
-message DataChunk {
-  DataFormat data_format = 1;
-  oneof data_oneof {
-    bytes data = 2;
-    string data_blob_id = 3;
-  }
-  uint64 index = 4; // Index of this data chunk in the stream.
-}
-
-message FunctionCallPutDataRequest {
-  string function_call_id = 1;
-  repeated DataChunk data_chunks = 2;
-}
-
-message FunctionCallGetDataRequest {
-  string function_call_id = 1;
-  uint32 last_index = 2;
+enum CloudProvider {
+  CLOUD_PROVIDER_UNSPECIFIED = 0;
+  CLOUD_PROVIDER_AWS = 1;
+  CLOUD_PROVIDER_GCP = 2;
+  CLOUD_PROVIDER_AUTO = 3;
+  CLOUD_PROVIDER_OCI = 4;
 }
 
 // Which data format a binary message is encoded with.
@@ -78,6 +101,12 @@ enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_GLOBAL = 3;
 }
 
+enum DNSRecordType {
+  DNS_RECORD_TYPE_A = 0;
+  DNS_RECORD_TYPE_TXT = 1;
+  DNS_RECORD_TYPE_CNAME = 2;
+}
+
 enum FileDescriptor {
   FILE_DESCRIPTOR_UNSPECIFIED = 0;
   FILE_DESCRIPTOR_STDOUT = 1;
@@ -91,10 +120,36 @@ enum FunctionCallType {
   FUNCTION_CALL_TYPE_MAP = 2;
 }
 
+enum GPUType {
+  GPU_TYPE_UNSPECIFIED = 0;
+  GPU_TYPE_T4 = 1;
+  GPU_TYPE_A100 = 2;
+  GPU_TYPE_A10G = 3;
+  GPU_TYPE_ANY = 4;
+  GPU_TYPE_A100_20G = 5 [deprecated=true];
+  GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
+  GPU_TYPE_INFERENTIA2 = 7 [deprecated=true];
+  GPU_TYPE_A100_80GB = 8;
+  GPU_TYPE_L4 = 9;
+}
+
+enum ProgressType {
+  IMAGE_SNAPSHOT_UPLOAD = 0;  // TODO(erikbern): shouldn't be zero, and needs prefix
+  FUNCTION_QUEUED = 1;  // TODO(erikbern): needs_prefix
+}
+
 enum RateLimitInterval {
   RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
   RATE_LIMIT_INTERVAL_SECOND = 1;
   RATE_LIMIT_INTERVAL_MINUTE = 2;
+}
+
+enum RegistryAuthType {
+  REGISTRY_AUTH_TYPE_UNSPECIFIED = 0; // Older clients send this instead of "public".
+  REGISTRY_AUTH_TYPE_AWS = 1;
+  REGISTRY_AUTH_TYPE_GCP = 2;
+  REGISTRY_AUTH_TYPE_PUBLIC = 3;
+  REGISTRY_AUTH_TYPE_STATIC_CREDS = 4;
 }
 
 enum TaskState {
@@ -125,6 +180,136 @@ enum WebhookAsyncMode {
   WEBHOOK_ASYNC_MODE_DISABLED = 2; // no redirect, fail after timeout
   WEBHOOK_ASYNC_MODE_TRIGGER = 3; // return immediately, roughly same as old wait_for_response=False
   WEBHOOK_ASYNC_MODE_AUTO = 4; // redirect to polling endpoint if execution time nears the http timeout
+}
+
+message AppClientDisconnectRequest {
+  string app_id = 1;
+  AppDisconnectReason reason = 2;
+  string exception = 3;
+}
+
+message AppCreateRequest {
+  string client_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string description = 2;    // Human readable label for the app
+  bool detach = 3 [deprecated=true]; // replaced by app_state in 0.55.3904
+  bool initializing = 4 [deprecated=true]; // replaced by app_state in 0.55.3904
+  string environment_name = 5;
+  AppState app_state = 6;
+}
+
+message AppCreateResponse {
+  string app_id = 1;
+  string app_logs_url = 2;
+}
+
+message AppStopRequest {
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  AppStopSource source = 2;
+}
+
+
+message AppDeployRequest {
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  DeploymentNamespace namespace = 2;
+  string name = 3;
+  string object_entity = 4;
+  AppDeployVisibility visibility = 5;
+}
+
+message AppDeployResponse {
+  string url = 1;
+}
+
+message AppDeploySingleObjectRequest {
+  string name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  string object_id = 4;
+}
+
+message AppDeploySingleObjectResponse {
+  string app_id = 1;
+}
+
+message AppGetByDeploymentNameRequest {
+  DeploymentNamespace namespace = 1;
+  string name = 2;
+  string environment_name = 4;
+}
+
+message AppGetByDeploymentNameResponse {
+  string app_id = 1;
+}
+
+message AppGetLogsRequest {
+  string app_id = 1;
+  float timeout = 2;
+  string last_entry_id = 4;
+  string function_id = 5;
+  string input_id = 6;
+  string task_id = 7;
+  FileDescriptor file_descriptor = 8;
+}
+
+message AppGetObjectsRequest {
+  string app_id = 1;
+  bool include_unindexed = 2;
+}
+
+message AppGetObjectsItem {
+  string tag = 1;
+  Object object = 6;
+}
+
+message AppGetObjectsResponse {
+  repeated AppGetObjectsItem items = 2;
+}
+
+message AppHeartbeatRequest {
+  string app_id = 1;
+}
+
+message AppListRequest {
+  string environment_name = 1;
+}
+
+message AppListResponse {
+  repeated AppStats apps = 1;
+}
+
+message AppLookupObjectRequest {
+  DeploymentNamespace namespace = 2;
+  string app_name = 3;
+  string object_tag = 4;
+  string object_id = 5;
+  string object_entity = 6;
+  string environment_name = 7;
+}
+
+message AppLookupObjectResponse {
+  Object object = 6;
+  string app_id = 7;
+}
+
+message AppSetObjectsRequest {
+  string app_id = 1;
+  map<string, string> indexed_object_ids = 2;
+  string client_id = 3;
+  repeated string unindexed_object_ids = 4;
+  AppState new_app_state = 5; // promotes an app from initializing to this new state
+  string single_object_id = 6;
+}
+
+message AppStats {
+  string app_id = 1;
+  string description = 3;
+  AppState state = 4;
+  double created_at = 5;
+  double stopped_at = 6;
+  int32 n_running_tasks = 8;
+  string object_entity = 9;
+  string name = 10;
+  double deployed_at = 11;
 }
 
 // A web endpoint connection-related message.
@@ -246,162 +431,40 @@ message Asgi {
   }
 }
 
-enum AppDisconnectReason {
-  APP_DISCONNECT_REASON_UNSPECIFIED = 0;
-  APP_DISCONNECT_REASON_LOCAL_EXCEPTION = 1;
-  APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT = 2;
-  APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED = 3;
-  APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION = 4;
+message BaseImage {
+  string image_id = 1;
+  string docker_tag = 2;
+  reserved 4;
 }
 
-message AppClientDisconnectRequest {
-  string app_id = 1;
-  AppDisconnectReason reason = 2;
-  string exception = 3;
+message BlobCreateRequest {
+  // TODO(erikbern): how are these garbage collected?
+  // Shouldn't they belong to an app?
+  string content_md5 = 1;
+  string content_sha256_base64 = 2;
+  int64 content_length = 3;
 }
 
-message AppCreateRequest {
-  string client_id = 1 [ (modal.options.audit_target_attr) = true ];
-  string description = 2;    // Human readable label for the app
-  bool detach = 3 [deprecated=true]; // replaced by app_state in 0.55.3904
-  bool initializing = 4 [deprecated=true]; // replaced by app_state in 0.55.3904
-  string environment_name = 5;
-  AppState app_state = 6;
+message BlobCreateResponse {
+  string blob_id = 2;
+  oneof upload_type_oneof {
+    string upload_url = 1;
+    MultiPartUpload multipart = 3;
+  }
 }
 
-message AppCreateResponse {
-  string app_id = 1;
-  string app_logs_url = 2;
+message BlobGetRequest {
+  string blob_id = 1;
 }
 
-enum AppStopSource {
-  APP_STOP_SOURCE_UNSPECIFIED = 0;
-  APP_STOP_SOURCE_CLI = 1;
-  APP_STOP_SOURCE_PYTHON_CLIENT = 2;
-  APP_STOP_SOURCE_WEB = 3;
+message BlobGetResponse {
+  string download_url = 1;
 }
 
-message AppStopRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  AppStopSource source = 2;
-}
-
-enum AppDeployVisibility {
-  APP_DEPLOY_VISIBILITY_UNSPECIFIED = 0;
-  APP_DEPLOY_VISIBILITY_WORKSPACE = 1;
-  APP_DEPLOY_VISIBILITY_PUBLIC = 2;
-}
-
-message AppDeployRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
-  string name = 3;
-  string object_entity = 4;
-  AppDeployVisibility visibility = 5;
-}
-
-message AppDeployResponse {
-  string url = 1;
-}
-
-message AppDeploySingleObjectRequest {
-  string name = 1;
-  DeploymentNamespace namespace = 2;
-  string environment_name = 3;
-  string object_id = 4;
-}
-
-message AppDeploySingleObjectResponse {
-  string app_id = 1;
-}
-
-message AppGetByDeploymentNameRequest {
-  DeploymentNamespace namespace = 1;
-  string name = 2;
-  string environment_name = 4;
-}
-
-message AppGetByDeploymentNameResponse {
-  string app_id = 1;
-}
-
-message AppGetLogsRequest {
-  string app_id = 1;
-  float timeout = 2;
-  string last_entry_id = 4;
-  string function_id = 5;
-  string input_id = 6;
-  string task_id = 7;
-  FileDescriptor file_descriptor = 8;
-}
-
-message AppGetObjectsRequest {
-  string app_id = 1;
-  bool include_unindexed = 2;
-}
-
-message AppGetObjectsItem {
-  string tag = 1;
-  Object object = 6;
-}
-
-message AppGetObjectsResponse {
-  repeated AppGetObjectsItem items = 2;
-}
-
-message AppStats {
-  string app_id = 1;
-  string description = 3;
-  AppState state = 4;
-  double created_at = 5;
-  double stopped_at = 6;
-  int32 n_running_tasks = 8;
-  string object_entity = 9;
-  string name = 10;
-  double deployed_at = 11;
-}
-
-message AppListRequest {
-  string environment_name = 1;
-}
-
-message AppListResponse {
-  repeated AppStats apps = 1;
-}
-
-message AppLookupObjectRequest {
-  DeploymentNamespace namespace = 2;
-  string app_name = 3;
-  string object_tag = 4;
-  string object_id = 5;
-  string object_entity = 6;
-  string environment_name = 7;
-}
-
-message AppLookupObjectResponse {
-  Object object = 6;
-  string app_id = 7;
-}
-
-message AppSetObjectsRequest {
-  string app_id = 1;
-  map<string, string> indexed_object_ids = 2;
-  string client_id = 3;
-  repeated string unindexed_object_ids = 4;
-  AppState new_app_state = 5; // promotes an app from initializing to this new state
-  string single_object_id = 6;
-}
-
-message AppHeartbeatRequest {
-  string app_id = 1;
-}
-
-message ClassMethod {
-  string function_name = 1;
-  string function_id = 2;
-
-  // Class methods need to hydrate all functions on the class
-  FunctionHandleMetadata function_handle_metadata = 3;
+message CheckpointInfo {
+  string checksum = 1;
+  CheckpointStatus status = 2;
+  string checkpoint_id = 3;
 }
 
 message ClassCreateRequest {
@@ -430,81 +493,16 @@ message ClassGetResponse {
   ClassHandleMetadata handle_metadata = 2;
 }
 
-
 message ClassHandleMetadata {
   repeated ClassMethod methods = 1;
 }
 
-message EnvironmentCreateRequest {
-  string name = 1;
-}
+message ClassMethod {
+  string function_name = 1;
+  string function_id = 2;
 
-message EnvironmentDeleteRequest {
-  string name = 1;
-}
-
-message EnvironmentListItem {
-  string name = 1;
-  string webhook_suffix = 2;
-}
-
-message EnvironmentListResponse {
-  repeated EnvironmentListItem items = 2;
-}
-
-message EnvironmentUpdateRequest {
-  string current_name = 1;
-  google.protobuf.StringValue name = 2;
-  google.protobuf.StringValue web_suffix = 3;
-}
-
-enum RegistryAuthType {
-  REGISTRY_AUTH_TYPE_UNSPECIFIED = 0; // Older clients send this instead of "public".
-  REGISTRY_AUTH_TYPE_AWS = 1;
-  REGISTRY_AUTH_TYPE_GCP = 2;
-  REGISTRY_AUTH_TYPE_PUBLIC = 3;
-  REGISTRY_AUTH_TYPE_STATIC_CREDS = 4;
-}
-
-message ImageRegistryConfig {
-  RegistryAuthType registry_auth_type = 1;
-  string secret_id = 2;
-}
-
-message BaseImage {
-  string image_id = 1;
-  string docker_tag = 2;
-  reserved 4;
-}
-
-message BlobCreateRequest {
-  // TODO(erikbern): how are these garbage collected?
-  // Shouldn't they belong to an app?
-  string content_md5 = 1;
-  string content_sha256_base64 = 2;
-  int64 content_length = 3;
-}
-
-message MultiPartUpload {
-  int64 part_length = 1; // split upload based on this part length - all except the last part must have this length
-  repeated string upload_urls = 2;
-  string completion_url = 3;
-}
-
-message BlobCreateResponse {
-  string blob_id = 2;
-  oneof upload_type_oneof {
-    string upload_url = 1;
-    MultiPartUpload multipart = 3;
-  }
-}
-
-message BlobGetRequest {
-  string blob_id = 1;
-}
-
-message BlobGetResponse {
-  string download_url = 1;
+  // Class methods need to hydrate all functions on the class
+  FunctionHandleMetadata function_handle_metadata = 3;
 }
 
 message ClientCreateRequest {
@@ -547,17 +545,22 @@ message ContainerHeartbeatRequest {
 
 message ContainerCheckpointRequest {}
 
-message TaskStats {
-  string task_id = 1;
-  string app_id = 2;
-  string app_description = 3;
-  double started_at = 4;
+message CustomDomainConfig {
+  string name = 1;
 }
 
-message TaskListRequest {}
+message CustomDomainInfo {
+  string url = 1;
+}
 
-message TaskListResponse {
-  repeated TaskStats tasks = 1;
+// Chunks of data that can be streamed in and out of tasks.
+message DataChunk {
+  DataFormat data_format = 1;
+  oneof data_oneof {
+    bytes data = 2;
+    string data_blob_id = 3;
+  }
+  uint64 index = 4; // Index of this data chunk in the stream.
 }
 
 message DictClearRequest {
@@ -624,12 +627,6 @@ message DictUpdateRequest {
 message DictUpdateResponse {
 }
 
-enum DNSRecordType {
-  DNS_RECORD_TYPE_A = 0;
-  DNS_RECORD_TYPE_TXT = 1;
-  DNS_RECORD_TYPE_CNAME = 2;
-}
-
 message DNSRecord {
   DNSRecordType type = 1;
   string name = 2;
@@ -646,13 +643,6 @@ message DomainCreateResponse {
 }
 
 message DomainListRequest {
-}
-
-enum CertificateStatus {
-  CERTIFICATE_STATUS_PENDING = 0;
-  CERTIFICATE_STATUS_ISSUED = 1;
-  CERTIFICATE_STATUS_FAILED = 2;
-  CERTIFICATE_STATUS_REVOKED = 3;
 }
 
 message Domain {
@@ -675,51 +665,37 @@ message DomainCertificateVerifyResponse {
   Domain domain = 1;
 }
 
-message PTYInfo {
-  bool enabled = 1;  // Soon deprecated
-  uint32 winsz_rows = 2;
-  uint32 winsz_cols = 3;
-  string env_term = 4;
-  string env_colorterm = 5;
-  string env_term_program = 6;
-  enum PTYType {
-    PTY_TYPE_UNSPECIFIED = 0;  // Nothing
-    PTY_TYPE_FUNCTION = 1;  // Run function in PTY
-    PTY_TYPE_SHELL = 2;  // Replace function with shell
-  }
-  PTYType pty_type = 7;
+message EnvironmentCreateRequest {
+  string name = 1;
 }
 
-enum CheckpointStatus {
-  CHECKPOINT_STATUS_UNSPECIFIED = 0;
-  CHECKPOINT_STATUS_PENDING = 1;
-  CHECKPOINT_STATUS_PROCESSING = 2;
-  CHECKPOINT_STATUS_READY = 3;
-  CHECKPOINT_STATUS_FAILED = 4;
+message EnvironmentDeleteRequest {
+  string name = 1;
 }
 
-message ObjectDependency {
-  string object_id = 1;
+message EnvironmentListItem {
+  string name = 1;
+  string webhook_suffix = 2;
 }
 
-message CheckpointInfo {
-  string checksum = 1;
-  CheckpointStatus status = 2;
-  string checkpoint_id = 3;
+message EnvironmentListResponse {
+  repeated EnvironmentListItem items = 2;
 }
 
-message FunctionOptions {
-  repeated string secret_ids = 1; // Currently not supported
-  repeated string mount_ids = 2; // Currently not supported
-  optional Resources resources = 3;
-  optional FunctionRetryPolicy retry_policy = 4;
-  optional uint32 concurrency_limit = 5;
-  optional uint32 timeout_secs = 6;
-  optional uint32 task_idle_timeout_secs = 7;
-  optional uint32 warm_pool_size = 8;
-  repeated VolumeMount volume_mounts = 9;
-  optional uint32 allow_concurrent_inputs = 10;
-  bool replace_volume_mounts = 11;
+message EnvironmentUpdateRequest {
+  string current_name = 1;
+  google.protobuf.StringValue name = 2;
+  google.protobuf.StringValue web_suffix = 3;
+}
+
+message FunctionCallPutDataRequest {
+  string function_call_id = 1;
+  repeated DataChunk data_chunks = 2;
+}
+
+message FunctionCallGetDataRequest {
+  string function_call_id = 1;
+  uint32 last_index = 2;
 }
 
 message Function {
@@ -800,6 +776,8 @@ message Function {
 
   CheckpointInfo checkpoint = 42;
   repeated ObjectDependency object_dependencies = 43;
+
+  bool block_network = 44;
 }
 
 message FunctionHandleMetadata {
@@ -819,6 +797,21 @@ message FunctionCreateRequest {
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
   Schedule schedule = 6;
   string existing_function_id = 7;
+}
+
+message FunctionOptions {
+  repeated string secret_ids = 1;
+  repeated string mount_ids = 2; // Currently not supported
+  optional Resources resources = 3;
+  optional FunctionRetryPolicy retry_policy = 4;
+  optional uint32 concurrency_limit = 5;
+  optional uint32 timeout_secs = 6;
+  optional uint32 task_idle_timeout_secs = 7;
+  optional uint32 warm_pool_size = 8;
+  repeated VolumeMount volume_mounts = 9;
+  optional uint32 allow_concurrent_inputs = 10;
+  bool replace_volume_mounts = 11;
+  bool replace_secret_ids = 12;
 }
 
 message FunctionPrecreateRequest {
@@ -1010,21 +1003,6 @@ message FunctionCallListRequest {
   string function_id = 1;
 }
 
-message InputInfo {
-  string input_id = 1;
-  int32 idx = 2;
-  string task_id = 3;
-  double started_at = 4;
-  double finished_at = 5;
-  double task_startup_time = 6;
-  bool task_first_input = 7;
-}
-
-message InputCategoryInfo {
-  int32 total = 1;
-  repeated InputInfo latest = 2;
-}
-
 message FunctionCallInfo {
   string function_call_id = 1;
   int32 idx = 2;
@@ -1088,84 +1066,10 @@ message GenericResult {  // Used for both tasks and function outputs
   string propagation_reason = 13;
 }
 
-message Sandbox {
-  repeated string entrypoint_args = 1;
-  repeated string mount_ids = 2;
-  string image_id = 3;
-  repeated string secret_ids = 4;
-
-  Resources resources = 5;
-  CloudProvider cloud_provider = 6;
-
-  uint32 timeout_secs = 7;
-
-  optional string workdir = 8;
-
-  repeated SharedVolumeMount nfs_mounts = 9;
-
-  bool runtime_debug = 10; // For internal debugging use only.
-
-  bool block_network = 11;
-}
-
-message SandboxCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  Sandbox definition = 2;
-}
-
-message SandboxCreateResponse {
-  string sandbox_id = 1;
-}
-
-message SandboxWaitRequest {
-  string sandbox_id = 1;
-  float timeout = 2;
-}
-
-message SandboxWaitResponse {
-  GenericResult result = 1;
-}
-
-message SandboxGetLogsRequest {
-  string sandbox_id = 1;
-  FileDescriptor file_descriptor = 2;
-  float timeout = 3;
-  string last_entry_id = 4;
-}
-
-message TaskInfo {
-  string id = 1;
-  double started_at = 2;
-  double finished_at = 3;
-  modal.client.GenericResult result = 4;
-}
-
-message SandboxInfo {
-  string id = 1;
-  modal.client.Sandbox definition = 2;
-  double created_at = 3;
-  TaskInfo task_info = 4;
-}
-
-message SandboxListRequest {
-  string app_id = 1;
-  double before_timestamp = 2;
-}
-
-message SandboxListResponse {
-  repeated SandboxInfo sandboxes = 1;
-}
-
-message SandboxTerminateRequest {
-  string sandbox_id = 1;
-}
-
-message SandboxTerminateResponse {
-  GenericResult existing_result = 1;
-}
-
-message SandboxHandleMetadata {
-  GenericResult result = 1;
+message GPUConfig {
+  GPUType type = 1;
+  uint32 count = 2;
+  uint32 memory = 3;
 }
 
 message Image {
@@ -1223,6 +1127,27 @@ message ImageJoinStreamingResponse {
   bool eof = 4;
 }
 
+
+message ImageRegistryConfig {
+  RegistryAuthType registry_auth_type = 1;
+  string secret_id = 2;
+}
+
+message InputInfo {
+  string input_id = 1;
+  int32 idx = 2;
+  string task_id = 3;
+  double started_at = 4;
+  double finished_at = 5;
+  double task_startup_time = 6;
+  bool task_first_input = 7;
+}
+
+message InputCategoryInfo {
+  int32 total = 1;
+  repeated InputInfo latest = 2;
+}
+
 message MountBuildRequest {
   string app_id = 2 [ (modal.options.audit_target_attr) = true ];
   string existing_mount_id = 3;
@@ -1258,6 +1183,12 @@ message MountPutFileResponse {
   bool exists = 2;
 }
 
+message MultiPartUpload {
+  int64 part_length = 1; // split upload based on this part length - all except the last part must have this length
+  repeated string upload_urls = 2;
+  string completion_url = 3;
+}
+
 message Object {
   string object_id = 1;
   oneof handle_metadata_oneof {
@@ -1268,12 +1199,32 @@ message Object {
   }
 }
 
+message ObjectDependency {
+  string object_id = 1;
+}
+
 message ProxyInfo {
   string elastic_ip = 1;
   string proxy_key = 2;
   string remote_addr = 3;
   int32 remote_port = 4;
 }
+
+message PTYInfo {
+  bool enabled = 1;  // Soon deprecated
+  uint32 winsz_rows = 2;
+  uint32 winsz_cols = 3;
+  string env_term = 4;
+  string env_colorterm = 5;
+  string env_term_program = 6;
+  enum PTYType {
+    PTY_TYPE_UNSPECIFIED = 0;  // Nothing
+    PTY_TYPE_FUNCTION = 1;  // Run function in PTY
+    PTY_TYPE_SHELL = 2;  // Replace function with shell
+  }
+  PTYType pty_type = 7;
+}
+
 
 message QueueCreateRequest {
   string app_id = 1;
@@ -1312,38 +1263,83 @@ message RateLimit {
   RateLimitInterval interval = 2;
 }
 
-enum GPUType {
-  GPU_TYPE_UNSPECIFIED = 0;
-  GPU_TYPE_T4 = 1;
-  GPU_TYPE_A100 = 2;
-  GPU_TYPE_A10G = 3;
-  GPU_TYPE_ANY = 4;
-  GPU_TYPE_A100_20G = 5 [deprecated=true];
-  GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
-  GPU_TYPE_INFERENTIA2 = 7 [deprecated=true];
-  GPU_TYPE_A100_80GB = 8;
-  GPU_TYPE_L4 = 9;
-}
-
-message GPUConfig {
-  GPUType type = 1;
-  uint32 count = 2;
-  uint32 memory = 3;
-}
-
 message Resources {
   uint32 memory_mb = 2;
   uint32 milli_cpu = 3;
   GPUConfig gpu_config = 4;
 }
 
+message Sandbox {
+  repeated string entrypoint_args = 1;
+  repeated string mount_ids = 2;
+  string image_id = 3;
+  repeated string secret_ids = 4;
 
-enum CloudProvider {
-  CLOUD_PROVIDER_UNSPECIFIED = 0;
-  CLOUD_PROVIDER_AWS = 1;
-  CLOUD_PROVIDER_GCP = 2;
-  CLOUD_PROVIDER_AUTO = 3;
-  CLOUD_PROVIDER_OCI = 4;
+  Resources resources = 5;
+  CloudProvider cloud_provider = 6;
+
+  uint32 timeout_secs = 7;
+
+  optional string workdir = 8;
+
+  repeated SharedVolumeMount nfs_mounts = 9;
+
+  bool runtime_debug = 10; // For internal debugging use only.
+
+  bool block_network = 11;
+}
+
+message SandboxCreateRequest {
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  Sandbox definition = 2;
+}
+
+message SandboxCreateResponse {
+  string sandbox_id = 1;
+}
+
+message SandboxGetLogsRequest {
+  string sandbox_id = 1;
+  FileDescriptor file_descriptor = 2;
+  float timeout = 3;
+  string last_entry_id = 4;
+}
+
+message SandboxHandleMetadata {
+  GenericResult result = 1;
+}
+
+message SandboxInfo {
+  string id = 1;
+  modal.client.Sandbox definition = 2;
+  double created_at = 3;
+  TaskInfo task_info = 4;
+}
+
+message SandboxListRequest {
+  string app_id = 1;
+  double before_timestamp = 2;
+}
+
+message SandboxListResponse {
+  repeated SandboxInfo sandboxes = 1;
+}
+
+message SandboxTerminateRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxTerminateResponse {
+  GenericResult existing_result = 1;
+}
+
+message SandboxWaitRequest {
+  string sandbox_id = 1;
+  float timeout = 2;
+}
+
+message SandboxWaitResponse {
+  GenericResult result = 1;
 }
 
 message Schedule {
@@ -1375,7 +1371,6 @@ message SecretCreateRequest {
 message SecretCreateResponse {
   string secret_id = 1;
 }
-
 
 message SecretListItem {
   string label = 1;
@@ -1477,6 +1472,13 @@ message SharedVolumeMount {
   bool allow_cross_region = 4;
 }
 
+message TaskInfo {
+  string id = 1;
+  double started_at = 2;
+  double finished_at = 3;
+  modal.client.GenericResult result = 4;
+}
+
 message TaskLogs {
   string data = 1;
   TaskState task_state = 6;
@@ -1487,16 +1489,10 @@ message TaskLogs {
   string input_id = 11;
 }
 
-enum ProgressType {
-  IMAGE_SNAPSHOT_UPLOAD = 0;  // TODO(erikbern): shouldn't be zero, and needs prefix
-  FUNCTION_QUEUED = 1;  // TODO(erikbern): needs_prefix
-}
+message TaskListRequest {}
 
-message TaskProgress {
-  uint64 len = 1;
-  uint64 pos = 2;
-  ProgressType progress_type = 3;
-  string description = 4;
+message TaskListResponse {
+  repeated TaskStats tasks = 1;
 }
 
 message TaskLogsBatch {
@@ -1510,8 +1506,22 @@ message TaskLogsBatch {
   bool eof = 14;
 }
 
+message TaskProgress {
+  uint64 len = 1;
+  uint64 pos = 2;
+  ProgressType progress_type = 3;
+  string description = 4;
+}
+
 message TaskResultRequest {
   modal.client.GenericResult result = 2;
+}
+
+message TaskStats {
+  string task_id = 1;
+  string app_id = 2;
+  string app_description = 3;
+  double started_at = 4;
 }
 
 message TokenFlowCreateRequest {
@@ -1646,18 +1656,16 @@ message VolumeRemoveFileRequest {
   bool recursive = 3;
 }
 
+message VolumeCopyFilesRequest {
+  string volume_id = 1;
+  repeated bytes src_paths = 2;
+  bytes dst_path = 3;
+}
+
 message VolumeMount {
   string volume_id = 1;
   string mount_path = 2;
   bool allow_background_commits = 3;
-}
-
-message CustomDomainConfig {
-  string name = 1;
-}
-
-message CustomDomainInfo {
-  string url = 1;
 }
 
 message WebhookConfig {
@@ -1804,4 +1812,5 @@ service ModalClient {
   rpc VolumePutFiles(VolumePutFilesRequest) returns (google.protobuf.Empty);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
+  rpc VolumeCopyFiles(VolumeCopyFilesRequest) returns (google.protobuf.Empty);
 }

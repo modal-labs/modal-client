@@ -72,6 +72,7 @@ async def deploy_single_object(
         name=label,
         namespace=namespace,
         object_entity=type_prefix,
+        visibility=api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE,
     )
     try:
         await retry_transient_errors(client.stub.AppDeploy, deploy_req)

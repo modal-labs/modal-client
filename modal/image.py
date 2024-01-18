@@ -36,7 +36,7 @@ _from_dockerhub_deprecation_msg = "`Image.from_dockerhub` is deprecated. Use `Im
 
 def _validate_python_version(version: str) -> None:
     components = version.split(".")
-    supported_versions = {"3.11", "3.10", "3.9", "3.8", "3.7"}
+    supported_versions = {"3.11", "3.10", "3.9", "3.8"}
     if len(components) == 2 and version in supported_versions:
         return
     elif len(components) == 3:
@@ -64,7 +64,6 @@ def _dockerhub_python_version(python_version=None):
         "3.10": "8",
         "3.9": "15",
         "3.8": "15",
-        "3.7": "15",
     }
     major_minor_version = ".".join(parts[:2])
     python_version = major_minor_version + "." + latest_micro_version[major_minor_version]
@@ -978,7 +977,7 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Build a Modal image from a public image registry, such as Docker Hub.
 
-        The image must be built for the `linux/amd64` platform and have Python 3.7 or above
+        The image must be built for the `linux/amd64` platform and have Python 3.8 or above
         installed and available on PATH as `python`. It should also have `pip`.
 
         If your image does not come with Python installed, you can use the `add_python` parameter

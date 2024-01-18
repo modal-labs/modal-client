@@ -208,13 +208,15 @@ class _LocalApp:
                 client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
             )
 
-    async def deploy(self, name: str, namespace) -> str:
+    async def deploy(self, name: str, namespace, public: bool) -> str:
         """`App.deploy` is deprecated in favor of `modal.runner.deploy_stub`."""
+
         deploy_req = api_pb2.AppDeployRequest(
             app_id=self.app_id,
             name=name,
             namespace=namespace,
             object_entity="ap",
+            visibility=(api_pb2.APP_DEPLOY_VISIBILITY_PUBLIC if public else api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE),
         )
         try:
             deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
