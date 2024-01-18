@@ -78,6 +78,7 @@ from .schedule import Schedule
 from .secret import _Secret
 from .volume import _Volume
 
+OUTPUTS_TIMEOUT = 55  # seconds
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
 
 
@@ -218,9 +219,9 @@ class _Invocation:
     ) -> AsyncIterator[api_pb2.FunctionGetOutputsItem]:
         t0 = time.time()
         if timeout is None:
-            backend_timeout = config["outputs_timeout"]
+            backend_timeout = OUTPUTS_TIMEOUT
         else:
-            backend_timeout = min(config["outputs_timeout"], timeout)  # refresh backend call every 55s
+            backend_timeout = min(OUTPUTS_TIMEOUT, timeout)  # refresh backend call every 55s
 
         while True:
             # always execute at least one poll for results, regardless if timeout is 0
@@ -242,7 +243,7 @@ class _Invocation:
 
             if timeout is not None:
                 # update timeout in retry loop
-                backend_timeout = min(config["outputs_timeout"], t0 + timeout - time.time())
+                backend_timeout = min(OUTPUTS_TIMEOUT, t0 + timeout - time.time())
                 if backend_timeout < 0:
                     break
 
@@ -276,14 +277,14 @@ class _Invocation:
             while not completed:
                 request = api_pb2.FunctionGetOutputsRequest(
                     function_call_id=self.function_call_id,
-                    timeout=config["outputs_timeout"],
+                    timeout=OUTPUTS_TIMEOUT,
                     last_entry_id=last_entry_id,
                     clear_on_success=False,  # there could be more results
                 )
                 response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                     self.stub.FunctionGetOutputs,
                     request,
-                    attempt_timeout=config["outputs_timeout"] + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                    attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
                 )
                 if len(response.outputs) > 0:
                     last_entry_id = response.last_entry_id
@@ -383,7 +384,7 @@ async def _map_invocation(
         while not have_all_inputs or len(pending_outputs) > len(completed_outputs):
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=function_call_id,
-                timeout=config["outputs_timeout"],
+                timeout=OUTPUTS_TIMEOUT,
                 last_entry_id=last_entry_id,
                 clear_on_success=False,
             )
@@ -391,7 +392,7 @@ async def _map_invocation(
                 client.stub.FunctionGetOutputs,
                 request,
                 max_retries=20,
-                attempt_timeout=config["outputs_timeout"] + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
             if len(response.outputs) == 0:
