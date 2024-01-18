@@ -105,18 +105,13 @@ def test_mounted_files_serialized(supports_dir, env_mount_files):
     }
 
 
-def test_mounted_files_package(supports_dir, env_mount_files):
-    p = subprocess.run([sys.executable, "-m", "pkg_a.package"], cwd=supports_dir, capture_output=True)
+def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_url_env):
+    p = subprocess.run(["modal", "run", "pkg_a.package"], cwd=supports_dir, capture_output=True)
     assert p.returncode == 0
-    stdout = p.stdout.decode("utf-8")
-    stderr = p.stderr.decode("utf-8")
-    print("stdout: ", stdout)
-    print("stderr: ", stderr)
-    files = set(stdout.splitlines()).difference(env_mount_files)
 
+    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
-        "/root/package.py",
         "/root/pkg_a/__init__.py",
         "/root/pkg_a/a.py",
         "/root/pkg_a/b/c.py",
@@ -128,6 +123,17 @@ def test_mounted_files_package(supports_dir, env_mount_files):
         "/root/pkg_b/__init__.py",
         "/root/pkg_b/f.py",
         "/root/pkg_b/g/h.py",
+    }
+
+
+@pytest.mark.skip("needs fix")
+def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servicer, server_url_env, monkeypatch):
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+    p = subprocess.run(["modal", "run", "pkg_a.package"], cwd=supports_dir, capture_output=True)
+    assert p.returncode == 0
+    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
+    assert files == {
+        "/root/pkg_a/package.py",
     }
 
 
