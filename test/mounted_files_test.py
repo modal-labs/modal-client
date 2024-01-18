@@ -126,13 +126,13 @@ def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_u
     }
 
 
-@pytest.mark.skip("needs fix")
 def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servicer, server_url_env, monkeypatch):
     monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
     p = subprocess.run(["modal", "run", "pkg_a.package"], cwd=supports_dir, capture_output=True)
     assert p.returncode == 0
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
     assert files == {
+        "/root/pkg_a/__init__.py",
         "/root/pkg_a/package.py",
     }
 
