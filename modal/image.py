@@ -678,7 +678,9 @@ class _Image(_Object, type_prefix="im"):
             if poetry_lockfile is None:
                 p = Path(poetry_pyproject_toml).parent / "poetry.lock"
                 if not p.exists():
-                    raise NotFoundError(f"poetry.lock not found at inferred location, {p}")
+                    raise NotFoundError(
+                        f"poetry.lock not found at inferred location: {p.absolute()}. If a lockfile is not needed, `ignore_lockfile=True` can be used."
+                    )
                 poetry_lockfile = p.as_posix()
             context_files["/.poetry.lock"] = poetry_lockfile
             dockerfile_commands += ["COPY /.poetry.lock /tmp/poetry/poetry.lock"]
