@@ -15,10 +15,8 @@ from modal_proto import api_pb2
 from ._serialization import serialize
 from .config import config, logger
 from .exception import InvalidError
-from .mount import _Mount
+from .mount import ROOT_DIR, _Mount
 from .object import Object
-
-ROOT_DIR = PurePosixPath("/root")
 
 # Expand symlinks in paths (homebrew Python paths are all symlinks).
 SYS_PREFIXES = set(
