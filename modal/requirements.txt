@@ -9,7 +9,8 @@ cloudpickle==2.2.0;python_version>='3.11'
 ddtrace==1.5.2;python_version<'3.11'
 fastapi==0.88.0
 fastprogress==1.0.0
-grpclib==0.4.3
+grpclib==0.4.3;python_version<'3.12'
+grpclib==0.4.7;python_version>='3.12'
 importlib_metadata==4.8.1
 ipython>=7.34.0
 protobuf>=3.19.0
