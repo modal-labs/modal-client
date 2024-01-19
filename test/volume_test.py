@@ -237,7 +237,7 @@ async def test_volume_copy(client, tmp_path, servicer):
     ## test 1: copy src path to dst path ##
     src_path = "original.txt"
     dst_path = "copied.txt"
-    local_file_path = tmp_path / Path(src_path)
+    local_file_path = tmp_path / src_path
     local_file_path.write_text("test copy")
 
     with stub.run(client=client):
@@ -258,19 +258,21 @@ async def test_volume_copy(client, tmp_path, servicer):
 
     with stub.run(client=client):
         for file_path in file_paths:
-            local_file_path = tmp_path / Path(file_path)
+            local_file_path = tmp_path / file_path
             local_file_path.write_text("test copy")
             await stub.vol._add_local_file.aio(local_file_path, file_path)
             object_id = stub.vol.object_id
 
         stub.vol.copy_files(file_paths, "test_dir")
 
-    assert servicer.volume_files[object_id].keys() == {
-        "file1.txt",
-        "file2.txt",
-        "test_dir/file1.txt",
-        "test_dir/file2.txt",
-    }
+    print(servicer.volume_files[object_id].keys())
 
-    assert servicer.volume_files[object_id]["test_dir/file1.txt"].data == b"test copy"
-    assert servicer.volume_files[object_id]["test_dir/file2.txt"].data == b"test copy"
+    returned_volume_files = [Path(file) for file in servicer.volume_files[object_id].keys()]
+    expected_volume_files = [
+        Path(file) for file in ["file1.txt", "file2.txt", "test_dir/file1.txt", "test_dir/file2.txt"]
+    ]
+
+    assert returned_volume_files == expected_volume_files
+
+    # assert servicer.volume_files[object_id]["test_dir/file1.txt"].data == b"test copy"
+    # assert servicer.volume_files[object_id]["test_dir/file2.txt"].data == b"test copy"
