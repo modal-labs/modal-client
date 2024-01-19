@@ -295,7 +295,7 @@ def test_startup_failure(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_from_local_python_packages_inside_container(unix_servicer, event_loop, monkeypatch):
+def test_from_local_python_packages_inside_container(unix_servicer, event_loop):
     """`from_local_python_packages` shouldn't actually collect modules inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
     all the containers."""

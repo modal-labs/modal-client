@@ -9,6 +9,7 @@ import six  # noqa
 
 import modal  # noqa
 from modal._function_utils import FunctionInfo
+from modal.functions import _get_function_mounts
 
 
 def f():
@@ -18,7 +19,7 @@ def f():
 async def get_files():
     fn_info = FunctionInfo(f, serialized=True)
 
-    for _, mount in fn_info.get_mounts().items():
+    for mount in _get_function_mounts(fn_info, include_client_mount=False):
         async for file_info in mount._get_files(mount.entries):
             print(file_info.mount_filename)
 

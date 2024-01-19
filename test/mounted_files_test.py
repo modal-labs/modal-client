@@ -42,7 +42,7 @@ async def env_mount_files():
     fn_info = FunctionInfo(f)
 
     filenames = []
-    for _, mount in fn_info.get_mounts().items():
+    for mount in fn_info.get_auto_mounts():
         async for file_info in mount._get_files(mount.entries):
             filenames.append(file_info.mount_filename)
 
@@ -86,19 +86,20 @@ def test_mounted_files_serialized(supports_dir, env_mount_files):
         cwd=supports_dir,
         env={**os.environ, "PYTHONPATH": str(supports_dir)},
     )
-    assert p.returncode == 0
     stdout = p.stdout.decode("utf-8")
     stderr = p.stderr.decode("utf-8")
     print("stdout: ", stdout)
     print("stderr: ", stderr)
+    assert p.returncode == 0
     files = set(stdout.splitlines()).difference(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
+        # TODO: arguably a.py and b/* should both mounted under pkg_a, but then we need to also change how the modal stub file is mounted and loaded too
+        # should serialized_fn be included?
         "/root/b/c.py",
         "/root/b/e.py",
-        "/root/pkg_a/a.py",
-        "/root/pkg_a/serialized_fn.py",
+        "/root/a.py",
         "/root/pkg_b/__init__.py",
         "/root/pkg_b/f.py",
         "/root/pkg_b/g/h.py",
@@ -116,7 +117,6 @@ def test_mounted_files_package(supports_dir, env_mount_files):
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
-        "/root/package.py",
         "/root/pkg_a/__init__.py",
         "/root/pkg_a/a.py",
         "/root/pkg_a/b/c.py",

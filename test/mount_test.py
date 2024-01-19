@@ -7,7 +7,7 @@ from pathlib import Path
 
 from modal import Stub
 from modal._blob_utils import LARGE_FILE_LIMIT
-from modal.exception import NotFoundError
+from modal.exception import ModuleNotMountable
 from modal.mount import Mount
 
 
@@ -92,14 +92,18 @@ def test_from_local_python_packages(servicer, client, test_dir):
     stub.function(mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
 
     with stub.run(client=client):
-        files = servicer.files_name2sha.keys()
-        assert any(["/pkg/pkg_a/a.py" in f for f in files])
-        assert any(["/pkg/pkg_a/b/c.py" in f for f in files])
-        assert any(["/pkg/pkg_b/f.py" in f for f in files])
-        assert any(["/pkg/pkg_b/g/h.py" in f for f in files])
-        assert any(["/pkg/standalone_file.py" in f for f in files])
-        assert not any(["/pkg/pkg_c/i.py" in f for f in files])
-        assert not any(["/pkg/pkg_c/j/k.py" in f for f in files])
+        files = set(servicer.files_name2sha.keys())
+        expected_files = {
+            "/root/pkg_a/a.py",
+            "/root/pkg_a/b/c.py",
+            "/root/pkg_b/f.py",
+            "/root/pkg_b/g/h.py",
+            "/root/standalone_file.py",
+        }
+        assert expected_files.issubset(files)
+
+        assert "/root/pkg_c/i.py" not in files
+        assert "/root/pkg_c/j/k.py" not in files
 
 
 def test_stub_mounts(servicer, client, test_dir):
@@ -111,18 +115,18 @@ def test_stub_mounts(servicer, client, test_dir):
 
     with stub.run(client=client):
         files = servicer.files_name2sha.keys()
-        assert any(["pkg/pkg_a/a.py" in f for f in files])
-        assert any(["pkg/pkg_a/b/c.py" in f for f in files])
-        assert any(["pkg/pkg_b/f.py" in f for f in files])
-        assert any(["pkg/pkg_b/g/h.py" in f for f in files])
-        assert not any(["pkg/pkg_c/i.py" in f for f in files])
-        assert not any(["pkg/pkg_c/j/k.py" in f for f in files])
+        assert any(["/root/pkg_a/a.py" in f for f in files])
+        assert any(["/root/pkg_a/b/c.py" in f for f in files])
+        assert any(["/root/pkg_b/f.py" in f for f in files])
+        assert any(["/root/pkg_b/g/h.py" in f for f in files])
+        assert not any(["/root/pkg_c/i.py" in f for f in files])
+        assert not any(["/root/pkg_c/j/k.py" in f for f in files])
 
 
 def test_from_local_python_packages_missing_module(servicer, client, test_dir):
     stub = Stub()
 
-    with pytest.raises(NotFoundError):
+    with pytest.raises(ModuleNotMountable):
         stub.function(mounts=[Mount.from_local_python_packages("nonexistent_package")])(dummy)
 
 

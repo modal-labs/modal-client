@@ -154,3 +154,7 @@ def simulate_preemption(wait_seconds: int, jitter_seconds: int = 0):
     signal.signal(signal.SIGALRM, _simulate_preemption_interrupt)
     jitter = random.randrange(0, jitter_seconds) if jitter_seconds else 0
     signal.alarm(wait_seconds + jitter)
+
+
+class ModuleNotMountable(Exception):
+    pass

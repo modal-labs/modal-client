@@ -33,7 +33,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.exceptions import UserCodeException
 
-from modal import _pty
+from modal import _pty, is_local
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     queue_batch_iterator,
@@ -69,7 +69,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount
+from .mount import _get_client_mount, _Mount, _MountCache
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
@@ -495,6 +495,28 @@ class FunctionStats:
     num_total_runners: int
 
 
+def _get_function_mounts(
+    function_info: FunctionInfo,
+    explicit_mounts: Collection[_Mount] = (),
+    mount_cache: Optional[_MountCache] = None,
+    *,
+    include_client_mount: bool = True,
+) -> List[_Mount]:
+    if mount_cache is None:
+        mount_cache = _MountCache()
+
+    all_mounts = [
+        *([_get_client_mount()] if include_client_mount else []),
+        *mount_cache.get_many(function_info.get_main_mounts()),
+        *mount_cache.get_many(explicit_mounts),
+    ]
+
+    if config.get("automount"):
+        all_mounts += mount_cache.get_many(function_info.get_auto_mounts())
+
+    return all_mounts
+
+
 def _parse_retries(
     retries: Optional[Union[int, Retries]],
     raw_f: Optional[Callable] = None,
@@ -606,15 +628,11 @@ class _Function(_Object, type_prefix="fu"):
         elif interactive and is_generator:
             raise InvalidError("Interactive mode not supported for generator functions")
 
-        all_mounts = [
-            _get_client_mount(),  # client
-            *mounts,  # explicit mounts
-        ]
-        # TODO (elias): Clean up mount logic, this is quite messy:
-        if stub:
-            all_mounts.extend(stub._get_deduplicated_function_mounts(info.get_mounts()))  # implicit mounts
+        if is_local():
+            all_mounts = _get_function_mounts(info, mounts, stub._mount_cache if stub else None)
         else:
-            all_mounts.extend(info.get_mounts().values())  # this would typically only happen for builder functions
+            # TODO: maybe the entire constructor should be exited early if not local?
+            all_mounts = []
 
         if secret:
             secrets = [secret, *secrets]

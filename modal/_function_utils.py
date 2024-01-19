@@ -8,13 +8,13 @@ import typing
 from collections import deque
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Callable, Dict, List, Optional, Set, Type
+from typing import Callable, List, Optional, Set, Type
 
 from modal_proto import api_pb2
 
 from ._serialization import serialize
 from .config import config, logger
-from .exception import InvalidError
+from .exception import InvalidError, ModuleNotMountable
 from .mount import _Mount
 from .object import Object
 
@@ -55,25 +55,18 @@ def package_mount_condition(filename):
 
 def _is_modal_path(remote_path: PurePosixPath):
     path_prefix = remote_path.parts[:3]
-    is_modal_path = path_prefix in [
-        ("/", "root", "modal"),
-        ("/", "root", "modal_proto"),
-        ("/", "root", "modal_utils"),
-        ("/", "root", "modal_version"),
-    ]
-    return is_modal_path
-
-
-def filter_safe_mounts(mounts: typing.Dict[str, _Mount]):
-    # exclude mounts that would overwrite Modal
-    safe_mounts = {}
-    for local_dir, mount in mounts.items():
-        for entry in mount._entries:
-            if _is_modal_path(entry.remote_path):
-                break
-        else:
-            safe_mounts[local_dir] = mount
-    return safe_mounts
+    remote_python_paths = [("/", "root"), ("/", "pkg")]
+    for base in remote_python_paths:
+        is_modal_path = path_prefix in [
+            base + ("modal",),
+            base + ("modal_proto",),
+            base + ("modal_utils",),
+            base + ("modal_version",),
+            base + ("synchronicity",),
+        ]
+        if is_modal_path:
+            return True
+    return False
 
 
 def is_global_function(function_qual_name):
@@ -141,7 +134,6 @@ class FunctionInfo:
             elif len(base_dirs) > 1:
                 # Base_dirs should all be prefixes of each other since they all contain `module_file`.
                 base_dirs.sort(key=len)
-
             self.base_dir = base_dirs[0]
             self.module_name = module.__spec__.name
             self.remote_dir = ROOT_DIR / PurePosixPath(module.__package__.split(".")[0])
@@ -194,49 +186,49 @@ class FunctionInfo:
         f_globals = {k: func.__globals__[k] for k in f_globals_ref if k in func.__globals__}
         return f_globals
 
-    def get_mounts(self) -> Dict[str, _Mount]:
+    def get_main_mounts(self) -> List[_Mount]:
         """
         Includes:
         * Implicit mount of the function itself (the module or package that the function is part of)
-        * "Auto mounted" mounts, i.e. all mounts in sys.modules that are *not* installed in site-packages.
-            These are typically local modules which are imported but not part of the running package
 
         Does not include:
         * Client mount
         * Explicit mounts added to the stub or function declaration
+        * "Auto mounted" mounts, i.e. all mounts in sys.modules that are *not* installed in site-packages.
+            These are typically local modules which are imported but not part of the running package
+
         """
         if self.type == FunctionInfoType.NOTEBOOK:
             # Don't auto-mount anything for notebooks.
-            return {}
-
-        if config.get("automount"):
-            mounts = self._get_auto_mounts()
-        else:
-            mounts = {}
+            return []
 
         # make sure the function's own entrypoint is included:
         if self.type == FunctionInfoType.PACKAGE and config.get("automount"):
-            mounts[self.base_dir] = _Mount.from_local_dir(
-                self.base_dir,
-                remote_path=self.remote_dir,
-                recursive=True,
-                condition=package_mount_condition,
-            )
+            return [
+                _Mount.from_local_dir(
+                    self.base_dir,
+                    remote_path=self.remote_dir,
+                    recursive=True,
+                    condition=package_mount_condition,
+                )
+            ]
         elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             remote_path = ROOT_DIR / Path(self.file).name
-            mounts[self.file] = _Mount.from_local_file(
-                self.file,
-                remote_path=remote_path,
-            )
+            if not _is_modal_path(remote_path):
+                return [
+                    _Mount.from_local_file(
+                        self.file,
+                        remote_path=remote_path,
+                    )
+                ]
+        return []
 
-        return filter_safe_mounts(mounts)
-
-    def _get_auto_mounts(self):
+    def get_auto_mounts(self) -> typing.List[_Mount]:
         # Auto-mount local modules that have been imported in global scope.
         # This may or may not include the "entrypoint" of the function as well, depending on how modal is invoked
         # Note: sys.modules may change during the iteration
-        mounts = {}
-        modules = []
+        auto_mounts = []
+        top_level_modules = []
         skip_prefixes = set()
         for name, module in sorted(sys.modules.items(), key=lambda kv: len(kv[0])):
             parent = name.rsplit(".")[0]
@@ -244,55 +236,30 @@ class FunctionInfo:
                 skip_prefixes.add(name)
                 continue
             skip_prefixes.add(name)
-            modules.append(module)
+            top_level_modules.append((name, module))
 
-        for m in modules:
-            if getattr(m, "__package__", None) and getattr(m, "__path__", None):
-                package_path = __import__(m.__package__).__path__
-                for raw_path in package_path:
-                    path = os.path.realpath(raw_path)
+        for module_name, module in top_level_modules:
+            if module_name.startswith("__") or module_name in config.get("automount_exclude"):
+                # skip "built in" modules like __main__ and __mp_main__
+                # the running function's main file should be included anyway
+                continue
 
-                    if (
-                        path in mounts
-                        or any(raw_path.startswith(p) for p in SYS_PREFIXES)
-                        or any(path.startswith(p) for p in SYS_PREFIXES)
-                        or not os.path.exists(path)
-                    ):
-                        continue
-                    remote_dir = ROOT_DIR / PurePosixPath(*m.__name__.split("."))
-                    mounts[path] = _Mount.from_local_dir(
-                        path,
-                        remote_path=remote_dir,
-                        condition=package_mount_condition,
-                        recursive=True,
-                    )
-            elif getattr(m, "__file__", None):
-                path = os.path.abspath(os.path.realpath(m.__file__))
+            try:
+                # at this point we don't know if the sys.modules module should be mounted or not
+                potential_mount = _Mount.from_local_python_packages(module_name)
+                mount_paths = potential_mount._top_level_paths()
+            except ModuleNotMountable:
+                # this typically happens if the module is a built-in or has binary components
+                continue
 
-                if (
-                    path in mounts
-                    or any(m.__file__.startswith(p) for p in SYS_PREFIXES)
-                    or any(path.startswith(p) for p in SYS_PREFIXES)
-                    or not os.path.exists(path)
-                ):
-                    continue
-                dirpath = PurePosixPath(Path(os.path.dirname(path)).resolve().as_posix())
-                try:
-                    relpath = dirpath.relative_to(Path(self.base_dir).resolve().as_posix())
-                except ValueError:
-                    # TODO(elias) some kind of heuristic for how to handle things outside of the cwd?
-                    continue
+            for local_path, remote_path in mount_paths:
+                if any(str(local_path).startswith(p) for p in SYS_PREFIXES) or _is_modal_path(remote_path):
+                    # skip any module that has paths in SYS_PREFIXES, or would overwrite the modal Package in the container
+                    break
+            else:
+                auto_mounts.append(potential_mount)
 
-                if relpath != PurePosixPath("."):
-                    remote_path = ROOT_DIR / relpath / Path(path).name
-                else:
-                    remote_path = ROOT_DIR / Path(path).name
-
-                mounts[path] = _Mount.from_local_file(
-                    path,
-                    remote_path=remote_path,
-                )
-        return mounts
+        return auto_mounts
 
     def get_tag(self):
         return self.function_name

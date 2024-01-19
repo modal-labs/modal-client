@@ -23,7 +23,7 @@ from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function, _validate_volumes
 from .gpu import GPU_T
 from .image import _Image
-from .mount import _Mount
+from .mount import _Mount, _MountCache
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .partial_function import PartialFunction, _PartialFunction
@@ -110,6 +110,7 @@ class _Stub:
     _description: Optional[str]
     _indexed_objects: Dict[str, _Object]
     _function_mounts: Dict[str, _Mount]
+    _mount_cache: _MountCache
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
     _volumes: Dict[Union[str, PurePosixPath], _Volume]
@@ -166,8 +167,8 @@ class _Stub:
         if image is not None:
             self._indexed_objects["image"] = image  # backward compatibility since "image" used to be on the blueprint
 
-        self._function_mounts = {}
         self._mounts = mounts
+        self._mount_cache = _MountCache()
         self._secrets = secrets
         self._volumes = volumes
         self._local_entrypoints = {}
@@ -642,14 +643,6 @@ class _Stub:
             return cls
 
         return wrapper
-
-    def _get_deduplicated_function_mounts(self, mounts: Dict[str, _Mount]):
-        cached_mounts = []
-        for root_path, mount in mounts.items():
-            if root_path not in self._function_mounts:
-                self._function_mounts[root_path] = mount
-            cached_mounts.append(self._function_mounts[root_path])
-        return cached_mounts
 
     async def spawn_sandbox(
         self,
