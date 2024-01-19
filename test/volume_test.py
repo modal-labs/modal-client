@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import io
 import pytest
+from pathlib import Path
 from unittest import mock
 
 import modal
@@ -228,7 +229,7 @@ async def test_volume_put_file_timeout(client, tmp_path, servicer, blob_server, 
 
 
 @pytest.mark.asyncio
-async def test_volume_copy(client, tmp_path, servicer, blob_server, *args):
+async def test_volume_copy(client, tmp_path, servicer):
     # setup
     stub = modal.Stub()
     stub.vol = modal.Volume.new()
@@ -236,7 +237,7 @@ async def test_volume_copy(client, tmp_path, servicer, blob_server, *args):
     ## test 1: copy src path to dst path ##
     src_path = "original.txt"
     dst_path = "copied.txt"
-    local_file_path = tmp_path / src_path
+    local_file_path = tmp_path / Path(src_path)
     local_file_path.write_text("test copy")
 
     with stub.run(client=client):
@@ -257,7 +258,7 @@ async def test_volume_copy(client, tmp_path, servicer, blob_server, *args):
 
     with stub.run(client=client):
         for file_path in file_paths:
-            local_file_path = tmp_path / file_path
+            local_file_path = tmp_path / Path(file_path)
             local_file_path.write_text("test copy")
             await stub.vol._add_local_file.aio(local_file_path, file_path)
             object_id = stub.vol.object_id
