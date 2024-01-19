@@ -10,7 +10,7 @@ import pytest_asyncio
 from modal._function_utils import FunctionInfo
 
 from . import helpers
-from .supports.skip import skip_windows, skip_windows_unix_socket
+from .supports.skip import skip_windows
 
 
 @pytest.fixture
@@ -49,20 +49,9 @@ async def env_mount_files():
     return filenames
 
 
-def test_mounted_files_script(supports_dir, env_mount_files):
-    p = subprocess.run(
-        [sys.executable, str(script_path)],
-        capture_output=True,
-        cwd=supports_dir,
-        env={**os.environ, "PYTHONPATH": str(supports_dir)},
-    )
-
-    stdout = p.stdout.decode("utf-8")
-    stderr = p.stderr.decode("utf-8")
-    print("stdout: ", stdout)
-    print("stderr: ", stderr)
-    assert p.returncode == 0
-    files = set(stdout.splitlines()).difference(env_mount_files)
+def test_mounted_files_script(servicer, supports_dir, env_mount_files, server_url_env):
+    helpers.deploy_stub_externally(servicer, script_path, cwd=supports_dir)
+    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
@@ -79,19 +68,9 @@ def test_mounted_files_script(supports_dir, env_mount_files):
 serialized_fn_path = "pkg_a/serialized_fn.py"
 
 
-def test_mounted_files_serialized(supports_dir, env_mount_files):
-    p = subprocess.run(
-        [sys.executable, str(serialized_fn_path)],
-        capture_output=True,
-        cwd=supports_dir,
-        env={**os.environ, "PYTHONPATH": str(supports_dir)},
-    )
-    assert p.returncode == 0
-    stdout = p.stdout.decode("utf-8")
-    stderr = p.stderr.decode("utf-8")
-    print("stdout: ", stdout)
-    print("stderr: ", stderr)
-    files = set(stdout.splitlines()).difference(env_mount_files)
+def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, server_url_env):
+    helpers.deploy_stub_externally(servicer, serialized_fn_path, cwd=supports_dir)
+    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
@@ -106,7 +85,7 @@ def test_mounted_files_serialized(supports_dir, env_mount_files):
 
 
 def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_url_env):
-    p = subprocess.run(["modal", "run", "pkg_a.package"], cwd=supports_dir, capture_output=True)
+    p = subprocess.run(["modal", "run", "pkg_a.package"], cwd=supports_dir)
     assert p.returncode == 0
 
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
@@ -126,9 +105,14 @@ def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_u
     }
 
 
-def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servicer, server_url_env, monkeypatch):
-    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
-    p = subprocess.run(["modal", "run", "pkg_a.package"], cwd=supports_dir, capture_output=True)
+def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servicer, server_url_env):
+    # when triggered like a module, the target module should be put at the correct package path
+    p = subprocess.run(
+        ["modal", "run", "pkg_a.package"],
+        cwd=supports_dir,
+        capture_output=True,
+        env={**os.environ, "MODAL_AUTOMOUNT": "0"},
+    )
     assert p.returncode == 0
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
     assert files == {
@@ -138,21 +122,13 @@ def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servi
 
 
 @skip_windows("venvs behave differently on Windows.")
-def test_mounted_files_sys_prefix(supports_dir, venv_path, env_mount_files):
+def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_files, server_url_env):
     # Run with venv activated, so it's on sys.prefix, and modal is dev-installed in the VM
-    p = subprocess.run(
-        [venv_path / "bin" / "python", script_path],
-        capture_output=True,
+    subprocess.run(
+        [venv_path / "bin" / "modal", "run", script_path],
         cwd=supports_dir,
-        env={**os.environ, "PYTHONPATH": str(supports_dir)},
     )
-    assert p.returncode == 0
-    stdout = p.stdout.decode("utf-8")
-    stderr = p.stderr.decode("utf-8")
-    print("stdout: ", stdout)
-    print("stderr: ", stderr)
-    files = set(stdout.splitlines()).difference(env_mount_files)
-
+    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
         "/root/a.py",
@@ -165,37 +141,30 @@ def test_mounted_files_sys_prefix(supports_dir, venv_path, env_mount_files):
     }
 
 
-def test_mounted_files_config(supports_dir, env_mount_files):
+def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_url_env):
     p = subprocess.run(
-        [sys.executable, str(script_path)],
-        capture_output=True,
-        cwd=supports_dir,
-        env={**os.environ, "PYTHONPATH": str(supports_dir), "MODAL_AUTOMOUNT": ""},
+        ["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={**os.environ, "MODAL_AUTOMOUNT": "0"}
     )
     assert p.returncode == 0
-    stdout = p.stdout.decode("utf-8")
-    stderr = p.stderr.decode("utf-8")
-    print("stdout: ", stdout)
-    print("stderr: ", stderr)
-    files = set(stdout.splitlines()).difference(env_mount_files)
-
-    # Assert just the script is there
-    assert files == {"/root/script.py"}
+    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
+    assert files == {
+        "/root/script.py",
+    }
 
 
-@skip_windows_unix_socket
-def test_e2e_modal_run_py_file_mounts(unix_servicer, test_dir):
-    helpers.deploy_stub_externally(unix_servicer, "hello.py", cwd=test_dir.parent / "modal_test_support")
-    assert len(unix_servicer.files_name2sha) == 1
-    assert unix_servicer.n_mounts == 1  # there should be a single mount
-    assert unix_servicer.n_mount_files == 1
-    assert "/root/hello.py" in unix_servicer.files_name2sha
+def test_e2e_modal_run_py_file_mounts(servicer, test_dir):
+    helpers.deploy_stub_externally(servicer, "hello.py", cwd=test_dir.parent / "modal_test_support")
+    # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
+    # assert len(servicer.files_name2sha) == 1
+    # assert servicer.n_mounts == 1  # there should be a single mount
+    # assert servicer.n_mount_files == 1
+    assert "/root/hello.py" in servicer.files_name2sha
 
 
-@skip_windows_unix_socket
-def test_e2e_modal_run_py_module_mounts(unix_servicer, test_dir):
-    helpers.deploy_stub_externally(unix_servicer, "hello", cwd=test_dir.parent / "modal_test_support")
-    assert len(unix_servicer.files_name2sha) == 1
-    assert unix_servicer.n_mounts == 1  # there should be a single mount
-    assert unix_servicer.n_mount_files == 1
-    assert "/root/hello.py" in unix_servicer.files_name2sha
+def test_e2e_modal_run_py_module_mounts(servicer, test_dir):
+    helpers.deploy_stub_externally(servicer, "hello", cwd=test_dir.parent / "modal_test_support")
+    # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
+    # assert len(servicer.files_name2sha) == 1
+    # assert servicer.n_mounts == 1  # there should be a single mount
+    # assert servicer.n_mount_files == 1
+    assert "/root/hello.py" in servicer.files_name2sha

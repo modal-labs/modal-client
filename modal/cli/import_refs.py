@@ -9,6 +9,7 @@ import dataclasses
 import importlib
 import inspect
 import sys
+from pathlib import Path
 from typing import Any, Optional, Union
 
 import click
@@ -46,9 +47,14 @@ DEFAULT_STUB_NAME = "stub"
 
 def import_file_or_module(file_or_module: str):
     if "" not in sys.path:
-        # This seems to happen when running from a CLI
-        sys.path.insert(0, "")
+        # When running from a CLI like `modal run`
+        # the current working directory isn't added to sys.path
+        # so we add it in order to make module path specification possible
+        sys.path.insert(0, "")  # "" means the current working directory
     if file_or_module.endswith(".py"):
+        # when using a script path, that scripts directory should also be on the path as it is with `python some/script.py`
+        sys.path.insert(0, str(Path(file_or_module).resolve().parent))
+
         module_name = inspect.getmodulename(file_or_module)
         # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
         spec = importlib.util.spec_from_file_location(module_name, file_or_module)
