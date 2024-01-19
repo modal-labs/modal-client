@@ -255,6 +255,8 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
 
     def _top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+        # Returns [(local_absolute_path, remote_path), ...] for all top level entries in the Mount
+        # used to deduplicate mounts added to a function
         res: List[Tuple[Path, PurePosixPath]] = []
         for entry in self.entries:
             res.extend(entry.top_level_paths())
@@ -554,6 +556,15 @@ class _MountCache:
         self.cache = {}
 
     def _cache_key(self, mount: _Mount) -> typing.FrozenSet[Tuple[Path, PurePosixPath]]:
+        # deduplicating using *top level paths only* at the moment
+        # TODO: look into ways of deduping based on *all* file paths
+        #   this would require the deduping to happen at a separate
+        #   location from the mount definition, since that typically
+        #   happens in global scope, and we don't want to make module
+        #   load slower
+        # A known issue with only using top level paths is that if
+        # two different mounts add the same directory, but with different
+        # mount conditions/filters, only the first one will ever be included
         return frozenset(mount._top_level_paths())
 
     def get(self, mount: _Mount) -> _Mount:
