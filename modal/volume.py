@@ -3,7 +3,7 @@ import asyncio
 import time
 from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
-from typing import IO, AsyncIterator, List, Optional, Union
+from typing import IO, AsyncIterator, List, Optional, Sequence, Union
 
 from grpclib import GRPCError, Status
 
@@ -342,7 +342,7 @@ class _Volume(_StatefulObject, type_prefix="vo"):
         )
 
     @live_method
-    async def copy_files(self, src_paths: List[Union[str, bytes]], dst_path: Union[str, bytes]) -> None:
+    async def copy_files(self, src_paths: Sequence[Union[str, bytes]], dst_path: Union[str, bytes]) -> None:
         """
         Copy files within the volume from src_paths to dst_path.
         """
