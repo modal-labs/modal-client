@@ -274,5 +274,8 @@ async def test_volume_copy(client, tmp_path, servicer):
 
     assert returned_volume_files == expected_volume_files
 
-    # assert servicer.volume_files[object_id]["test_dir/file1.txt"].data == b"test copy"
-    # assert servicer.volume_files[object_id]["test_dir/file2.txt"].data == b"test copy"
+    returned_file_data = {
+        Path(entry): servicer.volume_files[object_id][entry] for entry in servicer.volume_files[object_id]
+    }
+    assert returned_file_data[Path("test_dir/file1.txt")].data == b"test copy"
+    assert returned_file_data[Path("test_dir/file2.txt")].data == b"test copy"
