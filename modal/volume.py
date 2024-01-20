@@ -3,7 +3,7 @@ import asyncio
 import time
 from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
-from typing import IO, AsyncIterator, List, Optional, Union
+from typing import IO, AsyncIterator, List, Optional, Sequence, Union
 
 from grpclib import GRPCError, Status
 
@@ -340,6 +340,19 @@ class _Volume(_StatefulObject, type_prefix="vo"):
             sha256_hex=file_spec.sha256_hex,
             mode=file_spec.mode,
         )
+
+    @live_method
+    async def copy_files(self, src_paths: Sequence[Union[str, bytes]], dst_path: Union[str, bytes]) -> None:
+        """
+        Copy files within the volume from src_paths to dst_path.
+        The semantics of the copy operation follow those of the UNIX cp command.
+        """
+        src_paths = [path.encode("utf-8") for path in src_paths if isinstance(path, str)]
+        if isinstance(dst_path, str):
+            dst_path = dst_path.encode("utf-8")
+
+        request = api_pb2.VolumeCopyFilesRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
+        await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
 
 
 Volume = synchronize_api(_Volume)
