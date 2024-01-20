@@ -79,10 +79,14 @@ def test_config_store_user(servicer):
     assert config["token_id"] == "foo"
     assert config["token_secret"] == "bar1"
 
-    # Check that we can get the prof_1 env creds too
+    # Check that we can get the prof_2 env creds too
     config = _get_config(env={"MODAL_PROFILE": "prof_2", **env})
     assert config["token_id"] == "foo"
     assert config["token_secret"] == "bar2"
+
+    # Check that an empty string falls back to the active profile
+    config = _get_config(env={"MODAL_PROFILE": "", **env})
+    assert config["token_secret"] == "xyz"
 
     os.remove(t.name)
 
