@@ -266,11 +266,13 @@ async def rm(
         raise
 
 
-@volume_cli.command(name="cp", help="Copy a file within a volume.")
+@volume_cli.command(
+    name="cp", help="Copy source file to destination file or multiple source files to destination directory."
+)
 @synchronizer.create_blocking
 async def cp(
     volume_name: str,
-    paths: List[str],  # accepts multiple paths
+    paths: List[str],  # accepts multiple paths, last path is treated as destination path
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)

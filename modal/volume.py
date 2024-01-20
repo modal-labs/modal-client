@@ -345,6 +345,7 @@ class _Volume(_StatefulObject, type_prefix="vo"):
     async def copy_files(self, src_paths: Sequence[Union[str, bytes]], dst_path: Union[str, bytes]) -> None:
         """
         Copy files within the volume from src_paths to dst_path.
+        The semantics of the copy operation follow those of the UNIX cp command.
         """
         src_paths = [path.encode("utf-8") for path in src_paths if isinstance(path, str)]
         if isinstance(dst_path, str):

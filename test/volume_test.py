@@ -265,8 +265,6 @@ async def test_volume_copy(client, tmp_path, servicer):
 
         stub.vol.copy_files(file_paths, "test_dir")
 
-    print(servicer.volume_files[object_id].keys())
-
     returned_volume_files = [Path(file) for file in servicer.volume_files[object_id].keys()]
     expected_volume_files = [
         Path(file) for file in ["file1.txt", "file2.txt", "test_dir/file1.txt", "test_dir/file2.txt"]
