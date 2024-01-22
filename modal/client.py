@@ -4,7 +4,7 @@ import platform
 import warnings
 from typing import Awaitable, Callable, Dict, Optional, Tuple
 
-from aiohttp import ClientConnectorError, ClientResponseError
+from aiohttp import ClientConnectorError, ClientResponseError, ClientSession
 from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 
@@ -102,6 +102,7 @@ class _Client:
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel = None
         self._stub: Optional[api_grpc.ModalClientStub] = None
+        self._http_session: Optional[ClientSession] = None
 
     @property
     def stub(self) -> Optional[api_grpc.ModalClientStub]:
@@ -117,6 +118,8 @@ class _Client:
             inject_tracing_context=inject_tracing_context,
         )
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
+        # todo(nathan): when is timeout not none?
+        self._http_session = await http_client_with_tls(timeout=None).__aenter__()
 
     async def _close(self):
         if self._pre_stop is not None:
@@ -128,6 +131,7 @@ class _Client:
 
         # Remove cached client.
         self.set_env_client(None)
+        await self._http_session.__aexit__(None, None, None)
 
     def set_pre_stop(self, pre_stop: Callable[[], Awaitable[None]]):
         """mdmd:hidden"""

@@ -117,50 +117,56 @@ async def _upload_to_s3_url(
     payload: BytesIOSegmentPayload,
     content_md5_b64: Optional[str] = None,
     content_type: Optional[str] = "application/octet-stream",  # set to None to force omission of ContentType header
+    session=None,
 ) -> str:
     """Returns etag of s3 object which is a md5 hex checksum of the uploaded content"""
+
+    async def upload(session):
+        headers = {}
+        if content_md5_b64 and use_md5(upload_url):
+            headers["Content-MD5"] = content_md5_b64
+        if content_type:
+            headers["Content-Type"] = content_type
+
+        async with session.put(
+            upload_url,
+            data=payload,
+            headers=headers,
+            skip_auto_headers=["content-type"] if content_type is None else [],
+        ) as resp:
+            # S3 signal to slow down request rate.
+            if resp.status == 503:
+                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+                await asyncio.sleep(1)
+
+            if resp.status != 200:
+                try:
+                    text = await resp.text()
+                except Exception:
+                    text = "<no body>"
+                raise ExecutionError(f"Put to url {upload_url} failed with status {resp.status}: {text}")
+
+            # client side ETag checksum verification
+            # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
+            etag = resp.headers["ETag"].strip()
+            if etag.startswith(("W/", "w/")):  # see https://www.rfc-editor.org/rfc/rfc7232#section-2.3
+                etag = etag[2:]
+            if etag[0] == '"' and etag[-1] == '"':
+                etag = etag[1:-1]
+            remote_md5 = etag
+
+            local_md5_hex = payload.md5_checksum().hexdigest()
+            if local_md5_hex != remote_md5:
+                raise ExecutionError(f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})")
+
+            return remote_md5
+
     with payload.reset_on_error():  # ensure retries read the same data
-        async with http_client_with_tls(timeout=None) as session:
-            headers = {}
-            if content_md5_b64 and use_md5(upload_url):
-                headers["Content-MD5"] = content_md5_b64
-            if content_type:
-                headers["Content-Type"] = content_type
-
-            async with session.put(
-                upload_url,
-                data=payload,
-                headers=headers,
-                skip_auto_headers=["content-type"] if content_type is None else [],
-            ) as resp:
-                # S3 signal to slow down request rate.
-                if resp.status == 503:
-                    logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
-                    await asyncio.sleep(1)
-
-                if resp.status != 200:
-                    try:
-                        text = await resp.text()
-                    except Exception:
-                        text = "<no body>"
-                    raise ExecutionError(f"Put to url {upload_url} failed with status {resp.status}: {text}")
-
-                # client side ETag checksum verification
-                # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
-                etag = resp.headers["ETag"].strip()
-                if etag.startswith(("W/", "w/")):  # see https://www.rfc-editor.org/rfc/rfc7232#section-2.3
-                    etag = etag[2:]
-                if etag[0] == '"' and etag[-1] == '"':
-                    etag = etag[1:-1]
-                remote_md5 = etag
-
-                local_md5_hex = payload.md5_checksum().hexdigest()
-                if local_md5_hex != remote_md5:
-                    raise ExecutionError(
-                        f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})"
-                    )
-
-                return remote_md5
+        if session is None:
+            async with http_client_with_tls(timeout=None) as session:
+                await upload(session)
+        else:
+            await upload(session)
 
 
 async def perform_multipart_upload(
@@ -224,7 +230,7 @@ def get_content_length(data: BinaryIO):
     return content_length - pos
 
 
-async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub) -> str:
+async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub, session=None) -> str:
     if isinstance(data, bytes):
         data = io.BytesIO(data)
 
@@ -255,17 +261,18 @@ async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO]
             payload,
             # for single part uploads, we use server side md5 checksums
             content_md5_b64=upload_hashes.md5_base64,
+            session=None,
         )
 
     return blob_id
 
 
-async def blob_upload(payload: bytes, stub) -> str:
+async def blob_upload(payload: bytes, stub, session=None) -> str:
     if isinstance(payload, str):
         logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
     upload_hashes = get_upload_hashes(payload)
-    return await _blob_upload(upload_hashes, payload, stub)
+    return await _blob_upload(upload_hashes, payload, stub, session=None)
 
 
 async def blob_upload_file(file_obj: BinaryIO, stub) -> str:
