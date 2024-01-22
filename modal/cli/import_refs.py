@@ -47,27 +47,15 @@ DEFAULT_STUB_NAME = "stub"
 
 def import_file_or_module(file_or_module: str):
     if "" not in sys.path:
-        # This seems to happen when running from a CLI
-        sys.path.insert(0, "")
+        # When running from a CLI like `modal run`
+        # the current working directory isn't added to sys.path
+        # so we add it in order to make module path specification possible
+        sys.path.insert(0, "")  # "" means the current working directory
     if file_or_module.endswith(".py"):
-        # walk to the closest python package in the path and add that to the path
-        # before importing, in case of imports etc. of other modules in that package
-        # are needed
+        # when using a script path, that scripts directory should also be on the path as it is with `python some/script.py`
+        sys.path.insert(0, str(Path(file_or_module).resolve().parent))
 
-        # Let's first assume this is not part of any package
         module_name = inspect.getmodulename(file_or_module)
-
-        # Look for any __init__.py in a parent directory and maybe change the module name
-        directory = Path(file_or_module).parent
-        module_path = [inspect.getmodulename(file_or_module)]
-        while directory.parent != directory:
-            parent = directory.parent
-            module_path.append(directory.name)
-            if (directory / "__init__.py").exists():
-                # We identified a package, let's store a new module name
-                module_name = ".".join(reversed(module_path))
-            directory = parent
-
         # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
         spec = importlib.util.spec_from_file_location(module_name, file_or_module)
         module = importlib.util.module_from_spec(spec)

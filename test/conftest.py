@@ -90,6 +90,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_queues = 0
         self.n_mounts = 0
         self.n_mount_files = 0
+        self.mount_contents = {}
         self.files_name2sha = {}
         self.files_sha2data = {}
         self.function_id_for_function_call = {}
@@ -671,10 +672,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def MountBuild(self, stream):
         request: api_pb2.MountBuildRequest = await stream.recv_message()
+        mount_number = 123 + self.n_mounts
+        mount_id = f"mo-{mount_number}"
+
+        mount_content = self.mount_contents[mount_id] = {}
+
         for file in request.files:
-            self.files_name2sha[file.filename] = file.sha256_hex
+            mount_content[file.filename] = self.files_name2sha[file.filename] = file.sha256_hex
+
         self.n_mounts += 1
-        await stream.send_message(api_pb2.MountBuildResponse(mount_id="mo-123"))
+        await stream.send_message(api_pb2.MountBuildResponse(mount_id=mount_id))
 
     ### Queue
 
