@@ -148,7 +148,6 @@ _SETTINGS = {
     "serve_timeout": _Setting(transform=float),
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
-    "outputs_timeout": _Setting(55.0, float),
     "image_python_version": _Setting(),
     "image_id": _Setting(),
     "automount": _Setting(True, transform=lambda x: x not in ("", "0")),

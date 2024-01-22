@@ -60,8 +60,7 @@ class ChannelPool(grpclib.client.Channel):
     """Use multiple channels under the hood. A drop-in replacement for the grpclib Channel.
 
     The main reason is to get around limitations with TCP connections over the internet,
-    in particular idle timeouts, but also the fact that ALBs in AWS limits the number of
-    streams per connection to 128.
+    in particular idle timeouts.
 
     The algorithm is very simple. It reuses the last subchannel as long as it has had less
     than 64 requests or if it was created less than 30s ago. It closes any subchannel that
