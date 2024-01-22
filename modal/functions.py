@@ -730,7 +730,8 @@ class _Function(_Object, type_prefix="fu"):
             objs: list[Object] = get_referred_objects(info.raw_f)
             _objs: list[_Object] = synchronizer._translate_in(objs)
             deps += _objs
-
+            for dep in deps:
+                assert dep.object_id
             return deps
 
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):

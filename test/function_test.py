@@ -8,7 +8,7 @@ import typing
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
-from modal import Image, NetworkFileSystem, Proxy, Stub, web_endpoint
+from modal import Image, Mount, NetworkFileSystem, Proxy, Stub, web_endpoint
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub
@@ -699,3 +699,16 @@ def test_interactive_mode():
         stub.function(image=Image.debian_slim(), interactive=True)(later_gen)
 
     stub.function(image=Image.debian_slim(), interactive=True)(interact_wit_me)
+
+
+def test_mount_deps_have_ids(client, servicer, monkeypatch, test_dir):
+    monkeypatch.syspath_prepend(test_dir / "supports")
+    stub = Stub()
+    stub.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
+
+    with servicer.intercept() as ctx:
+        with stub.run(client=client):
+            pass
+
+    function_create = ctx.pop_request("FunctionCreate")
+    print(function_create)
