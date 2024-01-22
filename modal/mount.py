@@ -396,7 +396,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
 
     @staticmethod
     def from_local_python_packages(
-        *module_names: str, remote_dir: Union[str, PurePosixPath] = str(ROOT_DIR)
+        *module_names: str, remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix()
     ) -> "_Mount":
         """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
         This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
