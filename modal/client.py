@@ -168,7 +168,11 @@ class _Client:
     async def __aenter__(self):
         await self._open()
         if not self.no_verify:
-            await self._verify()
+            try:
+                await self._verify()
+            except BaseException:
+                self._close()
+                raise
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
