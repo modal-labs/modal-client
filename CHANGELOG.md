@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4693 (2024-01-22)
+
+You can now execute commands in running containers with `modal container exec [container-id] [command]`.
+
+
+
 ### 0.56.4691 (2024-01-22)
 
 * The `modal` cli now works more like the `python` cli in regard to script/module loading:
