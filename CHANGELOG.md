@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4700 (2024-01-22)
+
+- `gpu.A100` class now supports specifying GiB memory configuration using a `size: str` parameter. The `memory: int` parameter is deprecated.
+
+
+
 ### 0.56.4693 (2024-01-22)
 
 You can now execute commands in running containers with `modal container exec [container-id] [command]`.
