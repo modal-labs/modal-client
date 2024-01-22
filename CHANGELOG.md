@@ -10,6 +10,14 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4691 (2024-01-22)
+
+* The `modal` cli now works more like the `python` cli in regard to script/module loading:
+    - Running `modal my_dir/my_script.py` now puts `my_dir` on the PYTHONPATH.
+    - `modal my_package.my_module` will now mount to /root/my_package/my_module.py in your Modal container, regardless if using automounting or not (and any intermediary `__init__.py` files will also be mounted)
+
+
+
 ### 0.56.4687 (2024-01-20)
 
 - Modal now uses the current profile if `MODAL_PROFILE` is set to the empty string.
