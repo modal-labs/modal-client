@@ -1681,6 +1681,7 @@ message VolumeCopyFilesRequest {
   string volume_id = 1;
   repeated bytes src_paths = 2;
   bytes dst_path = 3;
+  bool recursive = 4;
 }
 
 message VolumeMount {
