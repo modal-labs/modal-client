@@ -186,7 +186,7 @@ class FunctionInfo:
         f_globals = {k: func.__globals__[k] for k in f_globals_ref if k in func.__globals__}
         return f_globals
 
-    def get_main_mounts(self) -> List[_Mount]:
+    def get_entrypoint_mount(self) -> List[_Mount]:
         """
         Includes:
         * Implicit mount of the function itself (the module or package that the function is part of)

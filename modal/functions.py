@@ -495,28 +495,6 @@ class FunctionStats:
     num_total_runners: int
 
 
-def _get_function_mounts(
-    function_info: FunctionInfo,
-    explicit_mounts: Collection[_Mount] = (),
-    mount_cache: Optional[_MountCache] = None,
-    *,
-    include_client_mount: bool = True,
-) -> List[_Mount]:
-    if mount_cache is None:
-        mount_cache = _MountCache()
-
-    all_mounts = [
-        *([_get_client_mount()] if include_client_mount else []),
-        *mount_cache.get_many(function_info.get_main_mounts()),
-        *mount_cache.get_many(explicit_mounts),
-    ]
-
-    if config.get("automount"):
-        all_mounts += mount_cache.get_many(function_info.get_auto_mounts())
-
-    return all_mounts
-
-
 def _parse_retries(
     retries: Optional[Union[int, Retries]],
     raw_f: Optional[Callable] = None,
@@ -628,9 +606,21 @@ class _Function(_Object, type_prefix="fu"):
         elif interactive and is_generator:
             raise InvalidError("Interactive mode not supported for generator functions")
 
+        mount_cache = stub._mount_cache if stub else _MountCache()
+        explicit_mounts = mount_cache.get_many(mounts)
+
         if is_local():
-            all_mounts = _get_function_mounts(info, mounts, stub._mount_cache if stub else None)
+            all_mounts = [
+                _get_client_mount(),
+                *mount_cache.get_many(info.get_entrypoint_mount()),
+                *explicit_mounts,
+            ]
+
+            if config.get("automount"):
+                all_mounts += mount_cache.get_many(info.get_auto_mounts())
         else:
+            # skip any mount introspection/logic inside containers, since the function
+            # should already be hydrated
             # TODO: maybe the entire constructor should be exited early if not local?
             all_mounts = []
 
@@ -713,8 +703,12 @@ class _Function(_Object, type_prefix="fu"):
             if only_explicit_mounts:
                 # TODO: this is a bit hacky, but all_mounts may differ in the container vs locally
                 # We don't want the function dependencies to change, so we have this way to force it to
-                # only include its declared dependencies
-                deps += list(mounts)
+                # only include its declared dependencies.
+                # Only objects that need interaction within a user's container actually need to be
+                # included when only_explicit_mounts=True, so omitting auto mounts here
+                # wouldn't be a problem as long as Mounts are "passive" and only loaded by the
+                # worker runtime
+                deps += list(explicit_mounts)
             else:
                 deps += list(all_mounts)
             if proxy:
@@ -730,8 +724,9 @@ class _Function(_Object, type_prefix="fu"):
             objs: list[Object] = get_referred_objects(info.raw_f)
             _objs: list[_Object] = synchronizer._translate_in(objs)
             deps += _objs
-            for dep in deps:
-                assert dep.object_id
+            # for dep in deps:
+            #     if only_explicit_mounts and not dep.object_id:
+            #         raise RuntimeError(f"a {type(dep)} function dependency hasn't been properly loaded by Modal. Please contact support@modal.com")
             return deps
 
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -812,7 +807,6 @@ class _Function(_Object, type_prefix="fu"):
                 )
                 for path, volume in validated_volumes
             ]
-
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name,
