@@ -71,12 +71,17 @@ def _dockerhub_python_version(python_version=None):
     return python_version
 
 
-def _get_client_requirements_path():
+def _get_client_requirements_path(python_version: Optional[str] = None) -> str:
     # Locate Modal client requirements.txt
     import modal
 
     modal_path = modal.__path__[0]
-    return os.path.join(modal_path, "requirements.txt")
+    if python_version is None:
+        major, minor, *_ = sys.version_info
+    else:
+        major, minor, *_ = python_version.split(".")
+    suffix = {(3, 12): ".312"}.get((int(major), int(minor)), "")
+    return os.path.join(modal_path, f"requirements{suffix}.txt")
 
 
 def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, List[str]], ...]) -> List[str]:
@@ -771,7 +776,7 @@ class _Image(_Object, type_prefix="im"):
         In most cases, using [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install) is recommended over `Image.conda()`, as it leads to significantly faster image build times.
         """
         _validate_python_version(python_version)
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(python_version)
         # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
         # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
         conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
@@ -1006,7 +1011,7 @@ class _Image(_Object, type_prefix="im"):
         modal.Image.from_registry("alpine:3.18.3", add_python="3.12-musl")
         ```
         """
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(add_python)
         dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, add_python)
 
         context_mount = None
@@ -1160,7 +1165,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(add_python)
 
         context_mount = None
         add_python_commands = []
@@ -1196,7 +1201,7 @@ class _Image(_Object, type_prefix="im"):
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
         python_version = _dockerhub_python_version(python_version)
 
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(python_version)
         dockerfile_commands = [
             f"FROM python:{python_version}-slim-bullseye",
             "COPY /modal_requirements.txt /modal_requirements.txt",

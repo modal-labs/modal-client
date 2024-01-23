@@ -1,14 +1,12 @@
 # Pins Modal dependencies installed within the container runtime.
-aiohttp==3.8.3
+aiohttp==3.9.1
 aiostream==0.4.4
 asgiref==3.5.2
 certifi>=2022.12.07
-cloudpickle==2.0.0;python_version<'3.11'
-cloudpickle==2.2.0;python_version>='3.11'
-ddtrace==1.5.2;python_version<'3.11'
+cloudpickle==2.2.0
 fastapi==0.88.0
 fastprogress==1.0.0
-grpclib==0.4.3
+grpclib==0.4.7
 importlib_metadata==4.8.1
 ipython>=7.34.0
 protobuf>=3.19.0
