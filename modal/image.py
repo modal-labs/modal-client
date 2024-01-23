@@ -79,7 +79,7 @@ def _get_client_requirements_path(python_version: Optional[str] = None) -> str:
     if python_version is None:
         major, minor, *_ = sys.version_info
     else:
-        major, minor, *_ = python_version.split(".")
+        major, minor = python_version.split("-")[0].split(".")[:2]
     suffix = {(3, 12): ".312"}.get((int(major), int(minor)), "")
     return os.path.join(modal_path, f"requirements{suffix}.txt")
 
