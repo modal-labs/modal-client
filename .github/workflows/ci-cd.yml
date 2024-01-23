@@ -65,6 +65,14 @@ jobs:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         image-name: ["debian_slim", "conda", "micromamba"]
+        exclude:
+          # Exclude base images that currently fail to build becasue multidict,
+          # a transitive dependency, has not published wheels for Python 3.12:
+          # https://github.com/aio-libs/multidict/issues/887
+          - python-version: 3.12
+            image-name: conda
+          - python-version: 3.12
+            image-name: micromamba
 
     steps:
       - uses: actions/checkout@v3
