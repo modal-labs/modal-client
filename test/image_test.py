@@ -9,7 +9,7 @@ from unittest import mock
 
 from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu, method
 from modal.exception import DeprecationError, InvalidError, NotFoundError
-from modal.image import _dockerhub_python_version
+from modal.image import _dockerhub_python_version, _get_client_requirements_path
 from modal_proto import api_pb2
 
 
@@ -557,3 +557,16 @@ def test_inside_ctx_hydrated(client):
         # We're not inside this image so this should be swallowed
         with image_2.imports():
             raise ImportError("bar")
+
+
+@pytest.mark.parametrize(
+    "version,expected",
+    [
+        ("3.12", "requirements.312.txt"),
+        ("3.12.1", "requirements.312.txt"),
+        ("3.12.1-gnu", "requirements.312.txt"),
+    ],
+)
+def test_get_client_requirements_path(version, expected):
+    path = _get_client_requirements_path(version)
+    assert os.path.basename(path) == expected
