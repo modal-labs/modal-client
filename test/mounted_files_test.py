@@ -74,11 +74,10 @@ def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, serve
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
-        # TODO: arguably a.py and b/* should both mounted under pkg_a, but then we need to also change how the modal stub file is mounted and loaded too
-        # should serialized_fn be included?
-        "/root/b/c.py",
-        "/root/b/e.py",
-        "/root/a.py",
+        "/root/serialized_fn.py",  # should serialized_fn be included? It's not needed to run the function, but it's loaded into sys.modules at definition time...
+        "/root/b/c.py",  # this is mounted under root since it's imported as `import b` and not `import pkg_a.b` from serialized_fn.py
+        "/root/b/e.py",  # same as above
+        "/root/a.py",  # same as above
         "/root/pkg_b/__init__.py",
         "/root/pkg_b/f.py",
         "/root/pkg_b/g/h.py",

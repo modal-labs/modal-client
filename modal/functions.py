@@ -611,14 +611,16 @@ class _Function(_Object, type_prefix="fu"):
         explicit_mounts = mount_cache.get_many(mounts)
 
         if is_local():
+            entrypoint_mounts = mount_cache.get_many(info.get_entrypoint_mount())
             all_mounts = [
                 _get_client_mount(),
                 *explicit_mounts,
-                *mount_cache.get_many(info.get_entrypoint_mount()),
+                *entrypoint_mounts,
             ]
 
             if config.get("automount"):
-                all_mounts += mount_cache.get_many(info.get_auto_mounts())
+                automounts = mount_cache.get_many(info.get_auto_mounts())
+                all_mounts += automounts
         else:
             # skip any mount introspection/logic inside containers, since the function
             # should already be hydrated
