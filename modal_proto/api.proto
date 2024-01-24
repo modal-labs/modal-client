@@ -1712,7 +1712,7 @@ message RuntimeOutputMessage {
 }
 
 message RuntimeOutputBatch {
-  int32 batch_index = 1; 
+  uint64 batch_index = 1; 
   repeated RuntimeOutputMessage items = 2;
   bool eof = 3;
 }
