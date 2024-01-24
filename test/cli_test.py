@@ -526,3 +526,11 @@ def test_cls(servicer, set_env_client, test_dir):
 
     _run(["run", stub_file.as_posix(), "--x", "42", "--y", "1000"])
     _run(["run", f"{stub_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"])
+
+
+def test_profile_list(servicer, server_url_env):
+    res = _run(["profile", "list"])
+    assert "Profile" in res.stdout
+    assert "Workspace" in res.stdout
+    assert "test-workspace" in res.stdout
+    print(res.stdout)

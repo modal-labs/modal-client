@@ -79,6 +79,7 @@ from datetime import date
 
 import toml
 
+from modal_proto import api_pb2
 from modal_utils.logger import configure_logger
 
 from .exception import deprecation_error
@@ -97,6 +98,16 @@ def _read_user_config():
 
 
 _user_config = _read_user_config()
+
+
+async def _lookup_workspace(config: "Config", profile: str) -> api_pb2.TokenWorkspaceLookupResponse:
+    from .client import _Client
+
+    server_url = config.get("server_url", profile)
+    credentials = (config.get("token_id", profile), config.get("token_secret", profile))
+    async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
+        req = api_pb2.TokenWorkspaceLookupRequest(token_id=config.get("token_id", profile))
+        return await client.stub.TokenWorkspaceLookup(req)
 
 
 def config_profiles():
