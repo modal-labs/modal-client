@@ -28,6 +28,7 @@ from .config import config, logger
 from .exception import NotFoundError
 from .object import _StatefulObject
 
+ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
 # Supported releases and versions for python-build-standalone.
@@ -395,7 +396,9 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         provider._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
 
     @staticmethod
-    def from_local_python_packages(*module_names: str) -> "_Mount":
+    def from_local_python_packages(
+        *module_names: str, remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix()
+    ) -> "_Mount":
         """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
         This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
 
@@ -422,6 +425,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         if not is_local():
             return mount
 
+        remote_dir = PurePosixPath(remote_dir)
         for module_name in module_names:
             mount_infos = get_module_mount_info(module_name)
 
@@ -433,12 +437,12 @@ class _Mount(_StatefulObject, type_prefix="mo"):
                 if is_package:
                     mount = mount.add_local_dir(
                         base_path,
-                        remote_path=f"/pkg/{module_name}",
+                        remote_path=remote_dir / module_name,
                         condition=module_mount_condition,
                         recursive=True,
                     )
                 else:
-                    remote_path = PurePosixPath("/pkg") / Path(base_path).name
+                    remote_path = remote_dir / Path(base_path).name
                     mount = mount.add_local_file(
                         base_path,
                         remote_path=remote_path,
