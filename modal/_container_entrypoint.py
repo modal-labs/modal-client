@@ -452,7 +452,7 @@ class _FunctionIOManager:
             logger.debug(f"Waiting for restore (elapsed={time.perf_counter() - start:.3f}s)")
             await asyncio.sleep(0.01)
             continue
-            
+
         logger.debug(f"Container restored.")
 
         # Look for state file and create new client with updated credentials.
