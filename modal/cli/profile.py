@@ -18,16 +18,16 @@ def activate(profile: str = typer.Argument(..., help="Modal profile to activate.
     config_set_active_profile(profile)
 
 
-@profile_cli.command(help="Print the active Modal profile.")
+@profile_cli.command(help="Print the currently active Modal profile.")
 def current():
     typer.echo(_profile)
 
 
-@profile_cli.command(name="list", help="Show all Modal profiles that are defined.")
+@profile_cli.command(name="list", help="Show all Modal profiles and highlight the active one.")
 @synchronizer.create_blocking
 async def list(json: Optional[bool] = False):
     config = Config()
-    column_names = ["", "Profile", "Workspace"]
+    column_names = [" ", "Profile", "Workspace"]
     rows = []
     for profile in config_profiles():
         try:
@@ -37,10 +37,13 @@ async def list(json: Optional[bool] = False):
             workspace = "Unknown (authentication failed)"
         except Exception:
             workspace = "Unknown (profile misconfigured)"
-        rows.append(["*" if profile == _profile else "", profile, workspace])
+        active = profile == _profile
+        content = ["*" if active else "", profile, workspace]
+        style = "green" if active else "dim"
+        rows.append((content, style))
 
     console = Console()
     table = Table(*column_names)
-    for row in rows:
-        table.add_row(*row, style="green" if row[0] == "*" else "dim")
+    for (content, style) in rows:
+        table.add_row(*content, style=style)
     console.print(table)
