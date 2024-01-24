@@ -267,17 +267,22 @@ async def rm(
 
 
 @volume_cli.command(
-    name="cp", help="Copy source file to destination file or multiple source files to destination directory."
+    name="cp",
+    help="Copy source file to destination file, multiple source files to destination directory, or recursive copy with -r flag.",
 )
 @synchronizer.create_blocking
 async def cp(
     volume_name: str,
     paths: List[str],  # accepts multiple paths, last path is treated as destination path
+    recursive: bool = Option(False, "-r", "--recursive", help="Copy directory recursively"),
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
     volume = await _Volume.lookup(volume_name, environment_name=env)
     if not isinstance(volume, _Volume):
         raise UsageError("The specified app entity is not a modal.Volume")
-    *src_paths, dst_path = paths
-    await volume.copy_files(src_paths, dst_path)
+    try:
+        *src_paths, dst_path = paths
+    except Exception:
+        raise UsageError("Not enough arguments provided")
+    await volume.copy_files(src_paths, dst_path, recursive=recursive)
