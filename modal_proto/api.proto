@@ -1571,6 +1571,17 @@ message TokenFlowWaitResponse {
   string workspace_username = 4;
 }
 
+
+message TokenWorkspaceLookupRequest{
+  string token_id = 1;
+}
+
+
+message TokenWorkspaceLookupResponse{
+  string workspace_name = 1;
+}
+
+
 message TunnelStartRequest {
   uint32 port = 1;
   bool unencrypted = 2;
@@ -1842,6 +1853,7 @@ service ModalClient {
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
   rpc TokenFlowWait(TokenFlowWaitRequest) returns (TokenFlowWaitResponse);
+  rpc TokenWorkspaceLookup(TokenWorkspaceLookupRequest) returns (TokenWorkspaceLookupResponse);
 
   // Tunnels
   rpc TunnelStart(TunnelStartRequest) returns (TunnelStartResponse);
