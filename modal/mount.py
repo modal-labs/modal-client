@@ -22,12 +22,13 @@ from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 from modal_version import __version__
 
-from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
+from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._resolver import Resolver
 from .config import config, logger
 from .exception import NotFoundError
 from .object import _StatefulObject
 
+ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
 # Supported releases and versions for python-build-standalone.
@@ -303,7 +304,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         with concurrent.futures.ThreadPoolExecutor() as exe:
             futs = []
             for local_filename, remote_filename in all_files:
-                futs.append(loop.run_in_executor(exe, get_file_upload_spec, local_filename, remote_filename))
+                futs.append(loop.run_in_executor(exe, get_file_upload_spec_from_path, local_filename, remote_filename))
 
             logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
             for fut in asyncio.as_completed(futs):
@@ -357,13 +358,15 @@ class _Mount(_StatefulObject, type_prefix="mo"):
             total_bytes += file_spec.size
 
             if file_spec.use_blob:
-                logger.debug(f"Creating blob file for {file_spec.filename} ({file_spec.size} bytes)")
-                with open(file_spec.filename, "rb") as fp:
+                logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
+                with file_spec.source() as fp:
                     blob_id = await blob_upload_file(fp, resolver.client.stub)
-                logger.debug(f"Uploading blob file {file_spec.filename} as {remote_filename}")
+                logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
-                logger.debug(f"Uploading file {file_spec.filename} to {remote_filename} ({file_spec.size} bytes)")
+                logger.debug(
+                    f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
+                )
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()
@@ -372,7 +375,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
                 if response.exists:
                     return mount_file
 
-            raise modal.exception.MountUploadTimeoutError(f"Mounting of {file_spec.filename} timed out")
+            raise modal.exception.MountUploadTimeoutError(f"Mounting of {file_spec.source_description} timed out")
 
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
@@ -395,7 +398,9 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         provider._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
 
     @staticmethod
-    def from_local_python_packages(*module_names: str) -> "_Mount":
+    def from_local_python_packages(
+        *module_names: str, remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix()
+    ) -> "_Mount":
         """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
         This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
 
@@ -422,6 +427,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         if not is_local():
             return mount
 
+        remote_dir = PurePosixPath(remote_dir)
         for module_name in module_names:
             mount_infos = get_module_mount_info(module_name)
 
@@ -433,12 +439,12 @@ class _Mount(_StatefulObject, type_prefix="mo"):
                 if is_package:
                     mount = mount.add_local_dir(
                         base_path,
-                        remote_path=f"/pkg/{module_name}",
+                        remote_path=remote_dir / module_name,
                         condition=module_mount_condition,
                         recursive=True,
                     )
                 else:
-                    remote_path = PurePosixPath("/pkg") / Path(base_path).name
+                    remote_path = remote_dir / Path(base_path).name
                     mount = mount.add_local_file(
                         base_path,
                         remote_path=remote_path,

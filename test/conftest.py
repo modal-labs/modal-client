@@ -42,6 +42,7 @@ from modal_utils.http_utils import run_temporary_http_server
 class VolumeFile:
     data: bytes
     data_blob_id: str
+    mode: int
 
 
 @patch_mock_servicer
@@ -886,7 +887,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for file in req.files:
             blob_data = self.files_sha2data[file.sha256_hex]
             self.volume_files[req.volume_id][file.filename] = VolumeFile(
-                data=blob_data["data"], data_blob_id=blob_data["data_blob_id"]
+                data=blob_data["data"],
+                data_blob_id=blob_data["data_blob_id"],
+                mode=file.mode,
             )
         await stream.send_message(Empty())
 

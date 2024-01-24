@@ -171,7 +171,7 @@ class _Client:
             try:
                 await self._verify()
             except BaseException:
-                self._close()
+                await self._close()
                 raise
         return self
 
