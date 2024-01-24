@@ -442,23 +442,33 @@ class _FunctionIOManager:
         self._waiting_for_checkpoint = True
         await self._client._close()
 
-        logger.debug("checkpointing request sent and connection closed")
+        logger.debug("Checkpointing request sent. Connection closed.")
 
         # Busy-wait for restore. `/opt/modal/restore-state.json` is created
         # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
+        start = time.perf_counter()
         while not restored_path.exists():
-            logger.debug("waiting for restore ...")
+            logger.debug(f"Waiting for restore (elapsed={time.perf_counter() - start:.3f}s)")
             await asyncio.sleep(0.01)
             continue
 
+        logger.debug("Container restored.")
+
         # Look for state file and create new client with updated credentials.
+        # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
         with restored_path.open("r") as file:
             restored_state = json.load(file)
 
-        # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
-        # Empty string indicates that value does not need to be updated.
+        # Local FunctionIOManager state.
+        for key in ["task_id", "function_id"]:
+            if value := restored_state.get(key):
+                logger.debug(f"Updating FunctionIOManager.{key} = {value}")
+                setattr(self, key, restored_state[key])
+
+        # Env vars and global state.
         for key, value in restored_state.items():
+            # Empty string indicates that value does not need to be updated.
             if value != "":
                 config.override_locally(key, value)
 
