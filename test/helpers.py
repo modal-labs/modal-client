@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import os
 import pathlib
 import subprocess
 import sys
@@ -11,7 +10,7 @@ def deploy_stub_externally(
 ):
     # deploys a stub from another interpreter to prevent leaking state from client into a container process (apart from what goes through the servicer)
     # also has the advantage that no modules imported by the test files themselves will be added to sys.modules and included in mounts etc.
-    env = {**os.environ, "MODAL_SERVER_URL": servicer.remote_addr, **env}
+    env = {"MODAL_SERVER_URL": servicer.remote_addr, **env}
     if cwd is None:
         cwd = pathlib.Path(__file__).parent.parent
 

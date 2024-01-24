@@ -168,3 +168,16 @@ def test_e2e_modal_run_py_module_mounts(servicer, test_dir):
     # assert servicer.n_mounts == 1  # there should be a single mount
     # assert servicer.n_mount_files == 1
     assert "/root/hello.py" in servicer.files_name2sha
+
+
+@pytest.mark.parametrize("use_explicit", ["0", "1"])
+def test_mount_dedupe(servicer, test_dir, server_url_env, use_explicit):
+    print(
+        helpers.deploy_stub_externally(
+            servicer, "mount_dedupe.py", cwd=test_dir / "supports", env={"USE_EXPLICIT": use_explicit}
+        )
+    )
+    assert servicer.n_mounts == 2
+    assert servicer.mount_contents["mo-123"].keys() == {"/root/mount_dedupe.py"}
+    for fn in servicer.mount_contents["mo-124"].keys():
+        assert fn.startswith("/root/pkg_a")

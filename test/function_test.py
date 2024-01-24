@@ -702,6 +702,8 @@ def test_interactive_mode():
 
 
 def test_mount_deps_have_ids(client, servicer, monkeypatch, test_dir):
+    # This test can possibly break if a function's deps diverge between
+    # local and remote environments
     monkeypatch.syspath_prepend(test_dir / "supports")
     stub = Stub()
     stub.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
@@ -711,4 +713,5 @@ def test_mount_deps_have_ids(client, servicer, monkeypatch, test_dir):
             pass
 
     function_create = ctx.pop_request("FunctionCreate")
-    print(function_create)
+    for dep in function_create.object_dependencies:
+        assert dep.object_id

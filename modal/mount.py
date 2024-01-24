@@ -155,6 +155,7 @@ class _MountedPythonModule(_MountEntry):
     # the Module
 
     module_name: str
+    remote_dir: Union[PurePosixPath, str] = ROOT_DIR
 
     def description(self) -> str:
         return f"PythonPackage:{self.module_name}"
@@ -502,7 +503,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         """
         if not is_local():
             return _Mount._from_entries()  # empty/non-mountable mount in case it's used from within a container
-        return _Mount._from_entries(*[_MountedPythonModule(module_name) for module_name in module_names])
+        return _Mount._from_entries(*[_MountedPythonModule(module_name, remote_dir) for module_name in module_names])
 
 
 Mount = synchronize_api(_Mount)
