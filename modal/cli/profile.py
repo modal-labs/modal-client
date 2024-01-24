@@ -4,6 +4,7 @@ from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.json import JSON
 from rich.table import Table
 
 from modal.config import Config, _lookup_workspace, _profile, config_profiles, config_set_active_profile
@@ -43,7 +44,14 @@ async def list(json: Optional[bool] = False):
         rows.append((content, style))
 
     console = Console()
-    table = Table(*column_names)
-    for (content, style) in rows:
-        table.add_row(*content, style=style)
-    console.print(table)
+
+    if json:
+        json_data = []
+        for content, _ in rows:
+            json_data.append({"name": content[1], "active": content[0] == "*", "workspace": content[2]})
+        console.print(JSON.from_data(json_data))
+    else:
+        table = Table(*column_names)
+        for (content, style) in rows:
+            table.add_row(*content, style=style)
+        console.print(table)

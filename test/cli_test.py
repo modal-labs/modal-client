@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022-2023
+import json
 import os
 import pytest
 import sys
@@ -532,3 +533,6 @@ def test_profile_list(servicer, server_url_env):
     res = _run(["profile", "list"])
     assert "Profile" in res.stdout
     assert "Workspace" in res.stdout
+
+    res = _run(["profile", "list", "--json"])
+    json.loads(res.stdout)
