@@ -462,9 +462,9 @@ class _FunctionIOManager:
 
         # Local FunctionIOManager state.
         for key in ["task_id", "function_id"]:
-            value = restored_state[key]
-            logger.debug(f"Updating FunctionIOManager.{key} = {value}")
-            setattr(self, key, restored_state[key])
+            if value := restored_state.get(key):
+                logger.debug(f"Updating FunctionIOManager.{key} = {value}")
+                setattr(self, key, restored_state[key])
 
         # Env vars and global state.
         for key, value in restored_state.items():
