@@ -144,7 +144,8 @@ class _MountDir(_MountEntry):
         return [(self.local_dir.absolute(), self.remote_path)]
 
 
-def module_mount_condition(f):
+def module_mount_condition(f: str):
+    print(f)
     return not any([f.endswith(".pyc"), os.path.basename(f).startswith(".")])
 
 

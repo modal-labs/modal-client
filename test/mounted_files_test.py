@@ -174,7 +174,7 @@ def test_e2e_modal_run_py_module_mounts(servicer, test_dir):
 def test_mount_dedupe(servicer, test_dir, server_url_env, use_explicit):
     print(
         helpers.deploy_stub_externally(
-            servicer, "mount_dedupe.py", cwd=test_dir / "supports", env={"USE_EXPLICIT": use_explicit}
+            servicer, "mount_dedupe.py", cwd=test_dir / "supports", env={**os.environ, "USE_EXPLICIT": use_explicit}
         )
     )
     assert servicer.n_mounts == 2
