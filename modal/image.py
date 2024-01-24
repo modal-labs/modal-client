@@ -36,7 +36,7 @@ _from_dockerhub_deprecation_msg = "`Image.from_dockerhub` is deprecated. Use `Im
 
 def _validate_python_version(version: str) -> None:
     components = version.split(".")
-    supported_versions = {"3.11", "3.10", "3.9", "3.8"}
+    supported_versions = {"3.12", "3.11", "3.10", "3.9", "3.8"}
     if len(components) == 2 and version in supported_versions:
         return
     elif len(components) == 3:
@@ -60,6 +60,7 @@ def _dockerhub_python_version(python_version=None):
     # We use the same major/minor version, but the highest micro version
     # See https://hub.docker.com/_/python
     latest_micro_version = {
+        "3.12": "1",
         "3.11": "0",
         "3.10": "8",
         "3.9": "15",
@@ -70,12 +71,17 @@ def _dockerhub_python_version(python_version=None):
     return python_version
 
 
-def _get_client_requirements_path():
+def _get_client_requirements_path(python_version: Optional[str] = None) -> str:
     # Locate Modal client requirements.txt
     import modal
 
     modal_path = modal.__path__[0]
-    return os.path.join(modal_path, "requirements.txt")
+    if python_version is None:
+        major, minor, *_ = sys.version_info
+    else:
+        major, minor = python_version.split("-")[0].split(".")[:2]
+    suffix = {(3, 12): ".312"}.get((int(major), int(minor)), "")
+    return os.path.join(modal_path, f"requirements{suffix}.txt")
 
 
 def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, List[str]], ...]) -> List[str]:
@@ -770,7 +776,7 @@ class _Image(_Object, type_prefix="im"):
         In most cases, using [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install) is recommended over `Image.conda()`, as it leads to significantly faster image build times.
         """
         _validate_python_version(python_version)
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(python_version)
         # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
         # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
         conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
@@ -984,7 +990,7 @@ class _Image(_Object, type_prefix="im"):
 
         If your image does not come with Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, and `3.11`. For Alpine-based images, use `3.8-musl` through `3.11-musl`, which
+        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
         are statically-linked Python installations.
 
         You may also use `setup_dockerfile_commands` to run Dockerfile commands before the
@@ -1002,10 +1008,10 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_registry("python:3.11-slim-bookworm")
         modal.Image.from_registry("ubuntu:22.04", add_python="3.11")
-        modal.Image.from_registry("alpine:3.18.3", add_python="3.11-musl")
+        modal.Image.from_registry("alpine:3.18.3", add_python="3.12-musl")
         ```
         """
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(add_python)
         dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, add_python)
 
         context_mount = None
@@ -1134,13 +1140,13 @@ class _Image(_Object, type_prefix="im"):
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, and `3.11`. For Alpine-based images, use `3.8-musl` through `3.11-musl`, which
+        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
         are statically-linked Python installations.
 
         **Example**
 
         ```python
-        image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.10")
+        image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.12")
         ```
         """
 
@@ -1159,7 +1165,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(add_python)
 
         context_mount = None
         add_python_commands = []
@@ -1195,7 +1201,7 @@ class _Image(_Object, type_prefix="im"):
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
         python_version = _dockerhub_python_version(python_version)
 
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(python_version)
         dockerfile_commands = [
             f"FROM python:{python_version}-slim-bullseye",
             "COPY /modal_requirements.txt /modal_requirements.txt",

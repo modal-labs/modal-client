@@ -975,7 +975,12 @@ async def servicer_factory(blob_server):
 
         async def _stop_servicer():
             server.close()
-            await server.wait_closed()
+            # This is the proper way to close down the asyncio server,
+            # but it causes our tests to hang on 3.12+ because client connections
+            # for clients created through _Client.from_env don't get closed until
+            # asyncio event loop shutdown. Commenting out but perhaps revisit if we
+            # refactor the way that _Client cleanup happens.
+            # await server.wait_closed()
 
         start_servicer = synchronize_api(_start_servicer)
         stop_servicer = synchronize_api(_stop_servicer)

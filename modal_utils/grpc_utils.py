@@ -181,7 +181,8 @@ def create_channel(
     else:
         raise Exception(f"Unknown scheme: {o.scheme}")
 
-    logger.debug(f"Connecting to {o.netloc} using scheme {o.scheme}")
+    target = o.path if o.scheme == "unix" else o.netloc
+    logger.debug(f"Connecting to {target} using scheme {o.scheme}")
 
     # Inject metadata for the client.
     async def send_request(event: grpclib.events.SendRequest) -> None:

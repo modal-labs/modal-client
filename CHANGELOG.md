@@ -10,6 +10,16 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4707 (2024-01-23)
+
+The Modal client library is now compatible with Python 3.12, although there are a few limitations:
+
+- Images that use Python 3.12 without explicitly specifing it through `python_version` or `add_python` will not build
+  properly unless the modal client is also running on Python 3.12.
+- The `conda` and `microconda` base images currently do not support Python 3.12 because an upstream dependency is not yet compatible.
+
+
+
 ### 0.56.4700 (2024-01-22)
 
 - `gpu.A100` class now supports specifying GiB memory configuration using a `size: str` parameter. The `memory: int` parameter is deprecated.
