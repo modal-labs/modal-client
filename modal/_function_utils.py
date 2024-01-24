@@ -53,6 +53,21 @@ def package_mount_condition(filename):
     return os.path.splitext(filename)[1] in [".py"]
 
 
+def entrypoint_only_package_mount_condition(entrypoint_file):
+    entrypoint_path = Path(entrypoint_file)
+
+    def inner(filename):
+        path = Path(filename)
+        if path == entrypoint_path:
+            return True
+        if path.name == "__init__.py" and path.parent in entrypoint_path.parents:
+            # ancestor __init__.py are included
+            return True
+        return False
+
+    return inner
+
+
 def _is_modal_path(remote_path: PurePosixPath):
     path_prefix = remote_path.parts[:3]
     remote_python_paths = [("/", "root"), ("/", "pkg")]
@@ -203,15 +218,26 @@ class FunctionInfo:
             return []
 
         # make sure the function's own entrypoint is included:
-        if self.type == FunctionInfoType.PACKAGE and config.get("automount"):
-            return [
-                _Mount.from_local_dir(
-                    self.base_dir,
-                    remote_path=self.remote_dir,
-                    recursive=True,
-                    condition=package_mount_condition,
-                )
-            ]
+        if self.type == FunctionInfoType.PACKAGE:
+            if config.get("automount"):
+                return [
+                    _Mount.from_local_dir(
+                        self.base_dir,
+                        remote_path=self.remote_dir,
+                        recursive=True,
+                        condition=package_mount_condition,
+                    )
+                ]
+            elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+                # mount only relevant file and __init__.py:s
+                return [
+                    _Mount.from_local_dir(
+                        self.base_dir,
+                        remote_path=self.remote_dir,
+                        recursive=True,
+                        condition=entrypoint_only_package_mount_condition(self.file),
+                    )
+                ]
         elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             remote_path = ROOT_DIR / Path(self.file).name
             if not _is_modal_path(remote_path):

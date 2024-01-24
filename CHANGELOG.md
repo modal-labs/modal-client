@@ -10,6 +10,32 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4700 (2024-01-22)
+
+- `gpu.A100` class now supports specifying GiB memory configuration using a `size: str` parameter. The `memory: int` parameter is deprecated.
+
+
+
+### 0.56.4693 (2024-01-22)
+
+You can now execute commands in running containers with `modal container exec [container-id] [command]`.
+
+
+
+### 0.56.4691 (2024-01-22)
+
+* The `modal` cli now works more like the `python` cli in regard to script/module loading:
+    - Running `modal my_dir/my_script.py` now puts `my_dir` on the PYTHONPATH.
+    - `modal my_package.my_module` will now mount to /root/my_package/my_module.py in your Modal container, regardless if using automounting or not (and any intermediary `__init__.py` files will also be mounted)
+
+
+
+### 0.56.4687 (2024-01-20)
+
+- Modal now uses the current profile if `MODAL_PROFILE` is set to the empty string.
+
+
+
 ### 0.56.4649 (2024-01-17)
 
 - Dropped support for building Python 3.7 based `modal.Image`s. Python 3.7 is end-of-life since late June 2023.

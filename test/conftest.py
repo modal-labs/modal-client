@@ -90,6 +90,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_queues = 0
         self.n_mounts = 0
         self.n_mount_files = 0
+        self.mount_contents = {}
         self.files_name2sha = {}
         self.files_sha2data = {}
         self.function_id_for_function_call = {}
@@ -671,10 +672,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def MountBuild(self, stream):
         request: api_pb2.MountBuildRequest = await stream.recv_message()
+        mount_number = 123 + self.n_mounts
+        mount_id = f"mo-{mount_number}"
+
+        mount_content = self.mount_contents[mount_id] = {}
+
         for file in request.files:
-            self.files_name2sha[file.filename] = file.sha256_hex
+            mount_content[file.filename] = self.files_name2sha[file.filename] = file.sha256_hex
+
         self.n_mounts += 1
-        await stream.send_message(api_pb2.MountBuildResponse(mount_id="mo-123"))
+        await stream.send_message(api_pb2.MountBuildResponse(mount_id=mount_id))
 
     ### Queue
 
@@ -881,6 +888,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.volume_files[req.volume_id][file.filename] = VolumeFile(
                 data=blob_data["data"], data_blob_id=blob_data["data_blob_id"]
             )
+        await stream.send_message(Empty())
+
+    async def VolumeCopyFiles(self, stream):
+        req = await stream.recv_message()
+        for src_path in req.src_paths:
+            if src_path.decode("utf-8") not in self.volume_files[req.volume_id]:
+                raise GRPCError(Status.NOT_FOUND, f"Source file not found: {src_path}")
+            src_file = self.volume_files[req.volume_id][src_path.decode("utf-8")]
+            if len(req.src_paths) > 1:
+                # check to make sure dst is a directory
+                if (
+                    req.dst_path.decode("utf-8").endswith(("/", "\\"))
+                    or not os.path.splitext(os.path.basename(req.dst_path))[1]
+                ):
+                    dst_path = os.path.join(req.dst_path, os.path.basename(src_path))
+                else:
+                    raise GRPCError(Status.INVALID_ARGUMENT, f"{dst_path} is not a directory.")
+            else:
+                dst_path = req.dst_path
+            self.volume_files[req.volume_id][dst_path.decode("utf-8")] = src_file
         await stream.send_message(Empty())
 
 

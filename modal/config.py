@@ -104,7 +104,7 @@ def config_profiles():
     return _user_config.keys()
 
 
-def _config_active_profile():
+def _config_active_profile() -> str:
     for key, values in _user_config.items():
         if values.get("active", False) is True:
             return key
@@ -112,7 +112,7 @@ def _config_active_profile():
         return "default"
 
 
-def config_set_active_profile(env: str):
+def config_set_active_profile(env: str) -> None:
     """Set the user's active modal profile by writing it to the `.modal.toml` file."""
     if env not in _user_config:
         raise KeyError(env)
@@ -127,7 +127,7 @@ def config_set_active_profile(env: str):
 if "MODAL_ENV" in os.environ:
     deprecation_error(date(2023, 5, 24), "MODAL_ENV has been replaced with MODAL_PROFILE")
 
-_profile = os.environ.get("MODAL_PROFILE", _config_active_profile())
+_profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
 
 # Define settings
 
@@ -148,7 +148,6 @@ _SETTINGS = {
     "serve_timeout": _Setting(transform=float),
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
-    "outputs_timeout": _Setting(55.0, float),
     "image_python_version": _Setting(),
     "image_id": _Setting(),
     "automount": _Setting(True, transform=lambda x: x not in ("", "0")),

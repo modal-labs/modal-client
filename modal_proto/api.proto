@@ -545,6 +545,27 @@ message ContainerHeartbeatRequest {
 
 message ContainerCheckpointRequest {}
 
+message ContainerExecRequest {
+  string task_id = 1;
+  string command = 2;
+  PTYInfo pty_info = 3;
+}
+
+message ContainerExecGetOutputRequest {
+  string exec_id = 1;
+  float timeout = 2;
+  string last_entry_id = 3;
+}
+
+message ContainerExecPutInputRequest {
+  string exec_id = 1;
+  RuntimeInputMessage input = 2;
+}
+
+message ContainerExecResponse {
+  string exec_id = 1;
+}
+
 message CustomDomainConfig {
   string name = 1;
 }
@@ -1660,6 +1681,7 @@ message VolumeCopyFilesRequest {
   string volume_id = 1;
   repeated bytes src_paths = 2;
   bytes dst_path = 3;
+  bool recursive = 4;
 }
 
 message VolumeMount {
@@ -1680,6 +1702,25 @@ message WebUrlInfo {
   bool truncated = 1;
   bool has_unique_hash = 2;
   bool label_stolen = 3;
+}
+
+// Used for `modal container exec`
+message RuntimeOutputMessage {
+  // only stdout / stderr is used
+  FileDescriptor file_descriptor = 1;
+  string message = 2;
+}
+
+message RuntimeOutputBatch {
+  string entry_id = 1;
+  repeated RuntimeOutputMessage items = 2;
+  bool eof = 3;
+}
+
+message RuntimeInputMessage {
+  bytes message = 1;
+  // this is filled in by the server
+  string entry_id = 2;
 }
 
 
@@ -1713,6 +1754,9 @@ service ModalClient {
 
   // Container
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
+  rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
+  rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputBatch);
+  rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
 
   // Checkpointing
   rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);
