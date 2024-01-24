@@ -10,6 +10,7 @@ import sys
 from typing import List, Optional, Union
 
 import typer
+from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.text import Text
 
@@ -54,12 +55,15 @@ async def exec(task_id: str, command: str):
         return
 
     client = await _Client.from_env()
-    res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(
-        api_pb2.ContainerExecRequest(task_id=task_id, command=command, pty_info=get_pty_info(shell=True))
-    )
-    if res.exec_id == "":
-        print(f"Failed to execute command. Is the container ID ({task_id}) correct?")
-        return
+    try:
+        res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(
+            api_pb2.ContainerExecRequest(task_id=task_id, command=command, pty_info=get_pty_info(shell=True))
+        )
+    except GRPCError as err:
+        if err.status == Status.NOT_FOUND:
+            print(f"Container ID {task_id} not found!")
+            return
+        raise
 
     async with handle_exec_input(client, res.exec_id):
         await handle_exec_output(client, res.exec_id)
