@@ -453,7 +453,7 @@ class _FunctionIOManager:
             await asyncio.sleep(0.01)
             continue
 
-        logger.debug(f"Container restored.")
+        logger.debug("Container restored.")
 
         # Look for state file and create new client with updated credentials.
         # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
