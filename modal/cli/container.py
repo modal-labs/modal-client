@@ -82,14 +82,18 @@ async def handle_exec_input(client: _Client, exec_id: str):
         return sys.stdin.buffer.read()
 
     async def _write():
+        message_index = 1
         while True:
             data = await _read_stdin()
             if data is None:
                 return
 
             await client.stub.ContainerExecPutInput(
-                api_pb2.ContainerExecPutInputRequest(exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data))
+                api_pb2.ContainerExecPutInputRequest(
+                    exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
+                )
             )
+            message_index += 1
 
     write_task = asyncio.create_task(_write())
 
@@ -101,7 +105,7 @@ async def handle_exec_input(client: _Client, exec_id: str):
 
 async def handle_exec_output(client: _Client, exec_id: str):
     """Streams exec output to stdout."""
-    last_entry_id = ""
+    last_batch_index = 0
     completed = False
 
     def write_data(fd, data):
@@ -122,12 +126,12 @@ async def handle_exec_output(client: _Client, exec_id: str):
         return future
 
     async def _get_output():
-        nonlocal last_entry_id, completed
+        nonlocal last_batch_index, completed
 
         req = api_pb2.ContainerExecGetOutputRequest(
             exec_id=exec_id,
             timeout=55,
-            last_entry_id=last_entry_id,
+            last_batch_index=last_batch_index,
         )
         async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
             for message in batch.items:
@@ -139,8 +143,8 @@ async def handle_exec_output(client: _Client, exec_id: str):
                 completed = True
                 break
 
-            if batch.entry_id:
-                last_entry_id = batch.entry_id
+            if batch.batch_index:
+                last_batch_index = batch.batch_index
 
     while not completed:
         try:
