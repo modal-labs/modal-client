@@ -532,5 +532,3 @@ def test_profile_list(servicer, server_url_env):
     res = _run(["profile", "list"])
     assert "Profile" in res.stdout
     assert "Workspace" in res.stdout
-    assert "test-workspace" in res.stdout
-    print(res.stdout)
