@@ -713,5 +713,5 @@ def test_mount_deps_have_ids(client, servicer, monkeypatch, test_dir):
             pass
 
     function_create = ctx.pop_request("FunctionCreate")
-    for dep in function_create.object_dependencies:
+    for dep in function_create.function.object_dependencies:
         assert dep.object_id
