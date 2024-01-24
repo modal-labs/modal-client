@@ -28,6 +28,7 @@ from ._resolver import Resolver
 from .config import config, logger
 from .object import _StatefulObject
 
+ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
 # Supported releases and versions for python-build-standalone.
@@ -478,7 +479,9 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         provider._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
 
     @staticmethod
-    def from_local_python_packages(*module_names: str) -> "_Mount":
+    def from_local_python_packages(
+        *module_names: str, remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix()
+    ) -> "_Mount":
         """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
         This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
 

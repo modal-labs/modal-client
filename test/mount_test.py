@@ -114,13 +114,17 @@ def test_stub_mounts(servicer, client, test_dir):
     stub.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
 
     with stub.run(client=client):
-        files = servicer.files_name2sha.keys()
-        assert any(["/root/pkg_a/a.py" in f for f in files])
-        assert any(["/root/pkg_a/b/c.py" in f for f in files])
-        assert any(["/root/pkg_b/f.py" in f for f in files])
-        assert any(["/root/pkg_b/g/h.py" in f for f in files])
-        assert not any(["/root/pkg_c/i.py" in f for f in files])
-        assert not any(["/root/pkg_c/j/k.py" in f for f in files])
+        files = set(servicer.files_name2sha.keys())
+        expected_files = {
+            "/root/pkg_a/a.py",
+            "/root/pkg_a/b/c.py",
+            "/root/pkg_b/f.py",
+            "/root/pkg_b/g/h.py",
+        }
+        assert expected_files.issubset(files)
+
+        assert "/root/pkg_c/i.py" not in files
+        assert "/root/pkg_c/j/k.py" not in files
 
 
 def test_from_local_python_packages_missing_module(servicer, client, test_dir):
