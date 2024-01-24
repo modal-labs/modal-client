@@ -554,7 +554,8 @@ message ContainerExecRequest {
 message ContainerExecGetOutputRequest {
   string exec_id = 1;
   float timeout = 2;
-  uint64 last_batch_index = 3;
+  string last_entry_id = 3 [deprecated=true];
+  uint64 last_batch_index = 4;
 }
 
 message ContainerExecPutInputRequest {
@@ -1712,14 +1713,16 @@ message RuntimeOutputMessage {
 }
 
 message RuntimeOutputBatch {
-  uint64 batch_index = 1; 
+  string entry_id = 1 [deprecated=true];
   repeated RuntimeOutputMessage items = 2;
   bool eof = 3;
+  uint64 batch_index = 4; 
 }
 
 message RuntimeInputMessage {
   bytes message = 1;
-  uint64 message_index = 2;
+  string entry_id = 2 [deprecated=true];
+  uint64 message_index = 3;
 }
 
 
