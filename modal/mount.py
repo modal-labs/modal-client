@@ -155,7 +155,7 @@ class _MountedPythonModule(_MountEntry):
     # the Module
 
     module_name: str
-    remote_dir: Union[PurePosixPath, str] = ROOT_DIR
+    remote_dir: Union[PurePosixPath, str] = ROOT_DIR.as_posix()  # cast needed here for type stub generation...
 
     def description(self) -> str:
         return f"PythonPackage:{self.module_name}"
@@ -166,7 +166,7 @@ class _MountedPythonModule(_MountEntry):
         for mount_info in mount_infos:
             is_package, base_path = mount_info
             if is_package:
-                remote_dir = PurePosixPath("/root", *self.module_name.split("."))
+                remote_dir = PurePosixPath(self.remote_dir, *self.module_name.split("."))
                 entries.append(
                     _MountDir(
                         Path(base_path),
@@ -177,7 +177,7 @@ class _MountedPythonModule(_MountEntry):
                 )
             else:
                 path_segments = self.module_name.split(".")[:-1]
-                remote_path = PurePosixPath("/root", *path_segments, Path(base_path).name)
+                remote_path = PurePosixPath(self.remote_dir, *path_segments, Path(base_path).name)
                 entries.append(
                     _MountFile(
                         local_file=Path(base_path),
