@@ -39,7 +39,7 @@ async def list(json: Optional[bool] = False):
             workspace = "Unknown (profile misconfigured)"
         active = profile == _profile
         content = ["*" if active else "", profile, workspace]
-        style = "green" if active else "dim"
+        style = "bold green" if active else "dim"
         rows.append((content, style))
 
     console = Console()
