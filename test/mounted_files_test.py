@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import os
 import pytest
 import subprocess
 import sys
@@ -110,7 +111,7 @@ def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servi
         ["modal", "run", "pkg_a.package"],
         cwd=supports_dir,
         capture_output=True,
-        env={"MODAL_AUTOMOUNT": "0"},
+        env={**os.environ, "MODAL_AUTOMOUNT": "0"},
     )
     assert p.returncode == 0
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
@@ -141,7 +142,9 @@ def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_f
 
 
 def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_url_env):
-    p = subprocess.run(["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={"MODAL_AUTOMOUNT": "0"})
+    p = subprocess.run(
+        ["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={**os.environ, "MODAL_AUTOMOUNT": "0"}
+    )
     assert p.returncode == 0
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
     assert files == {
