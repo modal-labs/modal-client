@@ -818,8 +818,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
-    async def TokenWorkspaceLookup(self, stream):
-        await stream.send_message(api_pb2.TokenWorkspaceLookupResponse(workspace_name="test-workspace"))
+    async def WorkspaceLookup(self, stream):
+        await stream.send_message(api_pb2.WorkspaceLookupResponse(workspace_name="test-workspace"))
 
     ### Tunnel
 
