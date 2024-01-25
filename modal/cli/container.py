@@ -73,10 +73,22 @@ async def exec(task_id: str, command: str):
             raise typer.Exit(code=1)
         raise
 
+    exec_failed = False
     async with handle_exec_input(client, res.exec_id):
-        if await handle_exec_output(client, res.exec_id, console, on_connect=connecting_status.stop):
+        try:
+            exit_status = await handle_exec_output(client, res.exec_id, on_connect=connecting_status.stop)
+            if exit_status != 0:
+                console.print(f"Process exited with status code {exit_status}", style="red")
+            exec_failed = True
+        except TimeoutError:
+            connecting_status.stop()
             rich.print("Failed to establish connection to process", file=sys.stderr)
-            raise typer.Exit(code=1)
+            exec_failed = True
+
+    if exec_failed:
+        # we don't want to raise this inside the context manager
+        # since otherwise the context manager cleanup doesn't get called
+        raise typer.Exit(code=1)
 
 
 # note: this is very similar to code in _pty.py.
@@ -122,21 +134,19 @@ async def handle_exec_input(client: _Client, exec_id: str):
     write_task.cancel()
 
 
-async def handle_exec_output(
-    client: _Client, exec_id: str, console: Console, on_connect: Optional[callable] = None
-) -> bool:
+async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[callable] = None) -> int:
     """
     Streams exec output to stdout.
 
     If given, on_connect will be called when the client connects to the running process.
 
-    Returns True if there was an error connecting (ie. timeout), False otherwise
+    Returns the status code of the process.
     """
     # how long to wait for the first server response before we time out
-    FIRST_OUTPUT_TIMEOUT = 15
+    FIRST_OUTPUT_TIMEOUT = 0.0001
 
     last_batch_index = 0
-    completed = False
+    exit_status = None
 
     # we are connected if we received at least one message from the server
     # (the server will send an empty message when the process spawns)
@@ -160,7 +170,7 @@ async def handle_exec_output(
         return future
 
     async def _get_output():
-        nonlocal last_batch_index, completed, connected
+        nonlocal last_batch_index, exit_status, connected
 
         req = api_pb2.ContainerExecGetOutputRequest(
             exec_id=exec_id,
@@ -178,28 +188,22 @@ async def handle_exec_output(
                 on_connect()
 
             if batch.exited:
-                if batch.exit_code != 0:
-                    console.print(f"Process exited with status code {batch.exit_code}", style="red")
-                completed = True
+                exit_status = batch.exit_code
                 break
 
             if batch.batch_index:
                 last_batch_index = batch.batch_index
 
-    while not completed:
+    while exit_status is None:
         try:
             if not connected:
-                # if we don't connect within a certain amount of time, we want to throw an error
-                timeout_task = asyncio.create_task(asyncio.sleep(FIRST_OUTPUT_TIMEOUT))
-                output_task = asyncio.create_task(_get_output())
-                finished, _ = await asyncio.wait([timeout_task, output_task], return_when=asyncio.FIRST_COMPLETED)
-                if timeout_task in finished and not connected:
-                    # we timed out getting inputs
-                    output_task.cancel()
-                    return True
-                else:
-                    if not output_task.done():
-                        await output_task
+                try:
+                    output_task = asyncio.create_task(_get_output())
+                    await asyncio.wait_for(asyncio.shield(output_task), timeout=FIRST_OUTPUT_TIMEOUT)
+                except asyncio.TimeoutError or TimeoutError:
+                    if not connected:
+                        output_task.cancel()
+                        raise TimeoutError()
             else:
                 await _get_output()
         except (GRPCError, StreamTerminatedError) as exc:
@@ -209,4 +213,5 @@ async def handle_exec_output(
             elif isinstance(exc, StreamTerminatedError):
                 continue
             raise
-    return False
+
+    return exit_status
