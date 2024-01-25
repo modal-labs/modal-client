@@ -351,6 +351,7 @@ def test_redeploy_from_name_change(servicer, client):
     # This should not fail because the object_id changed - it's a different app
     deploy_stub(stub, "my-app", client=client)
 
+
 def test_parse_custom_domains():
     assert len(_parse_custom_domains(None)) == 0
     assert len(_parse_custom_domains(["foo.com", "bar.com"])) == 2
