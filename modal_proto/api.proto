@@ -1713,18 +1713,16 @@ message RuntimeOutputMessage {
 }
 
 message RuntimeOutputBatch {
-  string entry_id = 1 [deprecated=true];
-  repeated RuntimeOutputMessage items = 2;
+  repeated RuntimeOutputMessage items = 1;
   // this is necessary because it's possible for exit_code to be None
-  bool exited = 3;
-  uint64 batch_index = 4; 
-  optional int32 exit_code = 5;
+  bool exited = 2;
+  uint64 batch_index = 3; 
+  optional int32 exit_code = 4;
 }
 
 message RuntimeInputMessage {
   bytes message = 1;
-  string entry_id = 2 [deprecated=true];
-  uint64 message_index = 3;
+  uint64 message_index = 2;
 }
 
 
