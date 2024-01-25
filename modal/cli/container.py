@@ -187,7 +187,7 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
                 connected = True
                 on_connect()
 
-            if batch.exited:
+            if batch.exit_code is not None:
                 exit_status = batch.exit_code
                 break
 
