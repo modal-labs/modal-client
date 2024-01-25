@@ -431,32 +431,13 @@ async def _map_invocation(
             last_entry_id = response.last_entry_id
             for item in response.outputs:
                 pending_outputs.setdefault(item.input_id, 0)
-                if item.input_id in completed_outputs or (
-                    item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-                    and item.gen_index < pending_outputs[item.input_id]
-                ):
-                    # If this input is already completed, or if it's a generator output and we've already seen a later
-                    # output, it means the output has already been processed and was received again due
-                    # to a duplicate output enqueue on the server.
+                if item.input_id in completed_outputs:
+                    # If this input is already completed, it means the output has already been
+                    # processed and was received again due to a duplicate.
                     continue
-
-                if is_generator:
-                    # Mark this input completed if the generator completed successfully, or it crashed (exception, timeout, etc).
-                    if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                        completed_outputs.add(item.input_id)
-                        num_outputs += 1
-                    elif item.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-                        completed_outputs.add(item.input_id)
-                        num_outputs += 1
-                        yield item
-                    else:
-                        assert pending_outputs[item.input_id] == item.gen_index
-                        pending_outputs[item.input_id] += 1
-                        yield item
-                else:
-                    completed_outputs.add(item.input_id)
-                    num_outputs += 1
-                    yield item
+                completed_outputs.add(item.input_id)
+                num_outputs += 1
+                yield item
 
     async def get_all_outputs_and_clean_up():
         try:
