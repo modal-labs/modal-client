@@ -298,3 +298,19 @@ async def test_volume_copy(client, tmp_path, servicer):
     }
     assert returned_file_data[Path("test_dir/file1.txt")].data == b"test copy"
     assert returned_file_data[Path("test_dir/file2.txt")].data == b"test copy"
+
+
+@pytest.mark.asyncio
+async def test_volume_copy_recursive(client, tmp_path, servicer):
+    # test that recursive flag is set properly, all other functionality of copy_files is tested in test_volume_copy_recursive
+    stub = modal.Stub()
+    stub.vol = modal.Volume.new()
+
+    local_file_path = tmp_path / "some_file"
+    local_file_path.write_text("hello world")
+
+    with stub.run(client=client):
+        async with stub.vol.batch_upload() as batch:
+            batch.put_file(local_file_path, "/some_file")
+
+        await stub.vol.copy_files.aio(["/some_file"], "/second_dir", recursive=True)
