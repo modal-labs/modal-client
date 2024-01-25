@@ -9,10 +9,10 @@ from grpclib import GRPCError, Status
 import modal.app
 from modal import Dict, Image, Queue, Stub, web_endpoint
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
+from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
-from modal.partial_function import _parse_custom_domains
 
 
 @pytest.mark.asyncio
