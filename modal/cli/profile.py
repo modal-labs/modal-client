@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 
+import asyncio
 from typing import Optional
 
 import typer
@@ -28,17 +29,21 @@ def current():
 @synchronizer.create_blocking
 async def list(json: Optional[bool] = False):
     config = Config()
-    column_names = [" ", "Profile", "Workspace"]
+    profiles = config_profiles()
+    responses = await asyncio.gather(
+        *(_lookup_workspace(config, profile) for profile in profiles), return_exceptions=True
+    )
+
     rows = []
-    for profile in config_profiles():
-        try:
-            resp = await _lookup_workspace(config, profile)
-            workspace = resp.workspace_name
-        except AuthError:
-            workspace = "Unknown (authentication failed)"
-        except Exception:
-            workspace = "Unknown (profile misconfigured)"
+    for profile, resp in zip(profiles, responses):
         active = profile == _profile
+        if isinstance(resp, AuthError):
+            workspace = "Unknown (authentication failure)"
+        elif isinstance(resp, Exception):
+            # Catch-all for other exceptions, like incorrect server url
+            workspace = "Unknown (profile misconfigured)"
+        else:
+            workspace = resp.workspace_name
         content = ["•" if active else "", profile, workspace]
         rows.append((active, content))
 
@@ -49,7 +54,7 @@ async def list(json: Optional[bool] = False):
             json_data.append({"name": content[1], "workspace": content[2], "active": active})
         console.print(JSON.from_data(json_data))
     else:
-        table = Table(*column_names)
+        table = Table(" ", "Profile", "Workspace")
         for active, content in rows:
             table.add_row(*content, style="bold green" if active else "dim")
         console.print(table)
