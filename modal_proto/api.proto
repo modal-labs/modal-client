@@ -1704,7 +1704,7 @@ message WebUrlInfo {
   bool label_stolen = 3;
 }
 
-message WorkspaceLookupResponse {
+message WorkspaceNameLookupResponse {
   string workspace_name = 1;
 }
 
@@ -1864,5 +1864,5 @@ service ModalClient {
   rpc VolumeCopyFiles(VolumeCopyFilesRequest) returns (google.protobuf.Empty);
 
 // Workspaces
-  rpc WorkspaceLookup(google.protobuf.Empty) returns (WorkspaceLookupResponse);
+  rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
 }
