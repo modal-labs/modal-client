@@ -19,7 +19,7 @@ from modal.cli.utils import display_table, timestamp_to_local
 from modal.client import _Client
 from modal_proto import api_pb2
 from modal_utils.async_utils import asyncify, synchronizer
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 container_cli = typer.Typer(name="container", help="Manage running containers.", no_args_is_help=True)
 
@@ -55,6 +55,8 @@ async def exec(task_id: str, command: str):
         return
 
     client = await _Client.from_env()
+
+    print("Connecting...")
     try:
         res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(
             api_pb2.ContainerExecRequest(task_id=task_id, command=command, pty_info=get_pty_info(shell=True))
@@ -66,7 +68,8 @@ async def exec(task_id: str, command: str):
         raise
 
     async with handle_exec_input(client, res.exec_id):
-        await handle_exec_output(client, res.exec_id)
+        if await handle_exec_output(client, res.exec_id):
+            print("Failed to connect.")
 
 
 # note: this is very similar to code in _pty.py.
@@ -80,10 +83,13 @@ async def handle_exec_input(client: _Client, exec_id: str):
     def _read_stdin() -> Optional[bytes]:
         nonlocal quit_pipe_read
         # TODO: Windows support.
-        (readable, _, _) = select.select([sys.stdin.buffer, quit_pipe_read], [], [])
+        (readable, _, _) = select.select([sys.stdin.buffer, quit_pipe_read], [], [], 5)
         if quit_pipe_read in readable:
             return None
-        return sys.stdin.buffer.read()
+        if sys.stdin.buffer in readable:
+            return sys.stdin.buffer.read()
+        # we had 5 seconds of no input. send an empty string as a "heartbeat" to the server.
+        return b""
 
     async def _write():
         message_index = 1
@@ -92,10 +98,12 @@ async def handle_exec_input(client: _Client, exec_id: str):
             if data is None:
                 return
 
-            await client.stub.ContainerExecPutInput(
+            await retry_transient_errors(
+                client.stub.ContainerExecPutInput,
                 api_pb2.ContainerExecPutInputRequest(
                     exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
-                )
+                ),
+                total_timeout=10,
             )
             message_index += 1
 
@@ -107,10 +115,17 @@ async def handle_exec_input(client: _Client, exec_id: str):
     write_task.cancel()
 
 
-async def handle_exec_output(client: _Client, exec_id: str):
-    """Streams exec output to stdout."""
+async def handle_exec_output(client: _Client, exec_id: str) -> bool:
+    """Streams exec output to stdout. Returns True if there was an error connecting (ie. timeout), False otherwise"""
+    # how long to wait for the first server response before we time out
+    FIRST_OUTPUT_TIMEOUT = 2
+
     last_batch_index = 0
     completed = False
+
+    # we are connected if we received at least one message from the server
+    # (the server will send an empty message when the process spawns)
+    connected = False
 
     def write_data(fd, data):
         loop = asyncio.get_event_loop()
@@ -118,6 +133,7 @@ async def handle_exec_output(client: _Client, exec_id: str):
 
         def try_write():
             try:
+                # consider console.out from rich?
                 nbytes = os.write(fd, data)
                 loop.remove_writer(fd)
                 future.set_result(nbytes)
@@ -130,7 +146,7 @@ async def handle_exec_output(client: _Client, exec_id: str):
         return future
 
     async def _get_output():
-        nonlocal last_batch_index, completed
+        nonlocal last_batch_index, completed, connected
 
         req = api_pb2.ContainerExecGetOutputRequest(
             exec_id=exec_id,
@@ -143,7 +159,12 @@ async def handle_exec_output(client: _Client, exec_id: str):
 
                 await write_data(message.file_descriptor, str.encode(message.message))
 
-            if batch.eof:
+            if not connected:
+                connected = True
+                print("Connected")
+
+            if batch.exited:
+                print(f"Exit code {batch.exit_code}")
                 completed = True
                 break
 
@@ -152,7 +173,20 @@ async def handle_exec_output(client: _Client, exec_id: str):
 
     while not completed:
         try:
-            await _get_output()
+            if not connected:
+                # if we don't connect within a certain amount of time, we want to throw an error
+                timeout_task = asyncio.create_task(asyncio.sleep(FIRST_OUTPUT_TIMEOUT))
+                output_task = asyncio.create_task(_get_output())
+                finished, _ = await asyncio.wait([timeout_task, output_task], return_when=asyncio.FIRST_COMPLETED)
+                if timeout_task in finished and not connected:
+                    # we timed out getting inputs
+                    output_task.cancel()
+                    return True
+                else:
+                    if not output_task.done():
+                        await output_task
+            else:
+                await _get_output()
         except (GRPCError, StreamTerminatedError) as exc:
             if isinstance(exc, GRPCError):
                 if exc.status in RETRYABLE_GRPC_STATUS_CODES:
@@ -160,3 +194,4 @@ async def handle_exec_output(client: _Client, exec_id: str):
             elif isinstance(exc, StreamTerminatedError):
                 continue
             raise
+    return False
