@@ -1,22 +1,24 @@
 # Modal Python Library
 
-The Modal Python Library provides convenient, on-demand access to serverless
-cloud compute from Python scripts on your local computer.
+The [Modal](https://modal.com/) Python Library provides convenient, on-demand
+access to serverless cloud compute from Python scripts on your local computer.
 
 ## Documentation
 
-See the [Modal documentation](http://modal.com/docs) for Python, with examples
-of how to use the library.
+See the http://modal.com/docs for
+many [example applications](https://modal.com/docs/examples),
+a [user guide](https://modal.com/docs/guide), and the detailed
+[API reference](https://modal.com/docs/reference).
 
 ## Installation
 
-**This requires Python 3.7 – 3.11.** Install the package with:
+**This requires Python 3.8 – 3.12.** Install the package with:
 
 ```bash
 pip install modal
 ```
 
-Then, you can create a Modal account (or link your existing one) directly on the
+You can create a Modal account (or link your existing one) directly on the
 command line.
 
 ```bash
@@ -25,5 +27,4 @@ python3 -m modal setup
 
 ## Support
 
-If you have beta access to Modal, join our Slack community to get quick customer
-support. An invite link is available on your user dashboard.
+For usage questions and other support, please reach out on the [Modal Slack](https://modal.com/slack).
