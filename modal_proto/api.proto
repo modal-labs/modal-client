@@ -903,7 +903,7 @@ message FunctionGetOutputsItem {
   GenericResult result = 1;
   int32 idx = 2;
   string input_id = 3;
-  int32 gen_index = 4;
+  int32 gen_index = 4;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 5; // for result.data_oneof
 }
 
@@ -976,7 +976,7 @@ message FunctionPutOutputsItem {
   GenericResult result = 2;
   double input_started_at = 3;
   double output_created_at = 4;
-  int32 gen_index = 6; // ordering for generator outputs
+  int32 gen_index = 6;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 7; // for result.data_oneof
 }
 
@@ -1079,7 +1079,7 @@ message GenericResult {  // Used for both tasks and function outputs
     GENERATOR_STATUS_INCOMPLETE = 1;
     GENERATOR_STATUS_COMPLETE = 2;
   }
-  GeneratorStatus gen_status = 7;
+  GeneratorStatus gen_status = 7;  // Deprecated, only used in client version <0.57
 
   bytes serialized_tb = 11;
   bytes tb_line_cache = 12;

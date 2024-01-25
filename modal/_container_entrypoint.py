@@ -158,7 +158,7 @@ class _FunctionIOManager:
 
     async def get_data_in(self, function_call_id: str) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
-        async for data in _stream_function_call_data(self._client, function_call_id):
+        async for data in _stream_function_call_data(self._client, function_call_id, "data_in"):
             yield data
 
     async def put_data_out(
@@ -176,7 +176,7 @@ class _FunctionIOManager:
         """
         data_chunks: List[api_pb2.DataChunk] = []
         for i, message_bytes in enumerate(messages_bytes):
-            chunk = api_pb2.DataChunk(data_format=data_format, index=start_index + i)
+            chunk = api_pb2.DataChunk(data_format=data_format, index=start_index + i)  # type: ignore
             if len(message_bytes) > MAX_OBJECT_SIZE_BYTES:
                 chunk.data_blob_id = await blob_upload(message_bytes, self._client.stub)
             else:
@@ -522,7 +522,7 @@ def call_function_sync(
                     if not inspect.isgenerator(res):
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
                     item_count = 0
-                    generator_queue = asyncio.Queue(1024)  # Send up to this many outputs at a time.
+                    generator_queue: asyncio.Queue[Any] = asyncio.Queue(1024)  # Send up to this many outputs at a time.
                     generator_output_task = function_io_manager.generator_output_task(
                         function_call_id,
                         imp_fun.data_format,
@@ -594,7 +594,7 @@ async def call_function_async(
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
                     item_count = 0
-                    generator_queue = asyncio.Queue(1024)  # Send up to this many outputs at a time.
+                    generator_queue: asyncio.Queue[Any] = asyncio.Queue(1024)  # Send up to this many outputs at a time.
                     generator_output_task = asyncio.create_task(
                         function_io_manager.generator_output_task.aio(
                             function_call_id,
