@@ -162,6 +162,7 @@ def _method(
 
 
 def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> List[api_pb2.CustomDomainConfig]:
+    assert not isinstance(custom_domains, str), "custom_domains must be `Iterable[str]` but is `str` instead."
     _custom_domains: List[api_pb2.CustomDomainConfig] = []
     if custom_domains is not None:
         for custom_domain in custom_domains:
@@ -179,7 +180,7 @@ def _web_endpoint(
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[
         Iterable[str]
-    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
+    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Register a basic web endpoint with this application.
 
