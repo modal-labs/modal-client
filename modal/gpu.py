@@ -148,7 +148,9 @@ STRING_TO_GPU_CONFIG = {
     "inf2": Inferentia2,
     "any": Any,
 }
-display_string_to_config = "\n".join(f'- "{key}" → `{cls()}`' for key, cls in STRING_TO_GPU_CONFIG.items())
+display_string_to_config = "\n".join(
+    f'- "{key}" → `{cls()}`' for key, cls in STRING_TO_GPU_CONFIG.items() if key != "inf2"
+)
 __doc__ = f"""
 **GPU configuration shortcodes**
 
