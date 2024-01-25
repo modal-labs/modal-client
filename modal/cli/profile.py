@@ -39,7 +39,7 @@ async def list(json: Optional[bool] = False):
         except Exception:
             workspace = "Unknown (profile misconfigured)"
         active = profile == _profile
-        content = ["*" if active else "", profile, workspace]
+        content = ["•" if active else "", profile, workspace]
         rows.append((active, content))
 
     console = Console()
