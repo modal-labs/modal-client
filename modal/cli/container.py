@@ -12,6 +12,7 @@ from typing import List, Optional, Union
 import typer
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
+from rich.console import Console
 from rich.text import Text
 
 from modal._pty import get_pty_info, set_nonblocking
@@ -56,20 +57,25 @@ async def exec(task_id: str, command: str):
 
     client = await _Client.from_env()
 
-    print("Connecting...")
+    console = Console()
+    connecting_status = console.status("Connecting...")
+    connecting_status.start()
+
     try:
         res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(
             api_pb2.ContainerExecRequest(task_id=task_id, command=command, pty_info=get_pty_info(shell=True))
         )
     except GRPCError as err:
+        connecting_status.stop()
         if err.status == Status.NOT_FOUND:
-            print(f"Container ID {task_id} not found!")
-            return
+            console.print(f"Container ID {task_id} not found", style="red")
+            raise typer.Exit(code=1)
         raise
 
     async with handle_exec_input(client, res.exec_id):
-        if await handle_exec_output(client, res.exec_id):
-            print("Failed to connect.")
+        if await handle_exec_output(client, res.exec_id, console, on_connect=connecting_status.stop):
+            console.print("Failed to establish connection to process", style="red")
+            raise typer.Exit(code=1)
 
 
 # note: this is very similar to code in _pty.py.
@@ -115,8 +121,16 @@ async def handle_exec_input(client: _Client, exec_id: str):
     write_task.cancel()
 
 
-async def handle_exec_output(client: _Client, exec_id: str) -> bool:
-    """Streams exec output to stdout. Returns True if there was an error connecting (ie. timeout), False otherwise"""
+async def handle_exec_output(
+    client: _Client, exec_id: str, console: Console, on_connect: Optional[callable] = None
+) -> bool:
+    """
+    Streams exec output to stdout.
+
+    If given, on_connect will be called when the client connects to the running process.
+
+    Returns True if there was an error connecting (ie. timeout), False otherwise
+    """
     # how long to wait for the first server response before we time out
     FIRST_OUTPUT_TIMEOUT = 2
 
@@ -133,7 +147,6 @@ async def handle_exec_output(client: _Client, exec_id: str) -> bool:
 
         def try_write():
             try:
-                # consider console.out from rich?
                 nbytes = os.write(fd, data)
                 loop.remove_writer(fd)
                 future.set_result(nbytes)
@@ -161,10 +174,11 @@ async def handle_exec_output(client: _Client, exec_id: str) -> bool:
 
             if not connected:
                 connected = True
-                print("Connected")
+                on_connect()
 
             if batch.exited:
-                print(f"Exit code {batch.exit_code}")
+                if batch.exit_code != 0:
+                    console.print(f"Process exited with status code {batch.exit_code}", style="red")
                 completed = True
                 break
 
