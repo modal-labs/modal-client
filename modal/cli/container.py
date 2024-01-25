@@ -132,7 +132,7 @@ async def handle_exec_output(
     Returns True if there was an error connecting (ie. timeout), False otherwise
     """
     # how long to wait for the first server response before we time out
-    FIRST_OUTPUT_TIMEOUT = 2
+    FIRST_OUTPUT_TIMEOUT = 15
 
     last_batch_index = 0
     completed = False
