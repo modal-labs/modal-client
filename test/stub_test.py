@@ -12,6 +12,7 @@ from modal.exception import DeprecationError, ExecutionError, InvalidError, NotF
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 from modal_test_support import module_1, module_2
+from modal.partial_function import _parse_custom_domains
 
 
 @pytest.mark.asyncio
@@ -349,3 +350,9 @@ def test_redeploy_from_name_change(servicer, client):
     # Redeploy app
     # This should not fail because the object_id changed - it's a different app
     deploy_stub(stub, "my-app", client=client)
+
+def test_parse_custom_domains():
+    assert len(_parse_custom_domains(None)) == 0
+    assert len(_parse_custom_domains(["foo.com", "bar.com"])) == 2
+    with pytest.raises(AssertionError):
+        assert _parse_custom_domains("foo.com")
