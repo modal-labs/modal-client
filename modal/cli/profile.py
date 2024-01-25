@@ -40,18 +40,16 @@ async def list(json: Optional[bool] = False):
             workspace = "Unknown (profile misconfigured)"
         active = profile == _profile
         content = ["*" if active else "", profile, workspace]
-        style = "bold green" if active else "dim"
-        rows.append((content, style))
+        rows.append((active, content))
 
     console = Console()
-
     if json:
         json_data = []
-        for content, _ in rows:
-            json_data.append({"name": content[1], "active": content[0] == "*", "workspace": content[2]})
+        for active, content in rows:
+            json_data.append({"name": content[1], "workspace": content[2], "active": active})
         console.print(JSON.from_data(json_data))
     else:
         table = Table(*column_names)
-        for (content, style) in rows:
-            table.add_row(*content, style=style)
+        for active, content in rows:
+            table.add_row(*content, style="bold green" if active else "dim")
         console.print(table)
