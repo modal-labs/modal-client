@@ -101,13 +101,13 @@ def _read_user_config():
 _user_config = _read_user_config()
 
 
-async def _lookup_workspace(config: "Config", profile: str) -> api_pb2.WorkspaceLookupResponse:
+async def _lookup_workspace(config: "Config", profile: str) -> api_pb2.WorkspaceNameLookupResponse:
     from .client import _Client
 
     server_url = config.get("server_url", profile)
     credentials = (config.get("token_id", profile), config.get("token_secret", profile))
     async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
-        return await client.stub.WorkspaceLookup(Empty())
+        return await client.stub.WorkspaceNameLookup(Empty())
 
 
 def config_profiles():
