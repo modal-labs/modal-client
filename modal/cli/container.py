@@ -143,7 +143,7 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
     Returns the status code of the process.
     """
     # how long to wait for the first server response before we time out
-    FIRST_OUTPUT_TIMEOUT = 0.0001
+    FIRST_OUTPUT_TIMEOUT = 15
 
     last_batch_index = 0
     exit_status = None
