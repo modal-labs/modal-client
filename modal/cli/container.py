@@ -9,6 +9,7 @@ import select
 import sys
 from typing import List, Optional, Union
 
+import rich
 import typer
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -68,13 +69,13 @@ async def exec(task_id: str, command: str):
     except GRPCError as err:
         connecting_status.stop()
         if err.status == Status.NOT_FOUND:
-            console.print(f"Container ID {task_id} not found", style="red")
+            rich.print(f"Container ID {task_id} not found", file=sys.stderr)
             raise typer.Exit(code=1)
         raise
 
     async with handle_exec_input(client, res.exec_id):
         if await handle_exec_output(client, res.exec_id, console, on_connect=connecting_status.stop):
-            console.print("Failed to establish connection to process", style="red")
+            rich.print("Failed to establish connection to process", file=sys.stderr)
             raise typer.Exit(code=1)
 
 
