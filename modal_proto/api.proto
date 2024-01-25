@@ -1571,17 +1571,6 @@ message TokenFlowWaitResponse {
   string workspace_username = 4;
 }
 
-
-message TokenWorkspaceLookupRequest{
-  string token_id = 1;
-}
-
-
-message TokenWorkspaceLookupResponse{
-  string workspace_name = 1;
-}
-
-
 message TunnelStartRequest {
   uint32 port = 1;
   bool unencrypted = 2;
@@ -1713,6 +1702,10 @@ message WebUrlInfo {
   bool truncated = 1;
   bool has_unique_hash = 2;
   bool label_stolen = 3;
+}
+
+message WorkspaceLookupResponse {
+  string workspace_name = 1;
 }
 
 // Used for `modal container exec`
@@ -1854,7 +1847,6 @@ service ModalClient {
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
   rpc TokenFlowWait(TokenFlowWaitRequest) returns (TokenFlowWaitResponse);
-  rpc TokenWorkspaceLookup(TokenWorkspaceLookupRequest) returns (TokenWorkspaceLookupResponse);
 
   // Tunnels
   rpc TunnelStart(TunnelStartRequest) returns (TunnelStartResponse);
@@ -1870,4 +1862,7 @@ service ModalClient {
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
   rpc VolumeCopyFiles(VolumeCopyFilesRequest) returns (google.protobuf.Empty);
+
+// Workspaces
+  rpc WorkspaceLookup(google.protobuf.Empty) returns (WorkspaceLookupResponse);
 }
