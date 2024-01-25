@@ -187,7 +187,9 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
                 connected = True
                 on_connect()
 
-            if batch.exit_code is not None:
+            # for some unclear reason, modal-worker -> modal-server is unable to transmit None for exit_code.
+            # as a temporary workaround, I just set it to i32::MIN.
+            if batch.exit_code is not None and batch.exit_code != -2_147_483_648:
                 exit_status = batch.exit_code
                 break
 
