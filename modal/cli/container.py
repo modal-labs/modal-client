@@ -206,6 +206,8 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
                     if not connected:
                         output_task.cancel()
                         raise TimeoutError()
+                    else:
+                        await output_task
             else:
                 await _get_output()
         except (GRPCError, StreamTerminatedError) as exc:
