@@ -93,6 +93,7 @@ enum DataFormat {
   DATA_FORMAT_UNSPECIFIED = 0; // Equivalent to PICKLE in client version 0.52 and earlier.
   DATA_FORMAT_PICKLE = 1; // Cloudpickle
   DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
+  DATA_FORMAT_GENERATOR_DONE = 3; // "GeneratorDone" protobuf message
 }
 
 enum DeploymentNamespace {
@@ -1052,6 +1053,10 @@ message FunctionStats {
   uint32 backlog = 1;
   uint32 num_active_tasks = 2;
   uint32 num_total_tasks = 3;
+}
+
+message GeneratorDone {  // Sent as the output when a generator finishes running.
+  uint64 items_total = 1;
 }
 
 message GenericResult {  // Used for both tasks and function outputs

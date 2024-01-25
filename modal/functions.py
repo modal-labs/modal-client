@@ -327,7 +327,8 @@ class _Invocation:
                     break
                 data_task = asyncio.create_task(data_stream.__anext__())
             if generator_finished_task in done:
-                items_total = generator_finished_task.result()
+                generator_finished: api_pb2.GeneratorDone = generator_finished_task.result()
+                items_total = generator_finished.items_total
                 if items_received == items_total:
                     data_task.cancel()
                     break

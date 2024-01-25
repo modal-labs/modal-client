@@ -537,7 +537,10 @@ def call_function_sync(
                     except StopIteration:
                         function_io_manager._queue_put(generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL)
                         generator_output_task.result()
-                        function_io_manager.push_output(input_id, started_at, item_count, imp_fun.data_format)
+                        message = api_pb2.GeneratorDone(items_total=item_count)
+                        function_io_manager.push_output(
+                            input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
+                        )
                 else:
                     if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
@@ -612,7 +615,10 @@ async def call_function_async(
                             generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL
                         )
                         await generator_output_task
-                        await function_io_manager.push_output.aio(input_id, started_at, item_count, imp_fun.data_format)
+                        message = api_pb2.GeneratorDone(items_total=item_count)
+                        await function_io_manager.push_output.aio(
+                            input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
+                        )
                 else:
                     if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
