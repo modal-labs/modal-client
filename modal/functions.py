@@ -21,6 +21,7 @@ from typing import (
     Dict,
     Iterable,
     List,
+    Literal,
     Optional,
     Set,
     Tuple,
@@ -31,6 +32,7 @@ from typing import (
 from aiostream import pipe, stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
 
 from modal import _pty
@@ -41,7 +43,7 @@ from modal_utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 from ._blob_utils import (
     BLOB_MAX_PARALLELISM,
@@ -176,6 +178,45 @@ async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutIn
         )
 
 
+async def _stream_function_call_data(
+    client, function_call_id: str, variant: Literal["data_in", "data_out"]
+) -> AsyncIterator[Any]:
+    """Read from the `data_in` or `data_out` stream of a function call."""
+    last_index = 0
+    retries_remaining = 10
+
+    if variant == "data_in":
+        stub_fn = client.stub.FunctionCallGetDataIn
+    elif variant == "data_out":
+        stub_fn = client.stub.FunctionCallGetDataOut
+    else:
+        raise ValueError(f"Invalid variant {variant}")
+
+    while True:
+        req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
+        try:
+            async for chunk in unary_stream(stub_fn, req):
+                if chunk.index <= last_index:
+                    continue
+                last_index = chunk.index
+                if chunk.data_blob_id:
+                    message_bytes = await blob_download(chunk.data_blob_id, client.stub)
+                else:
+                    message_bytes = chunk.data
+                message = deserialize_data_format(message_bytes, chunk.data_format, client)
+                yield message
+        except (GRPCError, StreamTerminatedError) as exc:
+            if retries_remaining > 0:
+                retries_remaining -= 1
+                if isinstance(exc, GRPCError):
+                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                        await asyncio.sleep(1.0)
+                        continue
+                elif isinstance(exc, StreamTerminatedError):
+                    continue
+            raise
+
+
 @dataclass
 class _OutputValue:
     # box class for distinguishing None results from non-existing/None markers
@@ -271,37 +312,25 @@ class _Invocation:
         return await _process_result(items[0].result, items[0].data_format, self.stub, self.client)
 
     async def run_generator(self):
-        last_entry_id = "0-0"
-        completed = False
-        try:
-            while not completed:
-                request = api_pb2.FunctionGetOutputsRequest(
-                    function_call_id=self.function_call_id,
-                    timeout=OUTPUTS_TIMEOUT,
-                    last_entry_id=last_entry_id,
-                    clear_on_success=False,  # there could be more results
-                )
-                response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
-                    self.stub.FunctionGetOutputs,
-                    request,
-                    attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
-                )
-                if len(response.outputs) > 0:
-                    last_entry_id = response.last_entry_id
-                    for item in response.outputs:
-                        if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                            completed = True
-                            break
-                        yield await _process_result(item.result, item.data_format, self.stub, self.client)
-        finally:
-            # "ack" that we have all outputs we are interested in and let backend clear results
-            request = api_pb2.FunctionGetOutputsRequest(
-                function_call_id=self.function_call_id,
-                timeout=0,
-                last_entry_id="0-0",
-                clear_on_success=True,
-            )
-            await self.stub.FunctionGetOutputs(request)
+        data_stream = _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
+        data_task = asyncio.create_task(data_stream.__anext__())
+        generator_finished_task = asyncio.create_task(self.poll_function())
+        items_received = 0
+        items_total: Union[int, None] = None  # populated when generator_finished_task completes
+
+        while True:
+            done, _ = await asyncio.wait([data_task, generator_finished_task], return_when=asyncio.FIRST_COMPLETED)
+            if data_task in done:
+                yield data_task.result()
+                items_received += 1
+                if items_received == items_total:
+                    break
+                data_task = asyncio.create_task(data_stream.__anext__())
+            if generator_finished_task in done:
+                items_total = generator_finished_task.result()
+                if items_received == items_total:
+                    data_task.cancel()
+                    break
 
 
 MAP_INVOCATION_CHUNK_SIZE = 49
