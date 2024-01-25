@@ -7,7 +7,7 @@ import os
 import platform
 import select
 import sys
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import rich
 import typer
@@ -134,7 +134,7 @@ async def handle_exec_input(client: _Client, exec_id: str):
     write_task.cancel()
 
 
-async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[callable] = None) -> int:
+async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[Callable] = None) -> int:
     """
     Streams exec output to stdout.
 
