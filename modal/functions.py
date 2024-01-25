@@ -314,7 +314,7 @@ class _Invocation:
     async def run_generator(self):
         data_stream = _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
         data_task = asyncio.create_task(data_stream.__anext__())
-        generator_finished_task = asyncio.create_task(self.poll_function())
+        generator_finished_task = asyncio.create_task(self.run_function())
         items_received = 0
         items_total: Union[int, None] = None  # populated when generator_finished_task completes
 

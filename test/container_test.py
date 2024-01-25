@@ -48,6 +48,7 @@ def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> List[api_
 class ContainerResult:
     client: Client
     items: List[api_pb2.FunctionPutOutputsItem]
+    data_chunks: List[api_pb2.DataChunk]
 
 
 def _run_container(
@@ -72,6 +73,7 @@ def _run_container(
             servicer.container_inputs = _get_inputs()
         else:
             servicer.container_inputs = inputs
+        function_call_id = servicer.container_inputs[0].inputs[0].function_call_id
         servicer.fail_get_inputs = fail_get_inputs
 
         if webhook_type:
@@ -140,7 +142,16 @@ def _run_container(
         for req in servicer.container_outputs:
             items += list(req.outputs)
 
-        return ContainerResult(client, items)
+        # Get data chunks
+        data_chunks: List[api_pb2.DataChunk] = []
+        try:
+            while True:
+                chunk = servicer.fc_data_out[function_call_id].get_nowait()
+                data_chunks.append(chunk)
+        except asyncio.QueueEmpty:
+            pass
+
+        return ContainerResult(client, items, data_chunks)
 
 
 def _unwrap_scalar(ret: ContainerResult):
@@ -157,40 +168,28 @@ def _unwrap_exception(ret: ContainerResult):
 
 
 def _unwrap_generator(ret: ContainerResult) -> Tuple[List[Any], Optional[Exception]]:
-    items = []
-    for i in range(len(ret.items) - 1):
-        result = ret.items[i].result
-        assert result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-        assert ret.items[i].gen_index == i
-        items.append(deserialize(result.data, ret.client))
+    assert len(ret.items) == 1
+    item = ret.items[0]
+    assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
 
-    last_result = ret.items[-1].result
-    if last_result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-        assert last_result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
-        assert last_result.data == b""  # no data in generator complete marker result
-        return (items, None)
-    elif last_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-        assert last_result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
-        exc = deserialize(last_result.data, ret.client)
-        return (items, exc)
+    values: List[Any] = [deserialize_data_format(chunk.data, chunk.data_format, None) for chunk in ret.data_chunks]
+
+    if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+        exc = deserialize(item.result.data, ret.client)
+        return values, exc
+    elif item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+        assert item.data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE
+        done: api_pb2.GeneratorDone = deserialize_data_format(item.result.data, item.data_format, None)
+        assert done.items_total == len(values)
+        return values, None
     else:
         raise RuntimeError("unknown result type")
 
 
 def _unwrap_asgi(ret: ContainerResult):
-    items = []
-    for item in ret.items[:-1]:
-        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-        assert item.data_format == api_pb2.DATA_FORMAT_ASGI
-        items.append(deserialize_data_format(item.result.data, item.data_format, None))
-
-    last_item = ret.items[-1]
-    assert last_item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert last_item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
-
-    return items
+    values, exc = _unwrap_generator(ret)
+    assert exc is None, "web endpoint raised exception"
+    return values
 
 
 @skip_windows_unix_socket
