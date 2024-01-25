@@ -923,6 +923,7 @@ class _Function(_Object, type_prefix="fu"):
                 function_id=self._object_id,
                 serialized_params=serialized_params,
                 function_options=options,
+                environment_name=_get_environment_name(None, resolver),
             )
             response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
