@@ -16,7 +16,7 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console
 from rich.text import Text
 
-from modal._pty import get_pty_info, set_nonblocking
+from modal._pty import get_pty_info, raw_terminal, set_nonblocking
 from modal.cli.utils import display_table, timestamp_to_local
 from modal.client import _Client
 from modal_proto import api_pb2
@@ -50,7 +50,7 @@ async def list():
 
 @container_cli.command("exec")
 @synchronizer.create_blocking
-async def exec(task_id: str, command: str):
+async def exec(task_id: str, command: str, tty: bool = False):
     """Execute a command inside an active container"""
     if platform.system() == "Windows":
         print("container exec is not currently supported on Windows.")
@@ -64,7 +64,9 @@ async def exec(task_id: str, command: str):
 
     try:
         res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(
-            api_pb2.ContainerExecRequest(task_id=task_id, command=command, pty_info=get_pty_info(shell=True))
+            api_pb2.ContainerExecRequest(
+                task_id=task_id, command=command, pty_info=get_pty_info(shell=True) if tty else None
+            )
         )
     except GRPCError as err:
         connecting_status.stop()
@@ -74,7 +76,7 @@ async def exec(task_id: str, command: str):
         raise
 
     exec_failed = False
-    async with handle_exec_input(client, res.exec_id):
+    async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
         try:
             exit_status = await handle_exec_output(client, res.exec_id, on_connect=connecting_status.stop)
             if exit_status != 0:
@@ -93,7 +95,7 @@ async def exec(task_id: str, command: str):
 
 # note: this is very similar to code in _pty.py.
 @contextlib.asynccontextmanager
-async def handle_exec_input(client: _Client, exec_id: str):
+async def handle_exec_input(client: _Client, exec_id: str, use_raw_terminal=False):
     quit_pipe_read, quit_pipe_write = os.pipe()
 
     set_nonblocking(sys.stdin.fileno())
@@ -128,7 +130,11 @@ async def handle_exec_input(client: _Client, exec_id: str):
 
     write_task = asyncio.create_task(_write())
 
-    yield
+    if use_raw_terminal:
+        with raw_terminal():
+            yield
+    else:
+        yield
 
     os.write(quit_pipe_write, b"\n")
     write_task.cancel()
