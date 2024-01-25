@@ -47,6 +47,9 @@ enum AppState {
 
   // App is detached and local client has disconnected.
   APP_STATE_DETACHED_DISCONNECTED = 8;
+
+  // App is derived from another workspace. Acts as a static, immutable group of functions.
+  APP_STATE_DERIVED = 9;
 }
 
 enum AppStopSource {
@@ -852,6 +855,7 @@ message FunctionBindParamsRequest {
   string function_id = 1;
   bytes serialized_params = 2;
   FunctionOptions function_options = 3;
+  string environment_name = 4;
 }
 
 message FunctionBindParamsResponse {
@@ -996,6 +1000,8 @@ message FunctionGetCallGraphRequest {
   // TODO: use input_id once we switch client submit API to return those.
   string function_call_id = 2;
 }
+
+
 
 message InputCallGraphInfo {
   string input_id = 1;
