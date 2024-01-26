@@ -1,12 +1,13 @@
 # Copyright Modal Labs 2022
 import os
 import pathlib
+import pytest
 import subprocess
 import sys
 import tempfile
 
 import modal
-from modal.config import config
+from modal.config import _lookup_workspace, config
 
 
 def _cli(args, env={}):
@@ -102,3 +103,11 @@ def test_config_env_override_arbitrary_env():
     # Expect value to be overwritten.
     config.override_locally(key, value)
     assert os.getenv(key) == value
+
+
+@pytest.mark.asyncio
+async def test_workspace_lookup(servicer, server_url_env):
+    config.override_locally("token_id", "ak-abc")
+    config.override_locally("token_secret", "as-xyz")
+    resp = await _lookup_workspace(config, "test-profile")
+    assert resp.workspace_name == "test-workspace"
