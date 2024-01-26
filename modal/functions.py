@@ -313,24 +313,18 @@ class _Invocation:
 
     async def run_generator(self):
         data_stream = _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
-        data_task = asyncio.create_task(data_stream.__anext__())
-        generator_finished_task = asyncio.create_task(self.run_function())
-        items_received = 0
-        items_total: Union[int, None] = None  # populated when generator_finished_task completes
+        combined_stream = stream.merge(data_stream, stream.call(self.run_function))
 
-        while True:
-            done, _ = await asyncio.wait([data_task, generator_finished_task], return_when=asyncio.FIRST_COMPLETED)
-            if data_task in done:
-                yield data_task.result()
-                items_received += 1
+        items_received = 0
+        items_total: Union[int, None] = None  # populated when self.run_function() completes
+        async with combined_stream.stream() as streamer:
+            async for item in streamer:
+                if isinstance(item, api_pb2.GeneratorDone):
+                    items_total = item.items_total
+                else:
+                    yield item
+                    items_received += 1
                 if items_received == items_total:
-                    break
-                data_task = asyncio.create_task(data_stream.__anext__())
-            if generator_finished_task in done:
-                generator_finished: api_pb2.GeneratorDone = generator_finished_task.result()
-                items_total = generator_finished.items_total
-                if items_received == items_total:
-                    data_task.cancel()
                     break
 
 
