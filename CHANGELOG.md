@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4792 (2024-01-26)
+
+The `modal profile list` command now shows the workspace associated with each profile.
+
+
+
 ### 0.56.4715 (2024-01-24)
 
 * `Mount.from_local_python_packages` now places mounted packages at `/root` in the Modal runtime by default (used to be `/pkg`). To override this behavior, the function now takes a `remote_dir: Union[str, PurePosixPath]` argument.
