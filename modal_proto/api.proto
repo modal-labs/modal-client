@@ -1712,6 +1712,7 @@ message WebUrlInfo {
 
 message WorkspaceNameLookupResponse {
   string workspace_name = 1;
+  string username = 2;
 }
 
 // Used for `modal container exec`
