@@ -191,8 +191,7 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
                 exit_status = batch.exit_code
                 break
 
-            if batch.batch_index:
-                last_batch_index = batch.batch_index
+            last_batch_index = batch.batch_index
 
     while exit_status is None:
         try:
