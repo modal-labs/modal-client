@@ -210,6 +210,10 @@ class _FunctionIOManager:
             await self.put_data_out(function_call_id, index, data_format, messages_bytes)
             index += len(messages_bytes)
 
+    async def _queue_create(self, size: int) -> asyncio.Queue:
+        """Create a queue, on the synchronicity event loop (needed on Python 3.8 and 3.9)."""
+        return asyncio.Queue(size)
+
     async def _queue_put(self, queue: asyncio.Queue, value: Any) -> None:
         """Put a value onto a queue, using the synchronicity event loop."""
         await queue.put(value)
@@ -522,7 +526,8 @@ def call_function_sync(
                     if not inspect.isgenerator(res):
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
                     item_count = 0
-                    generator_queue: asyncio.Queue[Any] = asyncio.Queue(1024)  # Send up to this many outputs at a time.
+                    # Send up to this many outputs at a time.
+                    generator_queue: asyncio.Queue[Any] = function_io_manager._queue_create(1024)
                     generator_output_task = function_io_manager.generator_output_task(
                         function_call_id,
                         imp_fun.data_format,
@@ -597,7 +602,8 @@ async def call_function_async(
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
                     item_count = 0
-                    generator_queue: asyncio.Queue[Any] = asyncio.Queue(1024)  # Send up to this many outputs at a time.
+                    # Send up to this many outputs at a time.
+                    generator_queue: asyncio.Queue[Any] = await function_io_manager._queue_create.aio(1024)
                     generator_output_task = asyncio.create_task(
                         function_io_manager.generator_output_task.aio(
                             function_call_id,

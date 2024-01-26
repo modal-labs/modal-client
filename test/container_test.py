@@ -144,12 +144,13 @@ def _run_container(
 
         # Get data chunks
         data_chunks: List[api_pb2.DataChunk] = []
-        try:
-            while True:
-                chunk = servicer.fc_data_out[function_call_id].get_nowait()
-                data_chunks.append(chunk)
-        except asyncio.QueueEmpty:
-            pass
+        if function_call_id in servicer.fc_data_out:
+            try:
+                while True:
+                    chunk = servicer.fc_data_out[function_call_id].get_nowait()
+                    data_chunks.append(chunk)
+            except asyncio.QueueEmpty:
+                pass
 
         return ContainerResult(client, items, data_chunks)
 
