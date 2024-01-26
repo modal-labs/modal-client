@@ -327,7 +327,6 @@ class _VolumeUploadContextManager:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if not exc_val:
-
             # Flatten all the uploads yielded by the upload generators in the batch
             def gen_upload_providers():
                 for gen in self._upload_generators:
