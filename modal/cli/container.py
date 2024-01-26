@@ -187,9 +187,7 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
                 connected = True
                 on_connect()
 
-            # for some unclear reason, modal-worker -> modal-server is unable to transmit None for exit_code.
-            # as a temporary workaround, I just set it to i32::MIN.
-            if batch.exit_code is not None and batch.exit_code != -2_147_483_648:
+            if batch.HasField("exit_code"):
                 exit_status = batch.exit_code
                 break
 
@@ -202,7 +200,7 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
                 try:
                     output_task = asyncio.create_task(_get_output())
                     await asyncio.wait_for(asyncio.shield(output_task), timeout=FIRST_OUTPUT_TIMEOUT)
-                except asyncio.TimeoutError or TimeoutError:
+                except (asyncio.TimeoutError, TimeoutError):
                     if not connected:
                         output_task.cancel()
                         raise TimeoutError()
