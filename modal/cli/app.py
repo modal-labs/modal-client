@@ -8,6 +8,7 @@ from grpclib import GRPCError, Status
 from rich.text import Text
 
 from modal._output import OutputManager, get_app_logs_loop
+from modal.app import list_apps
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -33,11 +34,10 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     """List all running or recently running Modal apps for the current account"""
     client = await _Client.from_env()
     env = ensure_env(env)
-    res: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
 
     column_names = ["App ID", "Name", "State", "Creation time", "Stop time"]
     rows: List[List[Union[Text, str]]] = []
-    for app_stats in res.apps:
+    for app_stats in list_apps(env=env, client=client):
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
 
         rows.append(
