@@ -9,10 +9,11 @@ import rich
 import typer
 from rich.console import Console
 
-from modal.client import Client
-from modal.config import _store_user_config, config, user_config_path
-from modal.token_flow import TokenFlow
+from modal.client import _Client
+from modal.config import _lookup_workspace, _store_user_config, config, user_config_path
+from modal.token_flow import _TokenFlow
 from modal_proto import api_pb2
+from modal_utils.async_utils import synchronizer
 
 token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=True)
 
@@ -23,9 +24,11 @@ profile_option = typer.Option(
 
 
 @token_cli.command(
-    help="Set account credentials for connecting to Modal. If not provided with the command, you will be prompted to enter your credentials."
+    name="set",
+    help="Set account credentials for connecting to Modal. If not provided with the command, you will be prompted to enter your credentials.",
 )
-def set(
+@synchronizer.create_blocking
+async def set(
     token_id: Optional[str] = typer.Option(None, help="Account token ID."),
     token_secret: Optional[str] = typer.Option(None, help="Account token secret."),
     profile: Optional[str] = profile_option,
@@ -36,14 +39,22 @@ def set(
     if token_secret is None:
         token_secret = getpass.getpass("Token secret:")
 
+    # TODO add server_url as a parameter for verification?
+    server_url = config.get("server_url", profile=profile)
     if not no_verify:
-        server_url = config.get("server_url", profile=profile)
         rich.print(f"Verifying token against [blue]{server_url}[/blue]")
-        Client.verify(server_url, (token_id, token_secret))
+        await _Client.verify(server_url, (token_id, token_secret))
         rich.print("[green]Token verified successfully[/green]")
 
+    if profile is None:
+        # TODO what if this fails verification but no_verify was False?
+        workspace = await _lookup_workspace(server_url, token_id, token_secret)
+        profile = workspace.username
+
+    # TODO add activate as a parameter?
     _store_user_config({"token_id": token_id, "token_secret": token_secret}, profile=profile)
-    rich.print(f"Token written to {user_config_path}")
+    # TODO unify formatting with new_token output
+    rich.print(f"Token written to {user_config_path} in profile {profile}")
 
 
 def _open_url(url: str) -> bool:
@@ -61,7 +72,7 @@ def _open_url(url: str) -> bool:
         return False
 
 
-def _new_token(
+async def _new_token(
     profile: Optional[str] = None, no_verify: bool = False, source: Optional[str] = None, next_url: Optional[str] = None
 ):
     server_url = config.get("server_url", profile=profile)
@@ -69,10 +80,11 @@ def _new_token(
     console = Console()
 
     result: Optional[api_pb2.TokenFlowWaitResponse] = None
-    with Client.unauthenticated_client(server_url) as client:
-        token_flow = TokenFlow(client)
+    client = await _Client.unauthenticated_client(server_url)
+    async with client:
+        token_flow = _TokenFlow(client)
 
-        with token_flow.start(source, next_url) as (token_flow_id, web_url, code):
+        async with token_flow.start(source, next_url) as (_, web_url, code):
             with console.status("Waiting for authentication in the web browser", spinner="dots"):
                 # Open the web url in the browser
                 if _open_url(web_url):
@@ -91,7 +103,7 @@ def _new_token(
 
             with console.status("Waiting for token flow to complete...", spinner="dots") as status:
                 for attempt in itertools.count():
-                    result = token_flow.finish()
+                    result = await token_flow.finish()
                     if result is not None:
                         break
                     status.update(f"Waiting for token flow to complete... (attempt {attempt+2})")
@@ -105,14 +117,21 @@ def _new_token(
 
     if not no_verify:
         with console.status(f"Verifying token against [blue]{server_url}[/blue]", spinner="dots"):
-            Client.verify(server_url, (result.token_id, result.token_secret))
+            await _Client.verify(server_url, (result.token_id, result.token_secret))
             console.print("[green]Token verified successfully![/green]")
+
+    if profile is None:
+        # TODO what if this fails verification but no_verify was False?
+        workspace = await _lookup_workspace(server_url, result.token_id, result.token_secret)
+        profile = workspace.username
 
     with console.status("Storing token", spinner="dots"):
         _store_user_config({"token_id": result.token_id, "token_secret": result.token_secret}, profile=profile)
+        # TODO print profile name like we do for token set
         console.print(f"[green]Token written to [white]{user_config_path}[/white] successfully![/green]")
 
 
-@token_cli.command(help="Creates a new token by using an authenticated web session.")
-def new(profile: Optional[str] = profile_option, no_verify: bool = False, source: Optional[str] = None):
-    _new_token(profile, no_verify, source)
+@token_cli.command(name="new", help="Creates a new token by using an authenticated web session.")
+@synchronizer.create_blocking
+async def new(profile: Optional[str] = profile_option, no_verify: bool = False, source: Optional[str] = None):
+    await _new_token(profile, no_verify, source)
