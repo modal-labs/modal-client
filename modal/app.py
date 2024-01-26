@@ -6,7 +6,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api, synchronizer
+from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
 from ._output import OutputManager
@@ -377,10 +377,12 @@ def is_local() -> bool:
     return not _is_container_app
 
 
-@synchronizer.create_blocking
-async def list_apps(env: str, client: Optional[_Client] = None) -> List[api_pb2.AppStats]:
+async def _list_apps(env: str, client: Optional[_Client] = None) -> List[api_pb2.AppStats]:
     """List apps in a given Modal environment."""
     if client is None:
         client = await _Client.from_env()
     resp: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
     return list(resp.apps)
+
+
+list_apps = synchronize_api(_list_apps)

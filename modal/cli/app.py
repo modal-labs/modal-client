@@ -8,7 +8,7 @@ from grpclib import GRPCError, Status
 from rich.text import Text
 
 from modal._output import OutputManager, get_app_logs_loop
-from modal.app import list_apps
+from modal.app import _list_apps
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -37,7 +37,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 
     column_names = ["App ID", "Name", "State", "Creation time", "Stop time"]
     rows: List[List[Union[Text, str]]] = []
-    for app_stats in list_apps(env=env, client=client):
+    apps = await _list_apps(env=env, client=client)
+    for app_stats in apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
 
         rows.append(
