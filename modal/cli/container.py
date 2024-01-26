@@ -78,7 +78,7 @@ async def exec(task_id: str, command: str):
         try:
             exit_status = await handle_exec_output(client, res.exec_id, on_connect=connecting_status.stop)
             if exit_status != 0:
-                rich.print(f"Process exited with status code {exit_status}", style="red", file=sys.stderr)
+                rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
             exec_failed = True
         except TimeoutError:
             connecting_status.stop()
