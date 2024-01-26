@@ -98,7 +98,5 @@ def test_config_env_override_arbitrary_env():
 
 @pytest.mark.asyncio
 async def test_workspace_lookup(servicer, server_url_env):
-    config.override_locally("token_id", "ak-abc")
-    config.override_locally("token_secret", "as-xyz")
-    resp = await _lookup_workspace(config, "test-profile")
+    resp = await _lookup_workspace(servicer.remote_addr, "ak-abc", "as-xyz")
     assert resp.workspace_name == "test-workspace"
