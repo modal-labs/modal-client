@@ -719,7 +719,7 @@ message FunctionCallPutDataRequest {
 
 message FunctionCallGetDataRequest {
   string function_call_id = 1;
-  uint32 last_index = 2;
+  uint64 last_index = 2;
 }
 
 message Function {
