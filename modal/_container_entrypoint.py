@@ -525,7 +525,7 @@ def call_function_sync(
                 if imp_fun.is_generator:
                     if not inspect.isgenerator(res):
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
-                    item_count = 0
+
                     # Send up to this many outputs at a time.
                     generator_queue: asyncio.Queue[Any] = function_io_manager._queue_create(1024)
                     generator_output_task = function_io_manager.generator_output_task(
@@ -534,18 +534,16 @@ def call_function_sync(
                         generator_queue,
                         _future=True,  # Synchronicity magic to return a future.
                     )
-                    try:
-                        while True:
-                            value = next(res)
-                            function_io_manager._queue_put(generator_queue, value)
-                            item_count += 1
-                    except StopIteration:
-                        function_io_manager._queue_put(generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL)
-                        generator_output_task.result()
-                        message = api_pb2.GeneratorDone(items_total=item_count)
-                        function_io_manager.push_output(
-                            input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
-                        )
+
+                    item_count = 0
+                    for value in res:
+                        function_io_manager._queue_put(generator_queue, value)
+                        item_count += 1
+
+                    function_io_manager._queue_put(generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL)
+                    generator_output_task.result()  # Wait to finish sending generator outputs.
+                    message = api_pb2.GeneratorDone(items_total=item_count)
+                    function_io_manager.push_output(input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
                 else:
                     if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
@@ -601,7 +599,7 @@ async def call_function_async(
                 if imp_fun.is_generator:
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
-                    item_count = 0
+
                     # Send up to this many outputs at a time.
                     generator_queue: asyncio.Queue[Any] = await function_io_manager._queue_create.aio(1024)
                     generator_output_task = asyncio.create_task(
@@ -611,20 +609,20 @@ async def call_function_async(
                             generator_queue,
                         )
                     )
-                    try:
-                        while True:
-                            value = await res.__anext__()
-                            await function_io_manager._queue_put.aio(generator_queue, value)
-                            item_count += 1
-                    except StopAsyncIteration:
-                        await function_io_manager._queue_put.aio(
-                            generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL
-                        )
-                        await generator_output_task
-                        message = api_pb2.GeneratorDone(items_total=item_count)
-                        await function_io_manager.push_output.aio(
-                            input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
-                        )
+
+                    item_count = 0
+                    async for value in res:
+                        await function_io_manager._queue_put.aio(generator_queue, value)
+                        item_count += 1
+
+                    await function_io_manager._queue_put.aio(
+                        generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL
+                    )
+                    await generator_output_task  # Wait to finish sending generator outputs.
+                    message = api_pb2.GeneratorDone(items_total=item_count)
+                    await function_io_manager.push_output.aio(
+                        input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
+                    )
                 else:
                     if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
