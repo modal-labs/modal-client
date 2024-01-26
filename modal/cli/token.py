@@ -10,7 +10,7 @@ import typer
 from rich.console import Console
 
 from modal.client import _Client
-from modal.config import _lookup_workspace, _store_user_config, config, user_config_path
+from modal.config import _lookup_workspace, _store_user_config, config, config_profiles, user_config_path
 from modal.token_flow import _TokenFlow
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
@@ -52,7 +52,10 @@ async def set(
         profile = workspace.username
 
     # TODO add activate as a parameter?
-    _store_user_config({"token_id": token_id, "token_secret": token_secret}, profile=profile)
+    config_data = {"token_id": token_id, "token_secret": token_secret}
+    if not config_profiles():  # TODO or use activate flag?
+        config_data["active"] = True
+    _store_user_config(config_data, profile=profile)
     # TODO unify formatting with new_token output
     rich.print(f"Token written to {user_config_path} in profile {profile}")
 
@@ -126,7 +129,11 @@ async def _new_token(
         profile = workspace.username
 
     with console.status("Storing token", spinner="dots"):
-        _store_user_config({"token_id": result.token_id, "token_secret": result.token_secret}, profile=profile)
+        # TODO copy-pasted from token-set; need to refactor
+        config_data = {"token_id": result.token_id, "token_secret": result.token_secret}
+        if not config_profiles():  # TODO or use activate flag?
+            config_data["active"] = True
+        _store_user_config(config_data, profile=profile)
         # TODO print profile name like we do for token set
         console.print(f"[green]Token written to [white]{user_config_path}[/white] successfully![/green]")
 
