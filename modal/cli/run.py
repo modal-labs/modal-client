@@ -15,7 +15,7 @@ from typing_extensions import TypedDict
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError
-from ..image import Image
+from ..image import Image, _Image
 from ..runner import deploy_stub, interactive_shell, run_stub
 from ..serving import serve_stub
 from ..stub import LocalEntrypoint, Stub
@@ -367,7 +367,6 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    image_obj = Image.from_registry(image, add_python=add_python) if image else None
     stub = Stub("modal shell")
 
     # if func_ref is not None:
@@ -379,18 +378,20 @@ def shell(
     #         time.sleep(3600)
     #     function = stub.function(
     #         serialized=True,
-    #         cpu=cpu,
-    #         memory=memory,
-    #         gpu=gpu,
-    #         cloud=cloud,
-    #         timeout=3600,
     #     )(do_nothing)
 
     # assert isinstance(function, Function)  # ensured by accept_local_entrypoint=False
 
+    image = Image.from_registry(image, add_python=add_python) if image else _Image.debian_slim()
+
     interactive_shell(
         stub,
-        image_obj,
         cmd,
         environment_name=env,
+        image=image,
+        cpu=cpu,
+        memory=memory,
+        gpu=gpu,
+        cloud=cloud,
+        timeout=3600,
     )

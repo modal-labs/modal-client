@@ -20,7 +20,6 @@ from .cli.container import _container_exec
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
-from .image import _Image
 
 if TYPE_CHECKING:
     from .stub import _Stub
@@ -281,7 +280,7 @@ async def _deploy_stub(
     return DeployResult(app_id=app.app_id)
 
 
-async def _interactive_shell(_stub: _Stub, image: _Image, cmd: str, environment_name: str = ""):
+async def _interactive_shell(_stub: _Stub, cmd: str, environment_name: str = "", **kwargs):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -301,13 +300,15 @@ async def _interactive_shell(_stub: _Stub, image: _Image, cmd: str, environment_
     ```bash
     modal shell script.py --cmd /bin/bash
     ```
+
+    **kwargs will be passed into spawn_sandbox().
     """
     async with _run_stub(_stub, environment_name=environment_name, shell=True):
         console = Console()
         loading_status = console.status("Starting container...")
         loading_status.start()
 
-        sb = await _stub.spawn_sandbox("sleep", "3600", image=_Image.debian_slim(), timeout=3600)
+        sb = await _stub.spawn_sandbox("sleep", "360000", **kwargs)
 
         for _ in range(40):
             await asyncio.sleep(0.5)
