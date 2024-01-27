@@ -375,3 +375,14 @@ def is_local() -> bool:
     Returns `False` when executed from a Modal container in the cloud.
     """
     return not _is_container_app
+
+
+async def _list_apps(env: str, client: Optional[_Client] = None) -> List[api_pb2.AppStats]:
+    """List apps in a given Modal environment."""
+    if client is None:
+        client = await _Client.from_env()
+    resp: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
+    return list(resp.apps)
+
+
+list_apps = synchronize_api(_list_apps)
