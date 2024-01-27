@@ -6,6 +6,9 @@ import os
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
 
+import click
+from rich.console import Console
+
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_api
@@ -141,8 +144,12 @@ async def _run_stub(
                     "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                 )
         except BaseException as e:
-            exc_info = e
-            raise e
+            if shell and isinstance(e, click.exceptions.Exit):
+                # for unclear reasons, when running `modal shell`, when the sandbox exits, click.exceptions.Exit is raised.
+                pass
+            else:
+                exc_info = e
+                raise e
         finally:
             if isinstance(exc_info, KeyboardInterrupt):
                 reason = api_pb2.APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT
@@ -299,29 +306,25 @@ async def _interactive_shell(_stub: _Stub, image: _Image, cmd: str, environment_
     ```
     """
     async with _run_stub(_stub, environment_name=environment_name, shell=True):
-        sb = await _stub.spawn_sandbox(
-            "sleep",
-            "3600",
-            image=_Image.debian_slim(),
-            timeout=3600,
-        )
+        console = Console()
+        loading_status = console.status("Starting container...")
+        loading_status.start()
+
+        sb = await _stub.spawn_sandbox("sleep", "3600", image=_Image.debian_slim(), timeout=3600)
+
         for _ in range(40):
             await asyncio.sleep(0.5)
             resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
             if resp.task_id != "":
                 task_id = resp.task_id
                 break
-            # sandbox hasn't been assigned a task yet
+            # else: sandbox hasn't been assigned a task yet
         else:
             print("Error: timed out waiting for sandbox to start")
             await sb.terminate()
 
-        # todo(nathan): need a better way to determine when the sandbox has loaded.
-        await asyncio.sleep(2)
-
+        loading_status.stop()
         await _container_exec(task_id, "/bin/bash", tty=True)
-
-        # todo: hide the ugly message when exiting
         await sb.terminate()
 
 
