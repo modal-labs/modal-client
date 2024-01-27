@@ -15,7 +15,6 @@ from typing_extensions import TypedDict
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError
-from ..functions import Function
 from ..image import Image
 from ..runner import deploy_stub, interactive_shell, run_stub
 from ..serving import serve_stub
@@ -368,24 +367,30 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    if func_ref is not None:
-        function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
-    else:
-        image_obj = Image.from_registry(image, add_python=add_python) if image else None
-        stub = Stub("modal shell", image=image_obj)
-        function = stub.function(
-            serialized=True,
-            cpu=cpu,
-            memory=memory,
-            gpu=gpu,
-            cloud=cloud,
-            timeout=3600,
-        )(lambda: None)
+    image_obj = Image.from_registry(image, add_python=add_python) if image else None
+    stub = Stub("modal shell")
 
-    assert isinstance(function, Function)  # ensured by accept_local_entrypoint=False
+    # if func_ref is not None:
+    #     function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
+    # else:
+    #     image_obj = Image.from_registry(image, add_python=add_python) if image else None
+    #     stub = Stub("modal shell", image=image_obj)
+    #     def do_nothing():
+    #         time.sleep(3600)
+    #     function = stub.function(
+    #         serialized=True,
+    #         cpu=cpu,
+    #         memory=memory,
+    #         gpu=gpu,
+    #         cloud=cloud,
+    #         timeout=3600,
+    #     )(do_nothing)
+
+    # assert isinstance(function, Function)  # ensured by accept_local_entrypoint=False
 
     interactive_shell(
-        function,
+        stub,
+        image_obj,
         cmd,
         environment_name=env,
     )

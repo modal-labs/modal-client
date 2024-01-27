@@ -1755,7 +1755,6 @@ message RuntimeInputMessage {
   uint64 message_index = 2;
 }
 
-
 service ModalClient {
   // Apps
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);

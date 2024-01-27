@@ -14,10 +14,11 @@ from modal_utils.grpc_utils import retry_transient_errors
 from . import _pty
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from .app import _LocalApp, is_local
+from .cli.container import _container_exec
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
-from .functions import _Function
+from .image import _Image
 
 if TYPE_CHECKING:
     from .stub import _Stub
@@ -272,7 +273,7 @@ async def _deploy_stub(
     return DeployResult(app_id=app.app_id)
 
 
-async def _interactive_shell(_function: _Function, cmd: str, environment_name: str = ""):
+async def _interactive_shell(_stub: _Stub, image: _Image, cmd: str, environment_name: str = ""):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -293,10 +294,27 @@ async def _interactive_shell(_function: _Function, cmd: str, environment_name: s
     modal shell script.py --cmd /bin/bash
     ```
     """
-    _stub = _function._stub
-    _stub._add_pty_input_stream()  # TOOD(erikbern): slightly hacky
-    async with _run_stub(_stub, environment_name=environment_name, shell=True):
-        await _function.shell(cmd)
+    async with _run_stub(_stub, environment_name=environment_name):
+        sb = await _stub.spawn_sandbox(
+            "sleep",
+            "3600",
+            image=_Image.debian_slim(),
+            timeout=3600,
+        )
+        for _ in range(40):
+            await asyncio.sleep(0.5)
+            resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
+            if resp.task_id != "":
+                task_id = resp.task_id
+                break
+            # sandbox hasn't been assigned a task yet
+        else:
+            print("Error: timed out waiting for sandbox to start")
+            await sb.terminate()
+
+        await _container_exec(task_id, "/bin/bash", tty=True)
+
+        await sb.terminate()
 
 
 run_stub = synchronize_api(_run_stub)

@@ -48,17 +48,8 @@ async def list():
     display_table(column_names, rows, json=False, title="Active Containers")
 
 
-@container_cli.command("exec")
-@synchronizer.create_blocking
-async def exec(
-    container_id: str = typer.Argument(
-        help="The ID of the container to run the command in",
-    ),
-    command: str = typer.Argument(help="The command to run"),
-    tty: bool = typer.Option(is_flag=True, default=True, help="Run the command inside a TTY"),
-):
+async def _container_exec(task_id: str, command: str, tty: bool = False):
     """Execute a command inside an active container"""
-    task_id = container_id
     if platform.system() == "Windows":
         print("container exec is not currently supported on Windows.")
         return
@@ -98,6 +89,18 @@ async def exec(
         # we don't want to raise this inside the context manager
         # since otherwise the context manager cleanup doesn't get called
         raise typer.Exit(code=1)
+
+
+@container_cli.command("exec")
+@synchronizer.create_blocking
+async def exec(
+    container_id: str = typer.Argument(
+        help="The ID of the container to run the command in",
+    ),
+    command: str = typer.Argument(help="The command to run"),
+    tty: bool = typer.Option(is_flag=True, default=True, help="Run the command inside a TTY"),
+):
+    await _container_exec(container_id, command, tty)
 
 
 # note: this is very similar to code in _pty.py.
