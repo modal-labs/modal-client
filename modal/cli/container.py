@@ -73,21 +73,16 @@ async def _container_exec(task_id: str, command: str, tty: bool = False):
             raise typer.Exit(code=1)
         raise
 
-    exec_failed = False
-    async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
-        try:
+    try:
+        async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
             exit_status = await handle_exec_output(client, res.exec_id, on_connect=connecting_status.stop)
-            if exit_status != 0:
-                rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
-                exec_failed = True
-        except TimeoutError:
-            connecting_status.stop()
-            rich.print("Failed to establish connection to process", file=sys.stderr)
-            exec_failed = True
+    except TimeoutError:
+        connecting_status.stop()
+        rich.print("Failed to establish connection to process", file=sys.stderr)
+        raise typer.Exit(code=1)
 
-    if exec_failed:
-        # we don't want to raise this inside the context manager
-        # since otherwise the context manager cleanup doesn't get called
+    if exit_status != 0:
+        rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
         raise typer.Exit(code=1)
 
 
