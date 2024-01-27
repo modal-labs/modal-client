@@ -316,10 +316,12 @@ async def _interactive_shell(_stub: _Stub, image: _Image, cmd: str, environment_
             print("Error: timed out waiting for sandbox to start")
             await sb.terminate()
 
-        await asyncio.sleep(3)
+        # todo(nathan): need a better way to determine when the sandbox has loaded.
+        await asyncio.sleep(2)
 
         await _container_exec(task_id, "/bin/bash", tty=True)
 
+        # todo: hide the ugly message when exiting
         await sb.terminate()
 
 
