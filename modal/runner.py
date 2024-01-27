@@ -93,7 +93,7 @@ async def _run_stub(
         try:
             # Create all members
             await app._create_all_objects(
-                stub._indexed_objects, app_state, environment_name, shell=shell, output_mgr=output_mgr
+                stub._indexed_objects, app_state, environment_name, shell=False, output_mgr=output_mgr
             )
 
             # Update all functions client-side to have the output mgr
@@ -109,7 +109,11 @@ async def _run_stub(
             output_mgr.enable_image_logs()
 
             # Yield to context
-            if stub._pty_input_stream:
+            if shell:
+                output_mgr._visible_progress = False
+                yield stub
+                output_mgr._visible_progress = True
+            elif stub._pty_input_stream:
                 output_mgr._visible_progress = False
                 async with _pty.write_stdin_to_pty_stream(stub._pty_input_stream):
                     yield stub
@@ -294,7 +298,7 @@ async def _interactive_shell(_stub: _Stub, image: _Image, cmd: str, environment_
     modal shell script.py --cmd /bin/bash
     ```
     """
-    async with _run_stub(_stub, environment_name=environment_name):
+    async with _run_stub(_stub, environment_name=environment_name, shell=True):
         sb = await _stub.spawn_sandbox(
             "sleep",
             "3600",
@@ -311,6 +315,8 @@ async def _interactive_shell(_stub: _Stub, image: _Image, cmd: str, environment_
         else:
             print("Error: timed out waiting for sandbox to start")
             await sb.terminate()
+
+        await asyncio.sleep(3)
 
         await _container_exec(task_id, "/bin/bash", tty=True)
 
