@@ -186,6 +186,7 @@ class DeployResult:
     """Dataclass representing the result of deploying an app."""
 
     app_id: str
+    functions: dict[str, _Function]
 
 
 async def _deploy_stub(
@@ -244,7 +245,7 @@ async def _deploy_stub(
 
     output_mgr = OutputManager(stdout, show_progress)
 
-    app = await _LocalApp._init_from_name(client, name, namespace, environment_name=environment_name)
+    app: _LocalApp = await _LocalApp._init_from_name(client, name, namespace, environment_name=environment_name)
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
@@ -267,9 +268,14 @@ async def _deploy_stub(
             await app.disconnect(reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
+    functions = {}
+    for tag, obj in stub._indexed_objects.items():
+        if isinstance(obj, _Function):
+            functions[tag] = obj
+
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
     output_mgr.print_if_visible(f"\nView Deployment: [magenta]{url}[/magenta]")
-    return DeployResult(app_id=app.app_id)
+    return DeployResult(app_id=app.app_id, functions=functions)
 
 
 async def _interactive_shell(_function: _Function, cmd: str, environment_name: str = ""):
