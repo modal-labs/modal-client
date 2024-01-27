@@ -50,8 +50,15 @@ async def list():
 
 @container_cli.command("exec")
 @synchronizer.create_blocking
-async def exec(task_id: str, command: str, tty: bool = False):
+async def exec(
+    container_id: str = typer.Argument(
+        help="The ID of the container to run the command in",
+    ),
+    command: str = typer.Argument(help="The command to run"),
+    tty: bool = typer.Option(is_flag=True, default=True, help="Whether to run the command inside a TTY."),
+):
     """Execute a command inside an active container"""
+    task_id = container_id
     if platform.system() == "Windows":
         print("container exec is not currently supported on Windows.")
         return
