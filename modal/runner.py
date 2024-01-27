@@ -6,8 +6,6 @@ import os
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
 
-from rich.console import Console
-
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_api
@@ -16,11 +14,9 @@ from modal_utils.grpc_utils import retry_transient_errors
 from . import _pty
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from .app import _LocalApp, is_local
-from .cli.container import _container_exec
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
-from .image import _Image
 
 if TYPE_CHECKING:
     from .stub import _Stub
@@ -281,51 +277,6 @@ async def _deploy_stub(
     return DeployResult(app_id=app.app_id)
 
 
-async def _interactive_shell(_stub: _Stub, image: _Image, cmd: str, environment_name: str = ""):
-    """Run an interactive shell (like `bash`) within the image for this app.
-
-    This is useful for online debugging and interactive exploration of the
-    contents of this image. If `cmd` is optionally provided, it will be run
-    instead of the default shell inside this image.
-
-    **Example**
-
-    ```python
-    import modal
-
-    stub = modal.Stub(image=modal.Image.debian_slim().apt_install("vim"))
-    ```
-
-    You can now run this using
-
-    ```bash
-    modal shell script.py --cmd /bin/bash
-    ```
-    """
-    async with _run_stub(_stub, environment_name=environment_name, shell=True):
-        console = Console()
-        loading_status = console.status("Starting container...")
-        loading_status.start()
-
-        sb = await _stub.spawn_sandbox("sleep", "3600", image=_Image.debian_slim(), timeout=3600)
-
-        for _ in range(40):
-            await asyncio.sleep(0.5)
-            resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
-            if resp.task_id != "":
-                task_id = resp.task_id
-                break
-            # else: sandbox hasn't been assigned a task yet
-        else:
-            print("Error: timed out waiting for sandbox to start")
-            await sb.terminate()
-
-        loading_status.stop()
-        await _container_exec(task_id, "/bin/bash", tty=True)
-        await sb.terminate()
-
-
 run_stub = synchronize_api(_run_stub)
 serve_update = synchronize_api(_serve_update)
 deploy_stub = synchronize_api(_deploy_stub)
-interactive_shell = synchronize_api(_interactive_shell)
