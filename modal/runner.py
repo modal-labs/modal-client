@@ -6,7 +6,6 @@ import os
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
 
-import click
 from rich.console import Console
 
 from modal_proto import api_pb2
@@ -73,6 +72,8 @@ async def _run_stub(
         client = await _Client.from_env()
     if output_mgr is None:
         output_mgr = OutputManager(stdout, show_progress, "Running app...")
+    if shell:
+        output_mgr._visible_progress = False
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     app = await _LocalApp._init_new(
         client,
@@ -90,7 +91,8 @@ async def _run_stub(
             output_mgr.update_app_page_url(app.log_url())
 
         # Start logs loop
-        logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
+        if not shell:
+            logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
 
         exc_info: Optional[BaseException] = None
         try:
@@ -113,9 +115,7 @@ async def _run_stub(
 
             # Yield to context
             if shell:
-                output_mgr._visible_progress = False
                 yield stub
-                output_mgr._visible_progress = True
             elif stub._pty_input_stream:
                 output_mgr._visible_progress = False
                 async with _pty.write_stdin_to_pty_stream(stub._pty_input_stream):
@@ -135,7 +135,8 @@ async def _run_stub(
                 output_mgr.print_if_visible(
                     f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
                 )
-                logs_loop.cancel()
+                if not shell:
+                    logs_loop.cancel()
             else:
                 output_mgr.print_if_visible(
                     step_completed(f"App aborted. [grey70]View run at [underline]{app.log_url()}[/underline][/grey70]")
@@ -144,12 +145,8 @@ async def _run_stub(
                     "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                 )
         except BaseException as e:
-            if shell and isinstance(e, click.exceptions.Exit):
-                # for unclear reasons, when running `modal shell`, when the sandbox exits, click.exceptions.Exit is raised.
-                pass
-            else:
-                exc_info = e
-                raise e
+            exc_info = e
+            raise e
         finally:
             if isinstance(exc_info, KeyboardInterrupt):
                 reason = api_pb2.APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT
