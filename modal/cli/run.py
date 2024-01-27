@@ -5,6 +5,7 @@ import inspect
 import re
 import sys
 import time
+from dataclasses import asdict
 from typing import Any, Callable, Dict, Optional, get_type_hints
 
 import click
@@ -12,10 +13,12 @@ import typer
 from rich.console import Console
 from typing_extensions import TypedDict
 
+from modal.functions import Function, FunctionEnv
+
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError
-from ..image import Image, _Image
+from ..image import Image
 from ..runner import deploy_stub, interactive_shell, run_stub
 from ..serving import serve_stub
 from ..stub import LocalEntrypoint, Stub
@@ -369,29 +372,28 @@ def shell(
 
     stub = Stub("modal shell")
 
-    # if func_ref is not None:
-    #     function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
-    # else:
-    #     image_obj = Image.from_registry(image, add_python=add_python) if image else None
-    #     stub = Stub("modal shell", image=image_obj)
-    #     def do_nothing():
-    #         time.sleep(3600)
-    #     function = stub.function(
-    #         serialized=True,
-    #     )(do_nothing)
-
-    # assert isinstance(function, Function)  # ensured by accept_local_entrypoint=False
-
-    image = Image.from_registry(image, add_python=add_python) if image else _Image.debian_slim()
-
-    interactive_shell(
-        stub,
-        cmd,
-        environment_name=env,
-        image=image,
-        cpu=cpu,
-        memory=memory,
-        gpu=gpu,
-        cloud=cloud,
-        timeout=3600,
-    )
+    if func_ref is not None:
+        function: Function = import_function(
+            func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
+        )
+        function_env: FunctionEnv = function.env
+        interactive_shell(
+            stub,
+            cmd,
+            environment_name=env,
+            **asdict(function_env),
+            timeout=3600,
+        )
+    else:
+        image = Image.from_registry(image, add_python=add_python) if image else None
+        interactive_shell(
+            stub,
+            cmd,
+            environment_name=env,
+            image=image,
+            cpu=cpu,
+            memory=memory,
+            gpu=gpu,
+            cloud=cloud,
+            timeout=3600,
+        )
