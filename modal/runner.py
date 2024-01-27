@@ -4,7 +4,7 @@ import contextlib
 import dataclasses
 import os
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, Optional, TypeVar
 
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
@@ -186,7 +186,7 @@ class DeployResult:
     """Dataclass representing the result of deploying an app."""
 
     app_id: str
-    functions: dict[str, _Function]
+    functions: Dict[str, _Function]
 
 
 async def _deploy_stub(
