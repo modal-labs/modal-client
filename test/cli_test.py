@@ -108,12 +108,14 @@ def test_secret_list(servicer, set_env_client):
     assert "dummy-secret-3" not in res.stdout
 
 
-def test_app_token_new(servicer, set_env_client, server_url_env):
-    _run(["token", "new", "--profile", "_test"])
+def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
+    with modal_config():
+        _run(["token", "new", "--profile", "_test"])
 
 
-def test_app_setup(servicer, set_env_client, server_url_env):
-    _run(["setup", "--profile", "_test"])
+def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
+    with modal_config():
+        _run(["setup", "--profile", "_test"])
 
 
 def test_run(servicer, set_env_client, test_dir):
