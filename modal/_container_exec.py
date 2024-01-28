@@ -1,5 +1,4 @@
-# Copyright Modal Labs 2022
-
+# Copyright Modal Labs 2024
 import asyncio
 import contextlib
 import errno
@@ -7,58 +6,23 @@ import os
 import platform
 import select
 import sys
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional
 
 import rich
 import typer
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console
-from rich.text import Text
 
 from modal._pty import get_pty_info, raw_terminal, set_nonblocking
-from modal.cli.utils import display_table, timestamp_to_local
 from modal.client import _Client
 from modal_proto import api_pb2
-from modal_utils.async_utils import asyncify, synchronizer
+from modal_utils.async_utils import asyncify
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
-container_cli = typer.Typer(name="container", help="Manage running containers.", no_args_is_help=True)
 
-
-@container_cli.command("list")
-@synchronizer.create_blocking
-async def list():
-    """List all containers that are currently running"""
-    client = await _Client.from_env()
-    res: api_pb2.TaskListResponse = await client.stub.TaskList(api_pb2.TaskListRequest())
-
-    column_names = ["Container ID", "App ID", "App Name", "Start time"]
-    rows: List[List[Union[Text, str]]] = []
-    for task_stats in res.tasks:
-        rows.append(
-            [
-                task_stats.task_id,
-                task_stats.app_id,
-                task_stats.app_description,
-                timestamp_to_local(task_stats.started_at) if task_stats.started_at else "Pending",
-            ]
-        )
-
-    display_table(column_names, rows, json=False, title="Active Containers")
-
-
-@container_cli.command("exec")
-@synchronizer.create_blocking
-async def exec(
-    container_id: str = typer.Argument(
-        help="The ID of the container to run the command in",
-    ),
-    command: List[str] = typer.Argument(help="The command to run"),
-    tty: bool = typer.Option(is_flag=True, default=True, help="Run the command inside a TTY"),
-):
+async def container_exec(task_id: str, command: List[str], tty: bool = False):
     """Execute a command inside an active container"""
-    task_id = container_id
     if platform.system() == "Windows":
         print("container exec is not currently supported on Windows.")
         return
@@ -82,21 +46,16 @@ async def exec(
             raise typer.Exit(code=1)
         raise
 
-    exec_failed = False
-    async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
-        try:
+    try:
+        async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
             exit_status = await handle_exec_output(client, res.exec_id, on_connect=connecting_status.stop)
-            if exit_status != 0:
-                rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
-                exec_failed = True
-        except TimeoutError:
-            connecting_status.stop()
-            rich.print("Failed to establish connection to process", file=sys.stderr)
-            exec_failed = True
+    except TimeoutError:
+        connecting_status.stop()
+        rich.print("Failed to establish connection to process", file=sys.stderr)
+        raise typer.Exit(code=1)
 
-    if exec_failed:
-        # we don't want to raise this inside the context manager
-        # since otherwise the context manager cleanup doesn't get called
+    if exit_status != 0:
+        rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
         raise typer.Exit(code=1)
 
 
