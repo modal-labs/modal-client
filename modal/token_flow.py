@@ -127,8 +127,8 @@ async def _set_token(
     no_verify: bool = False,
 ):
     # TODO add server_url as a parameter for verification?
-    console = Console()
     server_url = config.get("server_url", profile=profile)
+    console = Console()
     if not no_verify:
         console.print(f"Verifying token against [blue]{server_url}[/blue]")
         await _Client.verify(server_url, (token_id, token_secret))
