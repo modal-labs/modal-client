@@ -1127,7 +1127,7 @@ def modal_config():
             os.environ["MODAL_CONFIG_PATH"] = t.name
             config.user_config_path = t.name
             config._user_config = config._read_user_config()
-            yield
+            yield t.name
         except Exception:
             if show_on_error:
                 with open(t.name) as f:
