@@ -5,6 +5,8 @@ import pytest
 import subprocess
 import sys
 
+import toml
+
 import modal
 from modal.config import _lookup_workspace, config
 
@@ -42,7 +44,7 @@ def test_config_env_override():
 
 
 def test_config_store_user(servicer, modal_config):
-    with modal_config(show_on_error=True):
+    with modal_config(show_on_error=True) as config_file_path:
         env = {"MODAL_SERVER_URL": servicer.remote_addr}
 
         # No token by default
@@ -87,11 +89,16 @@ def test_config_store_user(servicer, modal_config):
         config = _get_config(env={"MODAL_PROFILE": "", **env})
         assert config["token_secret"] == "xyz"
 
+        # Test that only the first profile was explicitly activated
+        for profile, profile_config in toml.load(config_file_path).items():
+            if profile == "test-username":
+                assert profile_config["active"] is True
+            else:
+                assert "active" not in profile_config
+
         # Check that we can overwrite the default profile
         _cli(["token", "set", "--token-id", "ABC", "--token-secret", "XYZ"], env=env)
-        config = _get_config(env={"MODAL_PROFILE": "test-username", **env})
-        assert config["token_id"] == "ABC"
-        assert config["token_secret"] == "XYZ"
+        assert toml.load(config_file_path)["test-username"]["token_id"] == "ABC"
 
 
 def test_config_env_override_arbitrary_env():
