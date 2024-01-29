@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4849 (2024-01-29)
+
+Adds tty support to `modal container exec` for fully-interactive commands. Example: `modal container exec [container-id] /bin/bash`
+
+
+
 ### 0.56.4792 (2024-01-26)
 
 The `modal profile list` command now shows the workspace associated with each profile.
