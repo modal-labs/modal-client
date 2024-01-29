@@ -3,9 +3,10 @@ import itertools
 import os
 import webbrowser
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, Optional, Tuple
 
 import aiohttp.web
+import rich
 from rich.console import Console
 
 from modal_proto import api_pb2
@@ -123,7 +124,7 @@ async def _new_token(
 
     with console.status("Storing token", spinner="dots"):
         # TODO copy-pasted from token-set; need to refactor
-        config_data = {"token_id": result.token_id, "token_secret": result.token_secret}
+        config_data: Dict[str, Any] = {"token_id": result.token_id, "token_secret": result.token_secret}
         if not config_profiles():  # TODO or use activate flag?
             config_data["active"] = True
         _store_user_config(config_data, profile=profile)
@@ -140,7 +141,25 @@ async def _set_token(
     source: Optional[str] = None,
     next_url: Optional[str] = None,
 ):
-    ...
+    # TODO add server_url as a parameter for verification?
+    server_url = config.get("server_url", profile=profile)
+    if not no_verify:
+        rich.print(f"Verifying token against [blue]{server_url}[/blue]")
+        await _Client.verify(server_url, (token_id, token_secret))
+        rich.print("[green]Token verified successfully[/green]")
+
+    if profile is None:
+        # TODO what if this fails verification but no_verify was False?
+        workspace = await _lookup_workspace(server_url, token_id, token_secret)
+        profile = workspace.username
+
+    # TODO add activate as a parameter?
+    config_data: Dict[str, Any] = {"token_id": token_id, "token_secret": token_secret}
+    if not config_profiles():  # TODO or use activate flag?
+        config_data["active"] = True
+    _store_user_config(config_data, profile=profile)
+    # TODO unify formatting with new_token output
+    rich.print(f"Token written to {user_config_path} in profile {profile}")
 
 
 def _open_url(url: str) -> bool:
