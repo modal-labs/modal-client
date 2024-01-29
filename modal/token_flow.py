@@ -112,24 +112,7 @@ async def _new_token(
     if result.workspace_username:
         console.print(f"[green]Token is connected to the [white]{result.workspace_username}[/white] workspace.[/green]")
 
-    if not no_verify:
-        with console.status(f"Verifying token against [blue]{server_url}[/blue]", spinner="dots"):
-            await _Client.verify(server_url, (result.token_id, result.token_secret))
-            console.print("[green]Token verified successfully![/green]")
-
-    if profile is None:
-        # TODO what if this fails verification but no_verify was False?
-        workspace = await _lookup_workspace(server_url, result.token_id, result.token_secret)
-        profile = workspace.username
-
-    with console.status("Storing token", spinner="dots"):
-        # TODO copy-pasted from token-set; need to refactor
-        config_data: Dict[str, Any] = {"token_id": result.token_id, "token_secret": result.token_secret}
-        if not config_profiles():  # TODO or use activate flag?
-            config_data["active"] = True
-        _store_user_config(config_data, profile=profile)
-        # TODO print profile name like we do for token set
-        console.print(f"[green]Token written to [white]{user_config_path}[/white] for profile successfully![/green]")
+    await _set_token(result.token_id, result.token_secret, profile=profile, no_verify=no_verify)
 
 
 async def _set_token(
@@ -138,15 +121,14 @@ async def _set_token(
     *,
     profile: Optional[str] = None,
     no_verify: bool = False,
-    source: Optional[str] = None,
-    next_url: Optional[str] = None,
 ):
     # TODO add server_url as a parameter for verification?
+    console = Console()
     server_url = config.get("server_url", profile=profile)
     if not no_verify:
         rich.print(f"Verifying token against [blue]{server_url}[/blue]")
         await _Client.verify(server_url, (token_id, token_secret))
-        rich.print("[green]Token verified successfully[/green]")
+        rich.print("[green]Token verified successfully![/green]")
 
     if profile is None:
         # TODO what if this fails verification but no_verify was False?
@@ -155,11 +137,12 @@ async def _set_token(
 
     # TODO add activate as a parameter?
     config_data: Dict[str, Any] = {"token_id": token_id, "token_secret": token_secret}
-    if not config_profiles():  # TODO or use activate flag?
+    if not config_profiles():
         config_data["active"] = True
-    _store_user_config(config_data, profile=profile)
-    # TODO unify formatting with new_token output
-    rich.print(f"Token written to {user_config_path} in profile {profile}")
+    with console.status("Storing token", spinner="dots"):
+        _store_user_config(config_data, profile=profile)
+    # TODO highlight config path and profile
+    rich.print(f"[green]Token written to {user_config_path} in profile {profile}![/green]")
 
 
 def _open_url(url: str) -> bool:
