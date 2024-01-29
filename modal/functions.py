@@ -581,7 +581,6 @@ class _Function(_Object, type_prefix="fu"):
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,
         interactive: bool = False,
-        name: Optional[str] = None,
         cloud: Optional[str] = None,
         is_builder_function: bool = False,
         cls: Optional[type] = None,
