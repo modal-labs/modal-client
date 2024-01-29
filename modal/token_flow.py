@@ -131,9 +131,12 @@ async def _set_token(
         rich.print("[green]Token verified successfully![/green]")
 
     if profile is None:
-        # TODO what if this fails verification but no_verify was False?
-        workspace = await _lookup_workspace(server_url, token_id, token_secret)
-        profile = workspace.username
+        if "MODAL_PROFILE" in os.environ:
+            profile = os.environ["MODAL_PROFILE"]
+        else:
+            # TODO what if this fails verification but no_verify was False?
+            workspace = await _lookup_workspace(server_url, token_id, token_secret)
+            profile = workspace.username
 
     # TODO add activate as a parameter?
     config_data: Dict[str, Any] = {"token_id": token_id, "token_secret": token_secret}
