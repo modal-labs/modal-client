@@ -14,6 +14,7 @@ from modal_utils.http_utils import run_temporary_http_server
 
 from .client import _Client
 from .config import _lookup_workspace, _store_user_config, config, config_profiles, user_config_path
+from .exception import AuthError
 
 
 class _TokenFlow:
@@ -135,8 +136,14 @@ async def _set_token(
         if "MODAL_PROFILE" in os.environ:
             profile = os.environ["MODAL_PROFILE"]
         else:
-            # TODO what if this fails verification but no_verify was False?
-            workspace = await _lookup_workspace(server_url, token_id, token_secret)
+            try:
+                workspace = await _lookup_workspace(server_url, token_id, token_secret)
+            except AuthError as exc:
+                if no_verify:
+                    # Improve the error message for verification failure with --no-verify to reduce surprise
+                    msg = "No profile name given, but could not authenticate client to look up workspace name."
+                    raise AuthError(msg) from exc
+                raise exc
             profile = workspace.username
 
     # TODO add activate as a parameter?
