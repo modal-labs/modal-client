@@ -3,7 +3,7 @@ import itertools
 import os
 import webbrowser
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Dict, Optional, Tuple
+from typing import AsyncGenerator, Optional, Tuple
 
 import aiohttp.web
 from rich.console import Console
@@ -68,6 +68,7 @@ TokenFlow = synchronize_api(_TokenFlow)
 async def _new_token(
     *,
     profile: Optional[str] = None,
+    activate: bool = False,
     no_verify: bool = False,
     source: Optional[str] = None,
     next_url: Optional[str] = None,
@@ -114,7 +115,7 @@ async def _new_token(
             f"[green]Token is connected to the [magenta]{result.workspace_username}[/magenta] workspace.[/green]"
         )
 
-    await _set_token(result.token_id, result.token_secret, profile=profile, no_verify=no_verify)
+    await _set_token(result.token_id, result.token_secret, profile=profile, activate=activate, no_verify=no_verify)
 
 
 async def _set_token(
@@ -122,6 +123,7 @@ async def _set_token(
     token_secret: str,
     *,
     profile: Optional[str] = None,
+    activate: bool = False,
     no_verify: bool = False,
 ):
     # TODO add server_url as a parameter for verification?
@@ -146,12 +148,11 @@ async def _set_token(
                 raise exc
             profile = workspace.username
 
-    # TODO add activate as a parameter?
-    config_data: Dict[str, Any] = {"token_id": token_id, "token_secret": token_secret}
-    if not config_profiles():
-        config_data["active"] = True
+    config_data = {"token_id": token_id, "token_secret": token_secret}
+    # Activate the profile when requested or if no other profiles currently exist
+    active_profile = profile if (activate or not config_profiles()) else None
     with console.status("Storing token", spinner="dots"):
-        _store_user_config(config_data, profile=profile)
+        _store_user_config(config_data, profile=profile, active_profile=active_profile)
     console.print(
         f"[green]Token written to [magenta]{user_config_path}[/magenta] in profile [magenta]{profile}[/magenta].[/green]"
     )
