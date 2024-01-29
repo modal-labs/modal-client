@@ -820,7 +820,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def WorkspaceNameLookup(self, stream):
-        await stream.send_message(api_pb2.WorkspaceNameLookupResponse(workspace_name="test-workspace"))
+        await stream.send_message(
+            api_pb2.WorkspaceNameLookupResponse(workspace_name="test-workspace", username="test-username")
+        )
 
     ### Tunnel
 
@@ -1114,7 +1116,7 @@ def modal_config():
     """Return a context manager with a temporary modal.toml file"""
 
     @contextlib.contextmanager
-    def mock_modal_toml(contents: str = ""):
+    def mock_modal_toml(contents: str = "", show_on_error: bool = False):
         # Some of the cli tests run within within the main process
         # so we need to modify the config singletons to pick up any changes
         orig_config_path_env = os.environ.get("MODAL_CONFIG_PATH")
@@ -1126,6 +1128,11 @@ def modal_config():
             config.user_config_path = t.name
             config._user_config = config._read_user_config()
             yield
+        except Exception:
+            if show_on_error:
+                with open(t.name) as f:
+                    print(f"Test config file contents:\n\n{f.read()}", file=sys.stderr)
+            raise
         finally:
             if orig_config_path_env:
                 os.environ["MODAL_CONFIG_PATH"] = orig_config_path_env

@@ -42,7 +42,7 @@ def test_config_env_override():
 
 
 def test_config_store_user(servicer, modal_config):
-    with modal_config():
+    with modal_config(show_on_error=True):
         env = {"MODAL_SERVER_URL": servicer.remote_addr}
 
         # No token by default
