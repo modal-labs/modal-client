@@ -600,13 +600,26 @@ message DictContainsResponse {
   bool found = 1;
 }
 
-message DictCreateRequest {
+message DictCreateRequest {  // Will be superseded by DictGetOrCreateRequest
   repeated DictEntry data = 1;
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
   string existing_dict_id = 3;
 }
 
-message DictCreateResponse {
+message DictCreateResponse {  // Will be superseded by DictGetOrCreateResponse
+  string dict_id = 1;
+}
+
+message DictGetOrCreateRequest {
+  string app_id = 1;
+  string deployment_name = 2;
+  DeploymentNamespace namespace = 3;
+  string environment_name = 4;
+  bool create_if_missing = 5;
+  repeated DictEntry data = 6;
+}
+
+message DictGetOrCreateResponse {
   string dict_id = 1;
 }
 
@@ -1774,7 +1787,8 @@ service ModalClient {
 
   // Dicts
   rpc DictClear(DictClearRequest) returns (google.protobuf.Empty);
-  rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
+  rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
+  rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
   rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
   rpc DictGet(DictGetRequest) returns (DictGetResponse);
   rpc DictPop(DictPopRequest) returns (DictPopResponse);
