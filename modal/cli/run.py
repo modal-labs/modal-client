@@ -13,11 +13,10 @@ import typer
 from rich.console import Console
 from typing_extensions import TypedDict
 
-from modal.functions import Function, FunctionEnv
-
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError
+from ..functions import Function, FunctionEnv
 from ..image import Image
 from ..runner import deploy_stub, interactive_shell, run_stub
 from ..serving import serve_stub

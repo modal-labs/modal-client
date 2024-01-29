@@ -3,9 +3,11 @@ import asyncio
 import contextlib
 import dataclasses
 import os
+import sys
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
 
+import rich
 from rich.console import Console
 
 from modal_proto import api_pb2
@@ -318,8 +320,10 @@ async def _interactive_shell(_stub: _Stub, cmd: str, environment_name: str = "",
                 break
             # else: sandbox hasn't been assigned a task yet
         else:
-            print("Error: timed out waiting for sandbox to start")
+            loading_status.stop()
+            rich.print("Error: timed out waiting for sandbox to start", file=sys.stderr)
             await sb.terminate()
+            return
 
         loading_status.stop()
         await _container_exec(task_id, "/bin/bash", tty=True)
