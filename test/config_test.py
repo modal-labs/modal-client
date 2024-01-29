@@ -68,6 +68,11 @@ def test_config_store_user(servicer, modal_config):
         assert config["token_id"] == "foo"
         assert config["token_secret"] == "xyz"
 
+        # Check that the profile is named after the workspace username by default
+        config = _get_config(env={"MODAL_PROFILE": "test-username", **env})
+        assert config["token_id"] == "abc"
+        assert config["token_secret"] == "xyz"
+
         # Check that we can get the prof_1 env creds too
         config = _get_config(env={"MODAL_PROFILE": "prof_1", **env})
         assert config["token_id"] == "foo"
@@ -81,6 +86,12 @@ def test_config_store_user(servicer, modal_config):
         # Check that an empty string falls back to the active profile
         config = _get_config(env={"MODAL_PROFILE": "", **env})
         assert config["token_secret"] == "xyz"
+
+        # Check that we can overwrite the default profile
+        _cli(["token", "set", "--token-id", "ABC", "--token-secret", "XYZ"], env=env)
+        config = _get_config(env={"MODAL_PROFILE": "test-username", **env})
+        assert config["token_id"] == "ABC"
+        assert config["token_secret"] == "XYZ"
 
 
 def test_config_env_override_arbitrary_env():
