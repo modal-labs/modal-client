@@ -55,7 +55,7 @@ async def exec(
         help="The ID of the container to run the command in",
     ),
     command: str = typer.Argument(help="The command to run"),
-    tty: bool = typer.Option(is_flag=True, default=True, help="Whether to run the command inside a TTY."),
+    tty: bool = typer.Option(is_flag=True, default=True, help="Run the command inside a TTY"),
 ):
     """Execute a command inside an active container"""
     task_id = container_id
