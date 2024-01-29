@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, Optional, Tuple
 
 import aiohttp.web
-import rich
 from rich.console import Console
 
 from modal_proto import api_pb2
@@ -110,7 +109,9 @@ async def _new_token(
     assert result is not None
 
     if result.workspace_username:
-        console.print(f"[green]Token is connected to the [white]{result.workspace_username}[/white] workspace.[/green]")
+        console.print(
+            f"[green]Token is connected to the [magenta]{result.workspace_username}[/magenta] workspace.[/green]"
+        )
 
     await _set_token(result.token_id, result.token_secret, profile=profile, no_verify=no_verify)
 
@@ -126,9 +127,9 @@ async def _set_token(
     console = Console()
     server_url = config.get("server_url", profile=profile)
     if not no_verify:
-        rich.print(f"Verifying token against [blue]{server_url}[/blue]")
+        console.print(f"Verifying token against [blue]{server_url}[/blue]")
         await _Client.verify(server_url, (token_id, token_secret))
-        rich.print("[green]Token verified successfully![/green]")
+        console.print("[green]Token verified successfully![/green]")
 
     if profile is None:
         if "MODAL_PROFILE" in os.environ:
@@ -144,8 +145,9 @@ async def _set_token(
         config_data["active"] = True
     with console.status("Storing token", spinner="dots"):
         _store_user_config(config_data, profile=profile)
-    # TODO highlight config path and profile
-    rich.print(f"[green]Token written to {user_config_path} in profile {profile}![/green]")
+    console.print(
+        f"[green]Token written to [magenta]{user_config_path}[/magenta] in profile [magenta]{profile}[/magenta].[/green]"
+    )
 
 
 def _open_url(url: str) -> bool:
