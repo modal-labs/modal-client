@@ -16,9 +16,9 @@ from modal_utils.async_utils import TaskContext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
 from . import _pty
+from ._container_exec import container_exec
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from .app import _LocalApp, is_local
-from .cli.container import _container_exec
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
@@ -322,12 +322,10 @@ async def _interactive_shell(_stub: _Stub, cmd: str, environment_name: str = "",
         else:
             loading_status.stop()
             rich.print("Error: timed out waiting for sandbox to start", file=sys.stderr)
-            await sb.terminate()
             return
 
         loading_status.stop()
-        await _container_exec(task_id, "/bin/bash", tty=True)
-        await sb.terminate()
+        await container_exec(task_id, "/bin/bash", tty=True)
 
 
 run_stub = synchronize_api(_run_stub)
