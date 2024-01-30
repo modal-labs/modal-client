@@ -6,6 +6,7 @@ import re
 import sys
 import time
 from dataclasses import asdict
+from functools import partial
 from typing import Any, Callable, Dict, Optional, get_type_hints
 
 import click
@@ -376,23 +377,14 @@ def shell(
             func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
         )
         function_env: FunctionEnv = function.env
-        interactive_shell(
-            stub,
-            cmd,
-            environment_name=env,
-            **asdict(function_env),
-            timeout=3600,
-        )
+        start_shell = partial(interactive_shell, **asdict(function_env))
     else:
         image = Image.from_registry(image, add_python=add_python) if image else None
-        interactive_shell(
-            stub,
-            cmd,
-            environment_name=env,
-            image=image,
-            cpu=cpu,
-            memory=memory,
-            gpu=gpu,
-            cloud=cloud,
-            timeout=3600,
-        )
+        start_shell = partial(interactive_shell, image=image, cpu=cpu, memory=memory, gpu=gpu, cloud=cloud)
+
+    start_shell(
+        stub,
+        cmd,
+        environment_name=env,
+        timeout=3600,
+    )
