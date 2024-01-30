@@ -5,7 +5,6 @@ import inspect
 import re
 import sys
 import time
-from dataclasses import asdict
 from functools import partial
 from typing import Any, Callable, Dict, Optional, get_type_hints
 
@@ -376,7 +375,17 @@ def shell(
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
         assert isinstance(function, Function)
         function_env: FunctionEnv = function.env
-        start_shell = partial(interactive_shell, **asdict(function_env))
+        start_shell = partial(
+            interactive_shell,
+            image=function_env.image,
+            mounts=function_env.mounts,
+            secrets=function_env.secrets,
+            network_file_system=function_env.network_file_systems,
+            gpu=function_env.gpu,
+            cloud=function_env.cloud,
+            cpu=function_env.cpu,
+            memory=function_env.memory,
+        )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
         start_shell = partial(interactive_shell, image=modal_image, cpu=cpu, memory=memory, gpu=gpu, cloud=cloud)
