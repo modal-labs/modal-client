@@ -1338,6 +1338,14 @@ message SandboxCreateResponse {
   string sandbox_id = 1;
 }
 
+message SandboxGetTaskIdRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetTaskIdResponse {
+  string task_id = 1;
+}
+
 message SandboxGetLogsRequest {
   string sandbox_id = 1;
   FileDescriptor file_descriptor = 2;
@@ -1843,6 +1851,7 @@ service ModalClient {
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
