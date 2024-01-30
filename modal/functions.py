@@ -586,7 +586,6 @@ class _Function(_Object, type_prefix="fu"):
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,
         interactive: bool = False,
-        name: Optional[str] = None,
         cloud: Optional[str] = None,
         is_builder_function: bool = False,
         cls: Optional[type] = None,
@@ -928,6 +927,7 @@ class _Function(_Object, type_prefix="fu"):
                 function_id=self._object_id,
                 serialized_params=serialized_params,
                 function_options=options,
+                environment_name=_get_environment_name(None, resolver),
             )
             response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)

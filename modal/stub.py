@@ -554,7 +554,6 @@ class _Stub:
                 cpu=cpu,
                 interactive=interactive,
                 keep_warm=keep_warm,
-                name=name,
                 cloud=cloud,
                 webhook_config=webhook_config,
                 cls=_cls,

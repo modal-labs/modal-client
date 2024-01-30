@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import traceback
 from collections import defaultdict
 from pathlib import Path
@@ -26,7 +27,7 @@ import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
-from modal import __version__
+from modal import __version__, config
 from modal._serialization import serialize_data_format
 from modal.app import _ContainerApp
 from modal.client import Client
@@ -1109,3 +1110,32 @@ def test_dir(request):
     root_dir = Path(request.config.rootdir)
     test_dir = Path(os.getenv("PYTEST_CURRENT_TEST")).parent
     return root_dir / test_dir
+
+
+@pytest.fixture(scope="function")
+def modal_config():
+    """Return a context manager with a temporary modal.toml file"""
+
+    @contextlib.contextmanager
+    def mock_modal_toml(contents: str = ""):
+        # Some of the cli tests run within within the main process
+        # so we need to modify the config singletons to pick up any changes
+        orig_config_path_env = os.environ.get("MODAL_CONFIG_PATH")
+        orig_config_path = config.user_config_path
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".toml", mode="w") as t:
+                t.write(textwrap.dedent(contents.strip("\n")))
+            os.environ["MODAL_CONFIG_PATH"] = t.name
+            config.user_config_path = t.name
+            config._user_config = config._read_user_config()
+            yield
+        finally:
+            if orig_config_path_env:
+                os.environ["MODAL_CONFIG_PATH"] = orig_config_path_env
+            else:
+                del os.environ["MODAL_CONFIG_PATH"]
+            config.user_config_path = orig_config_path
+            config._user_config = config._read_user_config()
+            os.remove(t.name)
+
+    return mock_modal_toml
