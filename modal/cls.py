@@ -14,7 +14,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
-from .exception import NotFoundError, deprecation_error
+from .exception import InvalidError, NotFoundError, deprecation_error
 from .functions import (
     _parse_retries,
     _validate_volumes,
@@ -251,6 +251,8 @@ class _Cls(_Object, type_prefix="cs"):
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
                     raise NotFoundError(exc.message)
+                elif exc.status == Status.FAILED_PRECONDITION:
+                    raise InvalidError(exc.message)
                 else:
                     raise
 
