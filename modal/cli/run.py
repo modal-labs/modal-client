@@ -373,14 +373,13 @@ def shell(
     stub = Stub("modal shell")
 
     if func_ref is not None:
-        function: Function = import_function(
-            func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
-        )
+        function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
+        assert isinstance(function, Function)
         function_env: FunctionEnv = function.env
         start_shell = partial(interactive_shell, **asdict(function_env))
     else:
-        image = Image.from_registry(image, add_python=add_python) if image else None
-        start_shell = partial(interactive_shell, image=image, cpu=cpu, memory=memory, gpu=gpu, cloud=cloud)
+        modal_image = Image.from_registry(image, add_python=add_python) if image else None
+        start_shell = partial(interactive_shell, image=modal_image, cpu=cpu, memory=memory, gpu=gpu, cloud=cloud)
 
     start_shell(
         stub,
