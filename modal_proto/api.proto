@@ -136,6 +136,11 @@ enum GPUType {
   GPU_TYPE_L4 = 9;
 }
 
+enum ObjectCreationType {
+  OBJECT_CREATION_TYPE_UNSPECIFIED = 0;  // just lookup
+  OBJECT_CREATION_TYPE_CREATE_IF_MISSING = 1;
+}
+
 enum ProgressType {
   IMAGE_SNAPSHOT_UPLOAD = 0;  // TODO(erikbern): shouldn't be zero, and needs prefix
   FUNCTION_QUEUED = 1;  // TODO(erikbern): needs_prefix
@@ -611,12 +616,11 @@ message DictCreateResponse {  // Will be superseded by DictGetOrCreateResponse
 }
 
 message DictGetOrCreateRequest {
-  string app_id = 1;
-  string deployment_name = 2;
-  DeploymentNamespace namespace = 3;
-  string environment_name = 4;
-  bool create_if_missing = 5;
-  repeated DictEntry data = 6;
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;
+  repeated DictEntry data = 5;
 }
 
 message DictGetOrCreateResponse {
