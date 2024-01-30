@@ -380,7 +380,7 @@ def shell(
             image=function_env.image,
             mounts=function_env.mounts,
             secrets=function_env.secrets,
-            network_file_system=function_env.network_file_systems,
+            network_file_systems=function_env.network_file_systems,
             gpu=function_env.gpu,
             cloud=function_env.cloud,
             cpu=function_env.cpu,
