@@ -555,7 +555,7 @@ message ContainerCheckpointRequest {}
 
 message ContainerExecRequest {
   string task_id = 1;
-  string command = 2;
+  repeated string command = 2;
   PTYInfo pty_info = 3;
 }
 
