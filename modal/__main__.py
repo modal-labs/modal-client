@@ -29,11 +29,11 @@ def check_profile():
         console = Console()
         message = dedent(
             """\
-        Support for using an implicit 'default' profile is deprecated.
-        Please use `modal profile activate` to activate one of your profiles.
-        (Use `modal profile list` to see the options.)
+            Support for using an implicit 'default' profile is deprecated.
+            Please use `modal profile activate` to activate one of your profiles.
+            (Use `modal profile list` to see the options.)
 
-        This will become an error in a future update."""
+            This will become an error in a future update."""
         )
         console.print(Panel(message, style="yellow", title="Warning", title_align="left"))
 
