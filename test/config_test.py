@@ -5,6 +5,8 @@ import pytest
 import subprocess
 import sys
 
+import toml
+
 import modal
 from modal.config import _lookup_workspace, config
 
@@ -42,7 +44,7 @@ def test_config_env_override():
 
 
 def test_config_store_user(servicer, modal_config):
-    with modal_config():
+    with modal_config(show_on_error=True) as config_file_path:
         env = {"MODAL_SERVER_URL": servicer.remote_addr}
 
         # No token by default
@@ -68,6 +70,11 @@ def test_config_store_user(servicer, modal_config):
         assert config["token_id"] == "foo"
         assert config["token_secret"] == "xyz"
 
+        # Check that the profile is named after the workspace username by default
+        config = _get_config(env={"MODAL_PROFILE": "test-username", **env})
+        assert config["token_id"] == "abc"
+        assert config["token_secret"] == "xyz"
+
         # Check that we can get the prof_1 env creds too
         config = _get_config(env={"MODAL_PROFILE": "prof_1", **env})
         assert config["token_id"] == "foo"
@@ -81,6 +88,28 @@ def test_config_store_user(servicer, modal_config):
         # Check that an empty string falls back to the active profile
         config = _get_config(env={"MODAL_PROFILE": "", **env})
         assert config["token_secret"] == "xyz"
+
+        # Test that only the first profile was explicitly activated
+        for profile, profile_config in toml.load(config_file_path).items():
+            if profile == "test-username":
+                assert profile_config["active"] is True
+            else:
+                assert "active" not in profile_config
+
+        # Check that we can overwrite the default profile
+        _cli(["token", "set", "--token-id", "ABC", "--token-secret", "XYZ"], env=env)
+        assert toml.load(config_file_path)["test-username"]["token_id"] == "ABC"
+
+        # Check that we can activate a profile while setting a token
+        _cli(
+            ["token", "set", "--token-id", "foo", "--token-secret", "bar3", "--profile", "prof_3", "--activate"],
+            env=env,
+        )
+        for profile, profile_config in toml.load(config_file_path).items():
+            if profile == "prof_3":
+                assert profile_config["active"] is True
+            else:
+                assert "active" not in profile_config
 
 
 def test_config_env_override_arbitrary_env():
@@ -98,7 +127,5 @@ def test_config_env_override_arbitrary_env():
 
 @pytest.mark.asyncio
 async def test_workspace_lookup(servicer, server_url_env):
-    config.override_locally("token_id", "ak-abc")
-    config.override_locally("token_secret", "as-xyz")
-    resp = await _lookup_workspace(config, "test-profile")
+    resp = await _lookup_workspace(servicer.remote_addr, "ak-abc", "as-xyz")
     assert resp.workspace_name == "test-workspace"
