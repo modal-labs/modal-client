@@ -10,6 +10,18 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4874 (2024-01-31)
+
+The `modal token new` and `modal token set` commands now create profiles that are more closely associated with workspaces, and they have more explicit profile activation behavior:
+
+- By default, these commands will create/update a profile named after the workspace that the token points to, rather than a profile named "default"
+- Both commands now have an `--activate` flag that will activate the profile associated with the new token
+- If no other profiles exist at the time of creation, the new profile will have its `active` metadata set to True
+
+With these changes, we are moving away from the concept of a "default" profile. Implicit usage of the "default" profile will be deprecated in a future update.
+
+
+
 ### 0.56.4849 (2024-01-29)
 
 Adds tty support to `modal container exec` for fully-interactive commands. Example: `modal container exec [container-id] /bin/bash`
