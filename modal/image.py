@@ -1067,7 +1067,7 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_gcp_artifact_registry(
             "us-east1-docker.pkg.dev/my-project-1234/my-repo/my-image:my-version",
-            secret=modal.Secret.from_name("my-gcp-secret"),
+            secrets=[modal.Secret.from_name("my-gcp-secret")],
             add_python="3.11",
         )
         ```
@@ -1108,7 +1108,7 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_aws_ecr(
             "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:my-version",
-            secret=modal.Secret.from_name("aws"),
+            secrets=[modal.Secret.from_name("aws")],
             add_python="3.11",
         )
         ```
