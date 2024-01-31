@@ -30,9 +30,15 @@ def current():
 async def list(json: Optional[bool] = False):
     config = Config()
     profiles = config_profiles()
-    responses = await asyncio.gather(
-        *(_lookup_workspace(config, profile) for profile in profiles), return_exceptions=True
-    )
+    lookup_coros = [
+        _lookup_workspace(
+            config.get("server_url", profile),
+            config.get("token_id", profile),
+            config.get("token_secret", profile),
+        )
+        for profile in profiles
+    ]
+    responses = await asyncio.gather(*lookup_coros, return_exceptions=True)
 
     rows = []
     for profile, resp in zip(profiles, responses):
