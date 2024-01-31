@@ -17,7 +17,7 @@ profile_option = typer.Option(
 )
 activate_option = typer.Option(
     False,
-    help="Activate the profile that this token.",
+    help="Activate the profile containing this token after creation.",
 )
 
 
