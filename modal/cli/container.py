@@ -149,7 +149,7 @@ async def handle_exec_input(client: _Client, exec_id: str, use_raw_terminal=Fals
     write_task.cancel()
 
 
-async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None):
+async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
     """
     Streams exec output to stdout.
 
