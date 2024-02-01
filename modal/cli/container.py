@@ -35,8 +35,8 @@ async def list():
 
     column_names = ["Container ID", "App ID", "App Name", "Start time"]
     rows: List[List[Union[Text, str]]] = []
-    res.tasks.sort(key=lambda task: task.started_at)
-    for task_stats in reversed(res.tasks):
+    res.tasks.sort(key=lambda task: task.started_at, reverse=True)
+    for task_stats in res.tasks:
         rows.append(
             [
                 task_stats.task_id,
