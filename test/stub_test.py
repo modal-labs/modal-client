@@ -326,7 +326,7 @@ def test_function_image_positional():
 @pytest.mark.asyncio
 async def test_deploy_disconnect(servicer, client):
     stub = Stub()
-    stub.function(secret=modal.Secret.from_name("nonexistent-secret"))(square)
+    stub.function(secrets=[modal.Secret.from_name("nonexistent-secret")])(square)
 
     with pytest.raises(NotFoundError):
         await deploy_stub.aio(stub, "my-app", client=client)

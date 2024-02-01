@@ -66,6 +66,7 @@ from .exception import (
     NotFoundError,
     RemoteError,
     deprecation_error,
+    deprecation_warning,
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
@@ -606,6 +607,13 @@ class _Function(_Object, type_prefix="fu"):
         elif interactive and is_generator:
             raise InvalidError("Interactive mode not supported for generator functions")
 
+        if secret is not None:
+            deprecation_warning(
+                date(2024, 1, 31),
+                "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
+            )
+            secrets = [secret, *secrets]
+
         all_mounts = [
             _get_client_mount(),  # client
             *mounts,  # explicit mounts
@@ -615,9 +623,6 @@ class _Function(_Object, type_prefix="fu"):
             all_mounts.extend(stub._get_deduplicated_function_mounts(info.get_mounts()))  # implicit mounts
         else:
             all_mounts.extend(info.get_mounts().values())  # this would typically only happen for builder functions
-
-        if secret:
-            secrets = [secret, *secrets]
 
         retry_policy = _parse_retries(retries, raw_f)
 
@@ -639,7 +644,6 @@ class _Function(_Object, type_prefix="fu"):
                     snapshot_info,
                     stub=None,
                     image=image,
-                    secret=secret,
                     secrets=secrets,
                     gpu=gpu,
                     mounts=mounts,
