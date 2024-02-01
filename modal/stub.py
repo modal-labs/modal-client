@@ -96,7 +96,7 @@ class _Stub:
     stub = modal.Stub()
 
     @stub.function(
-        secret=modal.Secret.from_name("some_secret"),
+        secrets=[modal.Secret.from_name("some_secret")],
         schedule=modal.Period(days=1),
     )
     def foo():
@@ -445,8 +445,7 @@ class _Stub:
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
-        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
@@ -477,6 +476,7 @@ class _Stub:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
+        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         _allow_background_volume_commits: bool = False,
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
@@ -572,8 +572,7 @@ class _Stub:
         _warn_parentheses_missing=None,
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
-        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
@@ -596,6 +595,7 @@ class _Stub:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
+        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
