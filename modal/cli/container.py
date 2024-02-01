@@ -56,7 +56,7 @@ async def exec(
         help="The ID of the container to run the command in",
     ),
     command: List[str] = typer.Argument(help="The command to run"),
-    tty: bool = typer.Option(is_flag=True, default=True, help="Run the command inside a TTY"),
+    pty: bool = typer.Option(is_flag=True, default=True, help="Run the command inside a PTY"),
 ):
     """Execute a command inside an active container"""
     task_id = container_id
@@ -73,7 +73,7 @@ async def exec(
     try:
         res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(
             api_pb2.ContainerExecRequest(
-                task_id=task_id, command=command, pty_info=get_pty_info(shell=True) if tty else None
+                task_id=task_id, command=command, pty_info=get_pty_info(shell=True) if pty else None
             )
         )
     except GRPCError as err:
@@ -91,7 +91,7 @@ async def exec(
             await asyncio.wait_for(on_connect.wait(), timeout=15)
             connecting_status.stop()
 
-            async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
+            async with handle_exec_input(client, res.exec_id, use_raw_terminal=pty):
                 exit_status = await exec_output_task
 
             if exit_status != 0:
