@@ -403,7 +403,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ContainerExecGetOutput(self, stream):
         _request: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
         await stream.send_message(
-            api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(file_descriptor=1, message="Hello World")])
+            api_pb2.RuntimeOutputBatch(
+                items=[
+                    api_pb2.RuntimeOutputMessage(
+                        file_descriptor=api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT, message="Hello World"
+                    )
+                ]
+            )
         )
         await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
 
