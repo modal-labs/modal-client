@@ -338,33 +338,42 @@ def mock_shell_pty():
 
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
-    ), mock.patch("modal._pty.write_stdin_to_pty_stream", asyncnullcontext):
+    ), mock.patch("modal._container_exec.get_pty_info", mock_get_pty_info), mock.patch(
+        "modal._pty.write_stdin_to_pty_stream", asyncnullcontext
+    ):
         yield
 
 
+@pytest.fixture
+def mock_container_exec_io():
+    captured_out = []
+
+    async def write_to_fd(fd: int, data: bytes):
+        nonlocal captured_out
+        captured_out.append((fd, data))
+
+    with mock.patch("modal._container_exec.handle_exec_input", asyncnullcontext), mock.patch(
+        "modal._container_exec._write_to_fd", write_to_fd
+    ):
+        yield captured_out
+
+
 @pytest.mark.usefixtures("mock_shell_pty")
-def test_shell(servicer, set_env_client, test_dir):
+def test_shell(servicer, set_env_client, test_dir, mock_container_exec_io):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     webhook_stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
 
-    ran_cmd = None
-
-    @servicer.function_body
-    def dummy_exec(cmd: str):
-        nonlocal ran_cmd
-        ran_cmd = cmd
-
     # Function is explicitly specified
     _run(["shell", stub_file.as_posix() + "::foo"])
-    assert ran_cmd == "/bin/bash"
+    assert mock_container_exec_io == [(1, b"Hello World")]
 
     # Function is explicitly specified
     _run(["shell", webhook_stub_file.as_posix() + "::foo"])
-    assert ran_cmd == "/bin/bash"
+    assert mock_container_exec_io == [(1, b"Hello World")]
 
     # Function must be inferred
     _run(["shell", webhook_stub_file.as_posix()])
-    assert ran_cmd == "/bin/bash"
+    assert mock_container_exec_io == [(1, b"Hello World")]
 
 
 def test_app_descriptions(servicer, server_url_env, test_dir):

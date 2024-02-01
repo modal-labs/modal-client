@@ -396,6 +396,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.requests.append(request)
         await stream.send_message(Empty())
 
+    async def ContainerExec(self, stream):
+        _request: api_pb2.ContainerExecRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.ContainerExecResponse(exec_id="container_exec_id"))
+
+    async def ContainerExecGetOutput(self, stream):
+        _request: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(file_descriptor=1, message="Hello World")])
+        )
+        await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
+
     ### Dict
 
     async def DictCreate(self, stream):
@@ -759,6 +770,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxTerminate(self, stream):
         self.sandbox.terminate()
         await stream.send_message(api_pb2.SandboxTerminateResponse())
+
+    async def SandboxGetTaskId(self, stream):
+        # only used for `modal shell` / `modal container exec`
+        _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="modal_container_exec"))
 
     ### Secret
 

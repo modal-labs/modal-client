@@ -124,23 +124,6 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
     # (the server will send an empty message when the process spawns)
     connected = False
 
-    def write_data(fd, data):
-        loop = asyncio.get_event_loop()
-        future = loop.create_future()
-
-        def try_write():
-            try:
-                nbytes = os.write(fd, data)
-                loop.remove_writer(fd)
-                future.set_result(nbytes)
-            except OSError as e:
-                if e.errno != errno.EAGAIN:
-                    future.set_exception(e)
-                    raise
-
-        loop.add_writer(fd, try_write)
-        return future
-
     async def _get_output():
         nonlocal last_batch_index, exit_status, connected
 
@@ -153,7 +136,7 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
             for message in batch.items:
                 assert message.file_descriptor in [1, 2]
 
-                await write_data(message.file_descriptor, str.encode(message.message))
+                await _write_to_fd(message.file_descriptor, str.encode(message.message))
 
             if not connected:
                 connected = True
@@ -188,3 +171,21 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
             raise
 
     return exit_status
+
+
+def _write_to_fd(fd: int, data: bytes):
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    def try_write():
+        try:
+            nbytes = os.write(fd, data)
+            loop.remove_writer(fd)
+            future.set_result(nbytes)
+        except OSError as e:
+            if e.errno != errno.EAGAIN:
+                future.set_exception(e)
+                raise
+
+    loop.add_writer(fd, try_write)
+    return future
