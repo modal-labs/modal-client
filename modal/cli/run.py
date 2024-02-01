@@ -392,7 +392,7 @@ def shell(
 
     start_shell(
         stub,
-        cmd,
+        cmd=[cmd],
         environment_name=env,
         timeout=3600,
     )

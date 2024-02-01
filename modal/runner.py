@@ -5,7 +5,7 @@ import dataclasses
 import os
 import sys
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
+from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, TypeVar
 
 import rich
 from rich.console import Console
@@ -282,7 +282,7 @@ async def _deploy_stub(
     return DeployResult(app_id=app.app_id)
 
 
-async def _interactive_shell(_stub: _Stub, cmd: str, environment_name: str = "", **kwargs):
+async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str = "", **kwargs):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -325,7 +325,7 @@ async def _interactive_shell(_stub: _Stub, cmd: str, environment_name: str = "",
             return
 
         loading_status.stop()
-        await container_exec(task_id, "/bin/bash", tty=True)
+        await container_exec(task_id, cmd, tty=True)
 
 
 run_stub = synchronize_api(_run_stub)
