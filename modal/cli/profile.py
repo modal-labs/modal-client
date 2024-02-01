@@ -49,7 +49,7 @@ async def list(json: Optional[bool] = False):
             # Catch-all for other exceptions, like incorrect server url
             workspace = "Unknown (profile misconfigured)"
         else:
-            workspace = resp.workspace_name
+            workspace = resp.username
         content = ["•" if active else "", profile, workspace]
         rows.append((active, content))
 
