@@ -96,7 +96,7 @@ async def exec(
         if exit_status != 0:
             rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
             raise typer.Exit(code=1)
-    except TimeoutError:
+    except (asyncio.TimeoutError, TimeoutError):
         connecting_status.stop()
         rich.print("Failed to establish connection to process", file=sys.stderr)
         raise typer.Exit(code=1)
