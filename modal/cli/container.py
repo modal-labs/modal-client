@@ -7,7 +7,7 @@ import os
 import platform
 import select
 import sys
-from typing import Callable, List, Optional, Union
+from typing import List, Optional, Union
 
 import rich
 import typer
@@ -35,7 +35,8 @@ async def list():
 
     column_names = ["Container ID", "App ID", "App Name", "Start time"]
     rows: List[List[Union[Text, str]]] = []
-    for task_stats in res.tasks:
+    res.tasks.sort(key=lambda task: task.started_at)
+    for task_stats in reversed(res.tasks):
         rows.append(
             [
                 task_stats.task_id,
@@ -82,21 +83,22 @@ async def exec(
             raise typer.Exit(code=1)
         raise
 
-    exec_failed = False
-    async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
-        try:
-            exit_status = await handle_exec_output(client, res.exec_id, on_connect=connecting_status.stop)
-            if exit_status != 0:
-                rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
-                exec_failed = True
-        except TimeoutError:
-            connecting_status.stop()
-            rich.print("Failed to establish connection to process", file=sys.stderr)
-            exec_failed = True
+    on_connect = asyncio.Event()
+    exec_output_task = asyncio.create_task(handle_exec_output(client, res.exec_id, on_connect=on_connect))
+    try:
+        # time out if we can't connect to the server fast enough
+        await asyncio.wait_for(on_connect.wait(), timeout=15)
+        connecting_status.stop()
 
-    if exec_failed:
-        # we don't want to raise this inside the context manager
-        # since otherwise the context manager cleanup doesn't get called
+        async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
+            exit_status = await exec_output_task
+
+        if exit_status != 0:
+            rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
+            raise typer.Exit(code=1)
+    except TimeoutError:
+        connecting_status.stop()
+        rich.print("Failed to establish connection to process", file=sys.stderr)
         raise typer.Exit(code=1)
 
 
@@ -147,16 +149,15 @@ async def handle_exec_input(client: _Client, exec_id: str, use_raw_terminal=Fals
     write_task.cancel()
 
 
-async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[Callable] = None) -> int:
+async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None):
     """
     Streams exec output to stdout.
 
-    If given, on_connect will be called when the client connects to the running process.
+    If given, on_connect will be set when the client connects to the running process,
+    and the event loop will be released.
 
     Returns the status code of the process.
     """
-    # how long to wait for the first server response before we time out
-    FIRST_OUTPUT_TIMEOUT = 15
 
     last_batch_index = 0
     exit_status = None
@@ -198,7 +199,10 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
 
             if not connected:
                 connected = True
-                on_connect()
+                if on_connect is not None:
+                    on_connect.set()
+                    # give up the event loop
+                    await asyncio.sleep(0)
 
             if batch.HasField("exit_code"):
                 exit_status = batch.exit_code
@@ -208,18 +212,7 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
 
     while exit_status is None:
         try:
-            if not connected:
-                try:
-                    output_task = asyncio.create_task(_get_output())
-                    await asyncio.wait_for(asyncio.shield(output_task), timeout=FIRST_OUTPUT_TIMEOUT)
-                except (asyncio.TimeoutError, TimeoutError):
-                    if not connected:
-                        output_task.cancel()
-                        raise TimeoutError()
-                    else:
-                        await output_task
-            else:
-                await _get_output()
+            await _get_output()
         except (GRPCError, StreamTerminatedError) as exc:
             if isinstance(exc, GRPCError):
                 if exc.status in RETRYABLE_GRPC_STATUS_CODES:
