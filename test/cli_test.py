@@ -370,14 +370,17 @@ def test_shell(servicer, set_env_client, test_dir, mock_container_exec_io):
     # Function is explicitly specified
     _run(["shell", stub_file.as_posix() + "::foo"])
     assert mock_container_exec_io == [(1, b"Hello World")]
+    mock_container_exec_io.clear()
 
     # Function is explicitly specified
     _run(["shell", webhook_stub_file.as_posix() + "::foo"])
     assert mock_container_exec_io == [(1, b"Hello World")]
+    mock_container_exec_io.clear()
 
     # Function must be inferred
     _run(["shell", webhook_stub_file.as_posix()])
     assert mock_container_exec_io == [(1, b"Hello World")]
+    mock_container_exec_io.clear()
 
 
 def test_app_descriptions(servicer, server_url_env, test_dir):

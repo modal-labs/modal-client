@@ -17,7 +17,7 @@ from rich.console import Console
 from modal._pty import get_pty_info, raw_terminal, set_nonblocking
 from modal.client import _Client
 from modal_proto import api_pb2
-from modal_utils.async_utils import asyncify
+from modal_utils.async_utils import TaskContext, asyncify
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 
@@ -46,17 +46,25 @@ async def container_exec(task_id: str, command: List[str], tty: bool = False):
             raise typer.Exit(code=1)
         raise
 
-    try:
-        async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
-            exit_status = await handle_exec_output(client, res.exec_id, on_connect=connecting_status.stop)
-    except TimeoutError:
-        connecting_status.stop()
-        rich.print("Failed to establish connection to process", file=sys.stderr)
-        raise typer.Exit(code=1)
+    on_connect = asyncio.Event()
+    async with TaskContext() as tc:
+        exec_output_task = tc.create_task(handle_exec_output(client, res.exec_id, on_connect=on_connect))
+        try:
+            # time out if we can't connect to the server fast enough
+            await asyncio.wait_for(on_connect.wait(), timeout=15)
+            connecting_status.stop()
 
-    if exit_status != 0:
-        rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
-        raise typer.Exit(code=1)
+            async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
+                exit_status = await exec_output_task
+
+            if exit_status != 0:
+                rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
+                raise typer.Exit(code=1)
+        except (asyncio.TimeoutError, TimeoutError):
+            connecting_status.stop()
+            rich.print("Failed to establish connection to process", file=sys.stderr)
+            exec_output_task.cancel()
+            raise typer.Exit(code=1)
 
 
 # note: this is very similar to code in _pty.py.
