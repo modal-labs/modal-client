@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4903 (2024-02-01)
+
+`modal container exec`'s `--no-tty` flag has been renamed to `--no-pty`.
+
+
+
 ### 0.56.4902 (2024-02-01)
 
 The singular form of the `secret` parameter in `Stub.function`, `Stub.cls`, and `Image.run_function` has been deprecated. Please update your code to use the plural form instead:`secrets=[Secret(...)]`.
