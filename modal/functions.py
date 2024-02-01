@@ -611,6 +611,7 @@ class _Function(_Object, type_prefix="fu"):
             deprecation_warning(
                 date(2024, 1, 31),
                 "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
+                pending=True,
             )
             secrets = [secret, *secrets]
 
