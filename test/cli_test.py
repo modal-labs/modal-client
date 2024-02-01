@@ -2,6 +2,7 @@
 import json
 import os
 import pytest
+import re
 import sys
 import tempfile
 import traceback
@@ -11,6 +12,7 @@ from unittest import mock
 import click
 import click.testing
 import pytest_asyncio
+import toml
 
 from modal import Client
 from modal.cli.entry_point import entrypoint_cli
@@ -109,13 +111,15 @@ def test_secret_list(servicer, set_env_client):
 
 
 def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
-    with modal_config():
+    with modal_config() as config_file_path:
         _run(["token", "new", "--profile", "_test"])
+        assert "_test" in toml.load(config_file_path)
 
 
 def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
-    with modal_config():
+    with modal_config() as config_file_path:
         _run(["setup", "--profile", "_test"])
+        assert "_test" in toml.load(config_file_path)
 
 
 def test_run(servicer, set_env_client, test_dir):
@@ -540,10 +544,27 @@ def test_cls(servicer, set_env_client, test_dir):
     _run(["run", f"{stub_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"])
 
 
-def test_profile_list(servicer, server_url_env):
-    res = _run(["profile", "list"])
-    assert "Profile" in res.stdout
-    assert "Workspace" in res.stdout
+def test_profile_list(servicer, server_url_env, modal_config):
+    config = """
+    [test-profile]
+    token_id = "ak-abc"
+    token_secret = "as-xyz"
 
-    res = _run(["profile", "list", "--json"])
-    json.loads(res.stdout)
+    [other-profile]
+    token_id = "ak-abc"
+    token_secret = "as-xyz"
+    """
+
+    with modal_config(config):
+        res = _run(["profile", "list"])
+        table_rows = res.stdout.split("\n")
+        assert re.search("Profile .+ Workspace", table_rows[1])
+        assert re.search("test-profile .+ test-username", table_rows[3])
+        assert re.search("other-profile .+ test-username", table_rows[4])
+
+        res = _run(["profile", "list", "--json"])
+        json_data = json.loads(res.stdout)
+        assert json_data[0]["name"] == "test-profile"
+        assert json_data[0]["workspace"] == "test-username"
+        assert json_data[1]["name"] == "other-profile"
+        assert json_data[1]["workspace"] == "test-username"

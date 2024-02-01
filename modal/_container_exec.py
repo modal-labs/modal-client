@@ -6,7 +6,7 @@ import os
 import platform
 import select
 import sys
-from typing import Callable, Optional
+from typing import Optional
 
 import rich
 import typer
@@ -106,16 +106,15 @@ async def handle_exec_input(client: _Client, exec_id: str, use_raw_terminal=Fals
     write_task.cancel()
 
 
-async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[Callable] = None) -> int:
+async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
     """
     Streams exec output to stdout.
 
-    If given, on_connect will be called when the client connects to the running process.
+    If given, on_connect will be set when the client connects to the running process,
+    and the event loop will be released.
 
     Returns the status code of the process.
     """
-    # how long to wait for the first server response before we time out
-    FIRST_OUTPUT_TIMEOUT = 15
 
     last_batch_index = 0
     exit_status = None
@@ -140,7 +139,10 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
 
             if not connected:
                 connected = True
-                on_connect()
+                if on_connect is not None:
+                    on_connect.set()
+                    # give up the event loop
+                    await asyncio.sleep(0)
 
             if batch.HasField("exit_code"):
                 exit_status = batch.exit_code
@@ -150,18 +152,7 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
 
     while exit_status is None:
         try:
-            if not connected:
-                try:
-                    output_task = asyncio.create_task(_get_output())
-                    await asyncio.wait_for(asyncio.shield(output_task), timeout=FIRST_OUTPUT_TIMEOUT)
-                except (asyncio.TimeoutError, TimeoutError):
-                    if not connected:
-                        output_task.cancel()
-                        raise TimeoutError()
-                    else:
-                        await output_task
-            else:
-                await _get_output()
+            await _get_output()
         except (GRPCError, StreamTerminatedError) as exc:
             if isinstance(exc, GRPCError):
                 if exc.status in RETRYABLE_GRPC_STATUS_CODES:

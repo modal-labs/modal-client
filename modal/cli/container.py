@@ -24,6 +24,7 @@ async def list():
 
     column_names = ["Container ID", "App ID", "App Name", "Start time"]
     rows: List[List[Union[Text, str]]] = []
+    res.tasks.sort(key=lambda task: task.started_at, reverse=True)
     for task_stats in res.tasks:
         rows.append(
             [
@@ -43,7 +44,7 @@ async def exec(
     container_id: str = typer.Argument(
         help="The ID of the container to run the command in",
     ),
-    command: str = typer.Argument(help="The command to run"),
+    command: List[str] = typer.Argument(help="The command to run"),
     tty: bool = typer.Option(is_flag=True, default=True, help="Run the command inside a TTY"),
 ):
     await container_exec(container_id, command, tty)
