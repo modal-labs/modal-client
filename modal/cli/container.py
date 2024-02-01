@@ -20,7 +20,7 @@ from modal._pty import get_pty_info, raw_terminal, set_nonblocking
 from modal.cli.utils import display_table, timestamp_to_local
 from modal.client import _Client
 from modal_proto import api_pb2
-from modal_utils.async_utils import asyncify, synchronizer
+from modal_utils.async_utils import TaskContext, asyncify, synchronizer
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 container_cli = typer.Typer(name="container", help="Manage running containers.", no_args_is_help=True)
@@ -84,22 +84,24 @@ async def exec(
         raise
 
     on_connect = asyncio.Event()
-    exec_output_task = asyncio.create_task(handle_exec_output(client, res.exec_id, on_connect=on_connect))
-    try:
-        # time out if we can't connect to the server fast enough
-        await asyncio.wait_for(on_connect.wait(), timeout=15)
-        connecting_status.stop()
+    async with TaskContext() as tc:
+        exec_output_task = tc.create_task(handle_exec_output(client, res.exec_id, on_connect=on_connect))
+        try:
+            # time out if we can't connect to the server fast enough
+            await asyncio.wait_for(on_connect.wait(), timeout=15)
+            connecting_status.stop()
 
-        async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
-            exit_status = await exec_output_task
+            async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
+                exit_status = await exec_output_task
 
-        if exit_status != 0:
-            rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
+            if exit_status != 0:
+                rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
+                raise typer.Exit(code=1)
+        except (asyncio.TimeoutError, TimeoutError):
+            connecting_status.stop()
+            rich.print("Failed to establish connection to process", file=sys.stderr)
+            exec_output_task.cancel()
             raise typer.Exit(code=1)
-    except (asyncio.TimeoutError, TimeoutError):
-        connecting_status.stop()
-        rich.print("Failed to establish connection to process", file=sys.stderr)
-        raise typer.Exit(code=1)
 
 
 # note: this is very similar to code in _pty.py.
