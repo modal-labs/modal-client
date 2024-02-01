@@ -6,7 +6,7 @@ import os
 import platform
 import select
 import sys
-from typing import Optional
+from typing import List, Optional
 
 import rich
 import typer
@@ -21,7 +21,7 @@ from modal_utils.async_utils import asyncify
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 
-async def container_exec(task_id: str, command: str, tty: bool = False):
+async def container_exec(task_id: str, command: List[str], tty: bool = False):
     """Execute a command inside an active container"""
     if platform.system() == "Windows":
         print("container exec is not currently supported on Windows.")
