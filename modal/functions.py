@@ -22,6 +22,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Sequence,
     Set,
     Tuple,
     Type,
@@ -539,6 +540,23 @@ def _validate_volumes(
     return validated_volumes
 
 
+@dataclass
+class FunctionEnv:
+    """
+    Stores information about the function environment. This is used for `modal shell` to support
+    running shells in the same environment as a user-defined function.
+    """
+
+    image: Optional[_Image]
+    mounts: Sequence[_Mount]
+    secrets: Sequence[_Secret]
+    network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
+    gpu: GPU_T
+    cloud: Optional[str]
+    cpu: Optional[float]
+    memory: Optional[int]
+
+
 class _Function(_Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -555,6 +573,7 @@ class _Function(_Object, type_prefix="fu"):
     _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
     _function_name: Optional[str]
     _is_method: bool
+    _env: FunctionEnv
 
     @staticmethod
     def from_args(
@@ -632,6 +651,17 @@ class _Function(_Object, type_prefix="fu"):
             # HACK: remove this once we stop using ssh tunnels for this.
             if image:
                 image = image.apt_install("autossh")
+
+        function_env = FunctionEnv(
+            mounts=all_mounts,
+            secrets=secrets,
+            gpu=gpu,
+            network_file_systems=network_file_systems,
+            image=image,
+            cloud=cloud,
+            cpu=cpu,
+            memory=memory,
+        )
 
         if cls and not is_auto_snapshot:
             # Needed to avoid circular imports
@@ -889,10 +919,11 @@ class _Function(_Object, type_prefix="fu"):
         obj._info = info
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
-        obj._stub = stub  # Needed for CLI right now
+        obj._stub = stub  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
         obj._is_method = bool(cls)
+        obj._env = function_env  # needed for modal shell
 
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
@@ -1012,6 +1043,10 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def info(self) -> FunctionInfo:
         return self._info
+
+    @property
+    def env(self) -> FunctionEnv:
+        return self._env
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""
