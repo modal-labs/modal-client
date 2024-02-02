@@ -124,7 +124,7 @@ class H100(_GPUConfig):
     """
     [NVIDIA H100 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
 
-    The most powerful GPU available in the cloud.
+    H100 features fourth-generation Tensor Cores and a Transformer Engine with FP8 precision that provides up to 4X faster training over the prior generation for GPT-3 (175B) models. 
     """
 
     def __init__(
