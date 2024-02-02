@@ -150,6 +150,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
+            interactive=function.env.interactive,
         ):
             if function.info.cls is None:
                 function.remote(**kwargs)

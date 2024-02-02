@@ -30,8 +30,10 @@ from typing import (
 )
 
 from aiostream import pipe, stream
+from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from rich.console import Console
 from synchronicity.exceptions import UserCodeException
 
 from modal import _pty
@@ -50,6 +52,7 @@ from ._blob_utils import (
     blob_download,
     blob_upload,
 )
+from ._container_exec import connect_to_exec
 from ._function_utils import FunctionInfo, get_referred_objects, is_async
 from ._location import parse_cloud_provider
 from ._mount_utils import validate_mount_points
@@ -157,7 +160,7 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
         )
 
 
-async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutInputsItem:
+async def _create_input(args, kwargs, client, idx=None, final_input=False) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
     """
@@ -168,12 +171,16 @@ async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutIn
         args_blob_id = await blob_upload(args_serialized, client.stub)
 
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE),
+            input=api_pb2.FunctionInput(
+                args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE, final_input=final_input
+            ),
             idx=idx,
         )
     else:
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE),
+            input=api_pb2.FunctionInput(
+                args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE, final_input=final_input
+            ),
             idx=idx,
         )
 
@@ -203,7 +210,7 @@ class _Invocation:
 
         function_call_id = response.function_call_id
 
-        item = await _create_input(args, kwargs, client)
+        item = await _create_input(args, kwargs, client, final_input=True)
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
         )
@@ -249,7 +256,15 @@ class _Invocation:
                 if backend_timeout < 0:
                     break
 
-    async def run_function(self):
+    async def run_function(self, interactive=False):
+        if interactive:
+            console = Console()
+            connecting_status = console.status("Connecting...")
+            connecting_status.start()
+
+            resp = await self.stub.FunctionGetInteractiveExecId(Empty())
+            await connect_to_exec(resp.exec_id, tty=True, connecting_status=connecting_status)
+
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True))
@@ -556,6 +571,9 @@ class FunctionEnv:
     cpu: Optional[float]
     memory: Optional[int]
 
+    # Used by run_function() to determine whether this function is interactive or ont.
+    interactive: bool
+
 
 class _Function(_Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
@@ -621,10 +639,10 @@ class _Function(_Object, type_prefix="fu"):
                 )
 
         # TODO: remove when MOD-2043 is addressed and async debugging works.
-        if interactive and is_async(info.raw_f):
-            raise InvalidError("Interactive mode not supported for async functions")
-        elif interactive and is_generator:
-            raise InvalidError("Interactive mode not supported for generator functions")
+        # if interactive and is_async(info.raw_f):
+        #     raise InvalidError("Interactive mode not supported for async functions")
+        # elif interactive and is_generator:
+        #     raise InvalidError("Interactive mode not supported for generator functions")
 
         if secret is not None:
             deprecation_warning(
@@ -661,6 +679,7 @@ class _Function(_Object, type_prefix="fu"):
             cloud=cloud,
             cpu=cpu,
             memory=memory,
+            interactive=interactive,
         )
 
         if cls and not is_auto_snapshot:
@@ -780,10 +799,7 @@ class _Function(_Object, type_prefix="fu"):
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
             timeout_secs = timeout
-            if resolver.shell and not is_builder_function:
-                timeout_secs = 86400
-                pty_info = _pty.get_pty_info(shell=True)
-            elif interactive:
+            if interactive:
                 assert not is_builder_function, "builder functions do not support interactive usage"
                 pty_info = _pty.get_pty_info(shell=False)
             else:
@@ -1128,7 +1144,7 @@ class _Function(_Object, type_prefix="fu"):
     async def _call_function(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
         try:
-            return await invocation.run_function()
+            return await invocation.run_function(interactive=self.env.interactive)
         except asyncio.CancelledError:
             # this can happen if the user terminates a program, triggering a cancellation cascade
             if not self._mute_cancellation:

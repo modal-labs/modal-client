@@ -65,7 +65,6 @@ class _LocalApp:
         indexed_objects: Dict[str, _Object],
         new_app_state: int,
         environment_name: str,
-        shell: bool = False,
         output_mgr: Optional[OutputManager] = None,
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
@@ -74,7 +73,6 @@ class _LocalApp:
             output_mgr=output_mgr,
             environment_name=environment_name,
             app_id=self.app_id,
-            shell=shell,
         )
         with resolver.display():
             # Get current objects, and reset all objects
@@ -305,13 +303,6 @@ class _ContainerApp:
         object_id: str = self._tag_to_object_id[tag]
         metadata: Message = self._object_handle_metadata[object_id]
         obj._hydrate(object_id, self._client, metadata)
-
-    def _get_pty(self) -> _Object:
-        # TOOD(erikbern): This method has zero tests. It's used in _container_entrypoint
-        # Let's try to clean this up ASAP
-        object_id = self._tag_to_object_id["_pty_input_stream"]
-        metadata = self._object_handle_metadata[object_id]
-        return _Object._new_hydrated(object_id, self._client, metadata)
 
     def hydrate_function_deps(self, function: _Function, dep_object_ids: List[str]):
         function_deps = function.deps(only_explicit_mounts=True)

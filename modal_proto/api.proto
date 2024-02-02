@@ -1833,12 +1833,17 @@ service ModalClient {
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
 
+  rpc FunctionGetInteractiveExecId(google.protobuf.Empty) returns (ContainerExecResponse);
+
   // Function calls
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallPutDataOut(FunctionCallPutDataRequest) returns (google.protobuf.Empty);
+
+  // Interactive functions
+  rpc FunctionStartPtyShell(google.protobuf.Empty) returns (google.protobuf.Empty);
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);

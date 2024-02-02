@@ -10,12 +10,14 @@ from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, TypeVar
 import rich
 from rich.console import Console
 
+import rich
+from rich.console import Console
+
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
-from . import _pty
 from ._container_exec import container_exec
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from .app import _LocalApp, is_local
@@ -47,6 +49,7 @@ async def _run_stub(
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
     shell=False,
+    interactive=False,
 ) -> AsyncGenerator[_Stub, None]:
     """mdmd:hidden"""
     if environment_name is None:
@@ -92,15 +95,13 @@ async def _run_stub(
             output_mgr.update_app_page_url(app.log_url())
 
         # Start logs loop
-        if not shell:
+        if not shell and not interactive:
             logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
 
         exc_info: Optional[BaseException] = None
         try:
             # Create all members
-            await app._create_all_objects(
-                stub._indexed_objects, app_state, environment_name, shell=False, output_mgr=output_mgr
-            )
+            await app._create_all_objects(stub._indexed_objects, app_state, environment_name, output_mgr=output_mgr)
 
             # Update all functions client-side to have the output mgr
             for obj in stub.registered_functions.values():
@@ -115,13 +116,8 @@ async def _run_stub(
             output_mgr.enable_image_logs()
 
             # Yield to context
-            if shell:
+            if shell or interactive:
                 yield stub
-            elif stub._pty_input_stream:
-                output_mgr._visible_progress = False
-                async with _pty.write_stdin_to_pty_stream(stub._pty_input_stream):
-                    yield stub
-                output_mgr._visible_progress = True
             else:
                 with output_mgr.show_status_spinner():
                     yield stub
@@ -136,7 +132,7 @@ async def _run_stub(
                 output_mgr.print_if_visible(
                     f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
                 )
-                if not shell:
+                if not shell and not interactive:
                     logs_loop.cancel()
             else:
                 output_mgr.print_if_visible(
