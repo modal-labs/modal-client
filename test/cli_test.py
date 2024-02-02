@@ -360,7 +360,6 @@ def mock_shell_pty():
         yield captured_out
 
 
-@pytest.mark.usefixtures("mock_shell_pty")
 @skip_windows("modal shell is not supported on Windows.")
 def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
