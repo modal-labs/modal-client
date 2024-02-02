@@ -135,7 +135,7 @@ class H100(_GPUConfig):
         super().__init__(api_pb2.GPU_TYPE_H100, count)
 
     def __repr__(self):
-        return f"GPU(H100G, count={self.count})"
+        return f"GPU(H100, count={self.count})"
 
 
 class Inferentia2(_GPUConfig):
