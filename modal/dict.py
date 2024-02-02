@@ -12,14 +12,14 @@ from ._types import typechecked
 from .client import _Client
 from .config import logger
 from .exception import deprecation_error
-from .object import _get_environment_name, _StatefulObject, live_method
+from .object import _get_environment_name, _Object, live_method
 
 
 def _serialize_dict(data):
     return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
 
 
-class _Dict(_StatefulObject, type_prefix="di"):
+class _Dict(_Object, type_prefix="di"):
     """Distributed dictionary for storage in Modal apps.
 
     Keys and values can be essentially any object, so long as they can be
