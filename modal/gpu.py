@@ -118,14 +118,14 @@ class A10G(_GPUConfig):
 
     def __repr__(self):
         return f"GPU(A10G, count={self.count})"
-    
+
 
 class H100(_GPUConfig):
     """
     [NVIDIA H100 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
 
     H100 features fourth-generation Tensor Cores and a Transformer Engine with FP8 precision
-    that provides up to 4X faster training over the prior generation. 
+    that provides up to 4X faster training over the prior generation.
     """
 
     def __init__(
