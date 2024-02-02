@@ -74,7 +74,9 @@ class A100(_GPUConfig):
         allowed_memory_values = {40, 80}
         allowed_size_values = {"40GB", "80GB"}
         if memory == 20:
-            raise ValueError("A100 20GB is unsupported, consider `modal.A10G`, `modal.A100(memory_gb='40')`, or `modal.H100` instead")
+            raise ValueError(
+                "A100 20GB is unsupported, consider `modal.A10G`, `modal.A100(memory_gb='40')`, or `modal.H100` instead"
+            )
         elif memory and size:
             raise ValueError("Cannot specify both `memory` and `size`. Just specify `size`.")
         elif memory:
@@ -124,7 +126,7 @@ class H100(_GPUConfig):
     """
     [NVIDIA H100 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
 
-    H100 features fourth-generation Tensor Cores and a Transformer Engine with FP8 precision that provides up to 4X faster training over the prior generation for GPT-3 (175B) models. 
+    H100 features fourth-generation Tensor Cores and a Transformer Engine with FP8 precision that provides up to 4X faster training over the prior generation for GPT-3 (175B) models.
     """
 
     def __init__(
