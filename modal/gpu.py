@@ -120,6 +120,24 @@ class A10G(_GPUConfig):
         return f"GPU(A10G, count={self.count})"
 
 
+class H100(_GPUConfig):
+    """
+    [NVIDIA H100 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
+
+    The most powerful GPU available in the cloud.
+    """
+
+    def __init__(
+        self,
+        *,
+        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+    ):
+        super().__init__(api_pb2.GPU_TYPE_H100, count)
+
+    def __repr__(self):
+        return f"GPU(H100G, count={self.count})"
+
+
 class Inferentia2(_GPUConfig):
     """mdmd:hidden"""
 
@@ -144,6 +162,7 @@ STRING_TO_GPU_CONFIG = {
     "t4": T4,
     "l4": L4,
     "a100": A100,
+    "h100": H100,
     "a10g": A10G,
     "inf2": Inferentia2,
     "any": Any,
