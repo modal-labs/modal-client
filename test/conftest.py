@@ -128,6 +128,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.client_hello_metadata = None
 
         self.dicts = {}
+        self.deployed_dicts = {}
 
         self.cleared_function_calls = set()
 
@@ -406,6 +407,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {}
         await stream.send_message(api_pb2.DictCreateResponse(dict_id=dict_id))
+
+    async def DictGetOrCreate(self, stream):
+        request: api_pb2.DictGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if k in self.deployed_dicts:
+            dict_id = self.deployed_dicts[k]
+        else:
+            dict_id = f"di-{len(self.dicts)}"
+            self.dicts[dict_id] = {}
+            self.deployed_dicts[k] = dict_id
+        await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
 
     async def DictClear(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
