@@ -134,6 +134,7 @@ enum GPUType {
   GPU_TYPE_INFERENTIA2 = 7 [deprecated=true];
   GPU_TYPE_A100_80GB = 8;
   GPU_TYPE_L4 = 9;
+  GPU_TYPE_H100 = 10;
 }
 
 enum ObjectCreationType {
