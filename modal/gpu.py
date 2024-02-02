@@ -74,7 +74,7 @@ class A100(_GPUConfig):
         allowed_memory_values = {40, 80}
         allowed_size_values = {"40GB", "80GB"}
         if memory == 20:
-            raise ValueError("A100 20GB is unsupported, consider `modal.A10G` or `modal.A100(memory_gb='40')` instead")
+            raise ValueError("A100 20GB is unsupported, consider `modal.A10G`, `modal.A100(memory_gb='40')`, or `modal.H100` instead")
         elif memory and size:
             raise ValueError("Cannot specify both `memory` and `size`. Just specify `size`.")
         elif memory:
@@ -118,6 +118,25 @@ class A10G(_GPUConfig):
 
     def __repr__(self):
         return f"GPU(A10G, count={self.count})"
+    
+
+class H100(_GPUConfig):
+    """
+    [NVIDIA H100 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
+
+    H100 features fourth-generation Tensor Cores and a Transformer Engine with FP8 precision
+    that provides up to 4X faster training over the prior generation. 
+    """
+
+    def __init__(
+        self,
+        *,
+        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+    ):
+        super().__init__(api_pb2.GPU_TYPE_H100, count)
+
+    def __repr__(self):
+        return f"GPU(H100, count={self.count})"
 
 
 class Inferentia2(_GPUConfig):
@@ -145,6 +164,7 @@ STRING_TO_GPU_CONFIG = {
     "l4": L4,
     "a100": A100,
     "a10g": A10G,
+    "h100": H100,
     "inf2": Inferentia2,
     "any": Any,
 }
