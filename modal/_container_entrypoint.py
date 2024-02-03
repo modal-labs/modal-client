@@ -438,9 +438,7 @@ class _FunctionIOManager:
 
     async def checkpoint(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
-        print("checkpointing")
         await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest())
-        print("checkpointed")
 
         self._waiting_for_checkpoint = True
         await self._client._close()
@@ -505,8 +503,7 @@ class _FunctionIOManager:
         try:
             await retry_transient_errors(self._client.stub.FunctionStartPtyShell, Empty())
         except Exception as e:
-            print("failed to start PTY shell")
-            print(e)
+            logger.error("Failed to start PTY shell.")
             raise e
 
 
