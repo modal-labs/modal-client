@@ -30,10 +30,8 @@ from typing import (
 )
 
 from aiostream import pipe, stream
-from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
-from rich.console import Console
 from synchronicity.exceptions import UserCodeException
 
 from modal import _pty
@@ -52,7 +50,6 @@ from ._blob_utils import (
     blob_download,
     blob_upload,
 )
-from ._container_exec import connect_to_exec
 from ._function_utils import FunctionInfo, get_referred_objects, is_async
 from ._location import parse_cloud_provider
 from ._mount_utils import validate_mount_points
@@ -257,14 +254,6 @@ class _Invocation:
                     break
 
     async def run_function(self, interactive=False):
-        if interactive:
-            console = Console()
-            connecting_status = console.status("Connecting...")
-            connecting_status.start()
-
-            resp = await self.stub.FunctionGetInteractiveExecId(Empty())
-            await connect_to_exec(resp.exec_id, tty=True, connecting_status=connecting_status)
-
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True))

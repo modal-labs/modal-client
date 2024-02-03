@@ -33,6 +33,7 @@ from rich.text import Text
 from modal_proto import api_pb2
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
+from ._container_exec import connect_to_exec
 from .client import _Client
 from .config import logger
 
@@ -150,6 +151,7 @@ class OutputManager:
     _status_spinner: Spinner
     _app_page_url: Optional[str]
     _show_image_logs: bool
+    _status_spinner_live: Optional[Live]
 
     def __init__(self, stdout: io.TextIOWrapper, show_progress: bool, status_spinner_text: str = "Running app..."):
         self.stdout = stdout or sys.stdout
@@ -367,12 +369,18 @@ class OutputManager:
 
     @contextlib.contextmanager
     def show_status_spinner(self):
-        with self.ctx_if_visible(self.make_live(self._status_spinner)):
+        self._status_spinner_live = self.make_live(self._status_spinner)
+        with self.ctx_if_visible(self._status_spinner_live):
             yield
+
+    def hide_status_spinner(self):
+        if self._status_spinner_live:
+            self._status_spinner_live.stop()
 
 
 async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputManager):
     last_log_batch_entry_id = ""
+    is_pty_shell_active = False
 
     async def _put_log(log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
         if log.task_state:
@@ -396,7 +404,7 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
             await output_mgr.put_log_content(log)
 
     async def _get_logs():
-        nonlocal last_log_batch_entry_id
+        nonlocal last_log_batch_entry_id, is_pty_shell_active
 
         request = api_pb2.AppGetLogsRequest(
             app_id=app_id,
@@ -420,7 +428,15 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
                 # TODO (akshat): have a better way of differentiating between
                 # statically and dynamically built images.
                 pass
-            else:
+            elif log_batch.pty_exec_id:
+                is_pty_shell_active = True
+                output_mgr.hide_status_spinner()
+                console = Console()
+                connecting_status = console.status("Connecting to PTY shell...")
+                connecting_status.start()
+                await connect_to_exec(log_batch.pty_exec_id, tty=True, connecting_status=connecting_status)
+
+            elif not is_pty_shell_active:
                 for log in log_batch.items:
                     await _put_log(log_batch, log)
 

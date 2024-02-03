@@ -10,9 +10,6 @@ from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, TypeVar
 import rich
 from rich.console import Console
 
-import rich
-from rich.console import Console
-
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_api
@@ -95,7 +92,7 @@ async def _run_stub(
             output_mgr.update_app_page_url(app.log_url())
 
         # Start logs loop
-        if not shell and not interactive:
+        if not shell:
             logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
 
         exc_info: Optional[BaseException] = None
@@ -116,7 +113,7 @@ async def _run_stub(
             output_mgr.enable_image_logs()
 
             # Yield to context
-            if shell or interactive:
+            if shell:
                 yield stub
             else:
                 with output_mgr.show_status_spinner():
@@ -132,7 +129,7 @@ async def _run_stub(
                 output_mgr.print_if_visible(
                     f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
                 )
-                if not shell and not interactive:
+                if not shell:
                     logs_loop.cancel()
             else:
                 output_mgr.print_if_visible(
