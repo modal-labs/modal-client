@@ -253,7 +253,7 @@ class _Invocation:
                 if backend_timeout < 0:
                     break
 
-    async def run_function(self, interactive=False):
+    async def run_function(self):
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True))
@@ -560,9 +560,6 @@ class FunctionEnv:
     cpu: Optional[float]
     memory: Optional[int]
 
-    # Used by run_function() to determine whether this function is interactive or ont.
-    interactive: bool
-
 
 class _Function(_Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
@@ -662,7 +659,6 @@ class _Function(_Object, type_prefix="fu"):
             cloud=cloud,
             cpu=cpu,
             memory=memory,
-            interactive=interactive,
         )
 
         if cls and not is_auto_snapshot:
@@ -1127,7 +1123,7 @@ class _Function(_Object, type_prefix="fu"):
     async def _call_function(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
         try:
-            return await invocation.run_function(interactive=self.env.interactive)
+            return await invocation.run_function()
         except asyncio.CancelledError:
             # this can happen if the user terminates a program, triggering a cancellation cascade
             if not self._mute_cancellation:

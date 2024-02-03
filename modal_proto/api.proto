@@ -1834,8 +1834,6 @@ service ModalClient {
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
 
-  rpc FunctionGetInteractiveExecId(google.protobuf.Empty) returns (ContainerExecResponse);
-
   // Function calls
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);

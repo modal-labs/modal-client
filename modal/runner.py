@@ -46,7 +46,6 @@ async def _run_stub(
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
     shell=False,
-    interactive=False,
 ) -> AsyncGenerator[_Stub, None]:
     """mdmd:hidden"""
     if environment_name is None:
