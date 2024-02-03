@@ -66,6 +66,7 @@ def _run_container(
     is_checkpointing_function: bool = False,
     deps: List[str] = ["im-1"],
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
+    is_auto_snapshot: bool = False,
 ) -> ContainerResult:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -92,6 +93,7 @@ def _run_container(
             definition_type=definition_type,
             stub_name=stub_name or "",
             is_builder_function=is_builder_function,
+            is_auto_snapshot=is_auto_snapshot,
             allow_concurrent_inputs=allow_concurrent_inputs,
             is_checkpointing_function=is_checkpointing_function,
             object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
@@ -822,3 +824,29 @@ def test_function_dep_hydration(unix_servicer):
         deps=["im-1", "vo-1", "im-1", "im-2", "vo-1", "vo-2"],
     )
     assert _unwrap_scalar(ret) is None
+
+
+@skip_windows_unix_socket
+def test_build_decorator_cls(unix_servicer, event_loop):
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "BuildCls.build1",
+        inputs=_get_inputs(((), {})),
+        is_builder_function=True,
+        is_auto_snapshot=True,
+    )
+    assert _unwrap_scalar(ret) == 101
+
+
+@skip_windows_unix_socket
+def test_multiple_build_decorator_cls(unix_servicer, event_loop):
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "BuildCls.build2",
+        inputs=_get_inputs(((), {})),
+        is_builder_function=True,
+        is_auto_snapshot=True,
+    )
+    assert _unwrap_scalar(ret) == 1001
