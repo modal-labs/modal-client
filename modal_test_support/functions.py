@@ -257,8 +257,13 @@ class BuildCls:
         self._k += 10
 
     @build()
-    def build(self):
+    def build1(self):
         self._k += 100
+        return self._k
+
+    @build()
+    def build2(self):
+        self._k += 1000
         return self._k
 
     @method()

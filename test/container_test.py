@@ -831,9 +831,22 @@ def test_build_decorator_cls(unix_servicer, event_loop):
     ret = _run_container(
         unix_servicer,
         "modal_test_support.functions",
-        "BuildCls.build",
+        "BuildCls.build1",
         inputs=_get_inputs(((), {})),
         is_builder_function=True,
         is_auto_snapshot=True,
     )
     assert _unwrap_scalar(ret) == 101
+
+
+@skip_windows_unix_socket
+def test_multiple_build_decorator_cls(unix_servicer, event_loop):
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "BuildCls.build2",
+        inputs=_get_inputs(((), {})),
+        is_builder_function=True,
+        is_auto_snapshot=True,
+    )
+    assert _unwrap_scalar(ret) == 1001
