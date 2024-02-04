@@ -1009,9 +1009,8 @@ class _Function(_Object, type_prefix="fu"):
         rep = f"Ref({app_name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True)
 
-    @classmethod
+    @staticmethod
     async def lookup(
-        cls: Type["_Function"],
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -1024,7 +1023,7 @@ class _Function(_Object, type_prefix="fu"):
         other_function = modal.Function.lookup("other-app", "function")
         ```
         """
-        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        obj = _Function.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
