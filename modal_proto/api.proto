@@ -1280,6 +1280,17 @@ message QueueCreateResponse {
   string queue_id = 1;
 }
 
+message QueueGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;
+}
+
+message QueueGetOrCreateResponse {
+  string queue_id = 1;
+}
+
 message QueueGetRequest {
   string queue_id = 1;
   float timeout = 3;
@@ -1850,6 +1861,7 @@ service ModalClient {
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
+  rpc QueueGetOrCreate(QueueGetOrCreateRequest) returns (QueueGetOrCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
   rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
