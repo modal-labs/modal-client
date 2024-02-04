@@ -306,9 +306,8 @@ class _Cls(_Object, type_prefix="cs"):
 
         return cls
 
-    @classmethod
+    @staticmethod
     async def lookup(
-        cls: Type["_Cls"],
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -322,7 +321,7 @@ class _Cls(_Object, type_prefix="cs"):
         Class = modal.Cls.lookup("other-app", "Class")
         ```
         """
-        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name, workspace=workspace)
+        obj = _Cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name, workspace=workspace)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)

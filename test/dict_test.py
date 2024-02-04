@@ -4,7 +4,7 @@ import pytest
 from modal import Dict, Stub
 
 
-def test_dict(servicer, client):
+def test_dict_app(servicer, client):
     stub = Stub()
     stub.d = Dict.new()
     with stub.run(client=client):
@@ -21,3 +21,8 @@ def test_dict(servicer, client):
         assert stub.d.get("foo", default=True)
         stub.d["foo"] = None
         assert stub.d["foo"] is None
+
+
+def test_dict_deploy(servicer, client):
+    d = Dict.lookup("xyz", create_if_missing=True, client=client)
+    d["xyz"] = 123
