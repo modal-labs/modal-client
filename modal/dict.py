@@ -64,7 +64,7 @@ class _Dict(_Object, type_prefix="di"):
                 app_id=resolver.app_id, data=serialized, existing_dict_id=existing_object_id
             )
             response = await resolver.client.stub.DictCreate(req)
-            logger.debug("Created dict with id %s" % response.dict_id)
+            logger.debug(f"Created dict with id {response.dict_id}")
             provider._hydrate(response.dict_id, resolver.client, None)
 
         return _Dict._from_loader(_load, "Dict()")
@@ -103,7 +103,7 @@ class _Dict(_Object, type_prefix="di"):
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
             response = await resolver.client.stub.DictGetOrCreate(req)
-            logger.debug("Created dict with id %s" % response.dict_id)
+            logger.debug(f"Created dict with id {response.dict_id}")
             provider._hydrate(response.dict_id, resolver.client, None)
 
         return _Dict._from_loader(_load, "Dict()")
