@@ -3,7 +3,7 @@
 from typing import List
 
 from modal import Queue
-from modal._function_utils import get_referred_objects
+from modal._function_utils import FunctionInfo, get_referred_objects
 from modal.object import Object
 
 q1 = Queue.new()
@@ -47,3 +47,26 @@ def refers_list():
 def test_refers_list():
     objs: List[Object] = get_referred_objects(refers_list)
     assert objs == []  # This may return [q1, q2] in the future
+
+
+def hasarg(a):
+    ...
+
+
+def noarg():
+    ...
+
+
+def defaultarg(a="hello"):
+    ...
+
+
+def wildcard_args(*wildcard_list, **wildcard_dict):
+    ...
+
+
+def test_is_nullary():
+    assert not FunctionInfo(hasarg).is_nullary()
+    assert FunctionInfo(noarg).is_nullary()
+    assert FunctionInfo(defaultarg).is_nullary()
+    assert FunctionInfo(wildcard_args).is_nullary()
