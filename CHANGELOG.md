@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4953 (2024-02-05)
+
+The `modal profile list` output now indicates when the workspace is determined by a token stored in environment variables.
+
+
+
 ### 0.56.4952 (2024-02-05)
 
 * Variadic parameters (e.g. *args and **kwargs) can now be used in scheduled functions as long as the function doesn't have any other parameters without a default value
