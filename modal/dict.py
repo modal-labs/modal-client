@@ -9,16 +9,17 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._types import typechecked
+from .client import _Client
 from .config import logger
 from .exception import deprecation_error
-from .object import _StatefulObject, live_method
+from .object import _get_environment_name, _Object, live_method
 
 
 def _serialize_dict(data):
     return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
 
 
-class _Dict(_StatefulObject, type_prefix="di"):
+class _Dict(_Object, type_prefix="di"):
     """Distributed dictionary for storage in Modal apps.
 
     Keys and values can be essentially any object, so long as they can be
@@ -63,7 +64,7 @@ class _Dict(_StatefulObject, type_prefix="di"):
                 app_id=resolver.app_id, data=serialized, existing_dict_id=existing_object_id
             )
             response = await resolver.client.stub.DictCreate(req)
-            logger.debug("Created dict with id %s" % response.dict_id)
+            logger.debug(f"Created dict with id {response.dict_id}")
             provider._hydrate(response.dict_id, resolver.client, None)
 
         return _Dict._from_loader(_load, "Dict()")
@@ -75,13 +76,13 @@ class _Dict(_StatefulObject, type_prefix="di"):
         self._init_from_other(obj)
 
     @staticmethod
-    def persisted(
-        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    def from_name(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+        create_if_missing: bool = False,
     ) -> "_Dict":
-        """Deploy a Modal app containing this object.
-
-        The deployed object can then be imported from other apps, or by calling
-        `Dict.from_name(label)` from that same app.
+        """Create a reference to a persisted Dict
 
         **Examples**
 
@@ -93,17 +94,49 @@ class _Dict(_StatefulObject, type_prefix="di"):
         stub.dict = Dict.from_name("my-dict")
         ```
         """
-        return _Dict.new()._persist(label, namespace, environment_name)
 
-    def persist(
-        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+        async def _load(provider: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
+            req = api_pb2.DictGetOrCreateRequest(
+                deployment_name=label,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name),
+                object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+            )
+            response = await resolver.client.stub.DictGetOrCreate(req)
+            logger.debug(f"Created dict with id {response.dict_id}")
+            provider._hydrate(response.dict_id, resolver.client, None)
+
+        return _Dict._from_loader(_load, "Dict()")
+
+    @staticmethod
+    def persisted(
+        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Dict":
-        """mdmd:hidden"""
-        deprecation_error(
-            date(2023, 6, 30),
-            """`Dict.new().persist("my-dict")` is deprecated. Use `Dict.persisted("my-dict")` instead.""",
+        return _Dict.from_name(label, namespace, environment_name, create_if_missing=True)
+
+    @staticmethod
+    async def lookup(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        create_if_missing: bool = False,
+    ) -> "_Dict":
+        """Lookup a dict with a given name and tag.
+
+        ```python
+        d = modal.Dict.lookup("my-dict")
+        d["xyz"] = 123
+        ```
+        """
+        obj = _Dict.from_name(
+            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
         )
-        return self.persisted(label, namespace, environment_name)
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
 
     @live_method
     async def clear(self) -> None:

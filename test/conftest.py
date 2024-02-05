@@ -131,6 +131,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.client_hello_metadata = None
 
         self.dicts = {}
+        self.deployed_dicts = {}
 
         self.cleared_function_calls = set()
 
@@ -399,6 +400,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.requests.append(request)
         await stream.send_message(Empty())
 
+    async def ContainerExec(self, stream):
+        _request: api_pb2.ContainerExecRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.ContainerExecResponse(exec_id="container_exec_id"))
+
+    async def ContainerExecGetOutput(self, stream):
+        _request: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.RuntimeOutputBatch(
+                items=[
+                    api_pb2.RuntimeOutputMessage(
+                        file_descriptor=api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT, message="Hello World"
+                    )
+                ]
+            )
+        )
+        await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
+
     ### Dict
 
     async def DictCreate(self, stream):
@@ -409,6 +427,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {}
         await stream.send_message(api_pb2.DictCreateResponse(dict_id=dict_id))
+
+    async def DictGetOrCreate(self, stream):
+        request: api_pb2.DictGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if k in self.deployed_dicts:
+            dict_id = self.deployed_dicts[k]
+        else:
+            dict_id = f"di-{len(self.dicts)}"
+            self.dicts[dict_id] = {}
+            self.deployed_dicts[k] = dict_id
+        await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
 
     async def DictClear(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
@@ -763,6 +792,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox.terminate()
         await stream.send_message(api_pb2.SandboxTerminateResponse())
 
+    async def SandboxGetTaskId(self, stream):
+        # only used for `modal shell` / `modal container exec`
+        _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="modal_container_exec"))
+
     ### Secret
 
     async def SecretCreate(self, stream):
@@ -823,7 +857,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def WorkspaceNameLookup(self, stream):
-        await stream.send_message(api_pb2.WorkspaceNameLookupResponse(workspace_name="test-workspace"))
+        await stream.send_message(
+            api_pb2.WorkspaceNameLookupResponse(workspace_name="test-workspace", username="test-username")
+        )
 
     ### Tunnel
 
@@ -1117,7 +1153,7 @@ def modal_config():
     """Return a context manager with a temporary modal.toml file"""
 
     @contextlib.contextmanager
-    def mock_modal_toml(contents: str = ""):
+    def mock_modal_toml(contents: str = "", show_on_error: bool = False):
         # Some of the cli tests run within within the main process
         # so we need to modify the config singletons to pick up any changes
         orig_config_path_env = os.environ.get("MODAL_CONFIG_PATH")
@@ -1128,7 +1164,12 @@ def modal_config():
             os.environ["MODAL_CONFIG_PATH"] = t.name
             config.user_config_path = t.name
             config._user_config = config._read_user_config()
-            yield
+            yield t.name
+        except Exception:
+            if show_on_error:
+                with open(t.name) as f:
+                    print(f"Test config file contents:\n\n{f.read()}", file=sys.stderr)
+            raise
         finally:
             if orig_config_path_env:
                 os.environ["MODAL_CONFIG_PATH"] = orig_config_path_env

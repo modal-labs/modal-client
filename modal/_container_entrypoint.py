@@ -500,7 +500,7 @@ def call_function_sync(
     imp_fun: ImportedFunction,
 ):
     # If this function is on a class, instantiate it and enter it
-    if imp_fun.obj is not None:
+    if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
         enter_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER)
         for enter_method in enter_methods.values():
             if enter_method == imp_fun.fun:
@@ -581,6 +581,9 @@ async def call_function_async(
     if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
         enter_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER)
         for enter_method in enter_methods.values():
+            if enter_method == imp_fun.fun:
+                continue
+
             # Call a user-defined method
             with function_io_manager.handle_user_exception():
                 enter_res = enter_method()

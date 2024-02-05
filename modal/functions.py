@@ -23,6 +23,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Sequence,
     Set,
     Tuple,
     Type,
@@ -68,6 +69,7 @@ from .exception import (
     NotFoundError,
     RemoteError,
     deprecation_error,
+    deprecation_warning,
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
@@ -543,6 +545,23 @@ def _validate_volumes(
     return validated_volumes
 
 
+@dataclass
+class FunctionEnv:
+    """
+    Stores information about the function environment. This is used for `modal shell` to support
+    running shells in the same environment as a user-defined function.
+    """
+
+    image: Optional[_Image]
+    mounts: Sequence[_Mount]
+    secrets: Sequence[_Secret]
+    network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
+    gpu: GPU_T
+    cloud: Optional[str]
+    cpu: Optional[float]
+    memory: Optional[int]
+
+
 class _Function(_Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -559,6 +578,7 @@ class _Function(_Object, type_prefix="fu"):
     _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
     _function_name: Optional[str]
     _is_method: bool
+    _env: FunctionEnv
 
     @staticmethod
     def from_args(
@@ -611,6 +631,13 @@ class _Function(_Object, type_prefix="fu"):
         elif interactive and is_generator:
             raise InvalidError("Interactive mode not supported for generator functions")
 
+        if secret is not None:
+            deprecation_warning(
+                date(2024, 1, 31),
+                "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
+            )
+            secrets = [secret, *secrets]
+
         all_mounts = [
             _get_client_mount(),  # client
             *mounts,  # explicit mounts
@@ -621,9 +648,6 @@ class _Function(_Object, type_prefix="fu"):
         else:
             all_mounts.extend(info.get_mounts().values())  # this would typically only happen for builder functions
 
-        if secret:
-            secrets = [secret, *secrets]
-
         retry_policy = _parse_retries(retries, raw_f)
 
         gpu_config = parse_gpu_config(gpu)
@@ -632,6 +656,17 @@ class _Function(_Object, type_prefix="fu"):
             # HACK: remove this once we stop using ssh tunnels for this.
             if image:
                 image = image.apt_install("autossh")
+
+        function_env = FunctionEnv(
+            mounts=all_mounts,
+            secrets=secrets,
+            gpu=gpu,
+            network_file_systems=network_file_systems,
+            image=image,
+            cloud=cloud,
+            cpu=cpu,
+            memory=memory,
+        )
 
         if cls and not is_auto_snapshot:
             # Needed to avoid circular imports
@@ -644,7 +679,6 @@ class _Function(_Object, type_prefix="fu"):
                     snapshot_info,
                     stub=None,
                     image=image,
-                    secret=secret,
                     secrets=secrets,
                     gpu=gpu,
                     mounts=mounts,
@@ -890,10 +924,11 @@ class _Function(_Object, type_prefix="fu"):
         obj._info = info
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
-        obj._stub = stub  # Needed for CLI right now
+        obj._stub = stub  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
         obj._is_method = bool(cls)
+        obj._env = function_env  # needed for modal shell
 
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
@@ -979,9 +1014,8 @@ class _Function(_Object, type_prefix="fu"):
         rep = f"Ref({app_name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True)
 
-    @classmethod
+    @staticmethod
     async def lookup(
-        cls: Type["_Function"],
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -994,7 +1028,7 @@ class _Function(_Object, type_prefix="fu"):
         other_function = modal.Function.lookup("other-app", "function")
         ```
         """
-        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        obj = _Function.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
@@ -1013,6 +1047,10 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def info(self) -> FunctionInfo:
         return self._info
+
+    @property
+    def env(self) -> FunctionEnv:
+        return self._env
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""

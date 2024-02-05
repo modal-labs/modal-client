@@ -10,6 +10,48 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.56.4953 (2024-02-05)
+
+The `modal profile list` output now indicates when the workspace is determined by a token stored in environment variables.
+
+
+
+### 0.56.4952 (2024-02-05)
+
+* Variadic parameters (e.g. *args and **kwargs) can now be used in scheduled functions as long as the function doesn't have any other parameters without a default value
+
+
+
+### 0.56.4903 (2024-02-01)
+
+`modal container exec`'s `--no-tty` flag has been renamed to `--no-pty`.
+
+
+
+### 0.56.4902 (2024-02-01)
+
+The singular form of the `secret` parameter in `Stub.function`, `Stub.cls`, and `Image.run_function` has been deprecated. Please update your code to use the plural form instead:`secrets=[Secret(...)]`.
+
+
+
+### 0.56.4885 (2024-02-01)
+
+In `modal profile list`, the user's GitHub username is now shown as the name for the "Personal" workspace.
+
+
+
+### 0.56.4874 (2024-01-31)
+
+The `modal token new` and `modal token set` commands now create profiles that are more closely associated with workspaces, and they have more explicit profile activation behavior:
+
+- By default, these commands will create/update a profile named after the workspace that the token points to, rather than a profile named "default"
+- Both commands now have an `--activate` flag that will activate the profile associated with the new token
+- If no other profiles exist at the time of creation, the new profile will have its `active` metadata set to True
+
+With these changes, we are moving away from the concept of a "default" profile. Implicit usage of the "default" profile will be deprecated in a future update.
+
+
+
 ### 0.56.4849 (2024-01-29)
 
 Adds tty support to `modal container exec` for fully-interactive commands. Example: `modal container exec [container-id] /bin/bash`

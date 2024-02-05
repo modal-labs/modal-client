@@ -251,25 +251,6 @@ def test_set_image_on_stub_as_attribute():
     assert stub._get_default_image() == custom_img
 
 
-@pytest.mark.asyncio
-async def test_redeploy_persist(servicer, client):
-    stub = Stub(image=Image.debian_slim().pip_install("pandas"))
-    stub.function()(square)
-
-    stub.d = Dict.new()
-
-    # Deploy app
-    app = await deploy_stub.aio(stub, "my-app", client=client)
-    assert app.app_id == "ap-1"
-    assert servicer.app_objects["ap-1"]["d"] == "di-0"
-
-    stub.d = Dict.persisted("my-dict")
-    # Redeploy, make sure all ids are the same
-    app = await deploy_stub.aio(stub, "my-app", client=client)
-    assert app.app_id == "ap-1"
-    assert servicer.app_objects["ap-1"]["d"] == "di-1"
-
-
 def test_redeploy_delete_objects(servicer, client):
     # Deploy an app with objects d1 and d2
     stub = Stub()
@@ -326,7 +307,7 @@ def test_function_image_positional():
 @pytest.mark.asyncio
 async def test_deploy_disconnect(servicer, client):
     stub = Stub()
-    stub.function(secret=modal.Secret.from_name("nonexistent-secret"))(square)
+    stub.function(secrets=[modal.Secret.from_name("nonexistent-secret")])(square)
 
     with pytest.raises(NotFoundError):
         await deploy_stub.aio(stub, "my-app", client=client)
