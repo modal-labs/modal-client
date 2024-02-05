@@ -481,7 +481,6 @@ class _FunctionIOManager:
         logger.debug("Checkpointing request sent. Connection closed.")
         await self.restore()
 
-
     async def volume_commit(self, volume_ids: list[str]) -> None:
         """
         Perform volume commit for given `volume_ids`.
