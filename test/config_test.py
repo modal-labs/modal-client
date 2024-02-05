@@ -55,10 +55,16 @@ def test_config_store_user(servicer, modal_config):
         _cli(["token", "set", "--token-id", "abc", "--token-secret", "xyz"], env=env)
 
         # Set creds to foo / bar1 for the prof_1 profile
-        _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar1", "--profile", "prof_1"], env=env)
+        _cli(
+            ["token", "set", "--token-id", "foo", "--token-secret", "bar1", "--profile", "prof_1", "--no-activate"],
+            env=env,
+        )
 
         # Set creds to foo / bar2 for the prof_2 profile (given as an env var)
-        _cli(["token", "set", "--token-id", "foo", "--token-secret", "bar2"], env={"MODAL_PROFILE": "prof_2", **env})
+        _cli(
+            ["token", "set", "--token-id", "foo", "--token-secret", "bar2", "--no-activate"],
+            env={"MODAL_PROFILE": "prof_2", **env},
+        )
 
         # Now these should be stored in the user's home directory
         config = _get_config(env=env)
@@ -100,9 +106,9 @@ def test_config_store_user(servicer, modal_config):
         _cli(["token", "set", "--token-id", "ABC", "--token-secret", "XYZ"], env=env)
         assert toml.load(config_file_path)["test-username"]["token_id"] == "ABC"
 
-        # Check that we can activate a profile while setting a token
+        # Check that we activate a profile by default while setting a token
         _cli(
-            ["token", "set", "--token-id", "foo", "--token-secret", "bar3", "--profile", "prof_3", "--activate"],
+            ["token", "set", "--token-id", "foo", "--token-secret", "bar3", "--profile", "prof_3"],
             env=env,
         )
         for profile, profile_config in toml.load(config_file_path).items():
