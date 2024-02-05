@@ -266,6 +266,7 @@ class _FunctionIOManager:
                 if not yielded:
                     self._semaphore.release()
 
+    @synchronizer.no_io_translation
     async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[tuple[str, str, Any, Any]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
@@ -285,6 +286,7 @@ class _FunctionIOManager:
             for _ in range(input_concurrency):
                 await self._semaphore.acquire()
 
+    @synchronizer.no_io_translation
     async def _push_output(
         self, input_id, started_at: float, gen_index: int, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs
     ):
@@ -401,6 +403,7 @@ class _FunctionIOManager:
         self.calls_completed += 1
         self._semaphore.release()
 
+    @synchronizer.no_io_translation
     async def push_output(self, input_id, started_at: float, output_index: int, data: Any, data_format: int) -> None:
         await self._push_output(
             input_id,
@@ -412,6 +415,7 @@ class _FunctionIOManager:
         )
         await self.complete_call(started_at)
 
+    @synchronizer.no_io_translation
     async def push_generator_value(
         self, input_id, started_at: float, output_index: int, data: Any, data_format: int
     ) -> None:
@@ -425,6 +429,7 @@ class _FunctionIOManager:
             gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
         )
 
+    @synchronizer.no_io_translation
     async def push_generator_eof(self, input_id, started_at: float, output_index: int) -> None:
         await self._push_output(
             input_id,
