@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 
 import asyncio
+import os
 from typing import Optional
 
 import typer
@@ -33,8 +34,8 @@ async def list(json: Optional[bool] = False):
     lookup_coros = [
         _lookup_workspace(
             config.get("server_url", profile),
-            config.get("token_id", profile),
-            config.get("token_secret", profile),
+            config.get("token_id", profile, use_env=False),
+            config.get("token_secret", profile, use_env=False),
         )
         for profile in profiles
     ]
@@ -53,7 +54,20 @@ async def list(json: Optional[bool] = False):
         content = ["•" if active else "", profile, workspace]
         rows.append((active, content))
 
+    env_based_workspace: Optional[str] = None
+    if "MODAL_TOKEN_ID" in os.environ:
+        try:
+            env_based_resp = await _lookup_workspace(
+                config.get("server_url", _profile),
+                os.environ.get("MODAL_TOKEN_ID"),
+                os.environ.get("MODAL_TOKEN_SECRET"),
+            )
+            env_based_workspace = env_based_resp.username
+        except AuthError:
+            env_based_workspace = "Unknown (authentication failure)"
+
     console = Console()
+    highlight = "bold green" if env_based_workspace is None else "yellow"
     if json:
         json_data = []
         for active, content in rows:
@@ -62,5 +76,10 @@ async def list(json: Optional[bool] = False):
     else:
         table = Table(" ", "Profile", "Workspace")
         for active, content in rows:
-            table.add_row(*content, style="bold green" if active else "dim")
+            table.add_row(*content, style=highlight if active else "dim")
         console.print(table)
+
+    if env_based_workspace is not None:
+        console.print(
+            f"Using [bold]{env_based_workspace}[/bold] workspace based on environment variables", style="yellow"
+        )
