@@ -43,7 +43,6 @@ async def _run_stub(
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
-    shell=False,
 ) -> AsyncGenerator[_Stub, None]:
     """mdmd:hidden"""
     if environment_name is None:
@@ -75,8 +74,6 @@ async def _run_stub(
         client = await _Client.from_env()
     if output_mgr is None:
         output_mgr = OutputManager(stdout, show_progress, "Running app...")
-    if shell:
-        output_mgr._visible_progress = False
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     app = await _LocalApp._init_new(
         client,
@@ -93,9 +90,7 @@ async def _run_stub(
             output_mgr.print_if_visible(step_completed(initialized_msg))
             output_mgr.update_app_page_url(app.log_url())
 
-        # Start logs loop
-        if not shell:
-            logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
+        logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
 
         exc_info: Optional[BaseException] = None
         try:
@@ -114,12 +109,8 @@ async def _run_stub(
             # TODO: better way to do this
             output_mgr.enable_image_logs()
 
-            # Yield to context
-            if shell:
+            with output_mgr.show_status_spinner():
                 yield stub
-            else:
-                with output_mgr.show_status_spinner():
-                    yield stub
         except KeyboardInterrupt as e:
             exc_info = e
             # mute cancellation errors on all function handles to prevent exception spam
@@ -131,8 +122,7 @@ async def _run_stub(
                 output_mgr.print_if_visible(
                     f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
                 )
-                if not shell:
-                    logs_loop.cancel()
+                logs_loop.cancel()
             else:
                 output_mgr.print_if_visible(
                     step_completed(f"App aborted. [grey70]View run at [underline]{app.log_url()}[/underline][/grey70]")
@@ -300,13 +290,15 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
 
     **kwargs will be passed into spawn_sandbox().
     """
+
+    output_mgr = OutputManager(None, show_progress=True, status_spinner_text="Starting shell...")
+
     client = await _Client.from_env()
-    async with _run_stub(_stub, client, environment_name=environment_name, shell=True):
+    async with _run_stub(_stub, environment_name=environment_name, output_mgr=output_mgr):
+        sb = await _stub.spawn_sandbox("sleep", "360000", **kwargs)
         console = Console()
         loading_status = console.status("Starting container...")
         loading_status.start()
-
-        sb = await _stub.spawn_sandbox("sleep", "360000", **kwargs)
 
         for _ in range(40):
             await asyncio.sleep(0.5)
