@@ -282,7 +282,7 @@ class _FunctionIOManager:
                         yield (item.input_id, item.function_call_id, input_pb)
                         yielded = True
 
-                        if item.input.final_input:
+                        if item.input.final_input or self.function_def.reuse_containers is False:
                             eof_received = True
                             break
             finally:
