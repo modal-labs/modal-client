@@ -817,8 +817,6 @@ class _Function(_Object, type_prefix="fu"):
                 for path, volume in validated_volumes
             ]
 
-            print("got secret yadda", secrets[0].object_id)
-
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name,
