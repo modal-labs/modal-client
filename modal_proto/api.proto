@@ -1361,7 +1361,7 @@ message Sandbox {
 
   bool block_network = 11;
 
-  repeated S3Mount s3mounts = 12;
+  repeated S3Mount s3_mounts = 12;
 }
 
 message SandboxCreateRequest {
