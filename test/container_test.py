@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 
 import asyncio
-import uuid
 import base64
 import dataclasses
 import json
@@ -13,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from typing import Any, Dict, List, Optional, Tuple
 from unittest import mock
 
