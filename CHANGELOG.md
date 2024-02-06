@@ -18,6 +18,17 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 
 
+## 0.56
+
+Note that in version 0.56 and prior, Modal used a different numbering system for patch releases.
+
+
+### 0.56.4964 (2024-02-05)
+
+When using `modal token new` or `model token set`, the profile containing the new token will now be activated by default. Use the `--no-activate` switch to update the `modal.toml` file without activating the corresponding profile.
+
+
+
 ### 0.56.4953 (2024-02-05)
 
 The `modal profile list` output now indicates when the workspace is determined by a token stored in environment variables.
