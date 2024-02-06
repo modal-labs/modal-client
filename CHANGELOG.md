@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.57.2 (2024-02-06)
+
+- Improve error message when generator functions are called with `.map(...)`.
+
+
+
 ### 0.57.0 (2024-02-06)
 
 - Greatly improved streaming performance of generators and WebSocket web endpoints.
