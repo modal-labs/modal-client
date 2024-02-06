@@ -24,7 +24,6 @@ def s3mounts_to_proto(mounts: Dict[Union[str, os.PathLike], _S3Mount]) -> List[a
     Helper function to convert S3 mounts passed in as a Volume, {"/mount": modal.S3Mount(...)},
     to a list of protobufs that can be passed to the server.
     """
-    print(mounts["/mountpoint"].credentials.object_id)
     return [
         api_pb2.S3Mount(
             bucket_name=mount.bucket_name,

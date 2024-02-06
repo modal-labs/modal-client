@@ -692,9 +692,9 @@ class _Function(_Object, type_prefix="fu"):
                     is_auto_snapshot=True,
                 )
                 image = image.extend(build_function=snapshot_function, force_build=image.force_build)
-        
-        s3mounts = { k: v for k, v in volumes.items() if isinstance(v, _S3Mount) }
-        volumes = { k: v for k, v in volumes.items() if isinstance(v, _Volume) }
+
+        s3mounts = {k: v for k, v in volumes.items() if isinstance(v, _S3Mount)}
+        volumes = {k: v for k, v in volumes.items() if isinstance(v, _Volume)}
 
         if interactive and concurrency_limit and concurrency_limit > 1:
             warnings.warn(
@@ -750,6 +750,9 @@ class _Function(_Object, type_prefix="fu"):
                 deps.append(nfs)
             for _, vol in validated_volumes:
                 deps.append(vol)
+            for s3mount in s3mounts.values():
+                if s3mount.credentials:
+                    deps.append(s3mount.credentials)
 
             # Add implicit dependencies from the function's code
             objs: list[Object] = get_referred_objects(info.raw_f)

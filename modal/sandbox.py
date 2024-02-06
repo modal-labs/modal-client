@@ -131,8 +131,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
         validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
 
-        s3mounts = { k: v for k, v in volumes.items() if isinstance(v, _S3Mount) }
-        volumes = { k: v for k, v in volumes.items() if isinstance(v, _Volume) }
+        s3mounts = {k: v for k, v in volumes.items() if isinstance(v, _S3Mount)}
+        volumes = {k: v for k, v in volumes.items() if isinstance(v, _Volume)}
         if len(volumes) > 0:
             raise InvalidError("sandboxes currently only support S3Mount volumes")
 
@@ -140,6 +140,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             deps: List[_Object] = [image] + list(mounts) + list(secrets)
             for _, vol in validated_network_file_systems:
                 deps.append(vol)
+            for s3mount in s3mounts.values():
+                if s3mount.credentials:
+                    deps.append(s3mount.credentials)
             return deps
 
         async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
