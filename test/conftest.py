@@ -74,7 +74,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.queue = []
         self.deployed_apps = {
             client_mount_name(): "ap-x",
-            "foo-queue": "ap-y",
             f"debian-slim-{_dockerhub_python_version()}-{__version__}": "ap-z",
             f"conda-{__version__}": "ap-c",
             "my-proxy": "ap-proxy",
@@ -85,7 +84,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         }
         self.app_single_objects = {
             "ap-x": "mo-123",
-            "ap-y": "qu-foo",
             "ap-proxy": "pr-123",
         }
         self.app_unindexed_objects = {
@@ -132,6 +130,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.dicts = {}
         self.deployed_dicts = {}
+        self.deployed_queues = {}
 
         self.cleared_function_calls = set()
 
@@ -433,10 +432,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         k = (request.deployment_name, request.namespace, request.environment_name)
         if k in self.deployed_dicts:
             dict_id = self.deployed_dicts[k]
-        else:
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {}
             self.deployed_dicts[k] = dict_id
+        else:
+            raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
 
     async def DictClear(self, stream):
@@ -727,6 +728,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
         await stream.send_message(api_pb2.QueueCreateResponse(queue_id=queue_id))
+
+    async def QueueGetOrCreate(self, stream):
+        request: api_pb2.QueueGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if k in self.deployed_queues:
+            queue_id = self.deployed_queues[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+            self.n_queues += 1
+            queue_id = f"qu-{self.n_queues}"
+            self.deployed_queues[k] = queue_id
+        else:
+            raise GRPCError(Status.NOT_FOUND, "Queue not found")
+        await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()
