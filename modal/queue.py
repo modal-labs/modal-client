@@ -111,8 +111,8 @@ class _Queue(_Object, type_prefix="qu"):
         """Lookup a queue with a given name and tag.
 
         ```python
-        d = modal.Queue.lookup("my-queue")
-        d["xyz"] = 123
+        q = modal.Queue.lookup("my-queue")
+        q.put(123)
         ```
         """
         obj = _Queue.from_name(
