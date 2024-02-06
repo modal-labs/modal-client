@@ -265,6 +265,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     def with_options(
         self: "_Cls",
+        cpu: Optional[float] = None,
+        memory: Optional[int] = None,
         gpu: GPU_T = None,
         secrets: Collection[_Secret] = (),
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},
@@ -277,7 +279,10 @@ class _Cls(_Object, type_prefix="cs"):
         allow_background_volume_commits: bool = False,
     ) -> "_Cls":
         retry_policy = _parse_retries(retries)
-        resources = api_pb2.Resources(gpu_config=parse_gpu_config(gpu)) if gpu else None
+        if gpu or cpu or memory:
+            resources = api_pb2.Resources(cpu=cpu, memory=memory, gpu_config=parse_gpu_config(gpu))
+        else:
+            resources = None
 
         volume_mounts = [
             api_pb2.VolumeMount(
