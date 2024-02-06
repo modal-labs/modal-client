@@ -129,6 +129,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.dicts = {}
         self.deployed_dicts = {}
+        self.deployed_queues = {}
 
         self.cleared_function_calls = set()
 
@@ -724,6 +725,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
         await stream.send_message(api_pb2.QueueCreateResponse(queue_id=queue_id))
+
+    async def QueueGetOrCreate(self, stream):
+        request: api_pb2.QueueGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if k in self.deployed_queues:
+            queue_id = self.deployed_queues[k]
+        else:
+            self.n_queues += 1
+            queue_id = f"qu-{self.n_queues}"
+            self.deployed_queues[k] = queue_id
+        await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()

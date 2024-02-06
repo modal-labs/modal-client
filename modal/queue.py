@@ -13,11 +13,12 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
+from .client import _Client
 from .exception import deprecation_error
-from .object import _StatefulObject, live_method
+from .object import _get_environment_name, _Object, live_method
 
 
-class _Queue(_StatefulObject, type_prefix="qu"):
+class _Queue(_Object, type_prefix="qu"):
     """Distributed, FIFO queue for data flow in Modal apps.
 
     The queue can contain any object serializable by `cloudpickle`, including Modal objects.
@@ -62,13 +63,13 @@ class _Queue(_StatefulObject, type_prefix="qu"):
         self._init_from_other(obj)
 
     @staticmethod
-    def persisted(
-        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    def from_name(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+        create_if_missing: bool = False,
     ) -> "_Queue":
-        """Deploy a Modal app containing this object.
-
-        The deployed object can then be imported from other apps, or by calling
-        `Queue.from_name(label)` from that same app.
+        """Create a reference to a persisted Queue
 
         **Examples**
 
@@ -80,7 +81,48 @@ class _Queue(_StatefulObject, type_prefix="qu"):
         stub.queue = Queue.from_name("my-queue")
         ```
         """
-        return _Queue.new()._persist(label, namespace, environment_name)
+
+        async def _load(provider: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
+            req = api_pb2.QueueGetOrCreateRequest(
+                deployment_name=label,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name),
+                object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+            )
+            response = await resolver.client.stub.QueueGetOrCreate(req)
+            provider._hydrate(response.queue_id, resolver.client, None)
+
+        return _Queue._from_loader(_load, "Queue()")
+
+    @staticmethod
+    def persisted(
+        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ) -> "_Queue":
+        return _Queue.from_name(label, namespace, environment_name, create_if_missing=True)
+
+    @staticmethod
+    async def lookup(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        create_if_missing: bool = False,
+    ) -> "_Queue":
+        """Lookup a queue with a given name and tag.
+
+        ```python
+        d = modal.Queue.lookup("my-queue")
+        d["xyz"] = 123
+        ```
+        """
+        obj = _Queue.from_name(
+            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+        )
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
 
     async def _get_nonblocking(self, n_values: int) -> List[Any]:
         request = api_pb2.QueueGetRequest(
