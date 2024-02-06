@@ -613,6 +613,7 @@ class _Function(_Object, type_prefix="fu"):
         checkpointing_enabled: bool = False,
         allow_background_volume_commits: bool = False,
         block_network: bool = False,
+        reuse_containers: bool = True,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -872,6 +873,7 @@ class _Function(_Object, type_prefix="fu"):
                     api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
                 ],
                 block_network=block_network,
+                reuse_containers=reuse_containers,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,

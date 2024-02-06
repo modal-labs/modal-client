@@ -478,6 +478,7 @@ class _Stub:
         block_network: bool = False,  # Whether to block network access
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         _allow_background_volume_commits: bool = False,
+        reuse_containers: bool = True,  # Allow subsequent requests to run in the same container
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -560,6 +561,7 @@ class _Stub:
                 checkpointing_enabled=checkpointing_enabled,
                 allow_background_volume_commits=_allow_background_volume_commits,
                 block_network=block_network,
+                reuse_containers=reuse_containers,
             )
 
             self._add_function(function)
@@ -596,6 +598,7 @@ class _Stub:
         checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
+        reuse_containers: bool = True,  # Allow subsequent requests to run in the same container
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
@@ -624,6 +627,7 @@ class _Stub:
             cloud=cloud,
             checkpointing_enabled=checkpointing_enabled,
             block_network=block_network,
+            reuse_containers=reuse_containers,
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
