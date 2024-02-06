@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2022
 import inspect
+import os
 import typing
 import warnings
 from datetime import date
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
-import os
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -14,6 +14,7 @@ from modal_utils.async_utils import synchronize_api
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
+from ._mount_utils import validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
 from .app import _container_app, _ContainerApp, _LocalApp, is_local
@@ -21,7 +22,7 @@ from .client import _Client
 from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function, _validate_volumes
+from .functions import _Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -150,7 +151,7 @@ class _Stub:
 
         check_sequence(mounts, _Mount, "mounts has to be a list or tuple of Mount objects")
         check_sequence(secrets, _Secret, "secrets has to be a list or tuple of Secret objects")
-        _validate_volumes(volumes)
+        validate_volumes(volumes)
 
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
@@ -674,7 +675,9 @@ class _Stub:
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         block_network: bool = False,  # Whether to block network access
-        volumes: Dict[Union[str, os.PathLike], _S3Mount] = {},  # Volumes to mount in the sandbox. Currently, only S3 mounts are supported in sandboxes.
+        volumes: Dict[
+            Union[str, os.PathLike], _S3Mount
+        ] = {},  # Volumes to mount in the sandbox. Currently, only S3 mounts are supported in sandboxes.
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 

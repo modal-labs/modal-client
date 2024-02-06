@@ -25,7 +25,6 @@ from typing import (
     Optional,
     Sequence,
     Set,
-    Tuple,
     Type,
     Union,
 )
@@ -54,7 +53,7 @@ from ._blob_utils import (
 )
 from ._function_utils import FunctionInfo, get_referred_objects, is_async
 from ._location import parse_cloud_provider
-from ._mount_utils import validate_mount_points
+from ._mount_utils import validate_mount_points, validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import deserialize, deserialize_data_format, serialize
@@ -522,27 +521,6 @@ def _parse_retries(
         )
 
 
-def _validate_volumes(
-    volumes: Dict[Union[str, PurePosixPath], _Volume]
-) -> List[Tuple[str, Union[_Volume, _NetworkFileSystem]]]:
-    if not isinstance(volumes, dict):
-        raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
-
-    validated_volumes = validate_mount_points("Volume", volumes)
-    # We don't support mounting a volume in more than one location
-    volume_to_paths: Dict[_Volume, List[str]] = {}
-    for path, volume in validated_volumes:
-        volume_to_paths.setdefault(volume, []).append(path)
-    for paths in volume_to_paths.values():
-        if len(paths) > 1:
-            conflicting = ", ".join(paths)
-            raise InvalidError(
-                f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
-            )
-
-    return validated_volumes
-
-
 @dataclass
 class FunctionEnv:
     """
@@ -693,9 +671,6 @@ class _Function(_Object, type_prefix="fu"):
                 )
                 image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
-        s3mounts = {k: v for k, v in volumes.items() if isinstance(v, _S3Mount)}
-        volumes = {k: v for k, v in volumes.items() if isinstance(v, _Volume)}
-
         if interactive and concurrency_limit and concurrency_limit > 1:
             warnings.warn(
                 "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
@@ -722,7 +697,9 @@ class _Function(_Object, type_prefix="fu"):
                 raise InvalidError("Webhooks cannot be generators")
 
         # Validate volumes
-        validated_volumes = _validate_volumes(volumes)
+        validated_volumes = validate_volumes(volumes)
+        s3mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
+        validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         # Validate NFS
         if not isinstance(network_file_systems, dict):
@@ -750,7 +727,7 @@ class _Function(_Object, type_prefix="fu"):
                 deps.append(nfs)
             for _, vol in validated_volumes:
                 deps.append(vol)
-            for s3mount in s3mounts.values():
+            for _, s3mount in s3mounts:
                 if s3mount.credentials:
                     deps.append(s3mount.credentials)
 
