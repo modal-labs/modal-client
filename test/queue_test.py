@@ -90,3 +90,8 @@ def test_queue_nonblocking_put(
 
     assert str(servicer.queue_max_len) in str(excinfo.value)
     assert i == servicer.queue_max_len
+
+
+def test_queue_deploy(servicer, client):
+    d = Queue.lookup("xyz", create_if_missing=True, client=client)
+    d.put(123)
