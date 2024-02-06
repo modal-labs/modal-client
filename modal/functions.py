@@ -470,7 +470,7 @@ async def _map_invocation(
             async for idx, output in streamer:
                 if count_update_callback is not None:
                     count_update_callback(num_outputs, num_inputs)
-                elif not order_outputs:
+                if not order_outputs:
                     yield _OutputValue(output)
                 else:
                     # hold on to outputs for function maps, so we can reorder them correctly.
