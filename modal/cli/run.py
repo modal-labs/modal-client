@@ -12,7 +12,6 @@ import click
 import typer
 from rich.console import Console
 from typing_extensions import TypedDict
-from modal_proto import api_pb2
 
 from ..config import config
 from ..environments import ensure_env
@@ -20,9 +19,9 @@ from ..exception import ExecutionError, InvalidError
 from ..functions import Function, FunctionEnv
 from ..image import Image
 from ..runner import deploy_stub, interactive_shell, run_stub
+from ..s3mount import _S3Mount
 from ..serving import serve_stub
 from ..stub import LocalEntrypoint, Stub
-from ..s3mount import _S3Mount
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
 
@@ -377,7 +376,7 @@ def shell(
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
         assert isinstance(function, Function)
         function_env: FunctionEnv = function.env
-        s3mounts = { k: v for k, v in function_env.volumes.items() if isinstance(v, _S3Mount) }
+        s3mounts = {k: v for k, v in function_env.volumes.items() if isinstance(v, _S3Mount)}
         start_shell = partial(
             interactive_shell,
             image=function_env.image,
