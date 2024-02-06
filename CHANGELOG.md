@@ -10,6 +10,14 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.57.0 (2024-02-06)
+
+- Greatly improved streaming performance of generators and WebSocket web endpoints.
+- **Breaking change:** You cannot use `.map()` to call a generator function. (In previous versions, this merged the results onto a single stream, but the behavior was undocumented and not widely used.)
+- **Incompatibility:** Generator outputs are now on a different internal system. Modal code on client versions before 0.57 cannot trigger [deployed functions](https://modal.com/docs/guide/trigger-deployed-functions) with `.remote_gen()` that are on client version 0.57, and vice versa.
+
+
+
 ### 0.56.4953 (2024-02-05)
 
 The `modal profile list` output now indicates when the workspace is determined by a token stored in environment variables.
