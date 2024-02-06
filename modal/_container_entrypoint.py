@@ -196,17 +196,17 @@ class _FunctionIOManager:
                 break
             messages_bytes = [serialize_data_format(message, data_format)]
             total_size = len(messages_bytes[0]) + 512
-            try:
-                while total_size < 16 * 1024 * 1024:  # 16 MiB
+            while total_size < 16 * 1024 * 1024:  # 16 MiB, maximum size in a single message
+                try:
                     message = message_rx.get_nowait()
-                    if message is self._GENERATOR_STOP_SENTINEL:
-                        received_sentinel = True
-                        break
-                    else:
-                        messages_bytes.append(serialize_data_format(message, data_format))
-                        total_size += len(messages_bytes[-1]) + 512
-            except asyncio.QueueEmpty:
-                pass
+                except asyncio.QueueEmpty:
+                    break
+                if message is self._GENERATOR_STOP_SENTINEL:
+                    received_sentinel = True
+                    break
+                else:
+                    messages_bytes.append(serialize_data_format(message, data_format))
+                    total_size += len(messages_bytes[-1]) + 512  # 512 bytes for estimated framing overhead
             await self.put_data_out(function_call_id, index, data_format, messages_bytes)
             index += len(messages_bytes)
 
