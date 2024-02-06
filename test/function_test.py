@@ -247,6 +247,26 @@ async def test_generator(client, servicer):
 
 
 @pytest.mark.asyncio
+async def test_generator_map_invalid(client, servicer):
+    stub = Stub()
+
+    later_gen_modal = stub.function()(later_gen)
+
+    def dummy(x):
+        yield x
+
+    servicer.function_body(dummy)
+
+    with stub.run(client=client):
+        with pytest.raises(InvalidError):
+            # Support for .map() on generators was removed in version 0.57
+            for _ in later_gen_modal.map([1, 2, 3]):
+                pass
+        with pytest.raises(InvalidError):
+            later_gen_modal.for_each([1, 2, 3])
+
+
+@pytest.mark.asyncio
 async def test_generator_async(client, servicer):
     stub = Stub()
 
