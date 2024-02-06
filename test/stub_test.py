@@ -8,6 +8,7 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Dict, Image, Queue, Stub, web_endpoint
+from modal.config import config
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_stub
@@ -328,7 +329,7 @@ def test_redeploy_from_name_change(servicer, client):
     deploy_stub(stub, "my-app", client=client)
 
     # Change the object id of foo-queue
-    k = ("foo-queue", api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, "main")
+    k = ("foo-queue", api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, config.get("environment"))
     assert servicer.deployed_queues[k]
     servicer.deployed_queues[k] = "qu-baz123"
 
