@@ -338,7 +338,6 @@ async def _map_invocation(
     input_stream: AsyncIterable[Any],
     kwargs: Dict[str, Any],
     client: _Client,
-    is_generator: bool,
     order_outputs: bool,
     return_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
@@ -471,8 +470,6 @@ async def _map_invocation(
             async for idx, output in streamer:
                 if count_update_callback is not None:
                     count_update_callback(num_outputs, num_inputs)
-                if is_generator:
-                    yield _OutputValue(output)
                 elif not order_outputs:
                     yield _OutputValue(output)
                 else:
@@ -1082,9 +1079,11 @@ class _Function(_Object, type_prefix="fu"):
         # Overridden concrete implementation of base class method
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
-            function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
-            if self._is_generator
-            else api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+            function_type=(
+                api_pb2.Function.FUNCTION_TYPE_GENERATOR
+                if self._is_generator
+                else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+            ),
             web_url=self._web_url,
         )
 
@@ -1109,9 +1108,8 @@ class _Function(_Object, type_prefix="fu"):
                 "A web endpoint function cannot be directly invoked for parallel remote execution. "
                 f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
             )
-
-        if order_outputs and self._is_generator:
-            raise ValueError("Can't return ordered results for a generator")
+        if self._is_generator:
+            raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         count_update_callback = (
             self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
@@ -1122,7 +1120,6 @@ class _Function(_Object, type_prefix="fu"):
             input_stream,
             kwargs,
             self._client,
-            self._is_generator,
             order_outputs,
             return_exceptions,
             count_update_callback,
@@ -1157,8 +1154,8 @@ class _Function(_Object, type_prefix="fu"):
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
         kwargs={},  # any extra keyword arguments for the function
-        order_outputs=None,  # defaults to True for regular functions, False for generators
-        return_exceptions=False,  # whether to propogate exceptions (False) or aggregate them in the results list (True)
+        order_outputs: bool = True,  # return outputs in order
+        return_exceptions: bool = False,  # propogate exceptions (False) or aggregate them in the results list (True)
     ) -> AsyncGenerator[Any, None]:
         """Parallel map over a set of inputs.
 
@@ -1170,6 +1167,7 @@ class _Function(_Object, type_prefix="fu"):
         def my_func(a):
             return a ** 2
 
+
         @stub.local_entrypoint()
         def main():
             assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
@@ -1179,23 +1177,8 @@ class _Function(_Object, type_prefix="fu"):
         is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
         in the order that they are completed instead.
 
-        By yielding zero or more than once, mapping over generators can also be used
-        as a "flat map".
-
-        ```python
-        @stub.function()
-        def flat(i: int):
-            choices = [[], ["once"], ["two", "times"], ["three", "times", "a lady"]]
-            for item in choices[i % len(choices)]:
-                yield item
-
-        @stub.local_entrypoint()
-        def main():
-            for item in flat.map(range(10)):
-                print(item)
-        ```
-
         `return_exceptions` can be used to treat exceptions as successful results:
+
         ```python
         @stub.function()
         def my_func(a):
@@ -1203,21 +1186,20 @@ class _Function(_Object, type_prefix="fu"):
                 raise Exception("ohno")
             return a ** 2
 
+
         @stub.local_entrypoint()
         def main():
             # [0, 1, UserCodeException(Exception('ohno'))]
             print(list(my_func.map(range(3), return_exceptions=True)))
         ```
         """
-        if order_outputs is None:
-            order_outputs = not self._is_generator
 
         input_stream = stream.zip(*(stream.iterate(it) for it in input_iterators))
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
-    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions=False):
-        """Execute function for all outputs, ignoring outputs
+    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
+        """Execute function for all inputs, ignoring outputs.
 
         Convenient alias for `.map()` in cases where the function just needs to be called.
         as the caller doesn't have to consume the generator to process the inputs.
@@ -1232,9 +1214,9 @@ class _Function(_Object, type_prefix="fu"):
     @warn_if_generator_is_not_consumed
     @live_method_gen
     async def starmap(
-        self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
+        self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
     ) -> AsyncGenerator[Any, None]:
-        """Like `map` but spreads arguments over multiple function arguments
+        """Like `map`, but spreads arguments over multiple function arguments.
 
         Assumes every input is a sequence (e.g. a tuple).
 
@@ -1244,14 +1226,12 @@ class _Function(_Object, type_prefix="fu"):
         def my_func(a, b):
             return a + b
 
+
         @stub.local_entrypoint()
         def main():
             assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
         ```
         """
-        if order_outputs is None:
-            order_outputs = not self._is_generator
-
         input_stream = stream.iterate(input_iterator)
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
