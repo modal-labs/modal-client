@@ -78,6 +78,7 @@ from .network_file_system import _NetworkFileSystem, network_file_system_mount_p
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
+from .s3mount import _S3Mount, s3mounts_to_proto
 from .schedule import Schedule
 from .secret import _Secret
 from .volume import _Volume
@@ -553,6 +554,7 @@ class FunctionEnv:
     mounts: Sequence[_Mount]
     secrets: Sequence[_Secret]
     network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
+    volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]]
     gpu: GPU_T
     cloud: Optional[str]
     cpu: Optional[float]
@@ -591,7 +593,7 @@ class _Function(_Object, type_prefix="fu"):
         mounts: Collection[_Mount] = (),
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},
+        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[_Proxy] = None,
@@ -660,6 +662,7 @@ class _Function(_Object, type_prefix="fu"):
             secrets=secrets,
             gpu=gpu,
             network_file_systems=network_file_systems,
+            volumes=volumes,
             image=image,
             cloud=cloud,
             cpu=cpu,
@@ -689,6 +692,9 @@ class _Function(_Object, type_prefix="fu"):
                     is_auto_snapshot=True,
                 )
                 image = image.extend(build_function=snapshot_function, force_build=image.force_build)
+        
+        s3mounts = { k: v for k, v in volumes.items() if isinstance(v, _S3Mount) }
+        volumes = { k: v for k, v in volumes.items() if isinstance(v, _Volume) }
 
         if interactive and concurrency_limit and concurrency_limit > 1:
             warnings.warn(
@@ -831,6 +837,8 @@ class _Function(_Object, type_prefix="fu"):
                 for path, volume in validated_volumes
             ]
 
+            print("got secret yadda", secrets[0].object_id)
+
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name,
@@ -871,6 +879,7 @@ class _Function(_Object, type_prefix="fu"):
                 ],
                 block_network=block_network,
                 max_inputs=max_inputs,
+                s3mounts=s3mounts_to_proto(s3mounts),
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
