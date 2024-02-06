@@ -466,7 +466,12 @@ class _FunctionIOManager:
 
     async def checkpoint(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
-        await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest())
+        checkpoint_id = os.getenv("MODAL_CHECKPOINT_ID")
+        await self._client.stub.ContainerCheckpoint(
+            api_pb2.ContainerCheckpointRequest(checkpoint_id=checkpoint_id)
+            if checkpoint_id
+            else api_pb2.ContainerCheckpointRequest()
+        )
 
         self._waiting_for_checkpoint = True
         await self._client._close()

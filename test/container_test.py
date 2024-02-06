@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from typing import Any, Dict, List, Optional, Tuple
 from unittest import mock
 
@@ -119,10 +120,11 @@ def _run_container(
         temp_restore_file_path = tempfile.NamedTemporaryFile()
         if is_checkpointing_function:
             # State file is written to allow for a restore to happen.
-            tmep_file_name = temp_restore_file_path.name
-            with pathlib.Path(tmep_file_name).open("w") as target:
+            tmp_file_name = temp_restore_file_path.name
+            with pathlib.Path(tmp_file_name).open("w") as target:
                 json.dump({}, target)
-            env["MODAL_RESTORE_STATE_PATH"] = tmep_file_name
+            env["MODAL_RESTORE_STATE_PATH"] = tmp_file_name
+            env["MODAL_CHECKPOINT_ID"] = f"ch-{uuid.uuid4()}"
 
             # Override server URL to reproduce restore behavior.
             env["MODAL_SERVER_URL"] = servicer.remote_addr
@@ -765,6 +767,10 @@ def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     simulating a restore operation."""
     ret = _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
+    for request in unix_servicer.requests:
+        if isinstance(request, api_pb2.ContainerCheckpointRequest):
+            assert request.checkpoint_id != ""
+
     assert _unwrap_scalar(ret) == 42**2
 
 
