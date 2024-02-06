@@ -821,6 +821,8 @@ message Function {
   repeated ObjectDependency object_dependencies = 43;
 
   bool block_network = 44;
+
+  bool reuse_containers = 45;
 }
 
 message FunctionHandleMetadata {
