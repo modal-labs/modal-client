@@ -210,7 +210,7 @@ class _Volume(_StatefulObject, type_prefix="vo"):
             path = path.encode("utf-8")
         req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
         try:
-            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req, max_retries=10)
         except GRPCError as exc:
             raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
         if response.WhichOneof("data_oneof") == "data":
@@ -242,7 +242,7 @@ class _Volume(_StatefulObject, type_prefix="vo"):
 
         req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
         try:
-            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req, max_retries=10)
         except GRPCError as exc:
             raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
         if response.WhichOneof("data_oneof") == "data":
