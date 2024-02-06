@@ -81,11 +81,18 @@ def update_build_number(ctx, new_build_number: Optional[int] = None):
 
     new_build_number = int(new_build_number) if new_build_number else current_build_number + 1
     assert new_build_number > current_build_number
+
+    # Add the current Git SHA to the file, so concurrent publish actions of the
+    # client package result in merge conflicts.
+    git_sha = ctx.run("git rev-parse --short=7 HEAD", hide="out").stdout.rstrip()
+
     with open("modal_version/_version_generated.py", "w") as f:
         f.write(
             f"""\
 {copyright_header_full}
-build_number = {new_build_number}
+
+# Note: Reset this value to -1 whenever you make a minor `0.X` release of the client.
+build_number = {new_build_number}  # git: {git_sha}
 """
         )
 

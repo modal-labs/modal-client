@@ -28,6 +28,7 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 from modal import __version__, config
+from modal._serialization import serialize_data_format
 from modal.app import _ContainerApp
 from modal.client import Client
 from modal.image import _dockerhub_python_version
@@ -51,7 +52,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
     # TODO(erikbern): add more annotations
     container_inputs: list[api_pb2.FunctionGetInputsResponse]
     container_outputs: list[api_pb2.FunctionPutOutputsRequest]
-    fc_data_in: dict[str, asyncio.Queue[api_pb2.DataChunk]]
+    fc_data_in: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
+    fc_data_out: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
 
     def __init__(self, blob_host, blobs):
         self.app_state_history = defaultdict(list)
@@ -67,7 +69,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.slow_put_inputs = False
         self.container_inputs = []
         self.container_outputs = []
-        self.fc_data_in = {}
+        self.fc_data_in = defaultdict(lambda: asyncio.Queue())  # unbounded
+        self.fc_data_out = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.queue = []
         self.deployed_apps = {
             client_mount_name(): "ap-x",
@@ -579,18 +582,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if client_calls and not self.function_is_running:
             popidx = len(client_calls) // 2  # simulate that results don't always come in order
             (idx, input_id), (args, kwargs) = client_calls.pop(popidx)
-            results = []
             output_exc = None
             try:
                 res = self._function_body(*args, **kwargs)
 
                 if inspect.iscoroutine(res):
-                    results = [await res]
+                    result = await res
+                    result_data_format = api_pb2.DATA_FORMAT_PICKLE
                 elif inspect.isgenerator(res):
+                    count = 0
                     for item in res:
-                        results.append(item)
+                        count += 1
+                        await self.fc_data_out[request.function_call_id].put(
+                            api_pb2.DataChunk(
+                                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                                data=serialize_data_format(item, api_pb2.DATA_FORMAT_PICKLE),
+                                index=count,
+                            )
+                        )
+                    result = api_pb2.GeneratorDone(items_total=count)
+                    result_data_format = api_pb2.DATA_FORMAT_GENERATOR_DONE
                 else:
-                    results = [res]
+                    result = res
+                    result_data_format = api_pb2.DATA_FORMAT_PICKLE
             except Exception as exc:
                 serialized_exc = cloudpickle.dumps(exc)
                 result = api_pb2.GenericResult(
@@ -603,40 +617,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     input_id=input_id, idx=idx, result=result, gen_index=0, data_format=api_pb2.DATA_FORMAT_PICKLE
                 )
 
-            outputs = []
-            for index, value in enumerate(results):
-                gen_status = api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
-                if inspect.isgenerator(res):
-                    gen_status = api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-
-                result = api_pb2.GenericResult(
-                    status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                    data=cloudpickle.dumps(value),
-                    gen_status=gen_status,
-                )
-                item = api_pb2.FunctionGetOutputsItem(
-                    input_id=input_id,
-                    idx=idx,
-                    result=result,
-                    gen_index=index,
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
-                )
-                outputs.append(item)
-
             if output_exc:
-                outputs.append(output_exc)
-            elif inspect.isgenerator(res):
-                finish_item = api_pb2.FunctionGetOutputsItem(
+                output = output_exc
+            else:
+                output = api_pb2.FunctionGetOutputsItem(
                     input_id=input_id,
                     idx=idx,
                     result=api_pb2.GenericResult(
                         status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                        gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
+                        data=serialize_data_format(result, result_data_format),
                     ),
+                    data_format=result_data_format,
                 )
-                outputs.append(finish_item)
 
-            await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=outputs))
+            await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[output]))
         else:
             await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[]))
 
@@ -655,12 +649,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionCallGetDataIn(self, stream):
         req: api_pb2.FunctionCallGetDataRequest = await stream.recv_message()
-        if req.function_call_id not in self.fc_data_in:
-            raise GRPCError(Status.NOT_FOUND, f"No such function call: {req.function_call_id}")
-
         while True:
             chunk = await self.fc_data_in[req.function_call_id].get()
             await stream.send_message(chunk)
+
+    async def FunctionCallGetDataOut(self, stream):
+        req: api_pb2.FunctionCallGetDataRequest = await stream.recv_message()
+        while True:
+            chunk = await self.fc_data_out[req.function_call_id].get()
+            await stream.send_message(chunk)
+
+    async def FunctionCallPutDataOut(self, stream):
+        req: api_pb2.FunctionCallPutDataRequest = await stream.recv_message()
+        for chunk in req.data_chunks:
+            await self.fc_data_out[req.function_call_id].put(chunk)
+        await stream.send_message(Empty())
 
     ### Image
 
