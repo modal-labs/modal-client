@@ -435,15 +435,7 @@ class _FunctionIOManager:
         )
         await self.complete_call(started_at)
 
-    async def checkpoint(self) -> None:
-        """Message server indicating that function is ready to be checkpointed."""
-        await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest())
-
-        self._waiting_for_checkpoint = True
-        await self._client._close()
-
-        logger.debug("Checkpointing request sent. Connection closed.")
-
+    async def restore(self) -> None:
         # Busy-wait for restore. `/opt/modal/restore-state.json` is created
         # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
@@ -472,8 +464,22 @@ class _FunctionIOManager:
             if value != "":
                 config.override_locally(key, value)
 
+        # Restore input to default state.
+        self.current_input_id = None
+        self.current_input_started_at = None
+
         self._client = await _Client.from_env()
         self._waiting_for_checkpoint = False
+
+    async def checkpoint(self) -> None:
+        """Message server indicating that function is ready to be checkpointed."""
+        await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest())
+
+        self._waiting_for_checkpoint = True
+        await self._client._close()
+
+        logger.debug("Checkpointing request sent. Connection closed.")
+        await self.restore()
 
     async def volume_commit(self, volume_ids: list[str]) -> None:
         """
