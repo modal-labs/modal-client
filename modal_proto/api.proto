@@ -553,7 +553,9 @@ message ContainerHeartbeatRequest {
   double current_input_started_at = 2;
 }
 
-message ContainerCheckpointRequest {}
+message ContainerCheckpointRequest {
+  string checkpoint_id = 1;
+}
 
 message ContainerExecRequest {
   string task_id = 1;
