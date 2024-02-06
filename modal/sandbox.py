@@ -6,7 +6,7 @@ from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
-from modal.s3mount import _S3Mount, s3mounts_to_proto
+from modal.s3mount import _S3Mount, s3_mounts_to_proto
 from modal.volume import _Volume
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
@@ -133,7 +133,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
-        s3mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
+        s3_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         if len(validated_volumes) > 0:
@@ -143,9 +143,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             deps: List[_Object] = [image] + list(mounts) + list(secrets)
             for _, vol in validated_network_file_systems:
                 deps.append(vol)
-            for _, s3mount in s3mounts:
-                if s3mount.credentials:
-                    deps.append(s3mount.credentials)
+            for _, s3_mount in s3_mounts:
+                if s3_mount.credentials:
+                    deps.append(s3_mount.credentials)
             return deps
 
         async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
@@ -169,7 +169,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
                 block_network=block_network,
-                s3mounts=s3mounts_to_proto(s3mounts),
+                s3_mounts=s3_mounts_to_proto(s3_mounts),
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)

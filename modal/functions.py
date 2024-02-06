@@ -77,7 +77,7 @@ from .network_file_system import _NetworkFileSystem, network_file_system_mount_p
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
-from .s3mount import _S3Mount, s3mounts_to_proto
+from .s3mount import _S3Mount, s3_mounts_to_proto
 from .schedule import Schedule
 from .secret import _Secret
 from .volume import _Volume
@@ -698,7 +698,7 @@ class _Function(_Object, type_prefix="fu"):
 
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
-        s3mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
+        s3_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         # Validate NFS
@@ -727,9 +727,9 @@ class _Function(_Object, type_prefix="fu"):
                 deps.append(nfs)
             for _, vol in validated_volumes:
                 deps.append(vol)
-            for _, s3mount in s3mounts:
-                if s3mount.credentials:
-                    deps.append(s3mount.credentials)
+            for _, s3_mount in s3_mounts:
+                if s3_mount.credentials:
+                    deps.append(s3_mount.credentials)
 
             # Add implicit dependencies from the function's code
             objs: list[Object] = get_referred_objects(info.raw_f)

@@ -376,7 +376,7 @@ def shell(
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
         assert isinstance(function, Function)
         function_env: FunctionEnv = function.env
-        s3mounts = {k: v for k, v in function_env.volumes.items() if isinstance(v, _S3Mount)}
+        s3_mounts = {k: v for k, v in function_env.volumes.items() if isinstance(v, _S3Mount)}
         start_shell = partial(
             interactive_shell,
             image=function_env.image,
@@ -387,7 +387,7 @@ def shell(
             cloud=function_env.cloud,
             cpu=function_env.cpu,
             memory=function_env.memory,
-            volumes=s3mounts,  # currently, sandboxes only support s3 mounts
+            volumes=s3_mounts,  # currently, sandboxes only support s3 mounts
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None

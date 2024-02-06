@@ -18,7 +18,7 @@ class _S3Mount:
     credentials: Optional[_Secret] = None
 
 
-def s3mounts_to_proto(mounts: List[Tuple[str, _S3Mount]]) -> List[api_pb2.S3Mount]:
+def s3_mounts_to_proto(mounts: List[Tuple[str, _S3Mount]]) -> List[api_pb2.S3Mount]:
     """
     Helper function to convert S3 mounts to a list of protobufs that can be passed to the server.
     """
