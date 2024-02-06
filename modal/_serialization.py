@@ -287,6 +287,9 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
         return serialize(obj)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
         return _serialize_asgi(obj).SerializeToString(deterministic=True)
+    elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
+        assert isinstance(obj, api_pb2.GeneratorDone)
+        return obj.SerializeToString(deterministic=True)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
 
@@ -298,8 +301,8 @@ def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return deserialize(s, client)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
-        asgi = api_pb2.Asgi()
-        asgi.ParseFromString(s)
-        return _deserialize_asgi(asgi)
+        return _deserialize_asgi(api_pb2.Asgi.FromString(s))
+    elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
+        return api_pb2.GeneratorDone.FromString(s)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
