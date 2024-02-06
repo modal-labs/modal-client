@@ -2,7 +2,7 @@
 import os
 import posixpath
 from pathlib import PurePath, PurePosixPath
-from typing import TYPE_CHECKING, Dict, List, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Mapping, Tuple, Union
 
 from .exception import InvalidError
 from .volume import _Volume
@@ -13,7 +13,8 @@ if TYPE_CHECKING:
 
 
 def validate_mount_points(
-    display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union["_Volume", "_NetworkFileSystem", "_S3Mount"]]
+    display_name: str,
+    volume_likes: Mapping[Union[str, os.PathLike], Union["_Volume", "_NetworkFileSystem", "_S3Mount"]],
 ) -> List[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_S3Mount"]]]:
     """Mount point path validation for volumes and network file systems."""
 
@@ -35,7 +36,7 @@ def validate_mount_points(
 
 
 def validate_volumes(
-    volumes: Dict[Union[str, PurePosixPath], Union["_Volume", "_S3Mount"]]
+    volumes: Mapping[Union[str, PurePosixPath], Union["_Volume", "_S3Mount"]]
 ) -> List[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_S3Mount"]]]:
     if not isinstance(volumes, dict):
         raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
