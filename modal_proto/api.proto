@@ -826,7 +826,7 @@ message Function {
 
   uint32 max_inputs = 46;
   
-  repeated S3Mount s3mounts = 47;
+  repeated S3Mount s3_mounts = 47;
 }
 
 message FunctionHandleMetadata {
