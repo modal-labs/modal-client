@@ -90,6 +90,8 @@ class _FunctionIOManager:
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
+        self.checkpoint_id = container_args.checkpoint_id
+
         self.calls_completed = 0
         self.total_user_time: float = 0.0
         self.current_input_id: Optional[str] = None
@@ -439,7 +441,7 @@ class _FunctionIOManager:
             await asyncio.sleep(0.01)
             continue
 
-        logger.debug("Container restored.")
+        logger.debug("Container: restored")
 
         # Look for state file and create new client with updated credentials.
         # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
@@ -467,11 +469,11 @@ class _FunctionIOManager:
 
     async def checkpoint(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
-        checkpoint_id = os.getenv("MODAL_CHECKPOINT_ID")
+        if self.checkpoint_id:
+            logger.debug(f"Checkpoint ID: {self.checkpoint_id}")
+
         await self._client.stub.ContainerCheckpoint(
-            api_pb2.ContainerCheckpointRequest(checkpoint_id=checkpoint_id)
-            if checkpoint_id
-            else api_pb2.ContainerCheckpointRequest()
+            api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
         )
 
         self._waiting_for_checkpoint = True
