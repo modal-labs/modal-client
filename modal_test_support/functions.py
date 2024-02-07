@@ -30,6 +30,11 @@ def square(x):
 
 
 @stub.function()
+def ident(x):
+    return x
+
+
+@stub.function()
 def delay(t):
     time.sleep(t)
 
