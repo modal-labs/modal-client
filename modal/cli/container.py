@@ -18,11 +18,11 @@ container_cli = typer.Typer(name="container", help="Manage running containers.",
 @container_cli.command("list")
 @synchronizer.create_blocking
 async def list():
-    """List all containers that are currently running"""
+    """List all containers that are currently running."""
     client = await _Client.from_env()
     res: api_pb2.TaskListResponse = await client.stub.TaskList(api_pb2.TaskListRequest())
 
-    column_names = ["Container ID", "App ID", "App Name", "Start time"]
+    column_names = ["Container ID", "App ID", "App Name", "Start Time"]
     rows: List[List[Union[Text, str]]] = []
     res.tasks.sort(key=lambda task: task.started_at, reverse=True)
     for task_stats in res.tasks:
@@ -41,10 +41,10 @@ async def list():
 @container_cli.command("exec")
 @synchronizer.create_blocking
 async def exec(
-    container_id: str = typer.Argument(
-        help="The ID of the container to run the command in",
-    ),
-    command: List[str] = typer.Argument(help="The command to run"),
-    pty: bool = typer.Option(is_flag=True, default=True, help="Run the command inside a PTY"),
+    container_id: str = typer.Argument(help="Container ID."),
+    command: List[str] = typer.Argument(help="A command to run inside the container."),
+    pty: bool = typer.Option(is_flag=True, default=True, help="Run the command using a PTY."),
 ):
-    await container_exec(container_id, command, pty)
+    """Execute a command in a container."""
+    client = await _Client.from_env()
+    await container_exec(container_id, command, pty=pty, client=client)
