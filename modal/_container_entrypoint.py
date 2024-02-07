@@ -471,7 +471,9 @@ class _FunctionIOManager:
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id}")
 
-        await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id))
+        await self._client.stub.ContainerCheckpoint(
+            api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+        )
 
         self._waiting_for_checkpoint = True
         await self._client._close()

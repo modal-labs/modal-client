@@ -112,7 +112,7 @@ def _run_container(
             app_id="ap-1",
             function_def=function_def,
             serialized_params=serialized_params,
-            checkpoint_id=f"ch-{uuid.uuid4()}"
+            checkpoint_id=f"ch-{uuid.uuid4()}",
         )
 
         if module_name in sys.modules:
