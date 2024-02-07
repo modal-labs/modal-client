@@ -312,16 +312,16 @@ def fresh_main_thread_assertion_module(test_dir):
 
 
 def test_no_user_code_in_synchronicity_run(servicer, set_env_client, test_dir, fresh_main_thread_assertion_module):
-    pytest._did_load_main_thread_assertion = False
+    pytest._did_load_main_thread_assertion = False  # type: ignore
     _run(["run", fresh_main_thread_assertion_module.as_posix()])
-    assert pytest._did_load_main_thread_assertion
+    assert pytest._did_load_main_thread_assertion  # type: ignore
     print()
 
 
 def test_no_user_code_in_synchronicity_deploy(servicer, set_env_client, test_dir, fresh_main_thread_assertion_module):
-    pytest._did_load_main_thread_assertion = False
+    pytest._did_load_main_thread_assertion = False  # type: ignore
     _run(["deploy", "--name", "foo", fresh_main_thread_assertion_module.as_posix()])
-    assert pytest._did_load_main_thread_assertion
+    assert pytest._did_load_main_thread_assertion  # type: ignore
 
 
 def test_serve(servicer, set_env_client, server_url_env, test_dir):
