@@ -826,6 +826,8 @@ message Function {
   bool block_network = 44;
 
   uint32 max_inputs = 46;
+  
+  repeated S3Mount s3_mounts = 47;
 }
 
 message FunctionHandleMetadata {
@@ -1335,6 +1337,12 @@ message Resources {
   GPUConfig gpu_config = 4;
 }
 
+message S3Mount {
+  string bucket_name = 1;
+  string mount_path = 2;
+  string credentials_secret_id = 3;
+}
+
 message Sandbox {
   repeated string entrypoint_args = 1;
   repeated string mount_ids = 2;
@@ -1353,6 +1361,8 @@ message Sandbox {
   bool runtime_debug = 10; // For internal debugging use only.
 
   bool block_network = 11;
+
+  repeated S3Mount s3_mounts = 12;
 }
 
 message SandboxCreateRequest {

@@ -25,7 +25,6 @@ from typing import (
     Optional,
     Sequence,
     Set,
-    Tuple,
     Type,
     Union,
 )
@@ -54,7 +53,7 @@ from ._blob_utils import (
 )
 from ._function_utils import FunctionInfo, get_referred_objects, is_async
 from ._location import parse_cloud_provider
-from ._mount_utils import validate_mount_points
+from ._mount_utils import validate_mount_points, validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import deserialize, deserialize_data_format, serialize
@@ -78,6 +77,7 @@ from .network_file_system import _NetworkFileSystem, network_file_system_mount_p
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
+from .s3mount import _S3Mount, s3_mounts_to_proto
 from .schedule import Schedule
 from .secret import _Secret
 from .volume import _Volume
@@ -521,27 +521,6 @@ def _parse_retries(
         )
 
 
-def _validate_volumes(
-    volumes: Dict[Union[str, PurePosixPath], _Volume]
-) -> List[Tuple[str, Union[_Volume, _NetworkFileSystem]]]:
-    if not isinstance(volumes, dict):
-        raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
-
-    validated_volumes = validate_mount_points("Volume", volumes)
-    # We don't support mounting a volume in more than one location
-    volume_to_paths: Dict[_Volume, List[str]] = {}
-    for path, volume in validated_volumes:
-        volume_to_paths.setdefault(volume, []).append(path)
-    for paths in volume_to_paths.values():
-        if len(paths) > 1:
-            conflicting = ", ".join(paths)
-            raise InvalidError(
-                f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
-            )
-
-    return validated_volumes
-
-
 @dataclass
 class FunctionEnv:
     """
@@ -553,6 +532,7 @@ class FunctionEnv:
     mounts: Sequence[_Mount]
     secrets: Sequence[_Secret]
     network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
+    volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]]
     gpu: GPU_T
     cloud: Optional[str]
     cpu: Optional[float]
@@ -591,7 +571,7 @@ class _Function(_Object, type_prefix="fu"):
         mounts: Collection[_Mount] = (),
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},
+        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[_Proxy] = None,
@@ -660,6 +640,7 @@ class _Function(_Object, type_prefix="fu"):
             secrets=secrets,
             gpu=gpu,
             network_file_systems=network_file_systems,
+            volumes=volumes,
             image=image,
             cloud=cloud,
             cpu=cpu,
@@ -716,7 +697,9 @@ class _Function(_Object, type_prefix="fu"):
                 raise InvalidError("Webhooks cannot be generators")
 
         # Validate volumes
-        validated_volumes = _validate_volumes(volumes)
+        validated_volumes = validate_volumes(volumes)
+        s3_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
+        validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         # Validate NFS
         if not isinstance(network_file_systems, dict):
@@ -744,6 +727,9 @@ class _Function(_Object, type_prefix="fu"):
                 deps.append(nfs)
             for _, vol in validated_volumes:
                 deps.append(vol)
+            for _, s3_mount in s3_mounts:
+                if s3_mount.secret:
+                    deps.append(s3_mount.secret)
 
             # Add implicit dependencies from the function's code
             objs: list[Object] = get_referred_objects(info.raw_f)
@@ -871,6 +857,7 @@ class _Function(_Object, type_prefix="fu"):
                 ],
                 block_network=block_network,
                 max_inputs=max_inputs,
+                s3_mounts=s3_mounts_to_proto(s3_mounts),
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
