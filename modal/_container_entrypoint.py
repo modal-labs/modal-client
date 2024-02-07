@@ -472,7 +472,7 @@ class _FunctionIOManager:
         """Message server indicating that function is ready to be checkpointed."""
         checkpoint_id = os.getenv("MODAL_CHECKPOINT_ID", "")
         if checkpoint_id:
-            logger.debug(f"Checkpoint ID available: {checkpoint_id}")
+            logger.debug(f"Checkpoint ID: {checkpoint_id}")
         await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest(checkpoint_id=checkpoint_id))
 
         self._waiting_for_checkpoint = True
