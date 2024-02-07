@@ -862,6 +862,9 @@ def test_multiple_build_decorator_cls(unix_servicer, event_loop):
     assert _unwrap_scalar(ret) == 1001
 
 
+@pytest.mark.skip(
+    "we need to find a way to still let users pass Modal objects, or have a deprecation path before we disable inspection"
+)
 @skip_windows_unix_socket
 @pytest.mark.timeout(3.0)
 def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_servicer):
