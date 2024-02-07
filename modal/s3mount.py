@@ -42,7 +42,6 @@ class _S3Mount:
     # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY can be omitted if the bucket is publicly accessible.
     secret: Optional[_Secret]
 
-    # If true, existing files cannot be deleted or overwritten. However, new files can still be created.
     read_only: bool = False
 
 
