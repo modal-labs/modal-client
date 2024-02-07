@@ -773,7 +773,7 @@ def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
     for request in unix_servicer.requests:
         if isinstance(request, api_pb2.ContainerCheckpointRequest):
-            assert request.checkpoint_id != ""
+            assert request.checkpoint_id
 
     assert _unwrap_scalar(ret) == 42**2
 
