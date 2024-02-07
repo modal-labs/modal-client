@@ -610,7 +610,7 @@ class _Function(_Object, type_prefix="fu"):
         checkpointing_enabled: bool = False,
         allow_background_volume_commits: bool = False,
         block_network: bool = False,
-        max_inputs: Optional[int] = True,
+        max_inputs: Optional[int] = None,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
