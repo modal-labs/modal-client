@@ -36,7 +36,7 @@ class _Secret(_StatefulObject, type_prefix="st"):
 
         Usage:
         ```python
-        @stub.function(secrets=[modal.Secret.from_dict({"FOO": "bar"}])
+        @stub.function(secrets=[modal.Secret.from_dict({"FOO": "bar"})])
         def run():
             print(os.environ["FOO"])
         ```
