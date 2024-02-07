@@ -142,7 +142,8 @@ def _check_config() -> None:
     if num_active > 1:
         raise InvalidError(
             "More than one Modal profile is active. "
-            "Please fix with `modal profile activate` or by editing your Modal config file."
+            "Please fix with `modal profile activate` or by editing your Modal config file "
+            f"({user_config_path})."
         )
     elif num_profiles > 1 and num_active == 0 and _profile == "default":
         # Eventually we plan to have num_profiles > 1 with num_active = 0 be an error
