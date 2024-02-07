@@ -1342,6 +1342,7 @@ message S3Mount {
   string mount_path = 2;
   string credentials_secret_id = 3;
   // if false, --allow-delete and --allow-overwrite are set
+  // See https://github.com/awslabs/mountpoint-s3/blob/main/doc/CONFIGURATION.md#file-modifications-and-deletions
   bool read_only = 4;
 }
 

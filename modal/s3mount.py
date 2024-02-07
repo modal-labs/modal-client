@@ -12,7 +12,8 @@ from .secret import _Secret
 class _S3Mount:
     """Mounts an S3 bucket to your container using AWS S3 Mountpoint.
 
-    S3 mounts are optimized for reading large files sequentially. It does not support every file operation; consult the AWS S3 Mountpoint documentation for more information.
+    S3 mounts are optimized for reading large files sequentially. It does not support every file operation; consult
+    [the AWS S3 Mountpoint documentation](https://github.com/awslabs/mountpoint-s3/blob/main/doc/SEMANTICS.md) for more information.
 
     **Usage**
 
