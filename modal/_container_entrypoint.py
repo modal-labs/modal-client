@@ -282,7 +282,8 @@ class _FunctionIOManager:
                         yield (item.input_id, item.function_call_id, input_pb)
                         yielded = True
 
-                        if item.input.final_input or self.function_def.reuse_containers is False:
+                        # We only support max_inputs = 1 at the moment
+                        if item.input.final_input or self.function_def.max_inputs == 1:
                             eof_received = True
                             break
             finally:

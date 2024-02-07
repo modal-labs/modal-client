@@ -824,7 +824,7 @@ message Function {
 
   bool block_network = 44;
 
-  bool reuse_containers = 45;
+  uint32 max_inputs = 46;
 }
 
 message FunctionHandleMetadata {
