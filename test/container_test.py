@@ -15,9 +15,11 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 from unittest import mock
+from unittest.mock import MagicMock
 
 from grpclib.exceptions import GRPCError
 
+import modal_utils
 from modal import Client
 from modal._container_entrypoint import UserException, main
 from modal._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
@@ -858,3 +860,40 @@ def test_multiple_build_decorator_cls(unix_servicer, event_loop):
         is_auto_snapshot=True,
     )
     assert _unwrap_scalar(ret) == 1001
+
+
+@skip_windows_unix_socket
+@pytest.mark.timeout(3.0)
+def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_servicer):
+    synchronizer = modal_utils.async_utils.synchronizer
+
+    # set up spys to track synchronicity calls to _translate_scalar_in/out
+    translate_in_spy = MagicMock(wraps=synchronizer._translate_scalar_in)
+    monkeypatch.setattr(synchronizer, "_translate_scalar_in", translate_in_spy)
+    translate_out_spy = MagicMock(wraps=synchronizer._translate_scalar_out)
+    monkeypatch.setattr(synchronizer, "_translate_scalar_out", translate_out_spy)
+
+    # don't do blobbing for this test
+    monkeypatch.setattr("modal._container_entrypoint.MAX_OBJECT_SIZE_BYTES", 1e100)
+
+    large_data_list = list(range(int(1e6)))  # large data set
+
+    t0 = time.perf_counter()
+    # pr = cProfile.Profile()
+    # pr.enable()
+    _run_container(unix_servicer, "modal_test_support.functions", "ident", inputs=_get_inputs(((large_data_list,), {})))
+    # pr.disable()
+    # pr.print_stats()
+    duration = time.perf_counter() - t0
+    assert duration < 2.0  # TODO (elias): migth be able to get this down significantly more by improving serialization
+
+    # function_io_manager.serialize(large_data_list)
+    in_translations = []
+    out_translations = []
+    for call in translate_in_spy.call_args_list:
+        in_translations += list(call.args)
+    for call in translate_out_spy.call_args_list:
+        out_translations += list(call.args)
+
+    assert len(in_translations) < 200  # typically 136 or something
+    assert len(out_translations) < 200
