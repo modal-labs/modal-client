@@ -221,11 +221,14 @@ def highlight_modal_deprecation_warnings() -> None:
             content = str(warning)
             date = content[:10]
             message = content[11:].strip()
-            with open(filename) as f:
-                source = f.readlines()[lineno - 1].strip()
-            print(filename, lineno, file, line)
+            try:
+                with open(filename) as f:
+                    source = f.readlines()[lineno - 1].strip()
+                message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
+            except FileNotFoundError:
+                pass
             panel = Panel(
-                f"{message}\n\nSource: {filename}:{lineno}\n  {source}",
+                message,
                 style="yellow",
                 title=f"Deprecation Warning ({date})",
                 title_align="left",
