@@ -291,12 +291,12 @@ class _Volume(_StatefulObject, type_prefix="vo"):
         await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
 
     @live_method
-    async def batch_upload(self, clobber: bool = False) -> "_VolumeUploadContextManager":
+    async def batch_upload(self, force: bool = False) -> "_VolumeUploadContextManager":
         """
         Initiate a batched upload to a volume.
 
-        To allow overwriting existing files, set `clobber` to `True` (you cannot overwrite existing directories with
-        files regardless).
+        To allow overwriting existing files, set `force` to `True` (you cannot overwrite existing directories with
+        uploaded files regardless).
 
         **Example:**
 
@@ -309,7 +309,7 @@ class _Volume(_StatefulObject, type_prefix="vo"):
             batch.put_file(io.BytesIO(b"some data"), "/foobar")
         ```
         """
-        return _VolumeUploadContextManager(self.object_id, self._client, clobber=clobber)
+        return _VolumeUploadContextManager(self.object_id, self._client, force=force)
 
 
 class _VolumeUploadContextManager:
@@ -317,15 +317,15 @@ class _VolumeUploadContextManager:
 
     _volume_id: str
     _client: _Client
-    _clobber: bool
+    _force: bool
     _upload_generators: List[Generator[Callable[[], FileUploadSpec], None, None]]
 
-    def __init__(self, volume_id: str, client: _Client, clobber: bool = False):
+    def __init__(self, volume_id: str, client: _Client, force: bool = False):
         """mdmd:hidden"""
         self._volume_id = volume_id
         self._client = client
         self._upload_generators = []
-        self._clobber = clobber
+        self._force = force
 
     async def __aenter__(self):
         return self
@@ -353,7 +353,9 @@ class _VolumeUploadContextManager:
             files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
 
             request = api_pb2.VolumePutFilesRequest(
-                volume_id=self._volume_id, files=files, no_clobber=not self._clobber
+                volume_id=self._volume_id,
+                files=files,
+                disallow_overwrite_existing_files=not self._force,
             )
             try:
                 await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)

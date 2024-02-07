@@ -448,7 +448,7 @@ def test_volume_get(servicer, set_env_client):
             assert f.read() == file_contents
 
 
-def test_volume_put_clobber(servicer, set_env_client):
+def test_volume_put_force(servicer, set_env_client):
     vol_name = "my-test-vol"
     _run(["volume", "create", vol_name])
     file_path = "test.txt"
@@ -463,13 +463,13 @@ def test_volume_put_clobber(servicer, set_env_client):
         _run(["volume", "put", vol_name, upload_path, file_path])
 
         _run(["volume", "put", vol_name, upload_path, file_path], expected_exit_code=2, expected_stderr=None)
-        _run(["volume", "put", vol_name, upload_path, file_path, "--clobber"])
+        _run(["volume", "put", vol_name, upload_path, file_path, "--force"])
 
         # Dir upload
         _run(["volume", "put", vol_name, tmpdir])
 
         _run(["volume", "put", vol_name, tmpdir], expected_exit_code=2, expected_stderr=None)
-        _run(["volume", "put", vol_name, tmpdir, "--clobber"])
+        _run(["volume", "put", vol_name, tmpdir, "--force"])
 
 
 def test_volume_rm(servicer, set_env_client):

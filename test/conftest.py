@@ -944,8 +944,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for file in req.files:
             blob_data = self.files_sha2data[file.sha256_hex]
 
-            if file.filename in self.volume_files[req.volume_id] and req.no_clobber:
-                raise GRPCError(Status.ALREADY_EXISTS, f"{file.filename}: already exists (no_clobber={req.no_clobber}")
+            if file.filename in self.volume_files[req.volume_id] and req.disallow_overwrite_existing_files:
+                raise GRPCError(
+                    Status.ALREADY_EXISTS,
+                    f"{file.filename}: already exists (disallow_overwrite_existing_files={req.disallow_overwrite_existing_files}",
+                )
 
             self.volume_files[req.volume_id][file.filename] = VolumeFile(
                 data=blob_data["data"],

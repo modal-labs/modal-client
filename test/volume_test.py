@@ -186,7 +186,7 @@ async def test_volume_batch_upload(servicer, client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_volume_batch_upload_clobber(servicer, client, tmp_path):
+async def test_volume_batch_upload_force(servicer, client, tmp_path):
     stub = modal.Stub()
     stub.vol = modal.Volume.new()
 
@@ -201,7 +201,7 @@ async def test_volume_batch_upload_clobber(servicer, client, tmp_path):
             with stub.vol.batch_upload() as batch:
                 batch.put_file(local_file_path, "/some_file")
 
-        with stub.vol.batch_upload(clobber=True) as batch:
+        with stub.vol.batch_upload(force=True) as batch:
             batch.put_file(local_file_path, "/some_file")
 
 
