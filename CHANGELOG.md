@@ -10,6 +10,13 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.57.9 (2024-02-07)
+
+- Support for an implicit 'default' profile is now deprecated. If you have more than one profile in your Modal config file, one must be explicitly set to `active` (use `modal profile activate` or edit your `.modal.toml` file to resolve).
+- An error is now raised when more than one profile is set to `active`.
+
+
+
 ### 0.57.2 (2024-02-06)
 
 - Improve error message when generator functions are called with `.map(...)`.
