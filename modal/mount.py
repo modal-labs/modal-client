@@ -145,7 +145,6 @@ class _MountDir(_MountEntry):
 
 
 def module_mount_condition(f: str):
-    print(f)
     return not any([f.endswith(".pyc"), os.path.basename(f).startswith(".")])
 
 
