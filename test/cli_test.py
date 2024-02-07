@@ -460,16 +460,22 @@ def test_volume_put_force(servicer, set_env_client):
             f.flush()
 
         # File upload
-        _run(["volume", "put", vol_name, upload_path, file_path])
+        _run(["volume", "put", vol_name, upload_path, file_path])  # Seed the volume
+        with servicer.intercept() as ctx:
+            _run(["volume", "put", vol_name, upload_path, file_path], expected_exit_code=2, expected_stderr=None)
+            assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
 
-        _run(["volume", "put", vol_name, upload_path, file_path], expected_exit_code=2, expected_stderr=None)
-        _run(["volume", "put", vol_name, upload_path, file_path, "--force"])
+            _run(["volume", "put", vol_name, upload_path, file_path, "--force"])
+            assert not ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
 
         # Dir upload
-        _run(["volume", "put", vol_name, tmpdir])
+        _run(["volume", "put", vol_name, tmpdir])  # Seed the volume
+        with servicer.intercept() as ctx:
+            _run(["volume", "put", vol_name, tmpdir], expected_exit_code=2, expected_stderr=None)
+            assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
 
-        _run(["volume", "put", vol_name, tmpdir], expected_exit_code=2, expected_stderr=None)
-        _run(["volume", "put", vol_name, tmpdir, "--force"])
+            _run(["volume", "put", vol_name, tmpdir, "--force"])
+            assert not ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
 
 
 def test_volume_rm(servicer, set_env_client):
