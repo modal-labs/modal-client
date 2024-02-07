@@ -27,7 +27,7 @@ class _S3Mount:
             "/my-mount": modal.S3Mount("s3-bucket-name", secret=modal.Secret.from_dict({
                 "AWS_ACCESS_KEY_ID": "...",
                 "AWS_SECRET_ACCESS_KEY": "...",
-            }), read_only=False)
+            }), read_only=True)
         }
     )
     def f():
@@ -42,7 +42,8 @@ class _S3Mount:
     # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY can be omitted if the bucket is publicly accessible.
     secret: Optional[_Secret]
 
-    read_only: bool = True
+    # If true, existing files cannot be deleted or overwritten. However, new files can still be created.
+    read_only: bool = False
 
 
 def s3_mounts_to_proto(mounts: List[Tuple[str, _S3Mount]]) -> List[api_pb2.S3Mount]:
