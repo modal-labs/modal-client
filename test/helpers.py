@@ -12,8 +12,9 @@ def deploy_stub_externally(
     # deploys a stub from another interpreter to prevent leaking state from client into a container process (apart from what goes through the servicer)
     # also has the advantage that no modules imported by the test files themselves will be added to sys.modules and included in mounts etc.
     windows_support = {}
-    if "SYSTEMROOT" in os.environ:
-        windows_support["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
+
+    if sys.platform == "win32":
+        windows_support = os.environ.copy()  # windows apparently needs a bunch of env vars to start python...
 
     env = {**windows_support, "MODAL_SERVER_URL": servicer.remote_addr, **env}
     if cwd is None:
