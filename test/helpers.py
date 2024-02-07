@@ -11,7 +11,7 @@ def deploy_stub_externally(
 ):
     # deploys a stub from another interpreter to prevent leaking state from client into a container process (apart from what goes through the servicer)
     # also has the advantage that no modules imported by the test files themselves will be added to sys.modules and included in mounts etc.
-    windows_support = {}
+    windows_support: dict[str, str] = {}
 
     if sys.platform == "win32":
         windows_support = os.environ.copy()  # windows apparently needs a bunch of env vars to start python...
