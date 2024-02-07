@@ -552,8 +552,9 @@ def test_profile_list(servicer, server_url_env, modal_config):
     token_secret = "as-xyz"
 
     [other-profile]
-    token_id = "ak-abc"
-    token_secret = "as-xyz"
+    token_id = "ak-123"
+    token_secret = "as-789"
+    active = true
     """
 
     with modal_config(config):
@@ -569,3 +570,20 @@ def test_profile_list(servicer, server_url_env, modal_config):
         assert json_data[0]["workspace"] == "test-username"
         assert json_data[1]["name"] == "other-profile"
         assert json_data[1]["workspace"] == "test-username"
+
+        orig_env_token_id = os.environ.get("MODAL_TOKEN_ID")
+        orig_env_token_secret = os.environ.get("MODAL_TOKEN_SECRET")
+        os.environ["MODAL_TOKEN_ID"] = "ak-abc"
+        os.environ["MODAL_TOKEN_SECRET"] = "as-xyz"
+        try:
+            res = _run(["profile", "list"])
+            assert "Using test-username workspace based on environment variables" in res.stdout
+        finally:
+            if orig_env_token_id:
+                os.environ["MODAL_TOKEN_ID"] = orig_env_token_id
+            else:
+                del os.environ["MODAL_TOKEN_ID"]
+            if orig_env_token_secret:
+                os.environ["MODAL_TOKEN_SECRET"] = orig_env_token_secret
+            else:
+                del os.environ["MODAL_TOKEN_SECRET"]

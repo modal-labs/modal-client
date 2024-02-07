@@ -18,12 +18,16 @@ async def test_async_factory(client):
 
 @pytest.mark.asyncio
 async def test_use_object(client):
+    # Deploy object
+    q = await Queue.lookup.aio("foo-queue", create_if_missing=True, client=client)
+
+    # Use object
     stub = Stub()
     q = Queue.from_name("foo-queue")
     assert isinstance(q, Queue)
     stub["my_q"] = q
     async with stub.run(client=client):
-        assert stub["my_q"].object_id == "qu-foo"
+        assert stub["my_q"].object_id == "qu-1"
         with pytest.raises(DeprecationError):
             stub.app["my_q"]
 

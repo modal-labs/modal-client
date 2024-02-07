@@ -180,11 +180,11 @@ class Config:
     def __init__(self):
         pass
 
-    def get(self, key, profile=None):
+    def get(self, key, profile=None, use_env=True):
         """Looks up a configuration value.
 
         Will check (in decreasing order of priority):
-        1. Any environment variable of the form MODAL_FOO_BAR
+        1. Any environment variable of the form MODAL_FOO_BAR (when use_env is True)
         2. Settings in the user's .toml configuration file
         3. The default value of the setting
         """
@@ -192,7 +192,7 @@ class Config:
             profile = _profile
         s = _SETTINGS[key]
         env_var_key = "MODAL_" + key.upper()
-        if env_var_key in os.environ:
+        if use_env and env_var_key in os.environ:
             return s.transform(os.environ[env_var_key])
         elif profile in _user_config and key in _user_config[profile]:
             return s.transform(_user_config[profile][key])

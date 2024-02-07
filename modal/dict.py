@@ -67,7 +67,7 @@ class _Dict(_Object, type_prefix="di"):
             logger.debug(f"Created dict with id {response.dict_id}")
             provider._hydrate(response.dict_id, resolver.client, None)
 
-        return _Dict._from_loader(_load, "Dict()")
+        return _Dict._from_loader(_load, "Dict()", is_another_app=True)
 
     def __init__(self, data={}):
         """mdmd:hidden"""

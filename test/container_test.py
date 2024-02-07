@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from typing import Any, Dict, List, Optional, Tuple
 from unittest import mock
 from unittest.mock import MagicMock
@@ -50,6 +51,7 @@ def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> List[api_
 class ContainerResult:
     client: Client
     items: List[api_pb2.FunctionPutOutputsItem]
+    data_chunks: List[api_pb2.DataChunk]
 
 
 def _run_container(
@@ -69,12 +71,14 @@ def _run_container(
     deps: List[str] = ["im-1"],
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
+    max_inputs: Optional[int] = None,
 ) -> ContainerResult:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
             servicer.container_inputs = _get_inputs()
         else:
             servicer.container_inputs = inputs
+        function_call_id = servicer.container_inputs[0].inputs[0].function_call_id
         servicer.fail_get_inputs = fail_get_inputs
 
         if webhook_type:
@@ -99,6 +103,7 @@ def _run_container(
             allow_concurrent_inputs=allow_concurrent_inputs,
             is_checkpointing_function=is_checkpointing_function,
             object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
+            max_inputs=max_inputs,
         )
 
         container_args = api_pb2.ContainerArguments(
@@ -119,10 +124,11 @@ def _run_container(
         temp_restore_file_path = tempfile.NamedTemporaryFile()
         if is_checkpointing_function:
             # State file is written to allow for a restore to happen.
-            temp_file_name = temp_restore_file_path.name
-            with pathlib.Path(temp_file_name).open("w") as target:
+            tmp_file_name = temp_restore_file_path.name
+            with pathlib.Path(tmp_file_name).open("w") as target:
                 json.dump({}, target)
-            env["MODAL_RESTORE_STATE_PATH"] = temp_file_name
+            env["MODAL_RESTORE_STATE_PATH"] = tmp_file_name
+            env["MODAL_CHECKPOINT_ID"] = f"ch-{uuid.uuid4()}"
 
             # Override server URL to reproduce restore behavior.
             env["MODAL_SERVER_URL"] = servicer.remote_addr
@@ -144,7 +150,17 @@ def _run_container(
         for req in servicer.container_outputs:
             items += list(req.outputs)
 
-        return ContainerResult(client, items)
+        # Get data chunks
+        data_chunks: List[api_pb2.DataChunk] = []
+        if function_call_id in servicer.fc_data_out:
+            try:
+                while True:
+                    chunk = servicer.fc_data_out[function_call_id].get_nowait()
+                    data_chunks.append(chunk)
+            except asyncio.QueueEmpty:
+                pass
+
+        return ContainerResult(client, items, data_chunks)
 
 
 def _unwrap_scalar(ret: ContainerResult):
@@ -161,40 +177,28 @@ def _unwrap_exception(ret: ContainerResult):
 
 
 def _unwrap_generator(ret: ContainerResult) -> Tuple[List[Any], Optional[Exception]]:
-    items = []
-    for i in range(len(ret.items) - 1):
-        result = ret.items[i].result
-        assert result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-        assert ret.items[i].gen_index == i
-        items.append(deserialize(result.data, ret.client))
+    assert len(ret.items) == 1
+    item = ret.items[0]
+    assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
 
-    last_result = ret.items[-1].result
-    if last_result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-        assert last_result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
-        assert last_result.data == b""  # no data in generator complete marker result
-        return (items, None)
-    elif last_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-        assert last_result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
-        exc = deserialize(last_result.data, ret.client)
-        return (items, exc)
+    values: List[Any] = [deserialize_data_format(chunk.data, chunk.data_format, None) for chunk in ret.data_chunks]
+
+    if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+        exc = deserialize(item.result.data, ret.client)
+        return values, exc
+    elif item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+        assert item.data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE
+        done: api_pb2.GeneratorDone = deserialize_data_format(item.result.data, item.data_format, None)
+        assert done.items_total == len(values)
+        return values, None
     else:
         raise RuntimeError("unknown result type")
 
 
 def _unwrap_asgi(ret: ContainerResult):
-    items = []
-    for item in ret.items[:-1]:
-        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-        assert item.data_format == api_pb2.DATA_FORMAT_ASGI
-        items.append(deserialize_data_format(item.result.data, item.data_format, None))
-
-    last_item = ret.items[-1]
-    assert last_item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert last_item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
-
-    return items
+    values, exc = _unwrap_generator(ret)
+    assert exc is None, "web endpoint raised exception"
+    return values
 
 
 @skip_windows_unix_socket
@@ -767,6 +771,10 @@ def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     simulating a restore operation."""
     ret = _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
+    for request in unix_servicer.requests:
+        if isinstance(request, api_pb2.ContainerCheckpointRequest):
+            assert request.checkpoint_id != ""
+
     assert _unwrap_scalar(ret) == 42**2
 
 

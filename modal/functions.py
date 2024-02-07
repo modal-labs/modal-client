@@ -21,6 +21,7 @@ from typing import (
     Dict,
     Iterable,
     List,
+    Literal,
     Optional,
     Sequence,
     Set,
@@ -32,6 +33,7 @@ from typing import (
 from aiostream import pipe, stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
 
 from modal import _pty
@@ -42,7 +44,7 @@ from modal_utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 from ._blob_utils import (
     BLOB_MAX_PARALLELISM,
@@ -178,6 +180,45 @@ async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutIn
         )
 
 
+async def _stream_function_call_data(
+    client, function_call_id: str, variant: Literal["data_in", "data_out"]
+) -> AsyncIterator[Any]:
+    """Read from the `data_in` or `data_out` stream of a function call."""
+    last_index = 0
+    retries_remaining = 10
+
+    if variant == "data_in":
+        stub_fn = client.stub.FunctionCallGetDataIn
+    elif variant == "data_out":
+        stub_fn = client.stub.FunctionCallGetDataOut
+    else:
+        raise ValueError(f"Invalid variant {variant}")
+
+    while True:
+        req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
+        try:
+            async for chunk in unary_stream(stub_fn, req):
+                if chunk.index <= last_index:
+                    continue
+                last_index = chunk.index
+                if chunk.data_blob_id:
+                    message_bytes = await blob_download(chunk.data_blob_id, client.stub)
+                else:
+                    message_bytes = chunk.data
+                message = deserialize_data_format(message_bytes, chunk.data_format, client)
+                yield message
+        except (GRPCError, StreamTerminatedError) as exc:
+            if retries_remaining > 0:
+                retries_remaining -= 1
+                if isinstance(exc, GRPCError):
+                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                        await asyncio.sleep(1.0)
+                        continue
+                elif isinstance(exc, StreamTerminatedError):
+                    continue
+            raise
+
+
 @dataclass
 class _OutputValue:
     # box class for distinguishing None results from non-existing/None markers
@@ -273,37 +314,20 @@ class _Invocation:
         return await _process_result(items[0].result, items[0].data_format, self.stub, self.client)
 
     async def run_generator(self):
-        last_entry_id = "0-0"
-        completed = False
-        try:
-            while not completed:
-                request = api_pb2.FunctionGetOutputsRequest(
-                    function_call_id=self.function_call_id,
-                    timeout=OUTPUTS_TIMEOUT,
-                    last_entry_id=last_entry_id,
-                    clear_on_success=False,  # there could be more results
-                )
-                response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
-                    self.stub.FunctionGetOutputs,
-                    request,
-                    attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
-                )
-                if len(response.outputs) > 0:
-                    last_entry_id = response.last_entry_id
-                    for item in response.outputs:
-                        if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                            completed = True
-                            break
-                        yield await _process_result(item.result, item.data_format, self.stub, self.client)
-        finally:
-            # "ack" that we have all outputs we are interested in and let backend clear results
-            request = api_pb2.FunctionGetOutputsRequest(
-                function_call_id=self.function_call_id,
-                timeout=0,
-                last_entry_id="0-0",
-                clear_on_success=True,
-            )
-            await self.stub.FunctionGetOutputs(request)
+        data_stream = _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
+        combined_stream = stream.merge(data_stream, stream.call(self.run_function))
+
+        items_received = 0
+        items_total: Union[int, None] = None  # populated when self.run_function() completes
+        async with combined_stream.stream() as streamer:
+            async for item in streamer:
+                if isinstance(item, api_pb2.GeneratorDone):
+                    items_total = item.items_total
+                else:
+                    yield item
+                    items_received += 1
+                if items_received == items_total:
+                    break
 
 
 MAP_INVOCATION_CHUNK_SIZE = 49
@@ -314,7 +338,6 @@ async def _map_invocation(
     input_stream: AsyncIterable[Any],
     kwargs: Dict[str, Any],
     client: _Client,
-    is_generator: bool,
     order_outputs: bool,
     return_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
@@ -403,32 +426,13 @@ async def _map_invocation(
             last_entry_id = response.last_entry_id
             for item in response.outputs:
                 pending_outputs.setdefault(item.input_id, 0)
-                if item.input_id in completed_outputs or (
-                    item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-                    and item.gen_index < pending_outputs[item.input_id]
-                ):
-                    # If this input is already completed, or if it's a generator output and we've already seen a later
-                    # output, it means the output has already been processed and was received again due
-                    # to a duplicate output enqueue on the server.
+                if item.input_id in completed_outputs:
+                    # If this input is already completed, it means the output has already been
+                    # processed and was received again due to a duplicate.
                     continue
-
-                if is_generator:
-                    # Mark this input completed if the generator completed successfully, or it crashed (exception, timeout, etc).
-                    if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                        completed_outputs.add(item.input_id)
-                        num_outputs += 1
-                    elif item.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-                        completed_outputs.add(item.input_id)
-                        num_outputs += 1
-                        yield item
-                    else:
-                        assert pending_outputs[item.input_id] == item.gen_index
-                        pending_outputs[item.input_id] += 1
-                        yield item
-                else:
-                    completed_outputs.add(item.input_id)
-                    num_outputs += 1
-                    yield item
+                completed_outputs.add(item.input_id)
+                num_outputs += 1
+                yield item
 
     async def get_all_outputs_and_clean_up():
         try:
@@ -466,9 +470,7 @@ async def _map_invocation(
             async for idx, output in streamer:
                 if count_update_callback is not None:
                     count_update_callback(num_outputs, num_inputs)
-                if is_generator:
-                    yield _OutputValue(output)
-                elif not order_outputs:
+                if not order_outputs:
                     yield _OutputValue(output)
                 else:
                     # hold on to outputs for function maps, so we can reorder them correctly.
@@ -608,6 +610,7 @@ class _Function(_Object, type_prefix="fu"):
         checkpointing_enabled: bool = False,
         allow_background_volume_commits: bool = False,
         block_network: bool = False,
+        max_inputs: Optional[int] = True,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -867,6 +870,7 @@ class _Function(_Object, type_prefix="fu"):
                     api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
                 ],
                 block_network=block_network,
+                max_inputs=max_inputs,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -1077,9 +1081,11 @@ class _Function(_Object, type_prefix="fu"):
         # Overridden concrete implementation of base class method
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
-            function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
-            if self._is_generator
-            else api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+            function_type=(
+                api_pb2.Function.FUNCTION_TYPE_GENERATOR
+                if self._is_generator
+                else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+            ),
             web_url=self._web_url,
         )
 
@@ -1104,9 +1110,8 @@ class _Function(_Object, type_prefix="fu"):
                 "A web endpoint function cannot be directly invoked for parallel remote execution. "
                 f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
             )
-
-        if order_outputs and self._is_generator:
-            raise ValueError("Can't return ordered results for a generator")
+        if self._is_generator:
+            raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         count_update_callback = (
             self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
@@ -1117,7 +1122,6 @@ class _Function(_Object, type_prefix="fu"):
             input_stream,
             kwargs,
             self._client,
-            self._is_generator,
             order_outputs,
             return_exceptions,
             count_update_callback,
@@ -1152,8 +1156,8 @@ class _Function(_Object, type_prefix="fu"):
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
         kwargs={},  # any extra keyword arguments for the function
-        order_outputs=None,  # defaults to True for regular functions, False for generators
-        return_exceptions=False,  # whether to propogate exceptions (False) or aggregate them in the results list (True)
+        order_outputs: bool = True,  # return outputs in order
+        return_exceptions: bool = False,  # propogate exceptions (False) or aggregate them in the results list (True)
     ) -> AsyncGenerator[Any, None]:
         """Parallel map over a set of inputs.
 
@@ -1165,6 +1169,7 @@ class _Function(_Object, type_prefix="fu"):
         def my_func(a):
             return a ** 2
 
+
         @stub.local_entrypoint()
         def main():
             assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
@@ -1174,23 +1179,8 @@ class _Function(_Object, type_prefix="fu"):
         is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
         in the order that they are completed instead.
 
-        By yielding zero or more than once, mapping over generators can also be used
-        as a "flat map".
-
-        ```python
-        @stub.function()
-        def flat(i: int):
-            choices = [[], ["once"], ["two", "times"], ["three", "times", "a lady"]]
-            for item in choices[i % len(choices)]:
-                yield item
-
-        @stub.local_entrypoint()
-        def main():
-            for item in flat.map(range(10)):
-                print(item)
-        ```
-
         `return_exceptions` can be used to treat exceptions as successful results:
+
         ```python
         @stub.function()
         def my_func(a):
@@ -1198,21 +1188,20 @@ class _Function(_Object, type_prefix="fu"):
                 raise Exception("ohno")
             return a ** 2
 
+
         @stub.local_entrypoint()
         def main():
             # [0, 1, UserCodeException(Exception('ohno'))]
             print(list(my_func.map(range(3), return_exceptions=True)))
         ```
         """
-        if order_outputs is None:
-            order_outputs = not self._is_generator
 
         input_stream = stream.zip(*(stream.iterate(it) for it in input_iterators))
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
-    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions=False):
-        """Execute function for all outputs, ignoring outputs
+    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
+        """Execute function for all inputs, ignoring outputs.
 
         Convenient alias for `.map()` in cases where the function just needs to be called.
         as the caller doesn't have to consume the generator to process the inputs.
@@ -1227,9 +1216,9 @@ class _Function(_Object, type_prefix="fu"):
     @warn_if_generator_is_not_consumed
     @live_method_gen
     async def starmap(
-        self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
+        self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
     ) -> AsyncGenerator[Any, None]:
-        """Like `map` but spreads arguments over multiple function arguments
+        """Like `map`, but spreads arguments over multiple function arguments.
 
         Assumes every input is a sequence (e.g. a tuple).
 
@@ -1239,14 +1228,12 @@ class _Function(_Object, type_prefix="fu"):
         def my_func(a, b):
             return a + b
 
+
         @stub.local_entrypoint()
         def main():
             assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
         ```
         """
-        if order_outputs is None:
-            order_outputs = not self._is_generator
-
         input_stream = stream.iterate(input_iterator)
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item

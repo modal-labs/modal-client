@@ -10,6 +10,43 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.57.2 (2024-02-06)
+
+- Improve error message when generator functions are called with `.map(...)`.
+
+
+
+### 0.57.0 (2024-02-06)
+
+- Greatly improved streaming performance of generators and WebSocket web endpoints.
+- **Breaking change:** You cannot use `.map()` to call a generator function. (In previous versions, this merged the results onto a single stream, but the behavior was undocumented and not widely used.)
+- **Incompatibility:** Generator outputs are now on a different internal system. Modal code on client versions before 0.57 cannot trigger [deployed functions](https://modal.com/docs/guide/trigger-deployed-functions) with `.remote_gen()` that are on client version 0.57, and vice versa.
+
+
+
+## 0.56
+
+Note that in version 0.56 and prior, Modal used a different numbering system for patch releases.
+
+
+### 0.56.4964 (2024-02-05)
+
+When using `modal token new` or `model token set`, the profile containing the new token will now be activated by default. Use the `--no-activate` switch to update the `modal.toml` file without activating the corresponding profile.
+
+
+
+### 0.56.4953 (2024-02-05)
+
+The `modal profile list` output now indicates when the workspace is determined by a token stored in environment variables.
+
+
+
+### 0.56.4952 (2024-02-05)
+
+* Variadic parameters (e.g. *args and **kwargs) can now be used in scheduled functions as long as the function doesn't have any other parameters without a default value
+
+
+
 ### 0.56.4903 (2024-02-01)
 
 `modal container exec`'s `--no-tty` flag has been renamed to `--no-pty`.
