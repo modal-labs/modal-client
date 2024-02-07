@@ -6,7 +6,7 @@ from google.protobuf.empty_pb2 import Empty
 
 import modal.exception
 from modal import Client
-from modal.exception import AuthError, ConnectionError, VersionError
+from modal.exception import AuthError, ConnectionError, DeprecationError, InvalidError, VersionError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -151,3 +151,44 @@ def test_client_from_env(servicer):
         assert client_4 == client_3
     finally:
         Client.set_env_client(None)
+
+
+def test_multiple_profile_error(servicer, modal_config):
+    config = """
+    [prof-1]
+    token_id = 'ak-abc'
+    token_secret = 'as_xyz'
+    active = true
+
+    [prof-2]
+    token_id = 'ak-abc'
+    token_secret = 'as_xyz'
+    active = true
+    """
+    with modal_config(config):
+        with pytest.raises(InvalidError, match="More than one Modal profile is active"):
+            Client.verify(servicer.remote_addr, None)
+
+
+def test_implicit_default_profile_warning(servicer, modal_config):
+    config = """
+    [default]
+    token_id = 'ak-abc'
+    token_secret = 'as_xyz'
+
+    [other]
+    token_id = 'ak-abc'
+    token_secret = 'as_xyz'
+    """
+    with modal_config(config):
+        with pytest.warns(DeprecationError, match="Support for using an implicit 'default' profile is deprecated."):
+            Client.verify(servicer.remote_addr, None)
+
+    config = """
+    [default]
+    token_id = 'ak-abc'
+    token_secret = 'as_xyz'
+    """
+    with modal_config(config):
+        # A single profile should be fine, even if not explicitly active and named 'default'
+        Client.verify(servicer.remote_addr, None)
