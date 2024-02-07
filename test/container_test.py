@@ -69,6 +69,7 @@ def _run_container(
     deps: List[str] = ["im-1"],
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
+    reuse_containers: bool = True,
 ) -> ContainerResult:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -100,6 +101,7 @@ def _run_container(
             allow_concurrent_inputs=allow_concurrent_inputs,
             is_checkpointing_function=is_checkpointing_function,
             object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
+            reuse_containers=reuse_containers,
         )
 
         container_args = api_pb2.ContainerArguments(
