@@ -144,8 +144,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             for _, vol in validated_network_file_systems:
                 deps.append(vol)
             for _, s3_mount in s3_mounts:
-                if s3_mount.credentials:
-                    deps.append(s3_mount.credentials)
+                if s3_mount.secret:
+                    deps.append(s3_mount.secret)
             return deps
 
         async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):

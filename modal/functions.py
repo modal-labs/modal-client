@@ -728,8 +728,8 @@ class _Function(_Object, type_prefix="fu"):
             for _, vol in validated_volumes:
                 deps.append(vol)
             for _, s3_mount in s3_mounts:
-                if s3_mount.credentials:
-                    deps.append(s3_mount.credentials)
+                if s3_mount.secret:
+                    deps.append(s3_mount.secret)
 
             # Add implicit dependencies from the function's code
             objs: list[Object] = get_referred_objects(info.raw_f)
