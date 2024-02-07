@@ -857,7 +857,7 @@ class _Function(_Object, type_prefix="fu"):
                 ],
                 block_network=block_network,
                 max_inputs=max_inputs,
-                s3mounts=s3_mounts_to_proto(s3_mounts),
+                s3_mounts=s3_mounts_to_proto(s3_mounts),
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
