@@ -283,7 +283,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         # Mount the DBT profile in user's home directory into container.
         dbt_profiles = modal.Mount.from_local_file(
             local_path="~/profiles.yml",
-            remote_path="/root/dbt_profile/profiles.yml"),
+            remote_path="/root/dbt_profile/profiles.yml",
         )
         ```
         """
