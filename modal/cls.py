@@ -11,13 +11,13 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api, synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
 
+from ._mount_utils import validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .exception import InvalidError, NotFoundError, deprecation_error
 from .functions import (
     _parse_retries,
-    _validate_volumes,
 )
 from .gpu import GPU_T, parse_gpu_config
 from .object import _get_environment_name, _Object
@@ -290,7 +290,7 @@ class _Cls(_Object, type_prefix="cs"):
                 volume_id=volume.object_id,
                 allow_background_commits=allow_background_volume_commits,
             )
-            for path, volume in _validate_volumes(volumes)
+            for path, volume in validate_volumes(volumes)
         ]
         replace_volume_mounts = len(volume_mounts) > 0
 
