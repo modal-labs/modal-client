@@ -448,6 +448,30 @@ def test_volume_get(servicer, set_env_client):
             assert f.read() == file_contents
 
 
+def test_volume_put_clobber(servicer, set_env_client):
+    vol_name = "my-test-vol"
+    _run(["volume", "create", vol_name])
+    file_path = "test.txt"
+    file_contents = b"foo bar baz"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        upload_path = os.path.join(tmpdir, "upload.txt")
+        with open(upload_path, "wb") as f:
+            f.write(file_contents)
+            f.flush()
+
+        # File upload
+        _run(["volume", "put", vol_name, upload_path, file_path])
+
+        _run(["volume", "put", vol_name, upload_path, file_path], expected_exit_code=2, expected_stderr=None)
+        _run(["volume", "put", vol_name, upload_path, file_path, "--clobber"])
+
+        # Dir upload
+        _run(["volume", "put", vol_name, tmpdir])
+
+        _run(["volume", "put", vol_name, tmpdir], expected_exit_code=2, expected_stderr=None)
+        _run(["volume", "put", vol_name, tmpdir, "--clobber"])
+
+
 def test_volume_rm(servicer, set_env_client):
     vol_name = "my-test-vol"
     _run(["volume", "create", vol_name])

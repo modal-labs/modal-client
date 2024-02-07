@@ -1721,6 +1721,9 @@ message VolumePutFilesRequest {
   string volume_id = 1;
   // TODO(staffan): This is obviously unfortunately named, but provides what we need - consider renaming.
   repeated MountFile files = 2;
+  // If set to true, prevent overwriting existing files. (Note that we don't allow overwriting
+  // existing directories with uploaded files even when clobbering is allowed.)
+  bool no_clobber = 3;
 }
 
 message VolumeRemoveFileRequest {

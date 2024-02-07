@@ -186,6 +186,26 @@ async def test_volume_batch_upload(servicer, client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_volume_batch_upload_clobber(servicer, client, tmp_path):
+    stub = modal.Stub()
+    stub.vol = modal.Volume.new()
+
+    local_file_path = tmp_path / "some_file"
+    local_file_path.write_text("hello world")
+
+    with stub.run(client=client):
+        with stub.vol.batch_upload() as batch:
+            batch.put_file(local_file_path, "/some_file")
+
+        with pytest.raises(FileExistsError):
+            with stub.vol.batch_upload() as batch:
+                batch.put_file(local_file_path, "/some_file")
+
+        with stub.vol.batch_upload(clobber=True) as batch:
+            batch.put_file(local_file_path, "/some_file")
+
+
+@pytest.mark.asyncio
 async def test_volume_upload_removed_file(servicer, client, tmp_path):
     stub = modal.Stub()
     stub.vol = modal.Volume.new()

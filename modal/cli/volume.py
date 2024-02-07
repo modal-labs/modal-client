@@ -221,6 +221,7 @@ async def put(
     volume_name: str,
     local_path: str = Argument(),
     remote_path: str = Argument(default="/"),
+    clobber: bool = Option(False, "--clobber", help="Overwrite existing files."),
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
@@ -235,17 +236,22 @@ async def put(
     if Path(local_path).is_dir():
         spinner = step_progress(f"Uploading directory '{local_path}' to '{remote_path}'...")
         with Live(spinner, console=console):
-            async with _VolumeUploadContextManager(vol.object_id, vol._client) as batch:
-                batch.put_directory(local_path, remote_path)
+            try:
+                async with _VolumeUploadContextManager(vol.object_id, vol._client, clobber=clobber) as batch:
+                    batch.put_directory(local_path, remote_path)
+            except FileExistsError as exc:
+                raise UsageError(str(exc))
         console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
-
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
     else:
         spinner = step_progress(f"Uploading file '{local_path}' to '{remote_path}'...")
         with Live(spinner, console=console):
-            async with _VolumeUploadContextManager(vol.object_id, vol._client) as batch:
-                batch.put_file(local_path, remote_path)
+            try:
+                async with _VolumeUploadContextManager(vol.object_id, vol._client, clobber=clobber) as batch:
+                    batch.put_file(local_path, remote_path)
+            except FileExistsError as exc:
+                raise UsageError(str(exc))
         console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
 
 
