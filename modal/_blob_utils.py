@@ -7,7 +7,7 @@ import os
 import platform
 from contextlib import contextmanager
 from pathlib import Path
-from typing import AsyncIterator, BinaryIO, List, Optional, Union
+from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Union
 from urllib.parse import urlparse
 
 from aiohttp import BytesIOPayload
@@ -317,7 +317,8 @@ async def blob_iter(blob_id, stub) -> AsyncIterator[bytes]:
 
 @dataclasses.dataclass
 class FileUploadSpec:
-    filename: Path
+    source: Callable[[], BinaryIO]
+    source_description: Any
     mount_filename: str
 
     use_blob: bool
@@ -327,29 +328,59 @@ class FileUploadSpec:
     size: int
 
 
-def get_file_upload_spec(filename: Path, mount_filename: str) -> FileUploadSpec:
-    # Somewhat CPU intensive, so we run it in a thread/process
-    stat = os.stat(filename)
-    if stat.st_size >= LARGE_FILE_LIMIT:
-        use_blob = True
-        content = None
-        with open(filename, "rb") as fp:
+def _get_file_upload_spec(
+    source: Callable[[], BinaryIO], source_description: Any, mount_filename: str, mode: int
+) -> FileUploadSpec:
+    with source() as fp:
+        # Current position is ignored - we always upload from position 0
+        fp.seek(0, os.SEEK_END)
+        size = fp.tell()
+        fp.seek(0)
+
+        if size >= LARGE_FILE_LIMIT:
+            use_blob = True
+            content = None
             sha256_hex = get_sha256_hex(fp)
-    else:
-        use_blob = False
-        with open(filename, "rb") as fp:
+        else:
+            use_blob = False
             content = fp.read()
-        sha256_hex = get_sha256_hex(content)
+            sha256_hex = get_sha256_hex(content)
+
     return FileUploadSpec(
-        filename,
-        mount_filename,
+        source=source,
+        source_description=source_description,
+        mount_filename=mount_filename,
         use_blob=use_blob,
         content=content,
         sha256_hex=sha256_hex,
-        # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
-        # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
-        mode=stat.st_mode & (0o7777 if platform.system() != "Windows" else 0o7755),
-        size=stat.st_size,
+        mode=mode & 0o7777,
+        size=size,
+    )
+
+
+def get_file_upload_spec_from_path(filename: Path, mount_filename: str, mode: Optional[int] = None) -> FileUploadSpec:
+    # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
+    # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
+    mode = mode or os.stat(filename).st_mode & (0o7777 if platform.system() != "Windows" else 0o7755)
+    return _get_file_upload_spec(
+        lambda: open(filename, "rb"),
+        filename,
+        mount_filename,
+        mode,
+    )
+
+
+def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: str, mode: int) -> FileUploadSpec:
+    def source():
+        # We ignore position in stream and always upload from position 0
+        fp.seek(0)
+        return fp
+
+    return _get_file_upload_spec(
+        source,
+        str(fp),
+        mount_filename,
+        mode,
     )
 
 

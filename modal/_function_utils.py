@@ -289,7 +289,13 @@ class FunctionInfo:
         return self.function_name
 
     def is_nullary(self):
-        return all(param.default is not param.empty for param in self.signature.parameters.values())
+        for param in self.signature.parameters.values():
+            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                # variadic parameters are nullary
+                continue
+            if param.default is param.empty:
+                return False
+        return True
 
 
 def get_referred_objects(f: Callable) -> List[Object]:

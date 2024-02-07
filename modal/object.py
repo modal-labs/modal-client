@@ -177,9 +177,17 @@ class _Object:
         # This is used in a few examples to construct FunctionCall objects
         if client is None:
             client = await _Client.from_env()
-        response: api_pb2.AppLookupObjectResponse = await retry_transient_errors(
-            client.stub.AppLookupObject, api_pb2.AppLookupObjectRequest(object_id=object_id)
-        )
+        try:
+            response: api_pb2.AppLookupObjectResponse = await retry_transient_errors(
+                client.stub.AppLookupObject, api_pb2.AppLookupObjectRequest(object_id=object_id)
+            )
+        except GRPCError as exc:
+            if exc.status == Status.NOT_FOUND:
+                raise NotFoundError(exc.message)
+            elif exc.status == Status.INVALID_ARGUMENT:
+                raise InvalidError(exc.message)
+            else:
+                raise
 
         handle_metadata = get_proto_oneof(response.object, "handle_metadata_oneof")
         return cls._new_hydrated(object_id, client, handle_metadata)
@@ -226,7 +234,7 @@ class _Object:
 
 
 class _StatefulObject(_Object):
-    # This base class is used for _Volume, _Dict, _Queue, _Secret, _NetworkFileSystem
+    # This base class is used for _Volume, _Queue, _Secret, _NetworkFileSystem
     # This is a temporary class needed until we rewrite AppLookupObject to be specific to each class.
     # At that point, we can "push down" each of these methods into each class.
     # These classes all have in common that they are always looked up using a single app name.

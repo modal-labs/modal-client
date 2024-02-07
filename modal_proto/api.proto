@@ -47,6 +47,9 @@ enum AppState {
 
   // App is detached and local client has disconnected.
   APP_STATE_DETACHED_DISCONNECTED = 8;
+
+  // App is derived from another workspace. Acts as a static, immutable group of functions.
+  APP_STATE_DERIVED = 9;
 }
 
 enum AppStopSource {
@@ -93,6 +96,7 @@ enum DataFormat {
   DATA_FORMAT_UNSPECIFIED = 0; // Equivalent to PICKLE in client version 0.52 and earlier.
   DATA_FORMAT_PICKLE = 1; // Cloudpickle
   DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
+  DATA_FORMAT_GENERATOR_DONE = 3; // "GeneratorDone" protobuf message
 }
 
 enum DeploymentNamespace {
@@ -131,6 +135,12 @@ enum GPUType {
   GPU_TYPE_INFERENTIA2 = 7 [deprecated=true];
   GPU_TYPE_A100_80GB = 8;
   GPU_TYPE_L4 = 9;
+  GPU_TYPE_H100 = 10;
+}
+
+enum ObjectCreationType {
+  OBJECT_CREATION_TYPE_UNSPECIFIED = 0;  // just lookup
+  OBJECT_CREATION_TYPE_CREATE_IF_MISSING = 1;
 }
 
 enum ProgressType {
@@ -543,18 +553,20 @@ message ContainerHeartbeatRequest {
   double current_input_started_at = 2;
 }
 
-message ContainerCheckpointRequest {}
+message ContainerCheckpointRequest {
+  string checkpoint_id = 1;
+}
 
 message ContainerExecRequest {
   string task_id = 1;
-  string command = 2;
+  repeated string command = 2;
   PTYInfo pty_info = 3;
 }
 
 message ContainerExecGetOutputRequest {
   string exec_id = 1;
   float timeout = 2;
-  string last_entry_id = 3;
+  uint64 last_batch_index = 3;
 }
 
 message ContainerExecPutInputRequest {
@@ -597,13 +609,25 @@ message DictContainsResponse {
   bool found = 1;
 }
 
-message DictCreateRequest {
+message DictCreateRequest {  // Will be superseded by DictGetOrCreateRequest
   repeated DictEntry data = 1;
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
   string existing_dict_id = 3;
 }
 
-message DictCreateResponse {
+message DictCreateResponse {  // Will be superseded by DictGetOrCreateResponse
+  string dict_id = 1;
+}
+
+message DictGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;
+  repeated DictEntry data = 5;
+}
+
+message DictGetOrCreateResponse {
   string dict_id = 1;
 }
 
@@ -716,7 +740,7 @@ message FunctionCallPutDataRequest {
 
 message FunctionCallGetDataRequest {
   string function_call_id = 1;
-  uint32 last_index = 2;
+  uint64 last_index = 2;
 }
 
 message Function {
@@ -799,6 +823,8 @@ message Function {
   repeated ObjectDependency object_dependencies = 43;
 
   bool block_network = 44;
+
+  uint32 max_inputs = 46;
 }
 
 message FunctionHandleMetadata {
@@ -852,6 +878,7 @@ message FunctionBindParamsRequest {
   string function_id = 1;
   bytes serialized_params = 2;
   FunctionOptions function_options = 3;
+  string environment_name = 4;
 }
 
 message FunctionBindParamsResponse {
@@ -903,7 +930,7 @@ message FunctionGetOutputsItem {
   GenericResult result = 1;
   int32 idx = 2;
   string input_id = 3;
-  int32 gen_index = 4;
+  int32 gen_index = 4;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 5; // for result.data_oneof
 }
 
@@ -976,7 +1003,7 @@ message FunctionPutOutputsItem {
   GenericResult result = 2;
   double input_started_at = 3;
   double output_created_at = 4;
-  int32 gen_index = 6; // ordering for generator outputs
+  int32 gen_index = 6;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 7; // for result.data_oneof
 }
 
@@ -996,6 +1023,8 @@ message FunctionGetCallGraphRequest {
   // TODO: use input_id once we switch client submit API to return those.
   string function_call_id = 2;
 }
+
+
 
 message InputCallGraphInfo {
   string input_id = 1;
@@ -1054,6 +1083,10 @@ message FunctionStats {
   uint32 num_total_tasks = 3;
 }
 
+message GeneratorDone {  // Sent as the output when a generator finishes running.
+  uint64 items_total = 1;
+}
+
 message GenericResult {  // Used for both tasks and function outputs
   enum GenericStatus {
     GENERIC_STATUS_UNSPECIFIED = 0;
@@ -1079,7 +1112,7 @@ message GenericResult {  // Used for both tasks and function outputs
     GENERATOR_STATUS_INCOMPLETE = 1;
     GENERATOR_STATUS_COMPLETE = 2;
   }
-  GeneratorStatus gen_status = 7;
+  GeneratorStatus gen_status = 7;  // Deprecated, only used in client version <0.57
 
   bytes serialized_tb = 11;
   bytes tb_line_cache = 12;
@@ -1256,6 +1289,17 @@ message QueueCreateResponse {
   string queue_id = 1;
 }
 
+message QueueGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;
+}
+
+message QueueGetOrCreateResponse {
+  string queue_id = 1;
+}
+
 message QueueGetRequest {
   string queue_id = 1;
   float timeout = 3;
@@ -1317,6 +1361,14 @@ message SandboxCreateRequest {
 
 message SandboxCreateResponse {
   string sandbox_id = 1;
+}
+
+message SandboxGetTaskIdRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetTaskIdResponse {
+  string task_id = 1;
 }
 
 message SandboxGetLogsRequest {
@@ -1669,6 +1721,9 @@ message VolumePutFilesRequest {
   string volume_id = 1;
   // TODO(staffan): This is obviously unfortunately named, but provides what we need - consider renaming.
   repeated MountFile files = 2;
+  // If set to true, prevent overwriting existing files. (Note that we don't allow overwriting
+  // existing directories with uploaded files regardless.)
+  bool disallow_overwrite_existing_files = 3;
 }
 
 message VolumeRemoveFileRequest {
@@ -1704,6 +1759,11 @@ message WebUrlInfo {
   bool label_stolen = 3;
 }
 
+message WorkspaceNameLookupResponse {
+  string workspace_name = 1;
+  string username = 2;
+}
+
 // Used for `modal container exec`
 message RuntimeOutputMessage {
   // only stdout / stderr is used
@@ -1712,15 +1772,15 @@ message RuntimeOutputMessage {
 }
 
 message RuntimeOutputBatch {
-  string entry_id = 1;
-  repeated RuntimeOutputMessage items = 2;
-  bool eof = 3;
+  repeated RuntimeOutputMessage items = 1;
+  uint64 batch_index = 2; 
+  // if an exit code is given, this is the final message that will be sent.
+  optional int32 exit_code = 3;
 }
 
 message RuntimeInputMessage {
   bytes message = 1;
-  // this is filled in by the server
-  string entry_id = 2;
+  uint64 message_index = 2;
 }
 
 
@@ -1763,7 +1823,8 @@ service ModalClient {
 
   // Dicts
   rpc DictClear(DictClearRequest) returns (google.protobuf.Empty);
-  rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);
+  rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
+  rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
   rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
   rpc DictGet(DictGetRequest) returns (DictGetResponse);
   rpc DictPop(DictPopRequest) returns (DictPopResponse);
@@ -1799,6 +1860,7 @@ service ModalClient {
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
+  rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallPutDataOut(FunctionCallPutDataRequest) returns (google.protobuf.Empty);
 
   // Images
@@ -1811,12 +1873,14 @@ service ModalClient {
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
+  rpc QueueGetOrCreate(QueueGetOrCreateRequest) returns (QueueGetOrCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
   rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
@@ -1857,4 +1921,7 @@ service ModalClient {
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
   rpc VolumeCopyFiles(VolumeCopyFilesRequest) returns (google.protobuf.Empty);
+
+  // Workspaces
+  rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
 }

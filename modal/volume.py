@@ -1,19 +1,28 @@
 # Copyright Modal Labs 2023
 import asyncio
+import concurrent.futures
 import time
 from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
-from typing import IO, AsyncIterator, List, Optional, Sequence, Union
+from typing import IO, AsyncGenerator, AsyncIterator, BinaryIO, Callable, Generator, List, Optional, Sequence, Union
 
+import aiostream
 from grpclib import GRPCError, Status
 
 import modal.exception
 from modal_proto import api_pb2
-from modal_utils.async_utils import ConcurrencyPool, asyncnullcontext, synchronize_api
+from modal_utils.async_utils import asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 
-from ._blob_utils import blob_iter, blob_upload_file, get_file_upload_spec
+from ._blob_utils import (
+    FileUploadSpec,
+    blob_iter,
+    blob_upload_file,
+    get_file_upload_spec_from_fileobj,
+    get_file_upload_spec_from_path,
+)
 from ._resolver import Resolver
+from .client import _Client
 from .config import logger
 from .mount import MOUNT_PUT_FILE_CLIENT_TIMEOUT
 from .object import _StatefulObject, live_method, live_method_gen
@@ -269,79 +278,6 @@ class _Volume(_StatefulObject, type_prefix="vo"):
         await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
 
     @live_method
-    async def _add_local_file(
-        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
-    ):
-        mount_file = await self._upload_file(local_path, remote_path)
-        request = api_pb2.VolumePutFilesRequest(volume_id=self.object_id, files=[mount_file])
-        await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)
-
-    @live_method
-    async def _add_local_dir(
-        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
-    ):
-        _local_path = Path(local_path)
-        if remote_path is None:
-            remote_path = PurePosixPath("/", _local_path.name).as_posix()
-        else:
-            remote_path = PurePosixPath(remote_path).as_posix()
-
-        assert _local_path.is_dir()
-
-        def gen_transfers():
-            for subpath in _local_path.rglob("*"):
-                if subpath.is_dir():
-                    continue
-                relpath_str = subpath.relative_to(_local_path).as_posix()
-                yield self._upload_file(subpath, PurePosixPath(remote_path, relpath_str))
-
-        files = await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=False)
-        request = api_pb2.VolumePutFilesRequest(volume_id=self.object_id, files=files)
-        await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)
-
-    @live_method
-    async def _upload_file(
-        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
-    ) -> api_pb2.MountFile:
-        local_path = Path(local_path)
-        if remote_path is None:
-            remote_path = PurePosixPath("/", local_path.name).as_posix()
-        else:
-            remote_path = PurePosixPath(remote_path).as_posix()
-
-        file_spec = get_file_upload_spec(local_path, str(remote_path))
-        remote_filename = file_spec.mount_filename
-
-        request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
-        response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
-
-        if not response.exists:
-            if file_spec.use_blob:
-                logger.debug(f"Creating blob file for {file_spec.filename} ({file_spec.size} bytes)")
-                with open(file_spec.filename, "rb") as fp:
-                    blob_id = await blob_upload_file(fp, self._client.stub)
-                logger.debug(f"Uploading blob file {file_spec.filename} as {remote_filename}")
-                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
-            else:
-                logger.debug(f"Uploading file {file_spec.filename} to {remote_filename} ({file_spec.size} bytes)")
-                request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
-
-            start_time = time.monotonic()
-            while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
-                response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
-                if response.exists:
-                    break
-
-            if not response.exists:
-                raise modal.exception.VolumeUploadTimeoutError(f"Uploading of {file_spec.filename} timed out")
-
-        return api_pb2.MountFile(
-            filename=remote_filename,
-            sha256_hex=file_spec.sha256_hex,
-            mode=file_spec.mode,
-        )
-
-    @live_method
     async def copy_files(self, src_paths: Sequence[Union[str, bytes]], dst_path: Union[str, bytes]) -> None:
         """
         Copy files within the volume from src_paths to dst_path.
@@ -354,5 +290,164 @@ class _Volume(_StatefulObject, type_prefix="vo"):
         request = api_pb2.VolumeCopyFilesRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
         await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
 
+    @live_method
+    async def batch_upload(self, force: bool = False) -> "_VolumeUploadContextManager":
+        """
+        Initiate a batched upload to a volume.
+
+        To allow overwriting existing files, set `force` to `True` (you cannot overwrite existing directories with
+        uploaded files regardless).
+
+        **Example:**
+
+        ```python notest
+        vol = modal.Volume.lookup("my-modal-volume")
+
+        with vol.put() as batch:
+            batch.put_file("local-path.txt", "/remote-path.txt")
+            batch.put_directory("/local/directory/", "/remote/directory")
+            batch.put_file(io.BytesIO(b"some data"), "/foobar")
+        ```
+        """
+        return _VolumeUploadContextManager(self.object_id, self._client, force=force)
+
+
+class _VolumeUploadContextManager:
+    """Context manager for batch-uploading files to a Volume."""
+
+    _volume_id: str
+    _client: _Client
+    _force: bool
+    _upload_generators: List[Generator[Callable[[], FileUploadSpec], None, None]]
+
+    def __init__(self, volume_id: str, client: _Client, force: bool = False):
+        """mdmd:hidden"""
+        self._volume_id = volume_id
+        self._client = client
+        self._upload_generators = []
+        self._force = force
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if not exc_val:
+            # Flatten all the uploads yielded by the upload generators in the batch
+            def gen_upload_providers():
+                for gen in self._upload_generators:
+                    yield from gen
+
+            async def gen_file_upload_specs() -> AsyncGenerator[FileUploadSpec, None]:
+                loop = asyncio.get_event_loop()
+                with concurrent.futures.ThreadPoolExecutor() as exe:
+                    # TODO: avoid eagerly expanding
+                    futs = [loop.run_in_executor(exe, f) for f in gen_upload_providers()]
+                    logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
+                    for fut in asyncio.as_completed(futs):
+                        yield await fut
+
+            # Compute checksums
+            files_stream = aiostream.stream.iterate(gen_file_upload_specs())
+            # Upload files
+            uploads_stream = aiostream.stream.map(files_stream, self._upload_file, task_limit=20)
+            files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
+
+            request = api_pb2.VolumePutFilesRequest(
+                volume_id=self._volume_id,
+                files=files,
+                disallow_overwrite_existing_files=not self._force,
+            )
+            try:
+                await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)
+            except GRPCError as exc:
+                raise FileExistsError(exc.message) if exc.status == Status.ALREADY_EXISTS else exc
+
+    def put_file(
+        self,
+        local_file: Union[Path, str, BinaryIO],
+        remote_path: Union[PurePosixPath, str],
+        mode: Optional[int] = None,
+    ):
+        """Upload a file from a local file or file-like object.
+
+        Will create any needed parent directories automatically.
+
+        If `local_file` is a file-like object it must remain readable for the lifetime of the batch.
+        """
+        remote_path = PurePosixPath(remote_path).as_posix()
+        if remote_path.endswith("/"):
+            raise ValueError(f"remote_path ({remote_path}) must refer to a file - cannot end with /")
+
+        def gen():
+            if isinstance(local_file, str) or isinstance(local_file, Path):
+                yield lambda: get_file_upload_spec_from_path(local_file, remote_path, mode)
+            else:
+                yield lambda: get_file_upload_spec_from_fileobj(local_file, remote_path, mode or 0o644)
+
+        self._upload_generators.append(gen())
+
+    def put_directory(
+        self,
+        local_path: Union[Path, str],
+        remote_path: Union[PurePosixPath, str],
+        recursive: bool = True,
+    ):
+        """
+        Upload all files in a local directory.
+
+        Will create any needed parent directories automatically.
+        """
+        local_path = Path(local_path)
+        assert local_path.is_dir()
+        remote_path = PurePosixPath(remote_path)
+
+        def create_file_spec_provider(subpath):
+            relpath_str = subpath.relative_to(local_path)
+            return lambda: get_file_upload_spec_from_path(subpath, (remote_path / relpath_str).as_posix())
+
+        def gen():
+            glob = local_path.rglob("*") if recursive else local_path.glob("*")
+            for subpath in glob:
+                # Skip directories and unsupported file types (e.g. block devices)
+                if subpath.is_file():
+                    yield create_file_spec_provider(subpath)
+
+        self._upload_generators.append(gen())
+
+    async def _upload_file(self, file_spec: FileUploadSpec) -> api_pb2.MountFile:
+        remote_filename = file_spec.mount_filename
+
+        request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
+        response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
+
+        if not response.exists:
+            if file_spec.use_blob:
+                logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
+                with file_spec.source() as fp:
+                    blob_id = await blob_upload_file(fp, self._client.stub)
+                logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
+                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
+            else:
+                logger.debug(
+                    f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
+                )
+                request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
+
+            start_time = time.monotonic()
+            while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
+                response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
+                if response.exists:
+                    break
+
+            if not response.exists:
+                raise modal.exception.VolumeUploadTimeoutError(f"Uploading of {file_spec.source_description} timed out")
+
+        return api_pb2.MountFile(
+            filename=remote_filename,
+            sha256_hex=file_spec.sha256_hex,
+            mode=file_spec.mode,
+        )
+
 
 Volume = synchronize_api(_Volume)
+VolumeUploadContextManager = synchronize_api(_VolumeUploadContextManager)

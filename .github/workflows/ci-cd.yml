@@ -17,7 +17,10 @@ jobs:
         os: ["ubuntu-20.04"]
         proto-version: ["latest"]
         include:
-          - os: "macos-latest"
+          - os: "macos-12" # x86-64
+            python-version: "3.10"
+            proto-version: "latest"
+          - os: "macos-14" # ARM64 (M1)
             python-version: "3.10"
             proto-version: "latest"
           - os: "windows-latest"
@@ -120,7 +123,7 @@ jobs:
           version: "3.10"
 
       - name: Bump the version number
-        run: inv update-build-number -n $GITHUB_RUN_NUMBER
+        run: inv update-build-number
 
       - name: Update the changelog
         run: inv update-changelog

@@ -6,6 +6,8 @@ import typer
 from rich.console import Console
 from rich.rule import Rule
 
+from modal_utils.async_utils import synchronizer
+
 from . import run
 from .app import app_cli
 from .config import config_cli
@@ -71,11 +73,12 @@ def check_path():
     console.print(Rule(style="white"))
 
 
-def setup(profile: Optional[str] = None):
+@synchronizer.create_blocking
+async def setup(profile: Optional[str] = None):
     check_path()
 
     # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
-    _new_token(profile=profile, next_url="/home")
+    await _new_token(profile=profile, next_url="/home")
 
 
 entrypoint_cli_typer.add_typer(app_cli)

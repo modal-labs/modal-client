@@ -12,11 +12,14 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from typing import Any, Dict, List, Optional, Tuple
 from unittest import mock
+from unittest.mock import MagicMock
 
 from grpclib.exceptions import GRPCError
 
+import modal_utils
 from modal import Client
 from modal._container_entrypoint import UserException, main
 from modal._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
@@ -48,6 +51,7 @@ def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> List[api_
 class ContainerResult:
     client: Client
     items: List[api_pb2.FunctionPutOutputsItem]
+    data_chunks: List[api_pb2.DataChunk]
 
 
 def _run_container(
@@ -66,12 +70,15 @@ def _run_container(
     is_checkpointing_function: bool = False,
     deps: List[str] = ["im-1"],
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
+    is_auto_snapshot: bool = False,
+    max_inputs: Optional[int] = None,
 ) -> ContainerResult:
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
             servicer.container_inputs = _get_inputs()
         else:
             servicer.container_inputs = inputs
+        function_call_id = servicer.container_inputs[0].inputs[0].function_call_id
         servicer.fail_get_inputs = fail_get_inputs
 
         if webhook_type:
@@ -92,9 +99,11 @@ def _run_container(
             definition_type=definition_type,
             stub_name=stub_name or "",
             is_builder_function=is_builder_function,
+            is_auto_snapshot=is_auto_snapshot,
             allow_concurrent_inputs=allow_concurrent_inputs,
             is_checkpointing_function=is_checkpointing_function,
             object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
+            max_inputs=max_inputs,
         )
 
         container_args = api_pb2.ContainerArguments(
@@ -115,10 +124,11 @@ def _run_container(
         temp_restore_file_path = tempfile.NamedTemporaryFile()
         if is_checkpointing_function:
             # State file is written to allow for a restore to happen.
-            tmep_file_name = temp_restore_file_path.name
-            with pathlib.Path(tmep_file_name).open("w") as target:
+            tmp_file_name = temp_restore_file_path.name
+            with pathlib.Path(tmp_file_name).open("w") as target:
                 json.dump({}, target)
-            env["MODAL_RESTORE_STATE_PATH"] = tmep_file_name
+            env["MODAL_RESTORE_STATE_PATH"] = tmp_file_name
+            env["MODAL_CHECKPOINT_ID"] = f"ch-{uuid.uuid4()}"
 
             # Override server URL to reproduce restore behavior.
             env["MODAL_SERVER_URL"] = servicer.remote_addr
@@ -140,7 +150,17 @@ def _run_container(
         for req in servicer.container_outputs:
             items += list(req.outputs)
 
-        return ContainerResult(client, items)
+        # Get data chunks
+        data_chunks: List[api_pb2.DataChunk] = []
+        if function_call_id in servicer.fc_data_out:
+            try:
+                while True:
+                    chunk = servicer.fc_data_out[function_call_id].get_nowait()
+                    data_chunks.append(chunk)
+            except asyncio.QueueEmpty:
+                pass
+
+        return ContainerResult(client, items, data_chunks)
 
 
 def _unwrap_scalar(ret: ContainerResult):
@@ -157,40 +177,28 @@ def _unwrap_exception(ret: ContainerResult):
 
 
 def _unwrap_generator(ret: ContainerResult) -> Tuple[List[Any], Optional[Exception]]:
-    items = []
-    for i in range(len(ret.items) - 1):
-        result = ret.items[i].result
-        assert result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-        assert ret.items[i].gen_index == i
-        items.append(deserialize(result.data, ret.client))
+    assert len(ret.items) == 1
+    item = ret.items[0]
+    assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
 
-    last_result = ret.items[-1].result
-    if last_result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-        assert last_result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
-        assert last_result.data == b""  # no data in generator complete marker result
-        return (items, None)
-    elif last_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-        assert last_result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
-        exc = deserialize(last_result.data, ret.client)
-        return (items, exc)
+    values: List[Any] = [deserialize_data_format(chunk.data, chunk.data_format, None) for chunk in ret.data_chunks]
+
+    if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+        exc = deserialize(item.result.data, ret.client)
+        return values, exc
+    elif item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+        assert item.data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE
+        done: api_pb2.GeneratorDone = deserialize_data_format(item.result.data, item.data_format, None)
+        assert done.items_total == len(values)
+        return values, None
     else:
         raise RuntimeError("unknown result type")
 
 
 def _unwrap_asgi(ret: ContainerResult):
-    items = []
-    for item in ret.items[:-1]:
-        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-        assert item.data_format == api_pb2.DATA_FORMAT_ASGI
-        items.append(deserialize_data_format(item.result.data, item.data_format, None))
-
-    last_item = ret.items[-1]
-    assert last_item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert last_item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE
-
-    return items
+    values, exc = _unwrap_generator(ret)
+    assert exc is None, "web endpoint raised exception"
+    return values
 
 
 @skip_windows_unix_socket
@@ -763,6 +771,10 @@ def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     simulating a restore operation."""
     ret = _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
+    for request in unix_servicer.requests:
+        if isinstance(request, api_pb2.ContainerCheckpointRequest):
+            assert request.checkpoint_id != ""
+
     assert _unwrap_scalar(ret) == 42**2
 
 
@@ -822,3 +834,66 @@ def test_function_dep_hydration(unix_servicer):
         deps=["im-1", "vo-1", "im-1", "im-2", "vo-1", "vo-2"],
     )
     assert _unwrap_scalar(ret) is None
+
+
+@skip_windows_unix_socket
+def test_build_decorator_cls(unix_servicer, event_loop):
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "BuildCls.build1",
+        inputs=_get_inputs(((), {})),
+        is_builder_function=True,
+        is_auto_snapshot=True,
+    )
+    assert _unwrap_scalar(ret) == 101
+
+
+@skip_windows_unix_socket
+def test_multiple_build_decorator_cls(unix_servicer, event_loop):
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "BuildCls.build2",
+        inputs=_get_inputs(((), {})),
+        is_builder_function=True,
+        is_auto_snapshot=True,
+    )
+    assert _unwrap_scalar(ret) == 1001
+
+
+@skip_windows_unix_socket
+@pytest.mark.timeout(3.0)
+def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_servicer):
+    synchronizer = modal_utils.async_utils.synchronizer
+
+    # set up spys to track synchronicity calls to _translate_scalar_in/out
+    translate_in_spy = MagicMock(wraps=synchronizer._translate_scalar_in)
+    monkeypatch.setattr(synchronizer, "_translate_scalar_in", translate_in_spy)
+    translate_out_spy = MagicMock(wraps=synchronizer._translate_scalar_out)
+    monkeypatch.setattr(synchronizer, "_translate_scalar_out", translate_out_spy)
+
+    # don't do blobbing for this test
+    monkeypatch.setattr("modal._container_entrypoint.MAX_OBJECT_SIZE_BYTES", 1e100)
+
+    large_data_list = list(range(int(1e6)))  # large data set
+
+    t0 = time.perf_counter()
+    # pr = cProfile.Profile()
+    # pr.enable()
+    _run_container(unix_servicer, "modal_test_support.functions", "ident", inputs=_get_inputs(((large_data_list,), {})))
+    # pr.disable()
+    # pr.print_stats()
+    duration = time.perf_counter() - t0
+    assert duration < 2.0  # TODO (elias): migth be able to get this down significantly more by improving serialization
+
+    # function_io_manager.serialize(large_data_list)
+    in_translations = []
+    out_translations = []
+    for call in translate_in_spy.call_args_list:
+        in_translations += list(call.args)
+    for call in translate_out_spy.call_args_list:
+        out_translations += list(call.args)
+
+    assert len(in_translations) < 200  # typically 136 or something
+    assert len(out_translations) < 200

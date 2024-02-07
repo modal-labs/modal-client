@@ -14,7 +14,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
-from .exception import NotFoundError, deprecation_error
+from .exception import InvalidError, NotFoundError, deprecation_error
 from .functions import (
     _parse_retries,
     _validate_volumes,
@@ -251,6 +251,8 @@ class _Cls(_Object, type_prefix="cs"):
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
                     raise NotFoundError(exc.message)
+                elif exc.status == Status.FAILED_PRECONDITION:
+                    raise InvalidError(exc.message)
                 else:
                     raise
 
@@ -263,6 +265,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     def with_options(
         self: "_Cls",
+        cpu: Optional[float] = None,
+        memory: Optional[int] = None,
         gpu: GPU_T = None,
         secrets: Collection[_Secret] = (),
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},
@@ -275,7 +279,10 @@ class _Cls(_Object, type_prefix="cs"):
         allow_background_volume_commits: bool = False,
     ) -> "_Cls":
         retry_policy = _parse_retries(retries)
-        resources = api_pb2.Resources(gpu_config=parse_gpu_config(gpu)) if gpu else None
+        if gpu or cpu or memory:
+            resources = api_pb2.Resources(cpu=cpu, memory=memory, gpu_config=parse_gpu_config(gpu))
+        else:
+            resources = None
 
         volume_mounts = [
             api_pb2.VolumeMount(
@@ -304,9 +311,8 @@ class _Cls(_Object, type_prefix="cs"):
 
         return cls
 
-    @classmethod
+    @staticmethod
     async def lookup(
-        cls: Type["_Cls"],
         app_name: str,
         tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -320,7 +326,7 @@ class _Cls(_Object, type_prefix="cs"):
         Class = modal.Cls.lookup("other-app", "Class")
         ```
         """
-        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name, workspace=workspace)
+        obj = _Cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name, workspace=workspace)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)

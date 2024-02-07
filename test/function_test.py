@@ -247,6 +247,26 @@ async def test_generator(client, servicer):
 
 
 @pytest.mark.asyncio
+async def test_generator_map_invalid(client, servicer):
+    stub = Stub()
+
+    later_gen_modal = stub.function()(later_gen)
+
+    def dummy(x):
+        yield x
+
+    servicer.function_body(dummy)
+
+    with stub.run(client=client):
+        with pytest.raises(InvalidError):
+            # Support for .map() on generators was removed in version 0.57
+            for _ in later_gen_modal.map([1, 2, 3]):
+                pass
+        with pytest.raises(InvalidError):
+            later_gen_modal.for_each([1, 2, 3])
+
+
+@pytest.mark.asyncio
 async def test_generator_async(client, servicer):
     stub = Stub()
 
@@ -283,81 +303,6 @@ async def test_generator_future(client, servicer):
 
 def gen_with_arg(i):
     yield "foo"
-
-
-@pytest.mark.asyncio
-async def test_generator_map_success(client, servicer):
-    stub = Stub()
-
-    gen_with_arg_modal = stub.function()(gen_with_arg)
-
-    def dummy(i):
-        yield i, "bar"
-        yield i, "baz"
-
-    servicer.function_body(dummy)
-
-    assert len(servicer.cleared_function_calls) == 0
-    with stub.run(client=client):
-        assert gen_with_arg_modal.is_generator
-        res = set(gen_with_arg_modal.map([1, 2, 3]))
-        assert res == {(1, "bar"), (1, "baz"), (2, "bar"), (2, "baz"), (3, "bar"), (3, "baz")}
-
-
-@pytest.mark.asyncio
-async def test_generator_map_exception(client, servicer):
-    stub = Stub()
-
-    gen_with_arg_modal = stub.function()(gen_with_arg)
-
-    def dummy(i):
-        yield i, "bar"
-        if i == 2:
-            raise CustomException("boo!")
-        yield i, "baz"
-
-    servicer.function_body(dummy)
-
-    assert len(servicer.cleared_function_calls) == 0
-    with stub.run(client=client):
-        assert gen_with_arg_modal.is_generator
-
-        with pytest.raises(CustomException) as exc_info:
-            list(gen_with_arg_modal.map([1, 2, 3]))
-        assert exc_info.value.args == ("boo!",)
-
-
-@pytest.mark.asyncio
-async def test_generator_map_return_exceptions(client, servicer):
-    stub = Stub()
-
-    gen_with_arg_modal = stub.function()(gen_with_arg)
-
-    def dummy(i):
-        yield i, "bar"
-        if i == 2:
-            raise CustomException("boo!")
-        yield i, "baz"
-
-    servicer.function_body(dummy)
-
-    assert len(servicer.cleared_function_calls) == 0
-    with stub.run(client=client):
-        assert gen_with_arg_modal.is_generator
-
-        results = set()
-        received_exc = False
-        for result in gen_with_arg_modal.map([1, 2, 3], return_exceptions=True):
-            # TODO: this should just be CustomException directly.
-            if isinstance(result, UserCodeException):
-                assert isinstance(result.exc, CustomException)
-                assert result.exc.args == ("boo!",)
-                received_exc = True
-            else:
-                results.add(result)
-
-        assert received_exc
-        assert results == {(1, "bar"), (1, "baz"), (2, "bar"), (3, "bar"), (3, "baz")}
 
 
 async def slo1(sleep_seconds):
