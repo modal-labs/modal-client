@@ -76,6 +76,7 @@ import os
 import typing
 import warnings
 from datetime import date
+from textwrap import dedent
 from typing import Any, Dict, Optional
 
 import toml
@@ -84,7 +85,7 @@ from google.protobuf.empty_pb2 import Empty
 from modal_proto import api_pb2
 from modal_utils.logger import configure_logger
 
-from .exception import deprecation_error
+from .exception import InvalidError, deprecation_error, deprecation_warning
 
 # Locate config file and read it
 
@@ -133,6 +134,33 @@ def config_set_active_profile(env: str) -> None:
 
     _user_config[env]["active"] = True
     _write_user_config(_user_config)
+
+
+def _check_config() -> None:
+    num_profiles = len(_user_config)
+    num_active = sum(v.get("active", False) for v in _user_config.values())
+    if num_active > 1:
+        raise InvalidError(
+            "More than one Modal profile is active. "
+            "Please fix with `modal profile activate` or by editing your Modal config file "
+            f"({user_config_path})."
+        )
+    elif num_profiles > 1 and num_active == 0 and _profile == "default":
+        # Eventually we plan to have num_profiles > 1 with num_active = 0 be an error
+        # But we want to give users time to activate one of their profiles without disruption
+        message = dedent(
+            """
+
+            WARNING:
+
+            Support for using an implicit 'default' profile is deprecated.
+            Please use `modal profile activate` to activate one of your profiles.
+            (Use `modal profile list` to see the options.)
+
+            This will become an error in a future update.
+            """
+        )
+        deprecation_warning(date(2024, 2, 6), message)
 
 
 if "MODAL_ENV" in os.environ:

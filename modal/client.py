@@ -16,7 +16,7 @@ from modal_utils.http_utils import http_client_with_tls
 from modal_version import __version__
 
 from ._tracing import inject_tracing_context
-from .config import config, logger
+from .config import _check_config, config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
@@ -141,6 +141,7 @@ class _Client:
 
     async def _verify(self):
         logger.debug("Client: Starting")
+        _check_config()
         try:
             req = empty_pb2.Empty()
             resp = await retry_transient_errors(
