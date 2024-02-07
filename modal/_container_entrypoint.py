@@ -90,11 +90,12 @@ class _FunctionIOManager:
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
+        self.checkpoint_id = container_args.checkpoint_id
+
         self.calls_completed = 0
         self.total_user_time: float = 0.0
         self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
-        self.checkpoint_id = container_args.checkpoint_id
 
         self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
