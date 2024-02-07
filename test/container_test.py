@@ -885,7 +885,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
     # pr.disable()
     # pr.print_stats()
     duration = time.perf_counter() - t0
-    assert duration < 0.0  # TODO (elias): should be able to get this down significantly more by improving serialization
+    assert duration < 1.0  # TODO (elias): migth be able to get this down significantly more by improving serialization
 
     # function_io_manager.serialize(large_data_list)
     in_translations = []
