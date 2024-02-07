@@ -150,9 +150,6 @@ def _check_config() -> None:
         # But we want to give users time to activate one of their profiles without disruption
         message = dedent(
             """
-
-            WARNING:
-
             Support for using an implicit 'default' profile is deprecated.
             Please use `modal profile activate` to activate one of your profiles.
             (Use `modal profile list` to see the options.)
