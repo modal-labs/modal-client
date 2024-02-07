@@ -1172,12 +1172,14 @@ def modal_config():
         # so we need to modify the config singletons to pick up any changes
         orig_config_path_env = os.environ.get("MODAL_CONFIG_PATH")
         orig_config_path = config.user_config_path
+        orig_profile = config._profile
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".toml", mode="w") as t:
                 t.write(textwrap.dedent(contents.strip("\n")))
             os.environ["MODAL_CONFIG_PATH"] = t.name
             config.user_config_path = t.name
             config._user_config = config._read_user_config()
+            config._profile = config._config_active_profile()
             yield t.name
         except Exception:
             if show_on_error:
@@ -1191,6 +1193,7 @@ def modal_config():
                 del os.environ["MODAL_CONFIG_PATH"]
             config.user_config_path = orig_config_path
             config._user_config = config._read_user_config()
+            config._profile = orig_profile
             os.remove(t.name)
 
     return mock_modal_toml
