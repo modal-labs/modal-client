@@ -291,9 +291,12 @@ class _Volume(_StatefulObject, type_prefix="vo"):
         await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
 
     @live_method
-    async def batch_upload(self) -> "_VolumeUploadContextManager":
+    async def batch_upload(self, force: bool = False) -> "_VolumeUploadContextManager":
         """
         Initiate a batched upload to a volume.
+
+        To allow overwriting existing files, set `force` to `True` (you cannot overwrite existing directories with
+        uploaded files regardless).
 
         **Example:**
 
@@ -306,7 +309,7 @@ class _Volume(_StatefulObject, type_prefix="vo"):
             batch.put_file(io.BytesIO(b"some data"), "/foobar")
         ```
         """
-        return _VolumeUploadContextManager(self.object_id, self._client)
+        return _VolumeUploadContextManager(self.object_id, self._client, force=force)
 
 
 class _VolumeUploadContextManager:
@@ -314,13 +317,15 @@ class _VolumeUploadContextManager:
 
     _volume_id: str
     _client: _Client
+    _force: bool
     _upload_generators: List[Generator[Callable[[], FileUploadSpec], None, None]]
 
-    def __init__(self, volume_id: str, client: _Client):
+    def __init__(self, volume_id: str, client: _Client, force: bool = False):
         """mdmd:hidden"""
         self._volume_id = volume_id
         self._client = client
         self._upload_generators = []
+        self._force = force
 
     async def __aenter__(self):
         return self
@@ -347,8 +352,15 @@ class _VolumeUploadContextManager:
             uploads_stream = aiostream.stream.map(files_stream, self._upload_file, task_limit=20)
             files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
 
-            request = api_pb2.VolumePutFilesRequest(volume_id=self._volume_id, files=files)
-            await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)
+            request = api_pb2.VolumePutFilesRequest(
+                volume_id=self._volume_id,
+                files=files,
+                disallow_overwrite_existing_files=not self._force,
+            )
+            try:
+                await retry_transient_errors(self._client.stub.VolumePutFiles, request, base_delay=1)
+            except GRPCError as exc:
+                raise FileExistsError(exc.message) if exc.status == Status.ALREADY_EXISTS else exc
 
     def put_file(
         self,
