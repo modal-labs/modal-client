@@ -181,3 +181,13 @@ def test_mount_dedupe(servicer, test_dir, server_url_env, use_explicit):
     assert servicer.mount_contents["mo-123"].keys() == {"/root/mount_dedupe.py"}
     for fn in servicer.mount_contents["mo-124"].keys():
         assert fn.startswith("/root/pkg_a")
+
+
+def test_mount_extend_automount(servicer, test_dir, server_url_env):
+    print(helpers.deploy_stub_externally(servicer, "mount_override.py", cwd=test_dir / "supports"))
+    assert servicer.n_mounts == 2
+    assert servicer.mount_contents["mo-123"].keys() == {"/root/mount_override.py"}
+    pkg_a_mount = servicer.mount_contents["mo-124"]
+    for fn in pkg_a_mount.keys():
+        assert fn.startswith("/root/pkg_a")
+    assert "/root/pkg_a/nonpython.txt" in pkg_a_mount.keys()
