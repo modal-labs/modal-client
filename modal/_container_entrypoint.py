@@ -94,6 +94,7 @@ class _FunctionIOManager:
         self.total_user_time: float = 0.0
         self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
+        self.checkpoint_id = container_args.checkpoint_id
 
         self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
@@ -467,10 +468,10 @@ class _FunctionIOManager:
 
     async def checkpoint(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
-        checkpoint_id = os.getenv("MODAL_CHECKPOINT_ID", "")
-        if checkpoint_id:
-            logger.debug(f"Checkpoint ID: {checkpoint_id}")
-        await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest(checkpoint_id=checkpoint_id))
+        if self.checkpoint_id:
+            logger.debug(f"Checkpoint ID: {self.checkpoint_id}")
+
+        await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id))
 
         self._waiting_for_checkpoint = True
         await self._client._close()
