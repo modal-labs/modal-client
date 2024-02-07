@@ -290,7 +290,6 @@ class _FunctionIOManager:
                 if not yielded:
                     self._semaphore.release()
 
-    @synchronizer.no_io_translation
     async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[tuple[str, str, Any, Any]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
@@ -310,7 +309,6 @@ class _FunctionIOManager:
             for _ in range(input_concurrency):
                 await self._semaphore.acquire()
 
-    @synchronizer.no_io_translation
     async def _push_output(self, input_id, started_at: float, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
@@ -421,7 +419,6 @@ class _FunctionIOManager:
         self.calls_completed += 1
         self._semaphore.release()
 
-    @synchronizer.no_io_translation
     async def push_output(self, input_id, started_at: float, data: Any, data_format: int) -> None:
         await self._push_output(
             input_id,
