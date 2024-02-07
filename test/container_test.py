@@ -112,6 +112,7 @@ def _run_container(
             app_id="ap-1",
             function_def=function_def,
             serialized_params=serialized_params,
+            checkpoint_id=f"ch-{uuid.uuid4()}"
         )
 
         if module_name in sys.modules:
@@ -128,7 +129,6 @@ def _run_container(
             with pathlib.Path(tmp_file_name).open("w") as target:
                 json.dump({}, target)
             env["MODAL_RESTORE_STATE_PATH"] = tmp_file_name
-            env["MODAL_CHECKPOINT_ID"] = f"ch-{uuid.uuid4()}"
 
             # Override server URL to reproduce restore behavior.
             env["MODAL_SERVER_URL"] = servicer.remote_addr
