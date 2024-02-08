@@ -8,6 +8,7 @@ import typing
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
+import modal
 from modal import Image, NetworkFileSystem, Proxy, Stub, web_endpoint
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
@@ -644,3 +645,26 @@ def test_interactive_mode():
         stub.function(image=Image.debian_slim(), interactive=True)(later_gen)
 
     stub.function(image=Image.debian_slim(), interactive=True)(interact_wit_me)
+
+
+def assert_is_wrapped_dict(some_arg):
+    assert isinstance(some_arg, modal.Dict)
+
+
+def test_calls_should_not_unwrap_modal_objects(servicer, client):
+    stub = Stub()
+    stub.some_modal_object = modal.Dict.from_name("blah", create_if_missing=True)
+
+    foo = stub.function()(assert_is_wrapped_dict)
+    servicer.function_body(assert_is_wrapped_dict)
+
+    with stub.run(client=client):
+        foo.remote(stub.some_modal_object)
+        foo.spawn(stub.some_modal_object)
+        # for _ in foo.map([stub.some_modal_object]):
+        #     pass
+        # for _ in foo.starmap([stub.some_modal_object]):
+        #     pass
+
+    # make sure the serialized object is an actual Dict and not a _Dict
+    assert len(servicer.client_calls) == 2
