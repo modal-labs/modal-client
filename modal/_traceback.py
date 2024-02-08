@@ -230,7 +230,7 @@ def highlight_modal_deprecation_warnings() -> None:
             panel = Panel(
                 message,
                 style="yellow",
-                title=f"Deprecation Warning ({date})",
+                title=f"Modal Deprecation Warning ({date})",
                 title_align="left",
             )
             Console().print(panel)
