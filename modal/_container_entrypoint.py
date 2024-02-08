@@ -432,7 +432,7 @@ class _FunctionIOManager:
         await self.complete_call(started_at)
 
     async def restore(self) -> None:
-        # Busy-wait for restore. `/opt/modal/restore-state.json` is created
+        # Busy-wait for restore. `/__modal/restore-state.json` is created
         # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
         start = time.perf_counter()
