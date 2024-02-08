@@ -21,7 +21,7 @@ from modal_utils.async_utils import TaskContext, asyncify
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 
-async def container_exec(task_id: str, command: List[str], tty: bool = False):
+async def container_exec(task_id: str, command: List[str], *, pty: bool, client: _Client):
     """Execute a command inside an active container"""
     if platform.system() == "Windows":
         print("container exec is not currently supported on Windows.")
@@ -36,7 +36,7 @@ async def container_exec(task_id: str, command: List[str], tty: bool = False):
     try:
         res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(
             api_pb2.ContainerExecRequest(
-                task_id=task_id, command=command, pty_info=get_pty_info(shell=True) if tty else None
+                task_id=task_id, command=command, pty_info=get_pty_info(shell=True) if pty else None
             )
         )
     except GRPCError as err:
@@ -54,7 +54,7 @@ async def container_exec(task_id: str, command: List[str], tty: bool = False):
             await asyncio.wait_for(on_connect.wait(), timeout=15)
             connecting_status.stop()
 
-            async with handle_exec_input(client, res.exec_id, use_raw_terminal=tty):
+            async with handle_exec_input(client, res.exec_id, use_raw_terminal=pty):
                 exit_status = await exec_output_task
 
             if exit_status != 0:
