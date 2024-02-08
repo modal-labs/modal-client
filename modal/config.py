@@ -157,7 +157,7 @@ def _check_config() -> None:
             This will become an error in a future update.
             """
         )
-        deprecation_warning(date(2024, 2, 6), message)
+        deprecation_warning(date(2024, 2, 6), message, show_source=False)
 
 
 if "MODAL_ENV" in os.environ:
