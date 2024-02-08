@@ -1225,8 +1225,9 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
+    @synchronizer.no_io_translation
     @live_method
-    async def remote(self, *args, **kwargs) -> Awaitable[Any]:
+    async def remote(self, *args, **kwargs) -> Any:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -1243,6 +1244,7 @@ class _Function(_Object, type_prefix="fu"):
 
         return await self._call_function(args, kwargs)
 
+    @synchronizer.no_io_translation
     @live_method_gen
     async def remote_gen(self, *args, **kwargs) -> AsyncGenerator[Any, None]:
         """
@@ -1272,6 +1274,7 @@ class _Function(_Object, type_prefix="fu"):
         else:
             deprecation_error(date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
 
+    @synchronizer.no_io_translation
     @live_method
     async def shell(self, *args, **kwargs) -> None:
         if self._is_generator:
@@ -1347,6 +1350,7 @@ class _Function(_Object, type_prefix="fu"):
                 " a Modal container in the cloud",
             )
 
+    @synchronizer.no_input_translation
     @live_method
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.

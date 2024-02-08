@@ -648,7 +648,7 @@ def test_interactive_mode():
 
 
 def assert_is_wrapped_dict(some_arg):
-    assert isinstance(some_arg, modal.Dict)
+    assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
 
 
 def test_calls_should_not_unwrap_modal_objects(servicer, client):
@@ -661,10 +661,10 @@ def test_calls_should_not_unwrap_modal_objects(servicer, client):
     with stub.run(client=client):
         foo.remote(stub.some_modal_object)
         foo.spawn(stub.some_modal_object)
-        # for _ in foo.map([stub.some_modal_object]):
-        #     pass
-        # for _ in foo.starmap([stub.some_modal_object]):
-        #     pass
+        for _ in foo.map([stub.some_modal_object]):
+            pass
+        for _ in foo.starmap([stub.some_modal_object]):
+            pass
 
     # make sure the serialized object is an actual Dict and not a _Dict
     assert len(servicer.client_calls) == 2
