@@ -1135,13 +1135,13 @@ class _Function(_Object, type_prefix="fu"):
         async for res in invocation.run_generator():
             yield res
 
-    @synchronizer.no_io_translation  # TODO (elias): test spawn w/ generators
+    @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
-    @synchronizer.no_input_translation  # TODO (elias) test that outputs from the map still behave correctly
+    @synchronizer.no_input_translation
     async def map(
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
