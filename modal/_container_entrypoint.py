@@ -152,6 +152,7 @@ class _FunctionIOManager:
     def deserialize(self, data: bytes) -> Any:
         return deserialize(data, self._client)
 
+    @synchronizer.no_io_translation
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
 
@@ -241,6 +242,7 @@ class _FunctionIOManager:
 
         return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
 
+    @synchronizer.no_io_translation
     async def _generate_inputs(self) -> AsyncIterator[tuple[str, str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
@@ -292,6 +294,7 @@ class _FunctionIOManager:
                 if not yielded:
                     self._semaphore.release()
 
+    @synchronizer.no_io_translation
     async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[tuple[str, str, Any, Any]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
@@ -421,6 +424,7 @@ class _FunctionIOManager:
         self.calls_completed += 1
         self._semaphore.release()
 
+    @synchronizer.no_io_translation
     async def push_output(self, input_id, started_at: float, data: Any, data_format: int) -> None:
         await self._push_output(
             input_id,
