@@ -1344,7 +1344,6 @@ message S3Mount {
   string bucket_name = 1;
   string mount_path = 2;
   string credentials_secret_id = 3;
-  // if false, --allow-delete and --allow-overwrite are set
   bool read_only = 4;
 }
 
