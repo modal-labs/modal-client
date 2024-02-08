@@ -154,3 +154,13 @@ def simulate_preemption(wait_seconds: int, jitter_seconds: int = 0):
     signal.signal(signal.SIGALRM, _simulate_preemption_interrupt)
     jitter = random.randrange(0, jitter_seconds) if jitter_seconds else 0
     signal.alarm(wait_seconds + jitter)
+
+
+class InputCancellation(BaseException):
+    """Raised when the current input is cancelled by the task
+
+    Intentionally a BaseException instead of an Exception, so it won't get
+    caught by unspecified user exception clauses that might be used for retries etc.
+    """
+
+    pass

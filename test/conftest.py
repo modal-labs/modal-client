@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import traceback
 from collections import defaultdict
 from pathlib import Path
@@ -151,6 +152,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.token_flow_localhost_port = None
         self.queue_max_len = 1_00
+
+        self.called_function_get_inputs = threading.Event()
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -485,6 +488,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.FunctionGetInputsResponse(inputs=[]))
         else:
             await stream.send_message(self.container_inputs.pop(0))
+
+        self.called_function_get_inputs.set()
 
     async def FunctionPutOutputs(self, stream):
         request: api_pb2.FunctionPutOutputsRequest = await stream.recv_message()

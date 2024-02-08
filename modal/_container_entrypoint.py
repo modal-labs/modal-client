@@ -43,7 +43,7 @@ from .app import _container_app, _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
-from .exception import InvalidError
+from .exception import InputCancellation, InvalidError
 from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 
@@ -60,6 +60,9 @@ class UserException(Exception):
     pass
 
 
+INPUT_CANCELLATION_MESSAGE = "modal-external-cancellation"
+
+
 def run_with_signal_handler(coro):
     """Execute coro in an event loop, with a signal handler that cancels
     the task in the case of SIGINT or SIGTERM. Prevents stray cancellation errors
@@ -69,6 +72,7 @@ def run_with_signal_handler(coro):
     task = asyncio.ensure_future(coro, loop=loop)
     for s in [signal.SIGINT, signal.SIGTERM]:
         loop.add_signal_handler(s, task.cancel)
+    loop.add_signal_handler(signal.SIGUSR1, task.cancel, INPUT_CANCELLATION_MESSAGE)
     try:
         result = loop.run_until_complete(task)
     finally:
@@ -251,12 +255,12 @@ class _FunctionIOManager:
             request.input_concurrency = self._input_concurrency
 
             await self._semaphore.acquire()
+            yielded = False
             try:
-                # If number of active inputs is at max queue size, this will block.
-                yielded = False
                 with trace("get_inputs"):
                     set_span_tag("iteration", str(iteration))  # force this to be a tag string
                     iteration += 1
+                    # If number of active inputs is at max queue size, this will block.
                     response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
                         self._client.stub.FunctionGetInputs, request
                     )
@@ -280,7 +284,7 @@ class _FunctionIOManager:
                         else:
                             input_pb = item.input
 
-                        # If yielded, allow semaphore to be released via push_outputs
+                        # If yielded, allow semaphore to be released via complete_call
                         yield (item.input_id, item.function_call_id, input_pb)
                         yielded = True
 
@@ -393,7 +397,19 @@ class _FunctionIOManager:
                 yield
         except KeyboardInterrupt:
             raise
+        except InputCancellation:
+            # just skip creating any output for this input and keep going with the next instead
+            # it should have been marked as cancelled already in the db at this point so it
+            # won't be retried
+            # TODO: at this point we might want to fetch a list of additional inputs
+            # TODO: handle concurrent inputs
+            await self.complete_call(started_at)
+            return
         except BaseException as exc:
+            if isinstance(exc, asyncio.CancelledError) and str(exc) == INPUT_CANCELLATION_MESSAGE:
+                # for async functions, InputCancellation is represented by CancelledError with the INPUT_CANCELLATION_MESSAGE message
+                await self.complete_call(started_at)
+                return
             # print exception so it's logged
             traceback.print_exc()
             serialized_tb, tb_line_cache = self.serialize_traceback(exc)
@@ -513,6 +529,10 @@ def call_function_sync(
     function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
     imp_fun: ImportedFunction,
 ):
+    def cancel_input_signal_handler(signum, stackframe):
+        raise InputCancellation("input was cancelled by user")
+
+    signal.signal(signal.SIGUSR1, cancel_input_signal_handler)
     # If this function is on a class, instantiate it and enter it
     if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
         enter_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER)

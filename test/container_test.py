@@ -8,9 +8,11 @@ import os
 import pathlib
 import pickle
 import pytest
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
@@ -28,7 +30,7 @@ from modal.stub import _Stub
 from modal_proto import api_pb2
 
 from .helpers import deploy_stub_externally
-from .supports.skip import skip_windows_unix_socket
+from .supports.skip import skip_windows, skip_windows_unix_socket
 
 EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
 FUNCTION_CALL_ID = "fc-123"
@@ -54,6 +56,79 @@ class ContainerResult:
     data_chunks: List[api_pb2.DataChunk]
 
 
+def _get_multi_inputs(args: list[tuple[tuple, dict]] = []) -> list[api_pb2.FunctionGetInputsResponse]:
+    responses = []
+    for input_n, input_args in enumerate(args):
+        resp = api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id=f"in-{input_n}", input=api_pb2.FunctionInput(args=serialize(input_args))
+                )
+            ]
+        )
+        responses.append(resp)
+
+    return responses + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
+
+
+def _container_args(
+    module_name,
+    function_name,
+    function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+    webhook_type=api_pb2.WEBHOOK_TYPE_UNSPECIFIED,
+    definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
+    stub_name: str = "",
+    is_builder_function: bool = False,
+    allow_concurrent_inputs: Optional[int] = None,
+    serialized_params: Optional[bytes] = None,
+    is_checkpointing_function: bool = False,
+    deps: List[str] = ["im-1"],
+    volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
+    is_auto_snapshot: bool = False,
+    max_inputs: Optional[int] = None,
+):
+    if webhook_type:
+        webhook_config = api_pb2.WebhookConfig(
+            type=webhook_type,
+            method="GET",
+            async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+        )
+    else:
+        webhook_config = None
+
+    function_def = api_pb2.Function(
+        module_name=module_name,
+        function_name=function_name,
+        function_type=function_type,
+        volume_mounts=volume_mounts,
+        webhook_config=webhook_config,
+        definition_type=definition_type,
+        stub_name=stub_name or "",
+        is_builder_function=is_builder_function,
+        is_auto_snapshot=is_auto_snapshot,
+        allow_concurrent_inputs=allow_concurrent_inputs,
+        is_checkpointing_function=is_checkpointing_function,
+        object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
+        max_inputs=max_inputs,
+    )
+
+    return api_pb2.ContainerArguments(
+        task_id="ta-123",
+        function_id="fu-123",
+        app_id="ap-1",
+        function_def=function_def,
+        serialized_params=serialized_params,
+        checkpoint_id=f"ch-{uuid.uuid4()}",
+    )
+
+
+def _flatten_outputs(outputs) -> list[api_pb2.FunctionPutOutputsItem]:
+    items: list[api_pb2.FunctionPutOutputsItem] = []
+    for req in outputs:
+        items += list(req.outputs)
+    return items
+
+
 def _run_container(
     servicer,
     module_name,
@@ -73,6 +148,22 @@ def _run_container(
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
 ) -> ContainerResult:
+    container_args = _container_args(
+        module_name,
+        function_name,
+        function_type,
+        webhook_type,
+        definition_type,
+        stub_name,
+        is_builder_function,
+        allow_concurrent_inputs,
+        serialized_params,
+        is_checkpointing_function,
+        deps,
+        volume_mounts,
+        is_auto_snapshot,
+        max_inputs,
+    )
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
             servicer.container_inputs = _get_inputs()
@@ -80,40 +171,6 @@ def _run_container(
             servicer.container_inputs = inputs
         function_call_id = servicer.container_inputs[0].inputs[0].function_call_id
         servicer.fail_get_inputs = fail_get_inputs
-
-        if webhook_type:
-            webhook_config = api_pb2.WebhookConfig(
-                type=webhook_type,
-                method="GET",
-                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
-            )
-        else:
-            webhook_config = None
-
-        function_def = api_pb2.Function(
-            module_name=module_name,
-            function_name=function_name,
-            function_type=function_type,
-            volume_mounts=volume_mounts,
-            webhook_config=webhook_config,
-            definition_type=definition_type,
-            stub_name=stub_name or "",
-            is_builder_function=is_builder_function,
-            is_auto_snapshot=is_auto_snapshot,
-            allow_concurrent_inputs=allow_concurrent_inputs,
-            is_checkpointing_function=is_checkpointing_function,
-            object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
-            max_inputs=max_inputs,
-        )
-
-        container_args = api_pb2.ContainerArguments(
-            task_id="ta-123",
-            function_id="fu-123",
-            app_id="ap-1",
-            function_def=function_def,
-            serialized_params=serialized_params,
-            checkpoint_id=f"ch-{uuid.uuid4()}",
-        )
 
         if module_name in sys.modules:
             # Drop the module from sys.modules since some function code relies on the
@@ -146,9 +203,7 @@ def _run_container(
             temp_restore_file_path.close()
 
         # Flatten outputs
-        items: List[api_pb2.FunctionPutOutputsItem] = []
-        for req in servicer.container_outputs:
-            items += list(req.outputs)
+        items = _flatten_outputs(servicer.container_outputs)
 
         # Get data chunks
         data_chunks: List[api_pb2.DataChunk] = []
@@ -900,3 +955,80 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
 
     assert len(in_translations) < 200  # typically 136 or something
     assert len(out_translations) < 200
+
+
+def _run_container_process(
+    servicer,
+    module_name,
+    function_name,
+    inputs: list[tuple[tuple[Any], dict[str, Any]]],
+    allow_concurrent_inputs: int | None = None,
+) -> subprocess.Popen:
+    container_args = _container_args(module_name, function_name, allow_concurrent_inputs=allow_concurrent_inputs)
+    encoded_container_args = base64.b64encode(container_args.SerializeToString())
+    servicer.container_inputs = _get_multi_inputs(inputs)
+    return subprocess.Popen(
+        [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args], env=os.environ
+    )
+
+
+@skip_windows("signals not supported on windows and this only runs on containers")
+@pytest.mark.usefixtures("server_url_env")
+def test_sigusr1_aborts_current_input(servicer):
+    container_process = _run_container_process(
+        servicer, "modal_test_support.functions", "delay", inputs=[((1,), {}), ((0.01,), {})]
+    )
+    servicer.called_function_get_inputs.wait(timeout=1)
+    time.sleep(0.05)  # let the container get the input
+    container_process.send_signal(signal.SIGUSR1)
+    servicer.called_function_get_inputs = threading.Event()  # new event to wait for
+    servicer.called_function_get_inputs.wait(timeout=1)
+    time.sleep(0.1)  # let the container handle the remaining input
+    items = _flatten_outputs(servicer.container_outputs)
+    assert len(items) == 1
+    print(items[0])
+    data = deserialize(items[0].result.data, client=None)
+    assert data == 0.01
+    assert container_process.wait() == 0
+
+
+@skip_windows("signals not supported on windows and this only runs on containers")
+@pytest.mark.usefixtures("server_url_env")
+def test_sigusr1_aborts_current_input_async(servicer):
+    container_process = _run_container_process(
+        servicer, "modal_test_support.functions", "delay_async", inputs=[((1,), {}), ((0.01,), {})]
+    )
+    servicer.called_function_get_inputs.wait(timeout=1)
+    time.sleep(0.05)  # let the container get the input
+    container_process.send_signal(signal.SIGUSR1)
+    servicer.called_function_get_inputs = threading.Event()  # new event to wait for
+    servicer.called_function_get_inputs.wait(timeout=1)
+    time.sleep(0.1)  # let the container handle the remaining input
+    items = _flatten_outputs(servicer.container_outputs)
+    assert len(items) == 1
+    data = deserialize(items[0].result.data, client=None)
+    assert data == 0.01
+    assert container_process.wait() == 0
+
+
+@skip_windows("signals not supported on windows and this only runs on containers")
+@pytest.mark.usefixtures("server_url_env")
+def test_sigusr1_aborts_current_input_async_concurrent_inputs(servicer):
+    container_process = _run_container_process(
+        servicer,
+        "modal_test_support.functions",
+        "delay_async",
+        inputs=[((1,), {}), ((1.1,), {}), ((0.01,), {})],
+        allow_concurrent_inputs=2,
+    )
+    servicer.called_function_get_inputs.wait(timeout=1)
+    time.sleep(0.05)  # let the container get the input
+    container_process.send_signal(signal.SIGUSR1)
+    servicer.called_function_get_inputs = threading.Event()  # new event to wait for
+    servicer.called_function_get_inputs.wait(timeout=1)
+    time.sleep(0.1)  # let the container handle the remaining input
+    items = _flatten_outputs(servicer.container_outputs)
+    assert len(items) == 2
+    outputs = [deserialize(item.result.data, client=None) for item in items]
+    assert set(outputs) == {0.01, 1.1}
+    assert container_process.wait() == 0
