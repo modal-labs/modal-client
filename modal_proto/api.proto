@@ -1098,16 +1098,22 @@ message GenericResult {  // Used for both tasks and function outputs
     // Used when a task was killed using an external signal.
     GENERIC_STATUS_TERMINATED = 3;
     GENERIC_STATUS_TIMEOUT = 4;
+    // Used when the user's function fails to initialize (ex. S3 mount failed due to invalid credentials).
+    // Terminates the function and all remaining inputs.
+    GENERIC_STATUS_INIT_FAILURE = 5;
   }
 
-  GenericStatus status = 1;
-  string exception = 2;
-  int32 exitcode = 3;
-  string traceback = 4;
+  GenericStatus status = 1; // Status of the task or function output.
+  string exception = 2;  // Exception message for failures, if available. (?)
+  int32 exitcode = 3;  // Status code of the container entrypoint or builder process if it terminates unexpectedly.
+
+  string traceback = 4;  // String value of the Python traceback. (?)
+  bytes serialized_tb = 11; // Pickled traceback object. (?)
+  bytes tb_line_cache = 12; // Pickled line cache for traceback object. (?)
 
   oneof data_oneof {
-    bytes data = 5;
-    string data_blob_id = 10;
+    bytes data = 5; // Inline data of the result.
+    string data_blob_id = 10; // Blob ID for large data.
   }
 
   enum GeneratorStatus {
@@ -1117,10 +1123,7 @@ message GenericResult {  // Used for both tasks and function outputs
   }
   GeneratorStatus gen_status = 7;  // Deprecated, only used in client version <0.57
 
-  bytes serialized_tb = 11;
-  bytes tb_line_cache = 12;
-
-  string propagation_reason = 13;
+  string propagation_reason = 13; // (?)
 }
 
 message GPUConfig {
@@ -1341,8 +1344,6 @@ message S3Mount {
   string bucket_name = 1;
   string mount_path = 2;
   string credentials_secret_id = 3;
-  // if false, --allow-delete and --allow-overwrite are set
-  // See https://github.com/awslabs/mountpoint-s3/blob/main/doc/CONFIGURATION.md#file-modifications-and-deletions
   bool read_only = 4;
 }
 
