@@ -1129,16 +1129,19 @@ class _Function(_Object, type_prefix="fu"):
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
+    @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
         async for res in invocation.run_generator():
             yield res
 
+    @synchronizer.no_io_translation  # TODO (elias): test spawn w/ generators
     async def _call_generator_nowait(self, args, kwargs):
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
+    @synchronizer.no_input_translation  # TODO (elias) test that outputs from the map still behave correctly
     async def map(
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
@@ -1187,6 +1190,7 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
+    @synchronizer.no_input_translation
     async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
         """Execute function for all inputs, ignoring outputs.
 
@@ -1202,6 +1206,7 @@ class _Function(_Object, type_prefix="fu"):
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
+    @synchronizer.no_input_translation
     async def starmap(
         self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
     ) -> AsyncGenerator[Any, None]:
