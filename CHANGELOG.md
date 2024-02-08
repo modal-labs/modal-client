@@ -10,9 +10,21 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.57.16 (2024-02-07)
+
+- Fixes a regression in container scheduling. Users on affected versions (**0.57.5**—**0.57.15**) are encouraged to upgrade immediately.
+
+
+
+### 0.57.15 (2024-02-07)
+
+- The legacy `image_python_version` config option has been removed. Use the `python_version=` parameter on your image definition instead.
+
+
+
 ### 0.57.13 (2024-02-07)
 
-Adds support for mounting an S3 bucket as a volume.
+- Adds support for mounting an S3 bucket as a volume.
 
 
 

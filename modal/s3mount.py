@@ -12,7 +12,8 @@ from .secret import _Secret
 class _S3Mount:
     """Mounts an S3 bucket to your container using AWS S3 Mountpoint.
 
-    S3 mounts are optimized for reading large files sequentially. It does not support every file operation; in particular, it does not support writing to existing files, deleting files, or renaming files.
+    S3 mounts are optimized for reading large files sequentially. It does not support every file operation; consult
+    [the AWS S3 Mountpoint documentation](https://github.com/awslabs/mountpoint-s3/blob/main/doc/SEMANTICS.md) for more information.
 
     **Usage**
 
@@ -27,8 +28,7 @@ class _S3Mount:
             "/my-mount": modal.S3Mount("s3-bucket-name", secret=modal.Secret.from_dict({
                 "AWS_ACCESS_KEY_ID": "...",
                 "AWS_SECRET_ACCESS_KEY": "...",
-                "AWS_REGION": "...",  # optional
-            }))
+            }), read_only=True)
         }
     )
     def f():
@@ -41,8 +41,9 @@ class _S3Mount:
     # Credentials used to access the S3 bucket.
     # The given secret can contain AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
     # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY can be omitted if the bucket is publicly accessible.
-    # AWS_REGION can also be specified to manually configure the AWS region of the S3 bucket.
     secret: Optional[_Secret]
+
+    read_only: bool = False
 
 
 def s3_mounts_to_proto(mounts: List[Tuple[str, _S3Mount]]) -> List[api_pb2.S3Mount]:
@@ -54,6 +55,7 @@ def s3_mounts_to_proto(mounts: List[Tuple[str, _S3Mount]]) -> List[api_pb2.S3Mou
             bucket_name=mount.bucket_name,
             mount_path=path,
             credentials_secret_id=mount.secret.object_id if mount.secret else "",
+            read_only=mount.read_only,
         )
         for path, mount in mounts
     ]
