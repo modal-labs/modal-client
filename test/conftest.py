@@ -27,7 +27,9 @@ import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
+import modal._serialization
 from modal import __version__, config
+from modal._serialization import serialize_data_format
 from modal.app import _ContainerApp
 from modal.client import Client
 from modal.image import _dockerhub_python_version
@@ -51,7 +53,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
     # TODO(erikbern): add more annotations
     container_inputs: list[api_pb2.FunctionGetInputsResponse]
     container_outputs: list[api_pb2.FunctionPutOutputsRequest]
-    fc_data_in: dict[str, asyncio.Queue[api_pb2.DataChunk]]
+    fc_data_in: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
+    fc_data_out: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
 
     def __init__(self, blob_host, blobs):
         self.app_state_history = defaultdict(list)
@@ -67,11 +70,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.slow_put_inputs = False
         self.container_inputs = []
         self.container_outputs = []
-        self.fc_data_in = {}
+        self.fc_data_in = defaultdict(lambda: asyncio.Queue())  # unbounded
+        self.fc_data_out = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.queue = []
         self.deployed_apps = {
             client_mount_name(): "ap-x",
-            "foo-queue": "ap-y",
             f"debian-slim-{_dockerhub_python_version()}-{__version__}": "ap-z",
             f"conda-{__version__}": "ap-c",
             "my-proxy": "ap-proxy",
@@ -82,7 +85,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         }
         self.app_single_objects = {
             "ap-x": "mo-123",
-            "ap-y": "qu-foo",
             "ap-proxy": "pr-123",
         }
         self.app_unindexed_objects = {
@@ -128,6 +130,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.client_hello_metadata = None
 
         self.dicts = {}
+        self.deployed_dicts = {}
+        self.deployed_queues = {}
 
         self.cleared_function_calls = set()
 
@@ -424,6 +428,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.dicts[dict_id] = {}
         await stream.send_message(api_pb2.DictCreateResponse(dict_id=dict_id))
 
+    async def DictGetOrCreate(self, stream):
+        request: api_pb2.DictGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if k in self.deployed_dicts:
+            dict_id = self.deployed_dicts[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+            dict_id = f"di-{len(self.dicts)}"
+            self.dicts[dict_id] = {}
+            self.deployed_dicts[k] = dict_id
+        else:
+            raise GRPCError(Status.NOT_FOUND, "Queue not found")
+        await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
+
     async def DictClear(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
         self.dicts[request.dict_id] = {}
@@ -547,13 +564,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionPutInputs(self, stream):
         request: api_pb2.FunctionPutInputsRequest = await stream.recv_message()
         response_items = []
-        function_calls = self.client_calls.setdefault(request.function_call_id, [])
+        function_call_inputs = self.client_calls.setdefault(request.function_call_id, [])
         for item in request.inputs:
-            args, kwargs = cloudpickle.loads(item.input.args) if item.input.args else ((), {})
+            args, kwargs = modal._serialization.deserialize(item.input.args, None) if item.input.args else ((), {})
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
             response_items.append(api_pb2.FunctionPutInputsResponseItem(input_id=input_id, idx=item.idx))
-            function_calls.append(((item.idx, input_id), (args, kwargs)))
+            function_call_inputs.append(((item.idx, input_id), (args, kwargs)))
         if self.slow_put_inputs:
             await asyncio.sleep(0.001)
         await stream.send_message(api_pb2.FunctionPutInputsResponse(inputs=response_items))
@@ -567,18 +584,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if client_calls and not self.function_is_running:
             popidx = len(client_calls) // 2  # simulate that results don't always come in order
             (idx, input_id), (args, kwargs) = client_calls.pop(popidx)
-            results = []
             output_exc = None
             try:
                 res = self._function_body(*args, **kwargs)
 
                 if inspect.iscoroutine(res):
-                    results = [await res]
+                    result = await res
+                    result_data_format = api_pb2.DATA_FORMAT_PICKLE
                 elif inspect.isgenerator(res):
+                    count = 0
                     for item in res:
-                        results.append(item)
+                        count += 1
+                        await self.fc_data_out[request.function_call_id].put(
+                            api_pb2.DataChunk(
+                                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                                data=serialize_data_format(item, api_pb2.DATA_FORMAT_PICKLE),
+                                index=count,
+                            )
+                        )
+                    result = api_pb2.GeneratorDone(items_total=count)
+                    result_data_format = api_pb2.DATA_FORMAT_GENERATOR_DONE
                 else:
-                    results = [res]
+                    result = res
+                    result_data_format = api_pb2.DATA_FORMAT_PICKLE
             except Exception as exc:
                 serialized_exc = cloudpickle.dumps(exc)
                 result = api_pb2.GenericResult(
@@ -591,40 +619,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     input_id=input_id, idx=idx, result=result, gen_index=0, data_format=api_pb2.DATA_FORMAT_PICKLE
                 )
 
-            outputs = []
-            for index, value in enumerate(results):
-                gen_status = api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
-                if inspect.isgenerator(res):
-                    gen_status = api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-
-                result = api_pb2.GenericResult(
-                    status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                    data=cloudpickle.dumps(value),
-                    gen_status=gen_status,
-                )
-                item = api_pb2.FunctionGetOutputsItem(
-                    input_id=input_id,
-                    idx=idx,
-                    result=result,
-                    gen_index=index,
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
-                )
-                outputs.append(item)
-
             if output_exc:
-                outputs.append(output_exc)
-            elif inspect.isgenerator(res):
-                finish_item = api_pb2.FunctionGetOutputsItem(
+                output = output_exc
+            else:
+                output = api_pb2.FunctionGetOutputsItem(
                     input_id=input_id,
                     idx=idx,
                     result=api_pb2.GenericResult(
                         status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                        gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
+                        data=serialize_data_format(result, result_data_format),
                     ),
+                    data_format=result_data_format,
                 )
-                outputs.append(finish_item)
 
-            await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=outputs))
+            await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[output]))
         else:
             await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[]))
 
@@ -643,12 +651,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionCallGetDataIn(self, stream):
         req: api_pb2.FunctionCallGetDataRequest = await stream.recv_message()
-        if req.function_call_id not in self.fc_data_in:
-            raise GRPCError(Status.NOT_FOUND, f"No such function call: {req.function_call_id}")
-
         while True:
             chunk = await self.fc_data_in[req.function_call_id].get()
             await stream.send_message(chunk)
+
+    async def FunctionCallGetDataOut(self, stream):
+        req: api_pb2.FunctionCallGetDataRequest = await stream.recv_message()
+        while True:
+            chunk = await self.fc_data_out[req.function_call_id].get()
+            await stream.send_message(chunk)
+
+    async def FunctionCallPutDataOut(self, stream):
+        req: api_pb2.FunctionCallPutDataRequest = await stream.recv_message()
+        for chunk in req.data_chunks:
+            await self.fc_data_out[req.function_call_id].put(chunk)
+        await stream.send_message(Empty())
 
     ### Image
 
@@ -712,6 +729,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
         await stream.send_message(api_pb2.QueueCreateResponse(queue_id=queue_id))
+
+    async def QueueGetOrCreate(self, stream):
+        request: api_pb2.QueueGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if k in self.deployed_queues:
+            queue_id = self.deployed_queues[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+            self.n_queues += 1
+            queue_id = f"qu-{self.n_queues}"
+            self.deployed_queues[k] = queue_id
+        else:
+            raise GRPCError(Status.NOT_FOUND, "Queue not found")
+        await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()
@@ -914,6 +944,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         req = await stream.recv_message()
         for file in req.files:
             blob_data = self.files_sha2data[file.sha256_hex]
+
+            if file.filename in self.volume_files[req.volume_id] and req.disallow_overwrite_existing_files:
+                raise GRPCError(
+                    Status.ALREADY_EXISTS,
+                    f"{file.filename}: already exists (disallow_overwrite_existing_files={req.disallow_overwrite_existing_files}",
+                )
+
             self.volume_files[req.volume_id][file.filename] = VolumeFile(
                 data=blob_data["data"],
                 data_blob_id=blob_data["data_blob_id"],
@@ -1143,12 +1180,14 @@ def modal_config():
         # so we need to modify the config singletons to pick up any changes
         orig_config_path_env = os.environ.get("MODAL_CONFIG_PATH")
         orig_config_path = config.user_config_path
+        orig_profile = config._profile
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".toml", mode="w") as t:
                 t.write(textwrap.dedent(contents.strip("\n")))
             os.environ["MODAL_CONFIG_PATH"] = t.name
             config.user_config_path = t.name
             config._user_config = config._read_user_config()
+            config._profile = config._config_active_profile()
             yield t.name
         except Exception:
             if show_on_error:
@@ -1162,6 +1201,7 @@ def modal_config():
                 del os.environ["MODAL_CONFIG_PATH"]
             config.user_config_path = orig_config_path
             config._user_config = config._read_user_config()
+            config._profile = orig_profile
             os.remove(t.name)
 
     return mock_modal_toml

@@ -312,16 +312,16 @@ def fresh_main_thread_assertion_module(test_dir):
 
 
 def test_no_user_code_in_synchronicity_run(servicer, set_env_client, test_dir, fresh_main_thread_assertion_module):
-    pytest._did_load_main_thread_assertion = False
+    pytest._did_load_main_thread_assertion = False  # type: ignore
     _run(["run", fresh_main_thread_assertion_module.as_posix()])
-    assert pytest._did_load_main_thread_assertion
+    assert pytest._did_load_main_thread_assertion  # type: ignore
     print()
 
 
 def test_no_user_code_in_synchronicity_deploy(servicer, set_env_client, test_dir, fresh_main_thread_assertion_module):
-    pytest._did_load_main_thread_assertion = False
+    pytest._did_load_main_thread_assertion = False  # type: ignore
     _run(["deploy", "--name", "foo", fresh_main_thread_assertion_module.as_posix()])
-    assert pytest._did_load_main_thread_assertion
+    assert pytest._did_load_main_thread_assertion  # type: ignore
 
 
 def test_serve(servicer, set_env_client, server_url_env, test_dir):
@@ -448,6 +448,36 @@ def test_volume_get(servicer, set_env_client):
             assert f.read() == file_contents
 
 
+def test_volume_put_force(servicer, set_env_client):
+    vol_name = "my-test-vol"
+    _run(["volume", "create", vol_name])
+    file_path = "test.txt"
+    file_contents = b"foo bar baz"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        upload_path = os.path.join(tmpdir, "upload.txt")
+        with open(upload_path, "wb") as f:
+            f.write(file_contents)
+            f.flush()
+
+        # File upload
+        _run(["volume", "put", vol_name, upload_path, file_path])  # Seed the volume
+        with servicer.intercept() as ctx:
+            _run(["volume", "put", vol_name, upload_path, file_path], expected_exit_code=2, expected_stderr=None)
+            assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+            _run(["volume", "put", vol_name, upload_path, file_path, "--force"])
+            assert not ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+        # Dir upload
+        _run(["volume", "put", vol_name, tmpdir])  # Seed the volume
+        with servicer.intercept() as ctx:
+            _run(["volume", "put", vol_name, tmpdir], expected_exit_code=2, expected_stderr=None)
+            assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+            _run(["volume", "put", vol_name, tmpdir, "--force"])
+            assert not ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+
 def test_volume_rm(servicer, set_env_client):
     vol_name = "my-test-vol"
     _run(["volume", "create", vol_name])
@@ -552,8 +582,9 @@ def test_profile_list(servicer, server_url_env, modal_config):
     token_secret = "as-xyz"
 
     [other-profile]
-    token_id = "ak-abc"
-    token_secret = "as-xyz"
+    token_id = "ak-123"
+    token_secret = "as-789"
+    active = true
     """
 
     with modal_config(config):
@@ -569,3 +600,20 @@ def test_profile_list(servicer, server_url_env, modal_config):
         assert json_data[0]["workspace"] == "test-username"
         assert json_data[1]["name"] == "other-profile"
         assert json_data[1]["workspace"] == "test-username"
+
+        orig_env_token_id = os.environ.get("MODAL_TOKEN_ID")
+        orig_env_token_secret = os.environ.get("MODAL_TOKEN_SECRET")
+        os.environ["MODAL_TOKEN_ID"] = "ak-abc"
+        os.environ["MODAL_TOKEN_SECRET"] = "as-xyz"
+        try:
+            res = _run(["profile", "list"])
+            assert "Using test-username workspace based on environment variables" in res.stdout
+        finally:
+            if orig_env_token_id:
+                os.environ["MODAL_TOKEN_ID"] = orig_env_token_id
+            else:
+                del os.environ["MODAL_TOKEN_ID"]
+            if orig_env_token_secret:
+                os.environ["MODAL_TOKEN_SECRET"] = orig_env_token_secret
+            else:
+                del os.environ["MODAL_TOKEN_SECRET"]

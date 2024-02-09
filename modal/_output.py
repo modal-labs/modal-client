@@ -33,7 +33,7 @@ from rich.text import Text
 from modal_proto import api_pb2
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
-from ._container_exec import connect_to_exec
+from ._container_exec import handle_exec_input
 from .client import _Client
 from .config import logger
 
@@ -378,9 +378,17 @@ class OutputManager:
             self._status_spinner_live.stop()
 
 
+async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: asyncio.Event):
+    """
+    Streams stdin to the given exec id until finish_event is triggered
+    """
+    async with handle_exec_input(client, exec_id, use_raw_terminal=True):
+        await finish_event.wait()
+
+
 async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputManager):
     last_log_batch_entry_id = ""
-    is_pty_shell_active = False
+    pty_shell_finish_event: Optional[asyncio.Event] = None
 
     async def _put_log(log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
         if log.task_state:
@@ -404,7 +412,7 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
             await output_mgr.put_log_content(log)
 
     async def _get_logs():
-        nonlocal last_log_batch_entry_id, is_pty_shell_active
+        nonlocal last_log_batch_entry_id, pty_shell_finish_event
 
         request = api_pb2.AppGetLogsRequest(
             app_id=app_id,
@@ -429,14 +437,14 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
                 # statically and dynamically built images.
                 pass
             elif log_batch.pty_exec_id:
-                is_pty_shell_active = True
-                output_mgr.hide_status_spinner()
-                console = Console()
-                connecting_status = console.status("Connecting to PTY shell...")
-                connecting_status.start()
-                await connect_to_exec(log_batch.pty_exec_id, tty=True, connecting_status=connecting_status)
-
-            elif not is_pty_shell_active:
+                if pty_shell_finish_event:
+                    print("ERROR: concurrent PTY shells are not supported.")
+                else:
+                    output_mgr.hide_status_spinner()
+                    output_mgr._visible_progress = False
+                    pty_shell_finish_event = asyncio.Event()
+                    asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
+            else:
                 for log in log_batch.items:
                     await _put_log(log_batch, log)
 
@@ -469,5 +477,8 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
 
         if last_log_batch_entry_id is None:
             break
+
+    if pty_shell_finish_event:
+        pty_shell_finish_event.set()
 
     logger.debug("Logging exited gracefully")

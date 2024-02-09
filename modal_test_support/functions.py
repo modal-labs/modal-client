@@ -5,7 +5,18 @@ import asyncio
 import time
 from datetime import date
 
-from modal import Image, Stub, Volume, asgi_app, current_function_call_id, current_input_id, method, web_endpoint
+from modal import (
+    Image,
+    Stub,
+    Volume,
+    asgi_app,
+    build,
+    current_function_call_id,
+    current_input_id,
+    enter,
+    method,
+    web_endpoint,
+)
 from modal.exception import deprecation_warning
 
 SLEEP_DELAY = 0.1
@@ -16,6 +27,11 @@ stub = Stub()
 @stub.function()
 def square(x):
     return x * x
+
+
+@stub.function()
+def ident(x):
+    return x
 
 
 @stub.function()
@@ -234,3 +250,27 @@ def check_dep_hydration(x):
     assert other_image.is_hydrated
     assert volume.is_hydrated
     assert other_volume.is_hydrated
+
+
+@stub.cls()
+class BuildCls:
+    def __init__(self):
+        self._k = 1
+
+    @enter()
+    def enter(self):
+        self._k += 10
+
+    @build()
+    def build1(self):
+        self._k += 100
+        return self._k
+
+    @build()
+    def build2(self):
+        self._k += 1000
+        return self._k
+
+    @method()
+    def f(self, x):
+        return self._k * x

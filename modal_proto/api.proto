@@ -96,6 +96,7 @@ enum DataFormat {
   DATA_FORMAT_UNSPECIFIED = 0; // Equivalent to PICKLE in client version 0.52 and earlier.
   DATA_FORMAT_PICKLE = 1; // Cloudpickle
   DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
+  DATA_FORMAT_GENERATOR_DONE = 3; // "GeneratorDone" protobuf message
 }
 
 enum DeploymentNamespace {
@@ -545,6 +546,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   bytes serialized_params = 10;
   string runtime = 11;
   string environment_name = 13;
+  optional string checkpoint_id = 14;
 }
 
 message ContainerHeartbeatRequest {
@@ -552,7 +554,9 @@ message ContainerHeartbeatRequest {
   double current_input_started_at = 2;
 }
 
-message ContainerCheckpointRequest {}
+message ContainerCheckpointRequest {
+  string checkpoint_id = 1;
+}
 
 message ContainerExecRequest {
   string task_id = 1;
@@ -820,6 +824,10 @@ message Function {
   repeated ObjectDependency object_dependencies = 43;
 
   bool block_network = 44;
+
+  uint32 max_inputs = 46;
+  
+  repeated S3Mount s3_mounts = 47;
 }
 
 message FunctionHandleMetadata {
@@ -925,7 +933,7 @@ message FunctionGetOutputsItem {
   GenericResult result = 1;
   int32 idx = 2;
   string input_id = 3;
-  int32 gen_index = 4;
+  int32 gen_index = 4;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 5; // for result.data_oneof
 }
 
@@ -998,7 +1006,7 @@ message FunctionPutOutputsItem {
   GenericResult result = 2;
   double input_started_at = 3;
   double output_created_at = 4;
-  int32 gen_index = 6; // ordering for generator outputs
+  int32 gen_index = 6;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 7; // for result.data_oneof
 }
 
@@ -1078,6 +1086,10 @@ message FunctionStats {
   uint32 num_total_tasks = 3;
 }
 
+message GeneratorDone {  // Sent as the output when a generator finishes running.
+  uint64 items_total = 1;
+}
+
 message GenericResult {  // Used for both tasks and function outputs
   enum GenericStatus {
     GENERIC_STATUS_UNSPECIFIED = 0;
@@ -1086,16 +1098,22 @@ message GenericResult {  // Used for both tasks and function outputs
     // Used when a task was killed using an external signal.
     GENERIC_STATUS_TERMINATED = 3;
     GENERIC_STATUS_TIMEOUT = 4;
+    // Used when the user's function fails to initialize (ex. S3 mount failed due to invalid credentials).
+    // Terminates the function and all remaining inputs.
+    GENERIC_STATUS_INIT_FAILURE = 5;
   }
 
-  GenericStatus status = 1;
-  string exception = 2;
-  int32 exitcode = 3;
-  string traceback = 4;
+  GenericStatus status = 1; // Status of the task or function output.
+  string exception = 2;  // Exception message for failures, if available. (?)
+  int32 exitcode = 3;  // Status code of the container entrypoint or builder process if it terminates unexpectedly.
+
+  string traceback = 4;  // String value of the Python traceback. (?)
+  bytes serialized_tb = 11; // Pickled traceback object. (?)
+  bytes tb_line_cache = 12; // Pickled line cache for traceback object. (?)
 
   oneof data_oneof {
-    bytes data = 5;
-    string data_blob_id = 10;
+    bytes data = 5; // Inline data of the result.
+    string data_blob_id = 10; // Blob ID for large data.
   }
 
   enum GeneratorStatus {
@@ -1103,12 +1121,9 @@ message GenericResult {  // Used for both tasks and function outputs
     GENERATOR_STATUS_INCOMPLETE = 1;
     GENERATOR_STATUS_COMPLETE = 2;
   }
-  GeneratorStatus gen_status = 7;
+  GeneratorStatus gen_status = 7;  // Deprecated, only used in client version <0.57
 
-  bytes serialized_tb = 11;
-  bytes tb_line_cache = 12;
-
-  string propagation_reason = 13;
+  string propagation_reason = 13; // (?)
 }
 
 message GPUConfig {
@@ -1280,6 +1295,17 @@ message QueueCreateResponse {
   string queue_id = 1;
 }
 
+message QueueGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;
+}
+
+message QueueGetOrCreateResponse {
+  string queue_id = 1;
+}
+
 message QueueGetRequest {
   string queue_id = 1;
   float timeout = 3;
@@ -1314,6 +1340,13 @@ message Resources {
   GPUConfig gpu_config = 4;
 }
 
+message S3Mount {
+  string bucket_name = 1;
+  string mount_path = 2;
+  string credentials_secret_id = 3;
+  bool read_only = 4;
+}
+
 message Sandbox {
   repeated string entrypoint_args = 1;
   repeated string mount_ids = 2;
@@ -1332,6 +1365,8 @@ message Sandbox {
   bool runtime_debug = 10; // For internal debugging use only.
 
   bool block_network = 11;
+
+  repeated S3Mount s3_mounts = 12;
 }
 
 message SandboxCreateRequest {
@@ -1525,6 +1560,11 @@ message SharedVolumeMount {
   bool allow_cross_region = 4;
 }
 
+
+message TaskCurrentInputsResponse {
+  repeated string input_ids = 1;
+}
+
 message TaskInfo {
   string id = 1;
   double started_at = 2;
@@ -1577,6 +1617,7 @@ message TaskStats {
   string app_description = 3;
   double started_at = 4;
 }
+
 
 message TokenFlowCreateRequest {
   string utm_source = 3;
@@ -1702,6 +1743,9 @@ message VolumePutFilesRequest {
   string volume_id = 1;
   // TODO(staffan): This is obviously unfortunately named, but provides what we need - consider renaming.
   repeated MountFile files = 2;
+  // If set to true, prevent overwriting existing files. (Note that we don't allow overwriting
+  // existing directories with uploaded files regardless.)
+  bool disallow_overwrite_existing_files = 3;
 }
 
 message VolumeRemoveFileRequest {
@@ -1854,6 +1898,7 @@ service ModalClient {
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
+  rpc QueueGetOrCreate(QueueGetOrCreateRequest) returns (QueueGetOrCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
   rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
@@ -1882,6 +1927,9 @@ service ModalClient {
   // Tasks
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
+
+  // Gets the inputs currently assigned to the requesting task, requires task metadata for auth
+  rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
 
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);

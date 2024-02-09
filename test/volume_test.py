@@ -186,6 +186,38 @@ async def test_volume_batch_upload(servicer, client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_volume_batch_upload_force(servicer, client, tmp_path):
+    stub = modal.Stub()
+    stub.vol = modal.Volume.new()
+
+    local_file_path = tmp_path / "some_file"
+    local_file_path.write_text("hello world")
+
+    local_file_path2 = tmp_path / "some_file2"
+    local_file_path2.write_text("overwritten")
+
+    with stub.run(client=client):
+        with servicer.intercept() as ctx:
+            # Seed the volume
+            with stub.vol.batch_upload() as batch:
+                batch.put_file(local_file_path, "/some_file")
+            assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+            # Attempting to overwrite the file with force=False should result in an error
+            with pytest.raises(FileExistsError):
+                with stub.vol.batch_upload(force=False) as batch:
+                    batch.put_file(local_file_path, "/some_file")
+            assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+            assert servicer.volume_files[stub.vol.object_id]["/some_file"].data == b"hello world"
+
+            # Overwriting should work with force=True
+            with stub.vol.batch_upload(force=True) as batch:
+                batch.put_file(local_file_path2, "/some_file")
+            assert not ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+            assert servicer.volume_files[stub.vol.object_id]["/some_file"].data == b"overwritten"
+
+
+@pytest.mark.asyncio
 async def test_volume_upload_removed_file(servicer, client, tmp_path):
     stub = modal.Stub()
     stub.vol = modal.Volume.new()

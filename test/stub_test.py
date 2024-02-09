@@ -8,6 +8,7 @@ from grpclib import GRPCError, Status
 
 import modal.app
 from modal import Dict, Image, Queue, Stub, web_endpoint
+from modal.config import config
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_stub
@@ -251,25 +252,6 @@ def test_set_image_on_stub_as_attribute():
     assert stub._get_default_image() == custom_img
 
 
-@pytest.mark.asyncio
-async def test_redeploy_persist(servicer, client):
-    stub = Stub(image=Image.debian_slim().pip_install("pandas"))
-    stub.function()(square)
-
-    stub.d = Dict.new()
-
-    # Deploy app
-    app = await deploy_stub.aio(stub, "my-app", client=client)
-    assert app.app_id == "ap-1"
-    assert servicer.app_objects["ap-1"]["d"] == "di-0"
-
-    stub.d = Dict.persisted("my-dict")
-    # Redeploy, make sure all ids are the same
-    app = await deploy_stub.aio(stub, "my-app", client=client)
-    assert app.app_id == "ap-1"
-    assert servicer.app_objects["ap-1"]["d"] == "di-1"
-
-
 def test_redeploy_delete_objects(servicer, client):
     # Deploy an app with objects d1 and d2
     stub = Stub()
@@ -338,14 +320,18 @@ async def test_deploy_disconnect(servicer, client):
 
 
 def test_redeploy_from_name_change(servicer, client):
+    # Deploy queue
+    modal.Queue.lookup("foo-queue", create_if_missing=True, client=client)
+
+    # Use it from stub
     stub = Stub()
     stub.q = modal.Queue.from_name("foo-queue")
     deploy_stub(stub, "my-app", client=client)
 
     # Change the object id of foo-queue
-    q_app_id = servicer.deployed_apps["foo-queue"]
-    servicer.app_single_objects[q_app_id]
-    servicer.app_single_objects[q_app_id] = "qu-baz123"
+    k = ("foo-queue", api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, config.get("environment"))
+    assert servicer.deployed_queues[k]
+    servicer.deployed_queues[k] = "qu-baz123"
 
     # Redeploy app
     # This should not fail because the object_id changed - it's a different app

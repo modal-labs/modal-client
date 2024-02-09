@@ -48,8 +48,6 @@ def _validate_python_version(version: str) -> None:
 
 def _dockerhub_python_version(python_version=None):
     if python_version is None:
-        python_version = config["image_python_version"]
-    if python_version is None:
         python_version = "%d.%d" % sys.version_info[:2]
 
     parts = python_version.split(".")
