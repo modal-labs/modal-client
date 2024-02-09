@@ -1071,7 +1071,7 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         if "secrets" in kwargs:
-            raise ValueError("Passing a list of 'secrets' is not supported; use the singular 'secret' argument.")
+            raise TypeError("Passing a list of 'secrets' is not supported; use the singular 'secret' argument.")
         image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_GCP, secret)
         return _Image.from_registry(
             tag,
@@ -1114,7 +1114,7 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         if "secrets" in kwargs:
-            raise ValueError("Passing a list of 'secrets' is not supported; use the singular 'secret' argument.")
+            raise TypeError("Passing a list of 'secrets' is not supported; use the singular 'secret' argument.")
         image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_AWS, secret)
         return _Image.from_registry(
             tag,
