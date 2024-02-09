@@ -30,8 +30,6 @@ async def container_exec(
         print("container exec is not currently supported on Windows.")
         return
 
-    client = await _Client.from_env()
-
     console = Console()
     connecting_status = console.status("Connecting...")
     connecting_status.start()
@@ -51,17 +49,17 @@ async def container_exec(
             raise NotFoundError(f"Container ID {task_id} not found")
         raise
 
-    await connect_to_exec(res.exec_id, pty, connecting_status)
+    await connect_to_exec(client, res.exec_id, pty, connecting_status)
 
 
-async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Optional[rich.status.Status] = None):
+async def connect_to_exec(
+    client: _Client, exec_id: str, pty: bool = False, connecting_status: Optional[rich.status.Status] = None
+):
     """
     Connects the current terminal to the given exec id.
 
     If connecting_status is given, this function will stop the status spinner upon connection or error.
     """
-
-    client = await _Client.from_env()
 
     def stop_connecting_status():
         if connecting_status:

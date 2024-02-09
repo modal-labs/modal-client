@@ -291,14 +291,15 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
     **kwargs will be passed into spawn_sandbox().
     """
 
+    client = await _Client.from_env()
     output_mgr = OutputManager(None, show_progress=True, status_spinner_text="Starting shell...")
 
     client = await _Client.from_env()
     async with _run_stub(_stub, environment_name=environment_name, output_mgr=output_mgr):
-        sb = await _stub.spawn_sandbox("sleep", "360000", **kwargs)
         console = Console()
         loading_status = console.status("Starting container...")
         loading_status.start()
+        sb = await _stub.spawn_sandbox("sleep", "360000", **kwargs)
 
         for _ in range(40):
             await asyncio.sleep(0.5)
