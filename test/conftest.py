@@ -27,6 +27,7 @@ import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
+import modal._serialization
 from modal import __version__, config
 from modal._serialization import serialize_data_format
 from modal.app import _ContainerApp
@@ -563,13 +564,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionPutInputs(self, stream):
         request: api_pb2.FunctionPutInputsRequest = await stream.recv_message()
         response_items = []
-        function_calls = self.client_calls.setdefault(request.function_call_id, [])
+        function_call_inputs = self.client_calls.setdefault(request.function_call_id, [])
         for item in request.inputs:
-            args, kwargs = cloudpickle.loads(item.input.args) if item.input.args else ((), {})
+            args, kwargs = modal._serialization.deserialize(item.input.args, None) if item.input.args else ((), {})
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
             response_items.append(api_pb2.FunctionPutInputsResponseItem(input_id=input_id, idx=item.idx))
-            function_calls.append(((item.idx, input_id), (args, kwargs)))
+            function_call_inputs.append(((item.idx, input_id), (args, kwargs)))
         if self.slow_put_inputs:
             await asyncio.sleep(0.001)
         await stream.send_message(api_pb2.FunctionPutInputsResponse(inputs=response_items))

@@ -8,6 +8,7 @@ import typing
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
+import modal
 from modal import Image, NetworkFileSystem, Proxy, Stub, web_endpoint
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
@@ -644,3 +645,49 @@ def test_interactive_mode():
         stub.function(image=Image.debian_slim(), interactive=True)(later_gen)
 
     stub.function(image=Image.debian_slim(), interactive=True)(interact_wit_me)
+
+
+def assert_is_wrapped_dict(some_arg):
+    assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
+    return some_arg
+
+
+def test_calls_should_not_unwrap_modal_objects(servicer, client):
+    stub = Stub()
+    stub.some_modal_object = modal.Dict.from_name("blah", create_if_missing=True)
+
+    foo = stub.function()(assert_is_wrapped_dict)
+    servicer.function_body(assert_is_wrapped_dict)
+
+    # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
+    with stub.run(client=client):
+        assert type(foo.remote(stub.some_modal_object)) == modal.Dict
+        fc = foo.spawn(stub.some_modal_object)
+        assert type(fc.get()) == modal.Dict
+        for ret in foo.map([stub.some_modal_object]):
+            assert type(ret) == modal.Dict
+        for ret in foo.starmap([[stub.some_modal_object]]):
+            assert type(ret) == modal.Dict
+        foo.for_each([stub.some_modal_object])
+
+    assert len(servicer.client_calls) == 5
+
+
+def assert_is_wrapped_dict_gen(some_arg):
+    assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
+    yield some_arg
+
+
+def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
+    stub = Stub()
+    stub.some_modal_object = modal.Dict.from_name("blah", create_if_missing=True)
+
+    foo = stub.function()(assert_is_wrapped_dict_gen)
+    servicer.function_body(assert_is_wrapped_dict_gen)
+
+    # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
+    with stub.run(client=client):
+        assert type(next(foo.remote_gen(stub.some_modal_object))) == modal.Dict
+        foo.spawn(stub.some_modal_object)  # spawn on generator returns None, but starts the generator
+
+    assert len(servicer.client_calls) == 2
