@@ -150,9 +150,6 @@ def _check_config() -> None:
         # But we want to give users time to activate one of their profiles without disruption
         message = dedent(
             """
-
-            WARNING:
-
             Support for using an implicit 'default' profile is deprecated.
             Please use `modal profile activate` to activate one of your profiles.
             (Use `modal profile list` to see the options.)
@@ -160,7 +157,7 @@ def _check_config() -> None:
             This will become an error in a future update.
             """
         )
-        deprecation_warning(date(2024, 2, 6), message)
+        deprecation_warning(date(2024, 2, 6), message, show_source=False)
 
 
 if "MODAL_ENV" in os.environ:
