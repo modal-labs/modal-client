@@ -511,7 +511,7 @@ class _FunctionIOManager:
 
     async def start_pty_shell(self) -> None:
         try:
-            await retry_transient_errors(self._client.stub.FunctionStartPtyShell, Empty())
+            await self._client.stub.FunctionStartPtyShell(Empty())
         except Exception as e:
             logger.error("Failed to start PTY shell.")
             raise e
