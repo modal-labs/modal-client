@@ -964,6 +964,7 @@ class _Image(_Object, type_prefix="im"):
             "COPY /modal_requirements.txt /modal_requirements.txt",
             "RUN python -m pip install --upgrade pip setuptools wheel",
             "RUN python -m pip install -r /modal_requirements.txt",
+            "RUN rm /modal_requirements.txt",
         ]
 
     @staticmethod
