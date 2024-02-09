@@ -280,7 +280,9 @@ class _Cls(_Object, type_prefix="cs"):
     ) -> "_Cls":
         retry_policy = _parse_retries(retries)
         if gpu or cpu or memory:
-            resources = api_pb2.Resources(cpu=cpu, memory=memory, gpu_config=parse_gpu_config(gpu))
+            milli_cpu = int(1000 * cpu) if cpu is not None else None
+            gpu_config = parse_gpu_config(gpu)
+            resources = api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory)
         else:
             resources = None
 
