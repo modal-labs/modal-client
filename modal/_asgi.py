@@ -30,8 +30,8 @@ def asgi_app_wrapper(asgi_app, function_io_manager):
                 first_message = await asyncio.wait_for(message_gen.__anext__(), 5.0)
             except asyncio.TimeoutError:
                 if scope["type"] == "http":
-                    await messages_to_app.put({"type": "http.response.start", "status": 502})
-                    await messages_to_app.put(
+                    await messages_from_app.put({"type": "http.response.start", "status": 502})
+                    await messages_from_app.put(
                         {
                             "type": "http.response.body",
                             "body": b"Missing request, possibly due to cancellation or crash",
