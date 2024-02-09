@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.57.22 (2024-02-09)
+
+- Modal client deprecation warnings are now highlighted in the CLI
+
+
+
 ### 0.57.16 (2024-02-07)
 
 - Fixes a regression in container scheduling. Users on affected versions (**0.57.5**—**0.57.15**) are encouraged to upgrade immediately.

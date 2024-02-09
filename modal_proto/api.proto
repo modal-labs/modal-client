@@ -1249,6 +1249,13 @@ message MultiPartUpload {
   string completion_url = 3;
 }
 
+message MountDeployRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  string mount_id = 4;
+}
+
 message Object {
   string object_id = 1;
   oneof handle_metadata_oneof {
@@ -1895,6 +1902,7 @@ service ModalClient {
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
   rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
+  rpc MountDeploy(MountDeployRequest) returns (google.protobuf.Empty);
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);

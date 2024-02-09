@@ -1,13 +1,17 @@
 # Copyright Modal Labs 2022
 import functools
 import traceback
+import warnings
 from typing import Any, Dict, Optional, Tuple
 
-from rich.console import RenderResult, group
+from rich.console import Console, RenderResult, group
+from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
 from rich.traceback import PathHighlighter, Stack, Traceback, install
 from tblib import Traceback as TBLibTraceback
+
+from .exception import DeprecationError
 
 TBDictType = Dict[str, Any]
 LineCacheType = Dict[Tuple[str, str], str]
@@ -206,3 +210,31 @@ def setup_rich_traceback() -> None:
     import modal_utils
 
     install(suppress=[synchronicity, modal_utils, grpclib], extra_lines=1)
+
+
+def highlight_modal_deprecation_warnings() -> None:
+    """Patch the warnings module to make client deprecation warnings more salient in the CLI."""
+    base_showwarning = warnings.showwarning
+
+    def showwarning(warning, category, filename, lineno, file=None, line=None):
+        if issubclass(category, DeprecationError):
+            content = str(warning)
+            date = content[:10]
+            message = content[11:].strip()
+            try:
+                with open(filename) as f:
+                    source = f.readlines()[lineno - 1].strip()
+                message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
+            except FileNotFoundError:
+                pass
+            panel = Panel(
+                message,
+                style="yellow",
+                title=f"Modal Deprecation Warning ({date})",
+                title_align="left",
+            )
+            Console().print(panel)
+        else:
+            base_showwarning(warning, category, filename, lineno, file=None, line=None)
+
+    warnings.showwarning = showwarning

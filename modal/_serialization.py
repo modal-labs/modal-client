@@ -87,7 +87,7 @@ def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
                 scheme=obj.get("scheme", "http"),
                 path=obj["path"],
                 query_string=obj.get("query_string"),
-                headers=flatten_headers(obj["headers"]),
+                headers=flatten_headers(obj.get("headers", [])),
                 client_host=obj["client"][0] if obj.get("client") else None,
                 client_port=obj["client"][1] if obj.get("client") else None,
             )
@@ -103,7 +103,7 @@ def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
         return api_pb2.Asgi(
             http_response_start=api_pb2.Asgi.HttpResponseStart(
                 status=obj["status"],
-                headers=flatten_headers(obj["headers"]),
+                headers=flatten_headers(obj.get("headers", [])),
                 trailers=obj.get("trailers"),
             )
         )
@@ -117,7 +117,7 @@ def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
     elif msg_type == "http.response.trailers":
         return api_pb2.Asgi(
             http_response_trailers=api_pb2.Asgi.HttpResponseTrailers(
-                headers=flatten_headers(obj["headers"]),
+                headers=flatten_headers(obj.get("headers", [])),
                 more_trailers=obj.get("more_trailers"),
             )
         )
@@ -131,7 +131,7 @@ def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
                 scheme=obj.get("scheme", "ws"),
                 path=obj["path"],
                 query_string=obj.get("query_string"),
-                headers=flatten_headers(obj["headers"]),
+                headers=flatten_headers(obj.get("headers", [])),
                 client_host=obj["client"][0] if obj.get("client") else None,
                 client_port=obj["client"][1] if obj.get("client") else None,
                 subprotocols=obj.get("subprotocols"),
