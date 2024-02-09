@@ -13,7 +13,7 @@ try:
     from .cls import Cls
     from .dict import Dict
     from .exception import Error
-    from .functions import Function, current_function_call_id, current_input_id
+    from .functions import Function, current_function_call_id, current_input_id, enable_interactivity
     from .image import Image
     from .mount import Mount, create_package_mounts
     from .network_file_system import NetworkFileSystem
@@ -72,4 +72,5 @@ __all__ = [
     "method",
     "web_endpoint",
     "wsgi_app",
+    "enable_interactivity",
 ]

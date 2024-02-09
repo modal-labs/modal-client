@@ -195,6 +195,7 @@ _SETTINGS = {
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
     "worker_id": _Setting(),  # For internal debugging use.
     "restore_state_path": _Setting("/__modal/restore-state.json"),
+    "interactive_functions": _Setting(False),
 }
 
 

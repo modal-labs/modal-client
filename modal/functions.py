@@ -30,6 +30,7 @@ from typing import (
 )
 
 from aiostream import pipe, stream
+from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
@@ -582,7 +583,6 @@ class _Function(_Object, type_prefix="fu"):
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,
-        interactive: bool = False,
         cloud: Optional[str] = None,
         is_builder_function: bool = False,
         cls: Optional[type] = None,
@@ -665,12 +665,6 @@ class _Function(_Object, type_prefix="fu"):
                 )
                 image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
-        if interactive and concurrency_limit and concurrency_limit > 1:
-            warnings.warn(
-                "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
-            )
-            concurrency_limit = 1
-
         if keep_warm is not None:
             assert isinstance(keep_warm, int)
 
@@ -703,6 +697,8 @@ class _Function(_Object, type_prefix="fu"):
         # Validate image
         if image is not None and not isinstance(image, _Image):
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
+
+        interactive = config.get("interactive_functions") and not is_builder_function
 
         def _deps(only_explicit_mounts=False) -> List[_Object]:
             deps: List[_Object] = list(secrets)
@@ -1511,3 +1507,32 @@ def _set_current_context_ids(input_id: str, function_call_id: str) -> Callable[[
         _current_function_call_id.reset(function_call_token)
 
     return _reset_current_context_ids
+
+
+# todo(nathan): is there a better place to store this?
+_IS_INTERACTIVITY_ENABLED = False
+
+
+async def _enable_interactivity(client: Optional[_Client] = None) -> None:
+    global _IS_INTERACTIVITY_ENABLED
+    if _IS_INTERACTIVITY_ENABLED:
+        # Currently, interactivity is enabled forever
+        return
+    _IS_INTERACTIVITY_ENABLED = True
+
+    if not client:
+        client = await _Client.from_env()
+
+    if client.client_type != api_pb2.CLIENT_TYPE_CONTAINER:
+        raise InvalidError("Interactivity only works inside a Modal Container.")
+
+    # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here
+    # todo(nathan): check if function interactivity is enabled
+    try:
+        await client.stub.FunctionStartPtyShell(Empty())
+    except Exception as e:
+        logger.error("Failed to start PTY shell.")
+        raise e
+
+
+enable_interactivity = synchronize_api(_enable_interactivity)

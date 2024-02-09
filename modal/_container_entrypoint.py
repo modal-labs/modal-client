@@ -19,7 +19,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Type
 
-from google.protobuf.empty_pb2 import Empty
 from grpclib import Status
 
 from modal.stub import _Stub
@@ -44,7 +43,7 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
 from .exception import InvalidError
-from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
+from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data, enable_interactivity
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 
 if TYPE_CHECKING:
@@ -509,13 +508,6 @@ class _FunctionIOManager:
             else:
                 logger.debug(f"modal.Volume background commit success for {volume_id}.")
 
-    async def start_pty_shell(self) -> None:
-        try:
-            await self._client.stub.FunctionStartPtyShell(Empty())
-        except Exception as e:
-            logger.error("Failed to start PTY shell.")
-            raise e
-
 
 FunctionIOManager = synchronize_api(_FunctionIOManager)
 
@@ -867,10 +859,16 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         if container_args.function_def.is_checkpointing_function:
             function_io_manager.checkpoint()
 
-        pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
-        if pty_info.pty_type or pty_info.enabled:
-            # This is an interactive function: Immediately start a PTY shell
-            function_io_manager.start_pty_shell()
+        if container_args.function_def.pty_info:
+            # Interactive function
+            def breakpoint_wrapper():
+                # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
+                enable_interactivity()
+                import pdb
+
+                pdb.set_trace()
+
+            sys.breakpointhook = breakpoint_wrapper
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)
