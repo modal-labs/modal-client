@@ -376,14 +376,9 @@ def shell(
         assert isinstance(function, Function)
         function_env: FunctionEnv = function.env
         if any(isinstance(v, _Volume) for v in function_env.volumes.values()):
-            if function_env.allow_background_volume_commits:
-                print(
-                    "Warning: allow_background_volume_commits with `modal shell` is still in beta. Please verify that any changes to volumes have committed successfully (ex. by launching another shell and checking that all modified files are there) before exiting."
-                )
-            else:
-                print(
-                    "Warning: changes to volumes in `modal shell` will not persist after exiting. Use _allow_background_volume_commits=True to persist changes."
-                )
+            print(
+                "Warning: please verify that any changes to volumes have committed successfully (ex. by launching another shell and checking that all modified files are there) before exiting."
+            )
         start_shell = partial(
             interactive_shell,
             image=function_env.image,
@@ -395,7 +390,7 @@ def shell(
             cpu=function_env.cpu,
             memory=function_env.memory,
             volumes=function_env.volumes,
-            _allow_background_volume_commits=function_env.allow_background_volume_commits,
+            _allow_background_volume_commits=True,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
