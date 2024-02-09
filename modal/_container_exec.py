@@ -9,6 +9,7 @@ import sys
 from typing import List, Optional
 
 import rich
+import rich.status
 import typer
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -46,22 +47,39 @@ async def container_exec(task_id: str, command: List[str], *, pty: bool, client:
             raise typer.Exit(code=1)
         raise
 
+    await connect_to_exec(res.exec_id, pty, connecting_status)
+
+
+async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Optional[rich.status.Status] = None):
+    """
+    Connects the current terminal to the given exec id.
+
+    If connecting_status is given, this function will stop the status spinner upon connection or error.
+    """
+
+    client = await _Client.from_env()
+
+    def stop_connecting_status():
+        if connecting_status:
+            connecting_status.stop()
+
     on_connect = asyncio.Event()
     async with TaskContext() as tc:
-        exec_output_task = tc.create_task(handle_exec_output(client, res.exec_id, on_connect=on_connect))
+        exec_output_task = tc.create_task(handle_exec_output(client, exec_id, on_connect=on_connect))
         try:
             # time out if we can't connect to the server fast enough
             await asyncio.wait_for(on_connect.wait(), timeout=15)
-            connecting_status.stop()
+            stop_connecting_status()
 
-            async with handle_exec_input(client, res.exec_id, use_raw_terminal=pty):
+            async with handle_exec_input(client, exec_id, use_raw_terminal=pty):
                 exit_status = await exec_output_task
 
             if exit_status != 0:
                 rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
                 raise typer.Exit(code=1)
+
         except (asyncio.TimeoutError, TimeoutError):
-            connecting_status.stop()
+            stop_connecting_status()
             rich.print("Failed to establish connection to process", file=sys.stderr)
             exec_output_task.cancel()
             raise typer.Exit(code=1)

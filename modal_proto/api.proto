@@ -1604,6 +1604,7 @@ message TaskLogsBatch {
   string input_id = 12;
   string image_id = 13;  // Used for image logs
   bool eof = 14;
+  string pty_exec_id = 15;  // Used for interactive functions
 }
 
 message TaskProgress {
@@ -1890,6 +1891,9 @@ service ModalClient {
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallPutDataOut(FunctionCallPutDataRequest) returns (google.protobuf.Empty);
+
+  // Interactive functions
+  rpc FunctionStartPtyShell(google.protobuf.Empty) returns (google.protobuf.Empty);
 
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);

@@ -2,7 +2,6 @@
 import inspect
 import os
 import typing
-import warnings
 from datetime import date
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
@@ -30,7 +29,6 @@ from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .partial_function import PartialFunction, _PartialFunction
 from .proxy import _Proxy
-from .queue import _Queue
 from .retries import Retries
 from .runner import _run_stub
 from .s3mount import _S3Mount
@@ -319,18 +317,6 @@ class _Stub:
         else:
             return _default_image
 
-    @property
-    def _pty_input_stream(self):
-        return self._indexed_objects.get("_pty_input_stream", None)
-
-    def _add_pty_input_stream(self):
-        if self._pty_input_stream:
-            warnings.warn(
-                "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
-            )
-        else:
-            self._indexed_objects["_pty_input_stream"] = _Queue.new()
-
     def _get_watch_mounts(self):
         all_mounts = [
             *self._mounts,
@@ -533,9 +519,6 @@ class _Stub:
 
             if is_generator is None:
                 is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
-
-            if interactive:
-                self._add_pty_input_stream()
 
             function = _Function.from_args(
                 info,
