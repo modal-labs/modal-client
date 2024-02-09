@@ -260,7 +260,7 @@ def test_ecr_install(servicer, client):
         image=Image.from_aws_ecr(
             image_tag,
             setup_dockerfile_commands=["RUN apt-get update"],
-            secrets=[Secret.from_dict({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""})],
+            secret=Secret.from_dict({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""}),
         )
     )
 
