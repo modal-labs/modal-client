@@ -159,7 +159,7 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
         )
 
 
-async def _create_input(args, kwargs, client, idx=None, final_input=False) -> api_pb2.FunctionPutInputsItem:
+async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
     """
@@ -170,16 +170,12 @@ async def _create_input(args, kwargs, client, idx=None, final_input=False) -> ap
         args_blob_id = await blob_upload(args_serialized, client.stub)
 
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(
-                args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE, final_input=final_input
-            ),
+            input=api_pb2.FunctionInput(args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE),
             idx=idx,
         )
     else:
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(
-                args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE, final_input=final_input
-            ),
+            input=api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE),
             idx=idx,
         )
 
@@ -248,7 +244,7 @@ class _Invocation:
 
         function_call_id = response.function_call_id
 
-        item = await _create_input(args, kwargs, client, final_input=True)
+        item = await _create_input(args, kwargs, client)
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
         )

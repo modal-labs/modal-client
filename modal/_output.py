@@ -479,6 +479,7 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
             break
 
     if pty_shell_finish_event:
+        print("\r", end="")  # move cursor to beginning of line
         pty_shell_finish_event.set()
 
     logger.debug("Logging exited gracefully")
