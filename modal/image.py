@@ -962,12 +962,8 @@ class _Image(_Object, type_prefix="im"):
             *add_python_commands,
             *setup_dockerfile_commands,
             "COPY /modal_requirements.txt /modal_requirements.txt",
-            "RUN python -m pip install --upgrade pip",
+            "RUN python -m pip install --upgrade pip setuptools wheel",
             "RUN python -m pip install -r /modal_requirements.txt",
-            # TODO: We should add this next line at some point to clean up the image, but it would
-            # trigger a hash change, so batch it with the next rebuild-triggering change.
-            #
-            # "RUN rm /modal_requirements.txt",
         ]
 
     @staticmethod
