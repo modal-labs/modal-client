@@ -13,13 +13,14 @@ import typer
 from rich.console import Console
 from typing_extensions import TypedDict
 
+from modal.volume import _Volume
+
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError
 from ..functions import Function, FunctionEnv
 from ..image import Image
 from ..runner import deploy_stub, interactive_shell, run_stub
-from ..s3mount import _S3Mount
 from ..serving import serve_stub
 from ..stub import LocalEntrypoint, Stub
 from .import_refs import import_function, import_stub
@@ -374,7 +375,13 @@ def shell(
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
         assert isinstance(function, Function)
         function_env: FunctionEnv = function.env
-        s3_mounts = {k: v for k, v in function_env.volumes.items() if isinstance(v, _S3Mount)}
+        if any(isinstance(v, _Volume) for v in function_env.volumes):
+            if function_env._allow_background_volume_commits:
+                print(
+                    "Warning: _allow_background_volume_commits with `modal shell` is still in beta. Changes in mounted volumes may not persist after exit."
+                )
+            else:
+                print("Warning: changes to volumes in `modal shell` will not persist after exit.")
         start_shell = partial(
             interactive_shell,
             image=function_env.image,
@@ -385,7 +392,8 @@ def shell(
             cloud=function_env.cloud,
             cpu=function_env.cpu,
             memory=function_env.memory,
-            volumes=s3_mounts,  # currently, sandboxes only support s3 mounts
+            volumes=function_env.volumes,
+            _allow_background_volume_commits=function_env.allow_background_volume_commits,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
