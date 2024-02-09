@@ -396,7 +396,7 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
             print("\r", end="")  # move cursor to beginning of line
             pty_shell_finish_event.set()
             pty_shell_finish_event = None
-            await asyncio.sleep(0)
+            await asyncio.sleep(0)  # yield to handle_exec_input() so it can disable raw terminal
 
     async def _put_log(log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
         if log.task_state:
