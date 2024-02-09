@@ -41,7 +41,7 @@ class _S3Mount:
     # Credentials used to access the S3 bucket.
     # The given secret can contain AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
     # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY can be omitted if the bucket is publicly accessible.
-    secret: Optional[_Secret]
+    secret: Optional[_Secret] = None
 
     read_only: bool = False
 
