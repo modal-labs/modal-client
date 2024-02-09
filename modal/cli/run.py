@@ -375,10 +375,10 @@ def shell(
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
         assert isinstance(function, Function)
         function_env: FunctionEnv = function.env
-        if any(isinstance(v, _Volume) for v in function_env.volumes):
-            if function_env._allow_background_volume_commits:
+        if any(isinstance(v, _Volume) for v in function_env.volumes.values()):
+            if function_env.allow_background_volume_commits:
                 print(
-                    "Warning: _allow_background_volume_commits with `modal shell` is still in beta. Changes in mounted volumes may not persist after exit."
+                    "Warning: allow_background_volume_commits with `modal shell` is still in beta. Please verify that any modifications you make to mounted volumes have successfully been committed before exiting."
                 )
             else:
                 print("Warning: changes to volumes in `modal shell` will not persist after exit.")
