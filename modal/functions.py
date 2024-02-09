@@ -533,6 +533,7 @@ class FunctionEnv:
     secrets: Sequence[_Secret]
     network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
     volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]]
+    allow_background_volume_commits: bool
     gpu: GPU_T
     cloud: Optional[str]
     cpu: Optional[float]
@@ -641,6 +642,7 @@ class _Function(_Object, type_prefix="fu"):
             gpu=gpu,
             network_file_systems=network_file_systems,
             volumes=volumes,
+            allow_background_volume_commits=allow_background_volume_commits,
             image=image,
             cloud=cloud,
             cpu=cpu,

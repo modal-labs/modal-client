@@ -675,9 +675,8 @@ class _Stub:
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         block_network: bool = False,  # Whether to block network access
-        volumes: Dict[
-            Union[str, os.PathLike], _S3Mount
-        ] = {},  # Volumes to mount in the sandbox. Currently, only S3 mounts are supported in sandboxes.
+        volumes: Dict[Union[str, os.PathLike], _S3Mount] = {},  # Volumes to mount in the sandbox.
+        _allow_background_volume_commits: bool = False,
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -715,6 +714,7 @@ class _Stub:
             network_file_systems=network_file_systems,
             block_network=block_network,
             volumes=volumes,
+            allow_background_volume_commits=_allow_background_volume_commits,
         )
         await resolver.load(obj)
         return obj
