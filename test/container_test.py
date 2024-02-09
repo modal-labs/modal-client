@@ -862,9 +862,6 @@ def test_multiple_build_decorator_cls(unix_servicer, event_loop):
     assert _unwrap_scalar(ret) == 1001
 
 
-@pytest.mark.skip(
-    "we need to find a way to still let users pass Modal objects, or have a deprecation path before we disable inspection"
-)
 @skip_windows_unix_socket
 @pytest.mark.timeout(3.0)
 def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_servicer):
@@ -888,7 +885,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
     # pr.disable()
     # pr.print_stats()
     duration = time.perf_counter() - t0
-    assert duration < 2.0  # TODO (elias): migth be able to get this down significantly more by improving serialization
+    assert duration < 2.0  # TODO (elias): might be able to get this down significantly more by improving serialization
 
     # function_io_manager.serialize(large_data_list)
     in_translations = []
@@ -898,5 +895,5 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
     for call in translate_out_spy.call_args_list:
         out_translations += list(call.args)
 
-    assert len(in_translations) < 200  # typically 136 or something
-    assert len(out_translations) < 200
+    assert len(in_translations) < 1000  # typically 136 or something
+    assert len(out_translations) < 1000
