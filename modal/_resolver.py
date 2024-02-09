@@ -57,7 +57,6 @@ class Resolver:
         output_mgr=None,
         environment_name: Optional[str] = None,
         app_id: Optional[str] = None,
-        shell: Optional[bool] = False,
     ):
         from rich.tree import Tree
 
@@ -69,7 +68,6 @@ class Resolver:
         self._client = client
         self._app_id = app_id
         self._environment_name = environment_name
-        self._shell = shell
 
     @property
     def app_id(self) -> str:
@@ -84,10 +82,6 @@ class Resolver:
     @property
     def environment_name(self):
         return self._environment_name
-
-    @property
-    def shell(self):
-        return self._shell
 
     async def preload(self, obj, existing_object_id: Optional[str]):
         if obj._preload is not None:

@@ -603,12 +603,6 @@ class _Function(_Object, type_prefix="fu"):
                     f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
                 )
 
-        # TODO: remove when MOD-2043 is addressed and async debugging works.
-        if interactive and is_async(info.raw_f):
-            raise InvalidError("Interactive mode not supported for async functions")
-        elif interactive and is_generator:
-            raise InvalidError("Interactive mode not supported for generator functions")
-
         if secret is not None:
             deprecation_warning(
                 date(2024, 1, 31),
@@ -769,10 +763,7 @@ class _Function(_Object, type_prefix="fu"):
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
             timeout_secs = timeout
-            if resolver.shell and not is_builder_function:
-                timeout_secs = 86400
-                pty_info = _pty.get_pty_info(shell=True)
-            elif interactive:
+            if interactive:
                 assert not is_builder_function, "builder functions do not support interactive usage"
                 pty_info = _pty.get_pty_info(shell=False)
             else:

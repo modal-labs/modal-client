@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Type
 
+from google.protobuf.empty_pb2 import Empty
 from grpclib import Status
 
 from modal.stub import _Stub
@@ -35,7 +36,6 @@ from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function
 from ._proxy_tunnel import proxy_tunnel
-from ._pty import exec_cmd, run_in_pty
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
@@ -509,6 +509,13 @@ class _FunctionIOManager:
             else:
                 logger.debug(f"modal.Volume background commit success for {volume_id}.")
 
+    async def start_pty_shell(self) -> None:
+        try:
+            await self._client.stub.FunctionStartPtyShell(Empty())
+        except Exception as e:
+            logger.error("Failed to start PTY shell.")
+            raise e
+
 
 FunctionIOManager = synchronize_api(_FunctionIOManager)
 
@@ -706,9 +713,7 @@ def import_function(
     active_stub: Optional[_Stub] = None
     pty_info: api_pb2.PTYInfo = function_def.pty_info
 
-    if pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-        fun = exec_cmd
-    elif ser_fun is not None:
+    if ser_fun is not None:
         # This is a serialized function we already fetched from the server
         cls, fun = ser_cls, ser_fun
     else:
@@ -864,10 +869,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
         if pty_info.pty_type or pty_info.enabled:
-            # TODO(erikbern): the second condition is for legacy compatibility, remove soon
-            # TODO(erikbern): there is no client test for this branch
-            input_stream = container_app._get_pty()
-            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream, pty_info)
+            # This is an interactive function: Immediately start a PTY shell
+            function_io_manager.start_pty_shell()
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)
