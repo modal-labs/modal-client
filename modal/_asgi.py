@@ -37,14 +37,16 @@ def asgi_app_wrapper(asgi_app, function_io_manager):
                             "body": b"Missing request, possibly due to cancellation or crash",
                         }
                     )
+                    await messages_to_app.put({"type": "http.disconnect"})
                 elif scope["type"] == "websocket":
-                    await messages_to_app.put(
+                    await messages_from_app.put(
                         {
                             "type": "websocket.close",
                             "code": 1011,
                             "reason": "Missing request, possibly due to cancellation or crash",
                         }
                     )
+                    await messages_to_app.put({"type": "websocket.disconnect"})
                 return
 
             await messages_to_app.put(first_message)
