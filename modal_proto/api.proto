@@ -1560,6 +1560,11 @@ message SharedVolumeMount {
   bool allow_cross_region = 4;
 }
 
+
+message TaskCurrentInputsResponse {
+  repeated string input_ids = 1;
+}
+
 message TaskInfo {
   string id = 1;
   double started_at = 2;
@@ -1611,6 +1616,7 @@ message TaskStats {
   string app_description = 3;
   double started_at = 4;
 }
+
 
 message TokenFlowCreateRequest {
   string utm_source = 3;
@@ -1917,6 +1923,9 @@ service ModalClient {
   // Tasks
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
+
+  // Gets the inputs currently assigned to the requesting task, requires task metadata for auth
+  rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
 
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
