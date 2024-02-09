@@ -390,10 +390,13 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
     last_log_batch_entry_id = ""
     pty_shell_finish_event: Optional[asyncio.Event] = None
 
-    def stop_pty_shell():
+    async def stop_pty_shell():
+        nonlocal pty_shell_finish_event
         if pty_shell_finish_event:
             print("\r", end="")  # move cursor to beginning of line
             pty_shell_finish_event.set()
+            pty_shell_finish_event = None
+            await asyncio.sleep(0)
 
     async def _put_log(log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
         if log.task_state:
@@ -454,7 +457,7 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
                     await _put_log(log_batch, log)
 
             if log_batch.eof:
-                stop_pty_shell()
+                await stop_pty_shell()
 
         output_mgr.flush_lines()
 
@@ -486,6 +489,6 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
         if last_log_batch_entry_id is None:
             break
 
-    stop_pty_shell()
+    await stop_pty_shell()
 
     logger.debug("Logging exited gracefully")
