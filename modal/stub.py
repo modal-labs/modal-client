@@ -477,7 +477,7 @@ class _Stub:
             raise InvalidError("`image` needs to be a keyword argument: `@stub.function(image=image)`.")
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.function()`.")
-        
+
         if interactive:
             # todo(nathan): should we add a migration message here?
             raise InvalidError("interactive is now deprecated.")
