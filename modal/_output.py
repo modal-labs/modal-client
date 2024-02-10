@@ -389,6 +389,7 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
 async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputManager):
     last_log_batch_entry_id = ""
     pty_shell_finish_event: Optional[asyncio.Event] = None
+    pty_shell_task_id: Optional[str] = None
 
     async def stop_pty_shell():
         nonlocal pty_shell_finish_event
@@ -420,7 +421,7 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
             await output_mgr.put_log_content(log)
 
     async def _get_logs():
-        nonlocal last_log_batch_entry_id, pty_shell_finish_event
+        nonlocal last_log_batch_entry_id, pty_shell_finish_event, pty_shell_task_id
 
         request = api_pb2.AppGetLogsRequest(
             app_id=app_id,
@@ -448,15 +449,17 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
                 if pty_shell_finish_event:
                     print("ERROR: concurrent PTY shells are not supported.")
                 else:
+                    output_mgr.flush_lines()
                     output_mgr.hide_status_spinner()
                     output_mgr._visible_progress = False
                     pty_shell_finish_event = asyncio.Event()
+                    pty_shell_task_id = log_batch.task_id
                     asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
             else:
                 for log in log_batch.items:
                     await _put_log(log_batch, log)
 
-            if log_batch.eof:
+            if log_batch.eof and log_batch.task_id == pty_shell_task_id:
                 await stop_pty_shell()
 
         output_mgr.flush_lines()
