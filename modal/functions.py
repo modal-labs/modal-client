@@ -30,7 +30,6 @@ from typing import (
 )
 
 from aiostream import pipe, stream
-from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
@@ -1507,32 +1506,3 @@ def _set_current_context_ids(input_id: str, function_call_id: str) -> Callable[[
         _current_function_call_id.reset(function_call_token)
 
     return _reset_current_context_ids
-
-
-# todo(nathan): is there a better place to store this?
-_IS_INTERACTIVITY_ENABLED = False
-
-
-async def _enable_interactivity(client: Optional[_Client] = None) -> None:
-    global _IS_INTERACTIVITY_ENABLED
-    if _IS_INTERACTIVITY_ENABLED:
-        # Currently, interactivity is enabled forever
-        return
-    _IS_INTERACTIVITY_ENABLED = True
-
-    if not client:
-        client = await _Client.from_env()
-
-    if client.client_type != api_pb2.CLIENT_TYPE_CONTAINER:
-        raise InvalidError("Interactivity only works inside a Modal Container.")
-
-    # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here
-    # todo(nathan): check if function interactivity is enabled
-    try:
-        await client.stub.FunctionStartPtyShell(Empty())
-    except Exception as e:
-        logger.error("Failed to start PTY shell.")
-        raise e
-
-
-enable_interactivity = synchronize_api(_enable_interactivity)

@@ -8,12 +8,12 @@ from modal_version import __version__
 
 try:
     from ._tunnel import Tunnel, forward
-    from .app import container_app, is_local
+    from .app import container_app, enable_interactivity, is_local
     from .client import Client
     from .cls import Cls
     from .dict import Dict
     from .exception import Error
-    from .functions import Function, current_function_call_id, current_input_id, enable_interactivity
+    from .functions import Function, current_function_call_id, current_input_id
     from .image import Image
     from .mount import Mount, create_package_mounts
     from .network_file_system import NetworkFileSystem

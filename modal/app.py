@@ -2,6 +2,7 @@
 from datetime import date
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
+from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
@@ -17,12 +18,9 @@ from .exception import ExecutionError, InvalidError, deprecation_error
 from .object import _Object
 
 if TYPE_CHECKING:
-    from rich.tree import Tree
-
     from .functions import _Function
 
 else:
-    Tree = TypeVar("Tree")
     _Function = TypeVar("_Function")
 
 
@@ -243,6 +241,9 @@ class _ContainerApp:
     _tag_to_object_id: Dict[str, str]
     _object_handle_metadata: Dict[str, Optional[Message]]
     _stub_name: Optional[str]
+    # if true, there's an active PTY shell session connected to this process.
+    _is_interactivity_enabled: bool
+    _function_def: Optional[api_pb2.Function]
 
     def __init__(self):
         self._client = None
@@ -252,6 +253,7 @@ class _ContainerApp:
         self._environment_name = None
         self._tag_to_object_id = {}
         self._object_handle_metadata = {}
+        self._is_interactivity_enabled = False
 
     @property
     def client(self) -> Optional[_Client]:
@@ -315,7 +317,14 @@ class _ContainerApp:
             metadata: Message = self._object_handle_metadata[object_id]
             obj._hydrate(object_id, self._client, metadata)
 
-    async def init(self, client: _Client, app_id: str, stub_name: str = "", environment_name: str = ""):
+    async def init(
+        self,
+        client: _Client,
+        app_id: str,
+        stub_name: str = "",
+        environment_name: str = "",
+        function_def: Optional[api_pb2.Function] = None,
+    ):
         """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
         global _is_container_app
         _is_container_app = True
@@ -324,6 +333,7 @@ class _ContainerApp:
         self._app_id = app_id
         self._stub_name = stub_name
         self._environment_name = environment_name
+        self._function_def = function_def
         self._tag_to_object_id = {}
         self._object_handle_metadata = {}
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, include_unindexed=True)
@@ -357,6 +367,41 @@ _is_container_app = False
 _container_app = _ContainerApp()
 container_app = synchronize_api(_container_app)
 assert isinstance(container_app, ContainerApp)
+
+
+async def _enable_interactivity(client: Optional[_Client] = None) -> None:
+    if _container_app._is_interactivity_enabled:
+        # Currently, interactivity is enabled forever
+        return
+    _container_app._is_interactivity_enabled = True
+
+    if not client:
+        client = await _Client.from_env()
+
+    if client.client_type != api_pb2.CLIENT_TYPE_CONTAINER:
+        raise InvalidError("Interactivity only works inside a Modal Container.")
+
+    if _container_app._function_def is not None:
+        if not _container_app._function_def.pty_info:
+            raise InvalidError(
+                "Interactivity is not enabled in this function. Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
+            )
+
+        if _container_app._function_def.concurrency_limit > 1:
+            print(
+                "Warning: Interactivity is not supported on functions with concurrency > 1. You may experience unexpected behavior."
+            )
+
+    # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here
+    # todo(nathan): check if function interactivity is enabled
+    try:
+        await client.stub.FunctionStartPtyShell(Empty())
+    except Exception as e:
+        print("Error: Failed to start PTY shell.")
+        raise e
+
+
+enable_interactivity = synchronize_api(_enable_interactivity)
 
 
 def is_local() -> bool:

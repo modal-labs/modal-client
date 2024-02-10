@@ -38,12 +38,12 @@ from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
-from .app import _container_app, _ContainerApp
+from .app import _container_app, _ContainerApp, enable_interactivity
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
 from .exception import InvalidError
-from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data, enable_interactivity
+from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 
 if TYPE_CHECKING:
@@ -107,7 +107,7 @@ class _FunctionIOManager:
 
     @wrap()
     async def initialize_app(self) -> _ContainerApp:
-        await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name)
+        await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name, self.function_def)
         return _container_app
 
     async def _heartbeat(self):
@@ -859,7 +859,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         if container_args.function_def.is_checkpointing_function:
             function_io_manager.checkpoint()
 
-        if container_args.function_def.pty_info:
+        if container_args.function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
             # Interactive function
             def breakpoint_wrapper():
                 # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
