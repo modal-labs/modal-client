@@ -628,16 +628,6 @@ def test_deps_closurevars(client, servicer):
     assert set(d.object_id for d in f.object_dependencies) == set([nfs.object_id, image.object_id])
 
 
-def interact_wit_me():
-    return 1
-
-
-def test_interactive_mode():
-    stub = Stub()
-
-    stub.function(image=Image.debian_slim(), interactive=True)(interact_wit_me)
-
-
 def assert_is_wrapped_dict(some_arg):
     assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
     return some_arg
