@@ -122,7 +122,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.precreated_functions = set()
         self.app_functions = {}
         self.fcidx = 0
-        self.secrets = {}
 
         self.function_serialized = None
         self.class_serialized = None
@@ -130,6 +129,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.client_hello_metadata = None
 
         self.dicts = {}
+        self.secrets = {}
+
         self.deployed_dicts = {}
         self.deployed_queues = {}
         self.deployed_secrets = {}

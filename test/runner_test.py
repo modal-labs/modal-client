@@ -28,7 +28,7 @@ def test_run_stub_profile_env_with_refs(servicer, client, monkeypatch):
     assert ctx.calls == []  # all calls should be deferred
 
     with servicer.intercept() as ctx:
-        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="st-123")))
+        ctx.add_response("SecretGetOrCreate", api_pb2.SecretGetOrCreateResponse(secret_id="st-123"))
         with run_stub(dummy_stub, client=client):
             pass
 
@@ -38,8 +38,8 @@ def test_run_stub_profile_env_with_refs(servicer, client, monkeypatch):
     app_create = ctx.pop_request("AppCreate")
     assert app_create.environment_name == "profile_env"
 
-    app_lookup_object = ctx.pop_request("AppLookupObject")
-    assert app_lookup_object.environment_name == "profile_env"
+    secret_get_or_create = ctx.pop_request("SecretGetOrCreate")
+    assert secret_get_or_create.environment_name == "profile_env"
 
 
 def test_run_stub_custom_env_with_refs(servicer, client, monkeypatch):
@@ -51,8 +51,8 @@ def test_run_stub_custom_env_with_refs(servicer, client, monkeypatch):
     )  # explicit lookup
 
     with servicer.intercept() as ctx:
-        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="st-123")))
-        ctx.add_response("AppLookupObject", api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="st-456")))
+        ctx.add_response("SecretGetOrCreate", api_pb2.SecretGetOrCreateResponse(secret_id="st-123"))
+        ctx.add_response("SecretGetOrCreate", api_pb2.SecretGetOrCreateResponse(secret_id="st-456"))
         with run_stub(dummy_stub, client=client, environment_name="custom"):
             pass
 
@@ -62,8 +62,8 @@ def test_run_stub_custom_env_with_refs(servicer, client, monkeypatch):
     app_create = ctx.pop_request("AppCreate")
     assert app_create.environment_name == "custom"
 
-    app_lookup_object = ctx.pop_request("AppLookupObject")
-    assert app_lookup_object.environment_name == "custom"
+    secret_get_or_create = ctx.pop_request("SecretGetOrCreate")
+    assert secret_get_or_create.environment_name == "custom"
 
-    app_lookup_object2 = ctx.pop_request("AppLookupObject")
-    assert app_lookup_object2.environment_name == "third"
+    secret_get_or_create_2 = ctx.pop_request("SecretGetOrCreate")
+    assert secret_get_or_create_2.environment_name == "third"
