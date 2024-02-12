@@ -46,7 +46,7 @@ class _Secret(_StatefulObject, type_prefix="st"):
         if not isinstance(env_dict, dict):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        env_dict_filtered: dict[str, str] = {k: v for k, v in env_dict.items() if v is not None}
+        env_dict_filtered: Dict[str, str] = {k: v for k, v in env_dict.items() if v is not None}
         if not all(isinstance(k, str) for k in env_dict_filtered.keys()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
         if not all(isinstance(v, str) for v in env_dict_filtered.values()):
@@ -131,7 +131,7 @@ class _Secret(_StatefulObject, type_prefix="st"):
     @staticmethod
     async def create_deployed(
         deployment_name: str,
-        env_dict: dict[str, str],
+        env_dict: Dict[str, str],
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
