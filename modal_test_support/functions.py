@@ -274,3 +274,21 @@ class BuildCls:
     @method()
     def f(self, x):
         return self._k * x
+
+
+@stub.cls(checkpointing_enabled=True)
+class CheckpointingCls:
+    def __init__(self):
+        self._vals = []
+
+    @enter(checkpoint=True)
+    def enter1(self):
+        self._vals.append("A")
+
+    @enter()
+    def enter2(self):
+        self._vals.append("B")
+
+    @method()
+    def f(self, x):
+        return "".join(self._vals) + x

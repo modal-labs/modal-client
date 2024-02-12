@@ -532,6 +532,22 @@ def test_cls_generator(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
+def test_checkpointing_cls_function(unix_servicer, event_loop):
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "CheckpointingCls.f",
+        inputs=_get_inputs((("C",), {})),
+        is_checkpointing_function=True,
+    )
+    assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
+    for request in unix_servicer.requests:
+        if isinstance(request, api_pb2.ContainerCheckpointRequest):
+            assert request.checkpoint_id
+    assert _unwrap_scalar(ret) == "ABC"
+
+
+@skip_windows_unix_socket
 def test_container_heartbeats(unix_servicer, event_loop):
     _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)
