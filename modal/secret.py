@@ -7,10 +7,12 @@ from grpclib import GRPCError, Status
 from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
+from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
+from .client import _Client
 from .exception import InvalidError
-from .object import _StatefulObject
+from .object import _get_environment_name, _StatefulObject
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, Union[str, None]]"
 
@@ -44,7 +46,7 @@ class _Secret(_StatefulObject, type_prefix="st"):
         if not isinstance(env_dict, dict):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        env_dict_filtered: dict[str, str] = {k: v for k, v in env_dict.items() if v is not None}
+        env_dict_filtered: Dict[str, str] = {k: v for k, v in env_dict.items() if v is not None}
         if not all(isinstance(k, str) for k in env_dict_filtered.keys()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
         if not all(isinstance(v, str) for v in env_dict_filtered.values()):
@@ -125,6 +127,26 @@ class _Secret(_StatefulObject, type_prefix="st"):
             provider._hydrate(resp.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()")
+
+    @staticmethod
+    async def create_deployed(
+        deployment_name: str,
+        env_dict: Dict[str, str],
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> str:
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.SecretGetOrCreateRequest(
+            deployment_name=deployment_name,
+            namespace=namespace,
+            environment_name=_get_environment_name(environment_name),
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+            env_dict=env_dict,
+        )
+        resp = await retry_transient_errors(client.stub.SecretGetOrCreate, request)
+        return resp.secret_id
 
 
 Secret = synchronize_api(_Secret)
