@@ -225,7 +225,8 @@ def highlight_modal_deprecation_warnings() -> None:
                 with open(filename) as f:
                     source = f.readlines()[lineno - 1].strip()
                 message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
-            except FileNotFoundError:
+            except OSError:
+                # e.g., when filename is "<unknown>"; raises FileNotFoundError on posix but OSError on windows
                 pass
             panel = Panel(
                 message,
