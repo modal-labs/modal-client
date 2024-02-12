@@ -1467,13 +1467,14 @@ message SecretCreateResponse {
   string secret_id = 1;
 }
 
-message SecretGetRequest {
+message SecretGetOrCreateRequest {
   string deployment_name = 1;
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;  // Not used atm
 }
 
-message SecretGetResponse {
+message SecretGetOrCreateResponse {
   string secret_id = 1;
 }
 
@@ -1931,7 +1932,7 @@ service ModalClient {
 
   // Secrets
   rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
-  rpc SecretGet(SecretGetRequest) returns (SecretGetResponse);
+  rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
   // SharedVolumes
