@@ -2,20 +2,6 @@ name: Check
 on: push
 
 jobs:
-  black:
-    name: Black
-    runs-on: ubuntu-20.04
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - uses: ./.github/actions/setup-cached-python
-        with:
-          version: "3.10"
-
-      - name: Check files using the black formatter
-        run: black --check .
-
   link:
     name: Ruff linting
     runs-on: ubuntu-20.04
