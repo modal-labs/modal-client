@@ -1467,6 +1467,16 @@ message SecretCreateResponse {
   string secret_id = 1;
 }
 
+message SecretGetRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+}
+
+message SecretGetResponse {
+  string secret_id = 1;
+}
+
 message SecretListItem {
   string label = 1;
   double created_at = 2;
