@@ -141,6 +141,7 @@ enum GPUType {
 enum ObjectCreationType {
   OBJECT_CREATION_TYPE_UNSPECIFIED = 0;  // just lookup
   OBJECT_CREATION_TYPE_CREATE_IF_MISSING = 1;
+  OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS = 2;
 }
 
 enum ProgressType {
@@ -1459,7 +1460,7 @@ message Schedule {
 message SecretCreateRequest {
   map<string, string> env_dict = 1;
   string app_id = 2 [ (modal.options.audit_target_attr) = true ];
-  string template_type = 3;
+  string template_type = 3;  // todo: not used?
   string existing_secret_id = 4;
 }
 
@@ -1472,6 +1473,7 @@ message SecretGetOrCreateRequest {
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // Not used atm
+  map<string, string> env_dict = 5;
 }
 
 message SecretGetOrCreateResponse {
