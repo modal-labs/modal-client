@@ -586,6 +586,7 @@ class _Stub:
         checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
+        _allow_background_volume_commits: bool = False,
         max_inputs: Optional[
             int
         ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
@@ -617,6 +618,7 @@ class _Stub:
             cloud=cloud,
             checkpointing_enabled=checkpointing_enabled,
             block_network=block_network,
+            _allow_background_volume_commits=_allow_background_volume_commits,
             max_inputs=max_inputs,
         )
 
