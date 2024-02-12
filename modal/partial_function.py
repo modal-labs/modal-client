@@ -25,6 +25,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     BUILD: int = 2
     ENTER: int = 4
     EXIT: int = 8
+    CHECKPOINTING: int = 16
 
 
 class _PartialFunction:
@@ -367,15 +368,21 @@ def _build(
 @typechecked
 def _enter(
     _warn_parentheses_missing=None,
+    *,
+    checkpoint: bool = False,
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
 
+    flags = _PartialFunctionFlags.ENTER
+    if checkpoint:
+        flags |= _PartialFunctionFlags.CHECKPOINTING
+
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
-            return f.add_flags(_PartialFunctionFlags.ENTER)
+            return f.add_flags(flags)
         else:
-            return _PartialFunction(f, _PartialFunctionFlags.ENTER)
+            return _PartialFunction(f, flags)
 
     return wrapper
 
