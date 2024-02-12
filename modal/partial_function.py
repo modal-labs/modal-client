@@ -79,6 +79,9 @@ class _PartialFunction:
         )
 
 
+PartialFunction = synchronize_api(_PartialFunction)
+
+
 def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class"""
     partial_functions: Dict[str, PartialFunction] = {}
@@ -122,9 +125,6 @@ def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: Type = type(user_obj)
     return {k: meth.__get__(user_obj) for k, meth in _find_callables_for_cls(user_cls, flags).items()}
-
-
-PartialFunction = synchronize_api(_PartialFunction)
 
 
 def _method(

@@ -658,20 +658,16 @@ async def call_function_async(
                         await exit_res
 
 
-async def call_functions_sync_or_async(
-    function_io_manager,  #: FunctionIOManager  TODO: this type is generated at runtime
+async def call_functions_for_setup(
+    function_io_manager,  #: FunctionIOManager TODO: this type is generated at runtime
     funcs: Iterable[Callable],
 ) -> None:
-    # TODO(michael) docstring
-    # TODO(michael) Previous implementation checked that enter method was no the main method
-    # Is that needed? How would we deal with it here?
+    """Call function(s), can be sync or async, but any return values are ignored."""
     with function_io_manager.handle_user_exception():
         for func in funcs:
             res = func()
             if inspect.iscoroutine(res):
                 await res
-        # TODO(michael) This is currently used for enter() methods, where we don't use any return value
-        # Maybe we should warn or raise or something if the return value is not null?
 
 
 @dataclass
@@ -852,23 +848,25 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             dep_object_ids: list[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
 
+        # Identify all "enter" methods and split into groups that should run pre/post checkpointing
         pre_checkpoint_methods = []
         post_checkpoint_methods = []
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             user_cls = type(imp_fun.obj)
             enter_methods = _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.ENTER)
-            for meth in enter_methods.values():
-                inst_meth = getattr(meth, "raw_f", meth).__get__(imp_fun.obj)
-                if meth.flags & _PartialFunctionFlags.CHECKPOINTING:
-                    pre_checkpoint_methods.append(inst_meth)
+            for method in enter_methods.values():
+                instance_method = getattr(method, "raw_f", method).__get__(imp_fun.obj)
+                if method.flags & _PartialFunctionFlags.CHECKPOINTING:
+                    pre_checkpoint_methods.append(instance_method)
                 else:
-                    post_checkpoint_methods.append(inst_meth)
+                    post_checkpoint_methods.append(instance_method)
+            # Handling these is a little clumsy but they're shortly to be deprecated
             for attr in ["__enter__", "__aenter__"]:
                 if hasattr(user_cls, attr):
                     dunder_meth = getattr(user_cls, attr).__get__(imp_fun.obj)
                     post_checkpoint_methods.append(dunder_meth)
 
-        run_with_signal_handler(call_functions_sync_or_async(function_io_manager, pre_checkpoint_methods))
+        run_with_signal_handler(call_functions_for_setup(function_io_manager, pre_checkpoint_methods))
 
         # Checkpoint container after imports. Checkpointed containers start from this point
         # onwards. This assumes that everything up to this point has run successfully,
@@ -881,7 +879,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             # This is an interactive function: Immediately start a PTY shell
             function_io_manager.start_pty_shell()
 
-        run_with_signal_handler(call_functions_sync_or_async(function_io_manager, post_checkpoint_methods))
+        run_with_signal_handler(call_functions_for_setup(function_io_manager, post_checkpoint_methods))
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)
