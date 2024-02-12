@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.57.31 (2024-02-12)
+
+Fixed an issue with displaying deprecation warnings on Windows systems.
+
+
+
 ### 0.57.22 (2024-02-09)
 
 - Modal client deprecation warnings are now highlighted in the CLI
