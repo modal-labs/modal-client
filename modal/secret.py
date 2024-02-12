@@ -12,7 +12,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._resolver import Resolver
 from .client import _Client
 from .exception import InvalidError
-from .object import _StatefulObject
+from .object import _get_environment_name, _StatefulObject
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, Union[str, None]]"
 
@@ -141,7 +141,7 @@ class _Secret(_StatefulObject, type_prefix="st"):
         request = api_pb2.SecretGetOrCreateRequest(
             deployment_name=deployment_name,
             namespace=namespace,
-            environment_name=environment_name,
+            environment_name=_get_environment_name(environment_name),
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
             env_dict=env_dict,
         )
