@@ -132,6 +132,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.dicts = {}
         self.deployed_dicts = {}
         self.deployed_queues = {}
+        self.deployed_secrets = {}
 
         self.cleared_function_calls = set()
 
@@ -815,10 +816,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Secret
 
     async def SecretCreate(self, stream):
-        msg: api_pb2.SecretCreateRequest = await stream.recv_message()
+        request: api_pb2.SecretCreateRequest = await stream.recv_message()
         secret_id = "st-" + str(len(self.secrets))
-        self.secrets[secret_id] = msg
+        self.secrets[secret_id] = request.env_dict
         await stream.send_message(api_pb2.SecretCreateResponse(secret_id=secret_id))
+
+    async def SecretGetOrCreate(self, stream):
+        request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+            secret_id = "st-" + str(len(self.secrets))
+            self.secrets[secret_id] = request.env_dict
+            self.deployed_secrets[k] = secret_id
+        else:
+            assert request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
+
+        secret_id = self.deployed_secrets[k]
+        await stream.send_message(api_pb2.SecretGetOrCreateResponse(secret_id=secret_id))
 
     async def SecretList(self, stream):
         await stream.recv_message()
