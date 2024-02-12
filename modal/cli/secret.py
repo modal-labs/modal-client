@@ -13,6 +13,7 @@ from rich.syntax import Syntax
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
+from modal.secret import _Secret
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
@@ -71,15 +72,7 @@ modal secret create my-credentials username=john password=-
         raise click.UsageError("You need to specify at least one key for your secret")
 
     # Create secret
-    client = await _Client.from_env()
-    request = api_pb2.SecretGetOrCreateRequest(
-        deployment_name=secret_name,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        environment_name=env,
-        object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
-        env_dict=env_dict,
-    )
-    await retry_transient_errors(client.stub.SecretGetOrCreate, request)
+    await _Secret.create_deployed(secret_name, env_dict)
 
     # Print code sample
     console = Console()
