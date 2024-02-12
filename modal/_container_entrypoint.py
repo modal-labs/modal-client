@@ -855,13 +855,18 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         pre_checkpoint_methods = []
         post_checkpoint_methods = []
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-            enter_methods = _find_partial_methods_for_cls(type(imp_fun.obj), _PartialFunctionFlags.ENTER)
+            user_cls = type(imp_fun.obj)
+            enter_methods = _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.ENTER)
             for meth in enter_methods.values():
-                inst_meth = meth.raw_f.__get__(imp_fun.obj)
+                inst_meth = getattr(meth, "raw_f", meth).__get__(imp_fun.obj)
                 if meth.flags & _PartialFunctionFlags.CHECKPOINTING:
                     pre_checkpoint_methods.append(inst_meth)
                 else:
                     post_checkpoint_methods.append(inst_meth)
+            for attr in ["__enter__", "__aenter__"]:
+                if hasattr(user_cls, attr):
+                    dunder_meth = getattr(user_cls, attr).__get__(imp_fun.obj)
+                    post_checkpoint_methods.append(dunder_meth)
 
         run_with_signal_handler(call_functions_sync_or_async(function_io_manager, pre_checkpoint_methods))
 
