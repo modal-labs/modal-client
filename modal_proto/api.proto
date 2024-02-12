@@ -1931,6 +1931,7 @@ service ModalClient {
 
   // Secrets
   rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
+  rpc SecretGet(SecretGetRequest) returns (SecretGetResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
   // SharedVolumes
