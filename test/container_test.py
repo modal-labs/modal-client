@@ -857,7 +857,8 @@ def test_error_open_connection(unix_servicer, event_loop):
             is_checkpointing_function=True,
         )
 
-@skip_windows_unix_socket
+@skip_macos(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
+@skip_windows(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
 def test_get_open_connections():
     new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     remote_ip = socket.gethostbyname("modal.com")
