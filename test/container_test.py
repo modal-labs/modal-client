@@ -22,7 +22,12 @@ from grpclib.exceptions import GRPCError
 import modal_utils
 from modal import Client
 from modal._container_entrypoint import UserException, main
-from modal._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
+from modal._serialization import (
+    deserialize,
+    deserialize_data_format,
+    serialize,
+    serialize_data_format,
+)
 from modal.exception import InvalidError
 from modal.stub import _Stub
 from modal_proto import api_pb2
@@ -212,7 +217,10 @@ def test_success(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_generator_success(unix_servicer, event_loop):
     ret = _run_container(
-        unix_servicer, "modal_test_support.functions", "gen_n", function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        unix_servicer,
+        "modal_test_support.functions",
+        "gen_n",
+        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
 
     items, exc = _unwrap_generator(ret)
@@ -275,7 +283,12 @@ def test_rate_limited(unix_servicer, event_loop):
 def test_grpc_failure(unix_servicer, event_loop):
     # An error in "Modal code" should cause the entire container to fail
     with pytest.raises(GRPCError):
-        _run_container(unix_servicer, "modal_test_support.functions", "square", fail_get_inputs=True)
+        _run_container(
+            unix_servicer,
+            "modal_test_support.functions",
+            "square",
+            fail_get_inputs=True,
+        )
 
     # assert unix_servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     # assert "GRPCError" in unix_servicer.task_result.exception
@@ -478,7 +491,10 @@ def test_cls_function(unix_servicer, event_loop):
 def test_param_cls_function(unix_servicer, event_loop):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
     ret = _run_container(
-        unix_servicer, "modal_test_support.functions", "ParamCls.f", serialized_params=serialized_params
+        unix_servicer,
+        "modal_test_support.functions",
+        "ParamCls.f",
+        serialized_params=serialized_params,
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
 
@@ -529,6 +545,22 @@ def test_cls_generator(unix_servicer, event_loop):
     items, exc = _unwrap_generator(ret)
     assert items == [42**3]
     assert exc is None
+
+
+@skip_windows_unix_socket
+def test_checkpointing_cls_function(unix_servicer, event_loop):
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "CheckpointingCls.f",
+        inputs=_get_inputs((("D",), {})),
+        is_checkpointing_function=True,
+    )
+    assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
+    for request in unix_servicer.requests:
+        if isinstance(request, api_pb2.ContainerCheckpointRequest):
+            assert request.checkpoint_id
+    assert _unwrap_scalar(ret) == "ABCD"
 
 
 @skip_windows_unix_socket
@@ -609,7 +641,10 @@ def test_multistub_privately_decorated_named_stub(unix_servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # but we can use the names of the stubs to determine the active stub
     ret = _run_container(
-        unix_servicer, "modal_test_support.multistub_privately_decorated_named_stub", "foo", stub_name="dummy"
+        unix_servicer,
+        "modal_test_support.multistub_privately_decorated_named_stub",
+        "foo",
+        stub_name="dummy",
     )
     assert _unwrap_scalar(ret) == 1
     assert len(caplog.messages) == 0  # no warnings, since target stub is named
@@ -619,7 +654,12 @@ def test_multistub_privately_decorated_named_stub(unix_servicer, caplog):
 def test_multistub_same_name_warning(unix_servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # two stubs with the same name - warn since we won't know which one to hydrate
-    ret = _run_container(unix_servicer, "modal_test_support.multistub_same_name", "foo", stub_name="dummy")
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.multistub_same_name",
+        "foo",
+        stub_name="dummy",
+    )
     assert _unwrap_scalar(ret) == 1
     assert "You have more than one stub with the same name ('dummy')" in caplog.text
 
@@ -733,7 +773,10 @@ def test_unassociated_function(unix_servicer, event_loop):
 def test_param_cls_function_calling_local(unix_servicer, event_loop):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
     ret = _run_container(
-        unix_servicer, "modal_test_support.functions", "ParamCls.g", serialized_params=serialized_params
+        unix_servicer,
+        "modal_test_support.functions",
+        "ParamCls.g",
+        serialized_params=serialized_params,
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
 
@@ -741,7 +784,10 @@ def test_param_cls_function_calling_local(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_derived_cls(unix_servicer, event_loop):
     ret = _run_container(
-        unix_servicer, "modal_test_support.functions", "DerivedCls.run", inputs=_get_inputs(((3,), {}))
+        unix_servicer,
+        "modal_test_support.functions",
+        "DerivedCls.run",
+        inputs=_get_inputs(((3,), {})),
     )
     assert _unwrap_scalar(ret) == 6
 
@@ -749,7 +795,12 @@ def test_derived_cls(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_call_function_that_calls_function(unix_servicer, event_loop):
     deploy_stub_externally(unix_servicer, "modal_test_support.functions", "stub")
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "cube", inputs=_get_inputs(((42,), {})))
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "cube",
+        inputs=_get_inputs(((42,), {})),
+    )
     assert _unwrap_scalar(ret) == 42**3
 
 
@@ -769,7 +820,12 @@ def test_call_function_that_calls_method(unix_servicer, event_loop):
 def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     """Functions send a checkpointing request and continue to execute normally,
     simulating a restore operation."""
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "square", is_checkpointing_function=True)
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "square",
+        is_checkpointing_function=True,
+    )
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
     for request in unix_servicer.requests:
         if isinstance(request, api_pb2.ContainerCheckpointRequest):
@@ -784,7 +840,12 @@ def test_volume_commit_on_exit(unix_servicer, event_loop):
         api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-123", allow_background_commits=True),
         api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-456", allow_background_commits=True),
     ]
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "square", volume_mounts=volume_mounts)
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "square",
+        volume_mounts=volume_mounts,
+    )
     volume_commit_rpcs = [r for r in unix_servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
     assert volume_commit_rpcs
     assert {"vo-123", "vo-456"} == set(r.volume_id for r in volume_commit_rpcs)
@@ -797,7 +858,12 @@ def test_volume_commit_on_error(unix_servicer, event_loop):
         api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-foo", allow_background_commits=True),
         api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-bar", allow_background_commits=True),
     ]
-    _run_container(unix_servicer, "modal_test_support.functions", "raises", volume_mounts=volume_mounts)
+    _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "raises",
+        volume_mounts=volume_mounts,
+    )
     volume_commit_rpcs = [r for r in unix_servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
     assert {"vo-foo", "vo-bar"} == set(r.volume_id for r in volume_commit_rpcs)
 
@@ -805,7 +871,12 @@ def test_volume_commit_on_error(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_no_volume_commit_on_exit(unix_servicer, event_loop):
     volume_mounts = [api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-999", allow_background_commits=False)]
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "square", volume_mounts=volume_mounts)
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "square",
+        volume_mounts=volume_mounts,
+    )
     volume_commit_rpcs = [r for r in unix_servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
     assert not volume_commit_rpcs  # No volume commit on exit for legacy volumes
     assert _unwrap_scalar(ret) == 42**2
@@ -815,10 +886,19 @@ def test_no_volume_commit_on_exit(unix_servicer, event_loop):
 def test_volume_commit_on_exit_doesnt_fail_container(unix_servicer, event_loop):
     volume_mounts = [
         api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-999", allow_background_commits=True),
-        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="BAD-ID-FOR-VOL", allow_background_commits=True),
+        api_pb2.VolumeMount(
+            mount_path="/var/foo",
+            volume_id="BAD-ID-FOR-VOL",
+            allow_background_commits=True,
+        ),
         api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vol-111", allow_background_commits=True),
     ]
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "square", volume_mounts=volume_mounts)
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "square",
+        volume_mounts=volume_mounts,
+    )
     volume_commit_rpcs = [r for r in unix_servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
     assert len(volume_commit_rpcs) == 3
     assert _unwrap_scalar(ret) == 42**2
@@ -881,7 +961,12 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
     t0 = time.perf_counter()
     # pr = cProfile.Profile()
     # pr.enable()
-    _run_container(unix_servicer, "modal_test_support.functions", "ident", inputs=_get_inputs(((large_data_list,), {})))
+    _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "ident",
+        inputs=_get_inputs(((large_data_list,), {})),
+    )
     # pr.disable()
     # pr.print_stats()
     duration = time.perf_counter() - t0
