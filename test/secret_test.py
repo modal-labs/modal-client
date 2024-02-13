@@ -39,3 +39,18 @@ def test_secret_from_dict_none(servicer, client):
     stub.secret = Secret.from_dict({"FOO": os.getenv("xyz"), "BAR": os.environ.get("abc"), "BAZ": "baz"})
     with stub.run(client=client):
         assert servicer.secrets["st-0"] == {"BAZ": "baz"}
+
+
+def test_secret_from_name(servicer, client):
+    # Deploy secret
+    secret_id = Secret.create_deployed("my-secret", {"FOO": "123"}, client=client)
+
+    # Look up secret
+    secret = Secret.lookup("my-secret", client=client)
+    assert secret.object_id == secret_id
+
+    # Look up secret through app
+    stub = Stub()
+    stub.secret = Secret.from_name("my-secret")
+    with stub.run(client=client):
+        assert stub.secret.object_id == secret_id

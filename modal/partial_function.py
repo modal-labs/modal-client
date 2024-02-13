@@ -23,8 +23,9 @@ from .functions import _Function
 class _PartialFunctionFlags(enum.IntFlag):
     FUNCTION: int = 1
     BUILD: int = 2
-    ENTER: int = 4
-    EXIT: int = 8
+    ENTER_PRE_CHECKPOINT: int = 4
+    ENTER_POST_CHECKPOINT: int = 8
+    EXIT: int = 16
 
 
 class _PartialFunction:
@@ -78,6 +79,9 @@ class _PartialFunction:
         )
 
 
+PartialFunction = synchronize_api(_PartialFunction)
+
+
 def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class"""
     partial_functions: Dict[str, PartialFunction] = {}
@@ -100,7 +104,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
     check_attrs: List[str] = []
     if flags & _PartialFunctionFlags.BUILD:
         check_attrs += ["__build__", "__abuild__"]
-    if flags & _PartialFunctionFlags.ENTER:
+    if flags & _PartialFunctionFlags.ENTER_POST_CHECKPOINT:
         check_attrs += ["__enter__", "__aenter__"]
     if flags & _PartialFunctionFlags.EXIT:
         check_attrs += ["__exit__", "__aexit__"]
@@ -121,9 +125,6 @@ def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: Type = type(user_obj)
     return {k: meth.__get__(user_obj) for k, meth in _find_callables_for_cls(user_cls, flags).items()}
-
-
-PartialFunction = synchronize_api(_PartialFunction)
 
 
 def _method(
@@ -367,15 +368,22 @@ def _build(
 @typechecked
 def _enter(
     _warn_parentheses_missing=None,
+    *,
+    checkpoint: bool = False,
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
 
+    if checkpoint:
+        flag = _PartialFunctionFlags.ENTER_PRE_CHECKPOINT
+    else:
+        flag = _PartialFunctionFlags.ENTER_POST_CHECKPOINT
+
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
-            return f.add_flags(_PartialFunctionFlags.ENTER)
+            return f.add_flags(flag)
         else:
-            return _PartialFunction(f, _PartialFunctionFlags.ENTER)
+            return _PartialFunction(f, flag)
 
     return wrapper
 
