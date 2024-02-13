@@ -111,7 +111,6 @@ class _Stub:
     _description: Optional[str]
     _indexed_objects: Dict[str, _Object]
     _function_mounts: Dict[str, _Mount]
-    _mount_cache: _MountCache
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
     _volumes: Dict[Union[str, PurePosixPath], _Volume]
@@ -120,6 +119,7 @@ class _Stub:
     _container_app: Optional[_ContainerApp]
     _local_app: Optional[_LocalApp]
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
+    _mount_cache: _MountCache
 
     @typechecked
     def __init__(
@@ -168,8 +168,9 @@ class _Stub:
         if image is not None:
             self._indexed_objects["image"] = image  # backward compatibility since "image" used to be on the blueprint
 
+        self._mount_cache = _MountCache()  # used by the loader to deduplicate mounts in an app
         self._mounts = mounts
-        self._mount_cache = _MountCache()
+
         self._secrets = secrets
         self._volumes = volumes
         self._local_entrypoints = {}

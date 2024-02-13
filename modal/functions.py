@@ -610,11 +610,10 @@ class _Function(_Object, type_prefix="fu"):
             )
             secrets = [secret, *secrets]
 
-        mount_cache = stub._mount_cache if stub else _MountCache()
-        explicit_mounts = mount_cache.get_many(mounts)
+        explicit_mounts = mounts
 
         if is_local():
-            entrypoint_mounts = mount_cache.get_many(info.get_entrypoint_mount())
+            entrypoint_mounts = info.get_entrypoint_mount()
             all_mounts = [
                 _get_client_mount(),
                 *explicit_mounts,
@@ -622,7 +621,7 @@ class _Function(_Object, type_prefix="fu"):
             ]
 
             if config.get("automount"):
-                automounts = mount_cache.get_many(info.get_auto_mounts())
+                automounts = info.get_auto_mounts()
                 all_mounts += automounts
         else:
             # skip any mount introspection/logic inside containers, since the function
@@ -726,7 +725,11 @@ class _Function(_Object, type_prefix="fu"):
                 # worker runtime
                 deps += list(explicit_mounts)
             else:
-                deps += list(all_mounts)
+                mount_cache = (
+                    stub._mount_cache if stub else _MountCache()
+                )  # builder functions don't have stubs at this point
+                optimized_mounts = mount_cache.get_many(all_mounts)
+                deps += list(optimized_mounts)
             if proxy:
                 deps.append(proxy)
             if image:
@@ -820,11 +823,16 @@ class _Function(_Object, type_prefix="fu"):
                 )
                 for path, volume in validated_volumes
             ]
+            mount_cache = (
+                stub._mount_cache if stub else _MountCache()
+            )  # builder functions don't have stubs at this point
+            optimized_mounts = mount_cache.get_many(all_mounts)
+
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name,
                 function_name=info.function_name,
-                mount_ids=[mount.object_id for mount in all_mounts],
+                mount_ids=[mount.object_id for mount in optimized_mounts],
                 secret_ids=[secret.object_id for secret in secrets],
                 image_id=(image.object_id if image else None),
                 definition_type=info.definition_type,

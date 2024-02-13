@@ -380,9 +380,9 @@ class _VolumeUploadContextManager:
 
         def gen():
             if isinstance(local_file, str) or isinstance(local_file, Path):
-                yield lambda: get_file_upload_spec_from_path(local_file, remote_path, mode)
+                yield lambda: get_file_upload_spec_from_path(local_file, PurePosixPath(remote_path), mode)
             else:
-                yield lambda: get_file_upload_spec_from_fileobj(local_file, remote_path, mode or 0o644)
+                yield lambda: get_file_upload_spec_from_fileobj(local_file, PurePosixPath(remote_path), mode or 0o644)
 
         self._upload_generators.append(gen())
 
@@ -403,7 +403,7 @@ class _VolumeUploadContextManager:
 
         def create_file_spec_provider(subpath):
             relpath_str = subpath.relative_to(local_path)
-            return lambda: get_file_upload_spec_from_path(subpath, (remote_path / relpath_str).as_posix())
+            return lambda: get_file_upload_spec_from_path(subpath, remote_path / relpath_str)
 
         def gen():
             glob = local_path.rglob("*") if recursive else local_path.glob("*")

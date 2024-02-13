@@ -83,6 +83,13 @@ class _MountEntry(metaclass=abc.ABCMeta):
         ...
 
 
+def _select_files(entries: List[_MountEntry]) -> list[Tuple[Path, PurePosixPath]]:
+    all_files: typing.Set[Tuple[Path, PurePosixPath]] = set()
+    for entry in entries:
+        all_files |= set(entry.get_files_to_upload())
+    return list(all_files)
+
+
 @dataclasses.dataclass
 class _MountFile(_MountEntry):
     local_file: Path
@@ -97,7 +104,7 @@ class _MountFile(_MountEntry):
             raise FileNotFoundError(local_file)
 
         rel_filename = self.remote_path
-        yield local_file, rel_filename.as_posix()
+        yield local_file, rel_filename
 
     def watch_entry(self):
         parent = self.local_file.parent
@@ -135,7 +142,7 @@ class _MountDir(_MountEntry):
             if self.condition(local_filename):
                 local_relpath = Path(local_filename).relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
-                yield local_filename, mount_path.as_posix()
+                yield local_filename, mount_path
 
     def watch_entry(self):
         return self.local_dir, None
@@ -381,12 +388,10 @@ class _Mount(_StatefulObject, type_prefix="mo"):
 
     @staticmethod
     async def _get_files(entries: List[_MountEntry]) -> AsyncGenerator[FileUploadSpec, None]:
-        all_files: List[Tuple[Path, str]] = []
-        for entry in entries:
-            all_files += list(entry.get_files_to_upload())
-
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as exe:
+            all_files = await loop.run_in_executor(exe, _select_files, entries)
+
             futs = []
             for local_filename, remote_filename in all_files:
                 futs.append(loop.run_in_executor(exe, get_file_upload_spec_from_path, local_filename, remote_filename))
@@ -470,6 +475,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
         files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
+
         if not files:
             logger.warning(f"Mount of '{message_label}' is empty.")
 
@@ -577,9 +583,10 @@ class _MountCache:
         # A known issue with only using top level paths is that if
         # two different mounts add the same directory, but with different
         # mount conditions/filters, only the first one will ever be included
-        return frozenset(mount._top_level_paths())
+        return frozenset(_select_files(mount.entries))
 
     def get(self, mount: _Mount) -> _Mount:
+        # return the mount itself or an equivalent one that has already been added
         try:
             return self.cache.setdefault(self._cache_key(mount), mount)
         except NonLocalMountError:

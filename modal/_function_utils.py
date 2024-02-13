@@ -273,7 +273,7 @@ class FunctionInfo:
                 potential_mount = _Mount.from_local_python_packages(module_name)
                 mount_paths = potential_mount._top_level_paths()
             except ModuleNotMountable:
-                # this typically happens if the module is a built-in or has binary components
+                # this typically happens if the module is a built-in, has binary components or doesn't exist
                 continue
 
             for local_path, remote_path in mount_paths:

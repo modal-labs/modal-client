@@ -127,11 +127,13 @@ def test_stub_mounts(servicer, client, test_dir):
         assert "/root/pkg_c/j/k.py" not in files
 
 
-def test_from_local_python_packages_missing_module(servicer, client, test_dir):
+def test_from_local_python_packages_missing_module(servicer, client, test_dir, server_url_env):
     stub = Stub()
+    stub.function(mounts=[Mount.from_local_python_packages("nonexistent_package")])(dummy)
 
     with pytest.raises(ModuleNotMountable):
-        stub.function(mounts=[Mount.from_local_python_packages("nonexistent_package")])(dummy)
+        with stub.run(client=client):
+            pass
 
 
 def test_chained_entries(test_dir):
