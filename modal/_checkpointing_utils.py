@@ -1,6 +1,7 @@
+from dataclasses import dataclass
+
 import psutil
 
-from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class NetworkConnection:
@@ -19,5 +20,5 @@ def get_open_connections() -> list[NetworkConnection]:
                         remote_addr=f"{remote_address}:{remote_port}",
                         status=conn.status,
                     ))
-        
+
     return open_connections

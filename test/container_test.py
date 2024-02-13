@@ -8,9 +8,9 @@ import os
 import pathlib
 import pickle
 import pytest
+import socket
 import subprocess
 import sys
-import socket
 import tempfile
 import time
 import uuid
@@ -22,8 +22,8 @@ from grpclib.exceptions import GRPCError
 
 import modal_utils
 from modal import Client
-from modal._container_entrypoint import UserException, main
 from modal._checkpointing_utils import get_open_connections
+from modal._container_entrypoint import UserException, main
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
