@@ -507,6 +507,10 @@ class ClsWithHandlers:
     def my_build(self):
         pass
 
+    @enter(checkpoint=True)
+    def my_checkpoint(self):
+        pass
+
     @enter()
     def my_enter(self):
         pass
@@ -526,6 +530,9 @@ def test_handlers():
 
     pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.BUILD)
     assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]
+
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
+    assert list(pfs.keys()) == ["my_checkpoint"]
 
     pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
     assert list(pfs.keys()) == ["my_enter", "my_build_and_enter"]
