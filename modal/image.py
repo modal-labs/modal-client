@@ -1054,7 +1054,7 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Build a Modal image from a private image in Google Cloud Platform (GCP) Artifact Registry.
 
-        You will need to pass a `modal.Secret` containing [your GCP service account key](https://cloud.google.com/iam/docs/keys-create-delete#creating) data
+        You will need to pass a `modal.Secret` containing [your GCP service account key data](https://cloud.google.com/iam/docs/keys-create-delete#creating)
         as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page.
         The service account needs to have at least an ["Artifact Registry Reader"](https://cloud.google.com/artifact-registry/docs/access-control#roles) role.
 
