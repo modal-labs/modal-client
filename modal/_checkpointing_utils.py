@@ -1,3 +1,5 @@
+# Copyright Modal Labs 2022
+
 from dataclasses import dataclass
 from typing import List
 
