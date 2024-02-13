@@ -35,7 +35,7 @@ from modal.stub import _Stub
 from modal_proto import api_pb2
 
 from .helpers import deploy_stub_externally
-from .supports.skip import skip_windows_unix_socket
+from .supports.skip import skip_windows_unix_socket, skip_macos, skip_windows
 
 EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
 FUNCTION_CALL_ID = "fc-123"
@@ -549,7 +549,8 @@ def test_cls_generator(unix_servicer, event_loop):
     assert exc is None
 
 
-@skip_windows_unix_socket
+@skip_macos
+@skip_windows
 def test_checkpointing_cls_function(unix_servicer, event_loop):
 
     # Monkey-patched to prevent side effects with other existing connections.
@@ -821,7 +822,8 @@ def test_call_function_that_calls_method(unix_servicer, event_loop):
     assert _unwrap_scalar(ret) == 123**2  # servicer's implementation of function calling
 
 
-@skip_windows_unix_socket
+@skip_macos
+@skip_windows
 def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     """Functions send a checkpointing request and continue to execute normally,
     simulating a restore operation."""
@@ -842,7 +844,8 @@ def test_checkpoint_and_restore_success(unix_servicer, event_loop):
 
 
 
-@skip_windows_unix_socket
+@skip_macos
+@skip_windows
 def test_error_open_connection(unix_servicer, event_loop):
     """Functions fail to checkpoint if connections are open."""
     with pytest.raises(ConnectionError):
