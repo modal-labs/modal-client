@@ -43,13 +43,13 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     display_table(column_names, rows, json, title=f"Secrets{env_part}")
 
 
-@secret_cli.command("create", help="Create a new secret. Use `--force` to overwrite any existing one.")
+@secret_cli.command("create", help="Create a new secret. Use `--force` to overwrite an existing one.")
 @synchronizer.create_blocking
 async def create(
     secret_name,
     keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
     env: Optional[str] = ENV_OPTION,
-    force: bool = typer.Option(False, "--force"),
+    force: bool = typer.Option(False, "--force", help="Overwrite the secret if it already exists."),
 ):
     env = ensure_env(env)
     env_dict = {}
