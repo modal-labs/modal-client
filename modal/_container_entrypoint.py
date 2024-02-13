@@ -40,6 +40,7 @@ from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
+from ._checkpointing_utils import get_open_connections, NetworkConnection
 from .app import _container_app, _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
@@ -476,6 +477,19 @@ class _FunctionIOManager:
         """Message server indicating that function is ready to be checkpointed."""
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id}")
+
+        if connections := get_open_connections():
+            logger.error(f"Found {len(connections)} open TCP connections:")
+            for conn in connections:
+                logger.error(f"Remote Address: {conn.remote_addr}, Status: {conn.status}")
+
+            raise ValueError(
+                "Cannot checkpoint container with open TCP connections. "
+                "Are you closing connections before checkpointing?"
+            )
+        else:
+            logger.debug("No open TCP connections found.")
+
 
         await self._client.stub.ContainerCheckpoint(
             api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
