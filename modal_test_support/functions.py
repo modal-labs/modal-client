@@ -306,5 +306,5 @@ class CheckpointingClsNetworkConnectionOpen:
 
     @enter(checkpoint=True)
     def open_connection(self):
-        remote_ip = socket.gethostbyname("google.com")
+        remote_ip = socket.gethostbyname("modal.com")
         self._socket.connect((remote_ip, 80))

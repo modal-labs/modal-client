@@ -856,7 +856,7 @@ def test_error_open_connection(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_get_open_connections():
     new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    remote_ip = socket.gethostbyname("google.com")
+    remote_ip = socket.gethostbyname("modal.com")
     new_socket.connect((remote_ip, 80))
 
     connections = get_open_connections()
