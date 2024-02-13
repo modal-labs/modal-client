@@ -35,7 +35,7 @@ from modal.stub import _Stub
 from modal_proto import api_pb2
 
 from .helpers import deploy_stub_externally
-from .supports.skip import skip_windows_unix_socket, skip_macos, skip_windows
+from .supports.skip import skip_macos, skip_windows, skip_windows_unix_socket
 
 EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
 FUNCTION_CALL_ID = "fc-123"
