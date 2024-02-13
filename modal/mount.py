@@ -156,6 +156,7 @@ class _MountedPythonModule(_MountEntry):
 
     module_name: str
     remote_dir: Union[PurePosixPath, str] = ROOT_DIR.as_posix()  # cast needed here for type stub generation...
+    condition: typing.Optional[typing.Callable[[str], bool]] = None
 
     def description(self) -> str:
         return f"PythonPackage:{self.module_name}"
@@ -171,7 +172,7 @@ class _MountedPythonModule(_MountEntry):
                     _MountDir(
                         Path(base_path),
                         remote_path=remote_dir,
-                        condition=module_mount_condition,
+                        condition=self.condition or module_mount_condition,
                         recursive=True,
                     )
                 )
@@ -483,7 +484,9 @@ class _Mount(_StatefulObject, type_prefix="mo"):
 
     @staticmethod
     def from_local_python_packages(
-        *module_names: str, remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix()
+        *module_names: str,
+        remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
+        condition: Optional[Callable[[str], bool]] = None,
     ) -> "_Mount":
         """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
         This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
@@ -505,7 +508,9 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         """
         if not is_local():
             return _Mount._from_entries()  # empty/non-mountable mount in case it's used from within a container
-        return _Mount._from_entries(*[_MountedPythonModule(module_name, remote_dir) for module_name in module_names])
+        return _Mount._from_entries(
+            *[_MountedPythonModule(module_name, remote_dir, condition) for module_name in module_names]
+        )
 
 
 Mount = synchronize_api(_Mount)

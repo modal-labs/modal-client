@@ -173,24 +173,43 @@ def test_e2e_modal_run_py_module_mounts(servicer, test_dir):
     assert "/root/hello.py" in servicer.files_name2sha
 
 
-@pytest.mark.parametrize("use_explicit", ["0", "1"])
-def test_mount_dedupe(servicer, test_dir, server_url_env, use_explicit):
+def test_mount_dedupe(servicer, test_dir, server_url_env):
+    supports_dir = test_dir / "supports"
+    normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
+    normally_not_included_file.touch(exist_ok=True)
     print(
         helpers.deploy_stub_externally(
-            servicer, "mount_dedupe.py", cwd=test_dir / "supports", env={"USE_EXPLICIT": use_explicit}
+            # no explicit mounts, rely on auto-mounting
+            servicer,
+            "mount_dedupe.py",
+            cwd=test_dir / "supports",
+            env={"USE_EXPLICIT": "0"},
         )
     )
     assert servicer.n_mounts == 2
     assert servicer.mount_contents["mo-123"].keys() == {"/root/mount_dedupe.py"}
-    for fn in servicer.mount_contents["mo-124"].keys():
-        assert fn.startswith("/root/pkg_a")
-
-
-def test_mount_extend_automount(servicer, test_dir, server_url_env):
-    print(helpers.deploy_stub_externally(servicer, "mount_override.py", cwd=test_dir / "supports"))
-    assert servicer.n_mounts == 2  # deduplicates the mounts
-    assert servicer.mount_contents["mo-123"].keys() == {"/root/mount_override.py"}
     pkg_a_mount = servicer.mount_contents["mo-124"]
     for fn in pkg_a_mount.keys():
         assert fn.startswith("/root/pkg_a")
-    assert "/root/pkg_a/nonpython.txt" in pkg_a_mount.keys()
+    assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount.keys()
+
+
+def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
+    supports_dir = test_dir / "supports"
+    normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
+    normally_not_included_file.touch(exist_ok=True)
+    print(
+        helpers.deploy_stub_externally(
+            # two explicit mounts of the same package
+            servicer,
+            "mount_dedupe.py",
+            cwd=supports_dir,
+            env={"USE_EXPLICIT": "1"},
+        )
+    )
+    assert servicer.n_mounts == 2
+    assert servicer.mount_contents["mo-123"].keys() == {"/root/mount_dedupe.py"}
+    pkg_a_mount = servicer.mount_contents["mo-124"]
+    for fn in pkg_a_mount.keys():
+        assert fn.startswith("/root/pkg_a")
+    assert "/root/pkg_a/normally_not_included.pyc" in pkg_a_mount.keys()
