@@ -68,8 +68,8 @@ TokenFlow = synchronize_api(_TokenFlow)
 async def _new_token(
     *,
     profile: Optional[str] = None,
-    activate: bool = False,
-    no_verify: bool = False,
+    activate: bool = True,
+    verify: bool = True,
     source: Optional[str] = None,
     next_url: Optional[str] = None,
 ):
@@ -115,7 +115,7 @@ async def _new_token(
             f"[green]Token is connected to the [magenta]{result.workspace_username}[/magenta] workspace.[/green]"
         )
 
-    await _set_token(result.token_id, result.token_secret, profile=profile, activate=activate, no_verify=no_verify)
+    await _set_token(result.token_id, result.token_secret, profile=profile, activate=activate, verify=verify)
 
 
 async def _set_token(
@@ -123,13 +123,13 @@ async def _set_token(
     token_secret: str,
     *,
     profile: Optional[str] = None,
-    activate: bool = False,
-    no_verify: bool = False,
+    activate: bool = True,
+    verify: bool = True,
 ):
     # TODO add server_url as a parameter for verification?
     server_url = config.get("server_url", profile=profile)
     console = Console()
-    if not no_verify:
+    if verify:
         console.print(f"Verifying token against [blue]{server_url}[/blue]")
         await _Client.verify(server_url, (token_id, token_secret))
         console.print("[green]Token verified successfully![/green]")
@@ -141,7 +141,7 @@ async def _set_token(
             try:
                 workspace = await _lookup_workspace(server_url, token_id, token_secret)
             except AuthError as exc:
-                if no_verify:
+                if not verify:
                     # Improve the error message for verification failure with --no-verify to reduce surprise
                     msg = "No profile name given, but could not authenticate client to look up workspace name."
                     raise AuthError(msg) from exc
