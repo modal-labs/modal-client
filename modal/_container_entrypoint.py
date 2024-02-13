@@ -15,6 +15,7 @@ import signal
 import sys
 import time
 import traceback
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Type
@@ -524,19 +525,6 @@ def call_function_sync(
     function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
     imp_fun: ImportedFunction,
 ):
-    # If this function is on a class, instantiate it and enter it
-    if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER)
-        for enter_method in enter_methods.values():
-            if enter_method == imp_fun.fun:
-                continue
-
-            # Call a user-defined method
-            with function_io_manager.handle_user_exception():
-                enter_res = enter_method()
-            if inspect.iscoroutine(enter_res):
-                logger.warning("Not running asynchronous enter/exit handlers with a sync function")
-
     try:
 
         def run_inputs(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
@@ -602,19 +590,6 @@ async def call_function_async(
     function_io_manager,  #: FunctionIOManager,  # TODO: this one too
     imp_fun: ImportedFunction,
 ):
-    # If this function is on a class, instantiate it and enter it
-    if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER)
-        for enter_method in enter_methods.values():
-            if enter_method == imp_fun.fun:
-                continue
-
-            # Call a user-defined method
-            with function_io_manager.handle_user_exception():
-                enter_res = enter_method()
-                if inspect.iscoroutine(enter_res):
-                    await enter_res
-
     try:
 
         async def run_input(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
@@ -681,6 +656,18 @@ async def call_function_async(
                     exit_res = exit_method(*sys.exc_info())
                     if inspect.iscoroutine(exit_res):
                         await exit_res
+
+
+async def call_functions_for_setup(
+    function_io_manager,  #: FunctionIOManager TODO: this type is generated at runtime
+    funcs: Iterable[Callable],
+) -> None:
+    """Call function(s), can be sync or async, but any return values are ignored."""
+    with function_io_manager.handle_user_exception():
+        for func in funcs:
+            res = func()
+            if inspect.iscoroutine(res):
+                await res
 
 
 @dataclass
@@ -861,6 +848,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             dep_object_ids: list[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
 
+        # Identify all "enter" methods that need to run before we checkpoint
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
+            pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
+            run_with_signal_handler(call_functions_for_setup(function_io_manager, pre_checkpoint_methods.values()))
+
         # Checkpoint container after imports. Checkpointed containers start from this point
         # onwards. This assumes that everything up to this point has run successfully,
         # including global imports.
@@ -871,6 +863,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         if pty_info.pty_type or pty_info.enabled:
             # This is an interactive function: Immediately start a PTY shell
             function_io_manager.start_pty_shell()
+
+        # Identify the "enter" methods to run after we resume
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
+            post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+            run_with_signal_handler(call_functions_for_setup(function_io_manager, post_checkpoint_methods.values()))
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)
