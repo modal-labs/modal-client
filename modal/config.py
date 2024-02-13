@@ -56,10 +56,6 @@ Other possible configuration options are:
   Defaults to True.
   By default, Modal automatically mounts modules imported in the current scope, that
   are deemed to be "local". This can be turned off by setting this to False.
-* ``force_build`` (in the .toml file) / ``MODAL_FORCE_BUILD`` (as an env var).
-  Defaults to False.
-  By default, Modal automatically caches and re-uses container images. This can be
-  turned off by setting this to True. Meant to be used for debugging and profiling.
 * ``server_url`` (in the .toml file) / ``MODAL_SERVER_URL`` (as an env var).
   Defaults to ``https://api.modal.com``.
   Not typically meant to be used.
