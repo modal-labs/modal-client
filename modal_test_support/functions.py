@@ -285,9 +285,13 @@ class CheckpointingCls:
     def enter1(self):
         self._vals.append("A")
 
-    @enter()
+    @enter(checkpoint=True)
     def enter2(self):
         self._vals.append("B")
+
+    @enter()
+    def enter3(self):
+        self._vals.append("C")
 
     @method()
     def f(self, x):
