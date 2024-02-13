@@ -527,7 +527,7 @@ def test_handlers():
     pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.BUILD)
     assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]
 
-    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER)
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
     assert list(pfs.keys()) == ["my_enter", "my_build_and_enter"]
 
     pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.EXIT)
@@ -578,7 +578,7 @@ class ClsWithLegacySyncMethods:
 def test_legacy_sync_methods():
     obj = ClsWithLegacySyncMethods()
 
-    enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
+    enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
     assert [meth() for meth in enter_methods.values()] == [42, 43]
 
     exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
@@ -605,7 +605,7 @@ class ClsWithLegacyAsyncMethods:
 async def test_legacy_async_methods():
     obj = ClsWithLegacyAsyncMethods()
 
-    enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER)
+    enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
     assert [await meth() for meth in enter_methods.values()] == [42, 43]
 
     exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
