@@ -46,6 +46,10 @@ def test_secret_from_name(servicer, client):
     secret_id = Secret.create_deployed("my-secret", {"FOO": "123"}, client=client)
 
     # Look up secret
+    secret = Secret.lookup("my-secret", client=client)
+    assert secret.object_id == secret_id
+
+    # Look up secret through app
     stub = Stub()
     stub.secret = Secret.from_name("my-secret")
     with stub.run(client=client):

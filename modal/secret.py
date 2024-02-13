@@ -163,6 +163,27 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret._from_loader(_load, "Secret()")
 
     @staticmethod
+    async def lookup(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> "_Secret":
+        """Lookup a secret with a given name
+
+        ```python
+        s = modal.Secret.lookup("my-secret")
+        print(s.object_id)
+        ```
+        """
+        obj = _Secret.from_name(label, namespace=namespace, environment_name=environment_name)
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
+
+    @staticmethod
     async def create_deployed(
         deployment_name: str,
         env_dict: Dict[str, str],
