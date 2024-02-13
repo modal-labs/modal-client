@@ -137,7 +137,7 @@ class _Secret(_Object, type_prefix="st"):
         """Create a reference to a persisted Secret
 
         ```python
-        secret = Secret.from_name("my-secret")
+        secret = modal.Secret.from_name("my-secret")
 
         @stub.function(secrets=[secret])
         def run():
