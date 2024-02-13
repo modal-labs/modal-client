@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
+import socket
 import asyncio
 import time
 from datetime import date
@@ -296,3 +297,14 @@ class CheckpointingCls:
     @method()
     def f(self, x):
         return "".join(self._vals) + x
+
+
+@stub.cls(checkpointing_enabled=True)
+class CheckpointingClsNetworkConnectionOpen:
+    def __init__(self):
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+    @enter(checkpoint=True)
+    def open_connection(self):
+        remote_ip = socket.gethostbyname("google.com")
+        self._socket.connect((remote_ip, 80))

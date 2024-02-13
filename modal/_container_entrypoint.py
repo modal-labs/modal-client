@@ -479,11 +479,11 @@ class _FunctionIOManager:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id}")
 
         if connections := get_open_connections():
-            logger.error(f"Found {len(connections)} open TCP connections:")
+            logger.error(f"Found {len(connections)} open network connections:")
             for conn in connections:
                 logger.error(f"Remote Address: {conn.remote_addr}, Status: {conn.status}")
 
-            raise ValueError(
+            raise ConnectionError(
                 "Cannot checkpoint container with open TCP connections. "
                 "Are you closing connections before checkpointing?"
             )
