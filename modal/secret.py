@@ -11,7 +11,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from .client import _Client
-from .exception import InvalidError
+from .exception import InvalidError, NotFoundError
 from .object import _get_environment_name, _Object
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, Union[str, None]]"
@@ -151,7 +151,13 @@ class _Secret(_Object, type_prefix="st"):
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
             )
-            response = await resolver.client.stub.SecretGetOrCreate(req)
+            try:
+                response = await resolver.client.stub.SecretGetOrCreate(req)
+            except GRPCError as exc:
+                if exc.status == Status.NOT_FOUND:
+                    raise NotFoundError(exc.message)
+                else:
+                    raise
             provider._hydrate(response.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret()")
