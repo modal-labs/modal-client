@@ -1016,6 +1016,7 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def tag(self):
         """mdmd:hidden"""
+        assert hasattr(self, "_tag")
         return self._tag
 
     @property
@@ -1032,6 +1033,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""
+        assert hasattr(self, "_raw_f") and hasattr(self, "_build_args")
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
     # Live handle methods
