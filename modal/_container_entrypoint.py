@@ -46,7 +46,7 @@ from .cls import Cls
 from .config import config, logger
 from .exception import InvalidError
 from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
-from .partial_function import _find_callables_for_obj, _find_partial_methods_for_cls, _PartialFunctionFlags
+from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -848,25 +848,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             dep_object_ids: list[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
 
-        # Identify all "enter" methods and split into groups that should run pre/post checkpointing
-        pre_checkpoint_methods = []
-        post_checkpoint_methods = []
+        # Identify all "enter" methods that need to run before we checkpoint
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-            user_cls = type(imp_fun.obj)
-            enter_methods = _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.ENTER)
-            for method in enter_methods.values():
-                instance_method = getattr(method, "raw_f", method).__get__(imp_fun.obj)
-                if method.flags & _PartialFunctionFlags.CHECKPOINTING:
-                    pre_checkpoint_methods.append(instance_method)
-                else:
-                    post_checkpoint_methods.append(instance_method)
-            # Handling these is a little clumsy but they're shortly to be deprecated
-            for attr in ["__enter__", "__aenter__"]:
-                if hasattr(user_cls, attr):
-                    dunder_meth = getattr(user_cls, attr).__get__(imp_fun.obj)
-                    post_checkpoint_methods.append(dunder_meth)
-
-        run_with_signal_handler(call_functions_for_setup(function_io_manager, pre_checkpoint_methods))
+            pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
+            run_with_signal_handler(call_functions_for_setup(function_io_manager, pre_checkpoint_methods.values()))
 
         # Checkpoint container after imports. Checkpointed containers start from this point
         # onwards. This assumes that everything up to this point has run successfully,
@@ -879,7 +864,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             # This is an interactive function: Immediately start a PTY shell
             function_io_manager.start_pty_shell()
 
-        run_with_signal_handler(call_functions_for_setup(function_io_manager, post_checkpoint_methods))
+        # Identify the "enter" methods to run after we resume
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
+            post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+            run_with_signal_handler(call_functions_for_setup(function_io_manager, post_checkpoint_methods.values()))
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)
