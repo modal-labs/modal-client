@@ -10,6 +10,15 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.57.40 (2024-02-13)
+
+- The `@enter()` lifecycle method can now be used to run additional setup code prior to function checkpointing (when the class is decorated with `stub.cls(enable_checkpointing=True)`. Note that there are currently some limitations on function checkpointing:
+  - Checkpointing only works for CPU memory; any GPUs attached to the function will not available
+  - Networking is disabled while the checkpoint is being created
+- Please note that function checkpointing is still a beta feature.
+
+
+
 ### 0.57.31 (2024-02-12)
 
 Fixed an issue with displaying deprecation warnings on Windows systems.
