@@ -1052,11 +1052,13 @@ class _Image(_Object, type_prefix="im"):
         add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """Build a Modal image from a private image in GCP Artifact Registry.
+        """Build a Modal image from a private image in Google Cloud Platform (GCP) Artifact Registry.
 
-        You will need to pass a `modal.Secret` containing your GCP service account key
+        You will need to pass a `modal.Secret` containing [your GCP service account key data](https://cloud.google.com/iam/docs/keys-create-delete#creating)
         as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page.
-        The service account needs to have at least an "Artifact Registry Reader" role.
+        The service account needs to have at least an ["Artifact Registry Reader"](https://cloud.google.com/artifact-registry/docs/access-control#roles) role.
+
+        **Note:** This method does not use `GOOGLE_APPLICATION_CREDENTIALS` as that variable accepts a path to a JSON file, not the actual JSON string.
 
         See `Image.from_registry()` for information about the other parameters.
 
@@ -1365,6 +1367,18 @@ class _Image(_Object, type_prefix="im"):
 
     @contextlib.contextmanager
     def imports(self):
+        """
+        Used to import packages in global scope that are only available when running remotely.
+        By using this context manager you can avoid an `ImportError` due to not having certain
+        packages installed locally.
+
+        **Usage:**
+
+        ```python notest
+        with image.imports():
+            import torch
+        ```
+        """
         env_image_id = config.get("image_id")
         try:
             yield
@@ -1382,8 +1396,9 @@ class _Image(_Object, type_prefix="im"):
     def run_inside(self):
         """`Image.run_inside` is deprecated - use `Image.imports` instead.
 
-        Usage:
-        ```
+        **Usage:**
+
+        ```python notest
         with image.imports():
             import torch
         ```
