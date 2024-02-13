@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import List
 
 import psutil
 
@@ -9,7 +10,7 @@ class NetworkConnection:
     status: str
 
 
-def get_open_connections() -> list[NetworkConnection]:
+def get_open_connections() -> List[NetworkConnection]:
     open_connections:list[NetworkConnection] = []
     for kind in ["tcp", "udp"]:
         for conn in psutil.net_connections(kind=kind):
