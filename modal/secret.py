@@ -11,13 +11,13 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from .client import _Client
-from .exception import InvalidError
-from .object import _get_environment_name, _StatefulObject
+from .exception import InvalidError, NotFoundError
+from .object import _get_environment_name, _Object
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, Union[str, None]]"
 
 
-class _Secret(_StatefulObject, type_prefix="st"):
+class _Secret(_Object, type_prefix="st"):
     """Secrets provide a dictionary of environment variables for images.
 
     Secrets are a secure way to add credentials and other sensitive information
@@ -127,6 +127,61 @@ class _Secret(_StatefulObject, type_prefix="st"):
             provider._hydrate(resp.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()")
+
+    @staticmethod
+    def from_name(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+    ) -> "_Secret":
+        """Create a reference to a persisted Secret
+
+        ```python
+        secret = modal.Secret.from_name("my-secret")
+
+        @stub.function(secrets=[secret])
+        def run():
+           ...
+        ```
+        """
+
+        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+            req = api_pb2.SecretGetOrCreateRequest(
+                deployment_name=label,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name, resolver),
+            )
+            try:
+                response = await resolver.client.stub.SecretGetOrCreate(req)
+            except GRPCError as exc:
+                if exc.status == Status.NOT_FOUND:
+                    raise NotFoundError(exc.message)
+                else:
+                    raise
+            provider._hydrate(response.secret_id, resolver.client, None)
+
+        return _Secret._from_loader(_load, "Secret()")
+
+    @staticmethod
+    async def lookup(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> "_Secret":
+        """Lookup a secret with a given name
+
+        ```python
+        s = modal.Secret.lookup("my-secret")
+        print(s.object_id)
+        ```
+        """
+        obj = _Secret.from_name(label, namespace=namespace, environment_name=environment_name)
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
 
     @staticmethod
     async def create_deployed(
