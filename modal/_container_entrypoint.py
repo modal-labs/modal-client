@@ -479,7 +479,7 @@ class _FunctionIOManager:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id}")
 
         if connections := get_open_connections():
-            logger.error(f"Found {len(connections)} open network connections:")
+            logger.error(f"Found {len(connections)} open network connection(s):")
             for conn in connections:
                 logger.error(f"Remote Address: {conn.remote_addr}, Status: {conn.status}")
 
