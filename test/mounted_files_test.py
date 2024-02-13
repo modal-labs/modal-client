@@ -73,15 +73,18 @@ def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, serve
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
-    assert files == {
-        "/root/serialized_fn.py",  # should serialized_fn be included? It's not needed to run the function, but it's loaded into sys.modules at definition time...
-        "/root/b/c.py",  # this is mounted under root since it's imported as `import b` and not `import pkg_a.b` from serialized_fn.py
-        "/root/b/e.py",  # same as above
-        "/root/a.py",  # same as above
-        "/root/pkg_b/__init__.py",
-        "/root/pkg_b/f.py",
-        "/root/pkg_b/g/h.py",
-    }
+    assert (
+        files
+        == {
+            "/root/serialized_fn.py",  # should serialized_fn be included? It's not needed to run the function, but it's loaded into sys.modules at definition time...
+            "/root/b/c.py",  # this is mounted under root since it's imported as `import b` and not `import pkg_a.b` from serialized_fn.py
+            "/root/b/e.py",  # same as above
+            "/root/a.py",  # same as above
+            "/root/pkg_b/__init__.py",
+            "/root/pkg_b/f.py",
+            "/root/pkg_b/g/h.py",
+        }
+    )
 
 
 def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_url_env):
@@ -185,7 +188,7 @@ def test_mount_dedupe(servicer, test_dir, server_url_env, use_explicit):
 
 def test_mount_extend_automount(servicer, test_dir, server_url_env):
     print(helpers.deploy_stub_externally(servicer, "mount_override.py", cwd=test_dir / "supports"))
-    assert servicer.n_mounts == 2
+    assert servicer.n_mounts == 2  # deduplicates the mounts
     assert servicer.mount_contents["mo-123"].keys() == {"/root/mount_override.py"}
     pkg_a_mount = servicer.mount_contents["mo-124"]
     for fn in pkg_a_mount.keys():
