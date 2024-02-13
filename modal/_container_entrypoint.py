@@ -484,7 +484,7 @@ class _FunctionIOManager:
                 logger.error(f"Remote Address: {conn.remote_addr}, Status: {conn.status}")
 
             raise ConnectionError(
-                "Cannot checkpoint container with open TCP connections. "
+                "Cannot checkpoint container with open network connections. "
                 "Are you closing connections before checkpointing?"
             )
         else:

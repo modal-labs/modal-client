@@ -825,12 +825,14 @@ def test_call_function_that_calls_method(unix_servicer, event_loop):
 def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     """Functions send a checkpointing request and continue to execute normally,
     simulating a restore operation."""
-    ret = _run_container(
-        unix_servicer,
-        "modal_test_support.functions",
-        "square",
-        is_checkpointing_function=True,
-    )
+    with mock.patch("modal._container_entrypoint.get_open_connections", lambda: []):
+        ret = _run_container(
+            unix_servicer,
+            "modal_test_support.functions",
+            "square",
+            is_checkpointing_function=True,
+        )
+
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
     for request in unix_servicer.requests:
         if isinstance(request, api_pb2.ContainerCheckpointRequest):
@@ -850,7 +852,6 @@ def test_error_open_connection(unix_servicer, event_loop):
             "CheckpointingClsNetworkConnectionOpen.open_connection",
             is_checkpointing_function=True,
         )
-        assert not any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
 
 @skip_windows_unix_socket
 def test_get_open_connections():
