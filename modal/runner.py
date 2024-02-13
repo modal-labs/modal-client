@@ -64,9 +64,14 @@ async def _run_stub(
         )
 
     if stub.description is None:
-        from __main__ import __file__ as main_file
+        import __main__
 
-        stub.set_description(os.path.basename(main_file))
+        if "__file__" in dir(__main__):
+            stub.set_description(os.path.basename(__main__.__file__))
+        else:
+            # Interactive mode does not have __file__.
+            # https://docs.python.org/3/library/__main__.html#import-main
+            stub.set_description(__main__.__name__)
 
     if client is None:
         client = await _Client.from_env()
