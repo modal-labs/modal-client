@@ -19,6 +19,9 @@ jobs:
       - name: Build protobuf
         run: inv protoc
 
+      - name: Install package + deps
+        run: pip install -e .  # Makes sure doc generation doesn't break on client imports etc.
+
       - name: Generate reference docs
         run: python -m modal_docs.gen_reference_docs reference_docs_output
 

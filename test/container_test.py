@@ -112,6 +112,7 @@ def _run_container(
             app_id="ap-1",
             function_def=function_def,
             serialized_params=serialized_params,
+            checkpoint_id=f"ch-{uuid.uuid4()}",
         )
 
         if module_name in sys.modules:
@@ -128,7 +129,6 @@ def _run_container(
             with pathlib.Path(tmp_file_name).open("w") as target:
                 json.dump({}, target)
             env["MODAL_RESTORE_STATE_PATH"] = tmp_file_name
-            env["MODAL_CHECKPOINT_ID"] = f"ch-{uuid.uuid4()}"
 
             # Override server URL to reproduce restore behavior.
             env["MODAL_SERVER_URL"] = servicer.remote_addr
@@ -773,7 +773,7 @@ def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
     for request in unix_servicer.requests:
         if isinstance(request, api_pb2.ContainerCheckpointRequest):
-            assert request.checkpoint_id != ""
+            assert request.checkpoint_id
 
     assert _unwrap_scalar(ret) == 42**2
 
@@ -885,7 +885,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
     # pr.disable()
     # pr.print_stats()
     duration = time.perf_counter() - t0
-    assert duration < 2.0  # TODO (elias): migth be able to get this down significantly more by improving serialization
+    assert duration < 2.0  # TODO (elias): might be able to get this down significantly more by improving serialization
 
     # function_io_manager.serialize(large_data_list)
     in_translations = []

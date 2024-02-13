@@ -11,13 +11,13 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api, synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
 
+from ._mount_utils import validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
 from .client import _Client
 from .exception import InvalidError, NotFoundError, deprecation_error
 from .functions import (
     _parse_retries,
-    _validate_volumes,
 )
 from .gpu import GPU_T, parse_gpu_config
 from .object import _get_environment_name, _Object
@@ -280,7 +280,9 @@ class _Cls(_Object, type_prefix="cs"):
     ) -> "_Cls":
         retry_policy = _parse_retries(retries)
         if gpu or cpu or memory:
-            resources = api_pb2.Resources(cpu=cpu, memory=memory, gpu_config=parse_gpu_config(gpu))
+            milli_cpu = int(1000 * cpu) if cpu is not None else None
+            gpu_config = parse_gpu_config(gpu)
+            resources = api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory)
         else:
             resources = None
 
@@ -290,7 +292,7 @@ class _Cls(_Object, type_prefix="cs"):
                 volume_id=volume.object_id,
                 allow_background_commits=allow_background_volume_commits,
             )
-            for path, volume in _validate_volumes(volumes)
+            for path, volume in validate_volumes(volumes)
         ]
         replace_volume_mounts = len(volume_mounts) > 0
 

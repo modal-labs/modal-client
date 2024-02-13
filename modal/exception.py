@@ -99,21 +99,23 @@ def deprecation_error(deprecated_on: date, msg: str):
     raise DeprecationError(f"Deprecated on {deprecated_on}: {msg}")
 
 
-def deprecation_warning(deprecated_on: date, msg: str, pending=False):
+def deprecation_warning(deprecated_on: date, msg: str, pending: bool = False, show_source: bool = True) -> None:
     """Utility for getting the proper stack entry.
 
     See the implementation of the built-in [warnings.warn](https://docs.python.org/3/library/warnings.html#available-functions).
     """
-    # Find the last non-Modal line that triggered the warning
-    try:
-        frame = sys._getframe()
-        while frame is not None and _is_internal_frame(frame):
-            frame = frame.f_back
-        filename = frame.f_code.co_filename
-        lineno = frame.f_lineno
-    except ValueError:
-        filename = "<unknown>"
-        lineno = 0
+    filename, lineno = "<unknown>", 0
+    if show_source:
+        # Find the last non-Modal line that triggered the warning
+        try:
+            frame = sys._getframe()
+            while frame is not None and _is_internal_frame(frame):
+                frame = frame.f_back
+            filename = frame.f_code.co_filename
+            lineno = frame.f_lineno
+        except ValueError:
+            # Use the defaults from above
+            pass
 
     warning_cls: type = PendingDeprecationError if pending else DeprecationError
 

@@ -2,9 +2,6 @@
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.black]
-line-length = 120
-
 [tool.mypy]
 python_version = "3.9"
 exclude = "build"
@@ -33,15 +30,15 @@ filterwarnings = [
 
 [tool.ruff]
 exclude = ['.venv', '.git', '__pycache__', 'proto', 'build', 'modal_proto']
-ignore = ['E501', 'E741']
-select = ['E', 'F', 'W', 'I']
 line-length = 120
+lint.ignore = ['E501', 'E741']
+lint.select = ['E', 'F', 'W', 'I']
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "*_test.py" = ['E712']
 "test/supports/notebooks/*.py" = ['E402']
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 combine-as-imports = true
 known-first-party = [
     "modal",

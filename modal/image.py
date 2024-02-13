@@ -48,8 +48,6 @@ def _validate_python_version(version: str) -> None:
 
 def _dockerhub_python_version(python_version=None):
     if python_version is None:
-        python_version = config["image_python_version"]
-    if python_version is None:
         python_version = "%d.%d" % sys.version_info[:2]
 
     parts = python_version.split(".")
@@ -1067,11 +1065,13 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_gcp_artifact_registry(
             "us-east1-docker.pkg.dev/my-project-1234/my-repo/my-image:my-version",
-            secrets=[modal.Secret.from_name("my-gcp-secret")],
+            secret=modal.Secret.from_name("my-gcp-secret"),
             add_python="3.11",
         )
         ```
         """
+        if "secrets" in kwargs:
+            raise TypeError("Passing a list of 'secrets' is not supported; use the singular 'secret' argument.")
         image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_GCP, secret)
         return _Image.from_registry(
             tag,
@@ -1108,11 +1108,13 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_aws_ecr(
             "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:my-version",
-            secrets=[modal.Secret.from_name("aws")],
+            secret=modal.Secret.from_name("aws"),
             add_python="3.11",
         )
         ```
         """
+        if "secrets" in kwargs:
+            raise TypeError("Passing a list of 'secrets' is not supported; use the singular 'secret' argument.")
         image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_AWS, secret)
         return _Image.from_registry(
             tag,

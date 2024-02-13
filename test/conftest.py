@@ -27,6 +27,7 @@ import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
+import modal._serialization
 from modal import __version__, config
 from modal._serialization import serialize_data_format
 from modal.app import _ContainerApp
@@ -121,7 +122,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.precreated_functions = set()
         self.app_functions = {}
         self.fcidx = 0
-        self.secrets = {}
 
         self.function_serialized = None
         self.class_serialized = None
@@ -129,8 +129,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.client_hello_metadata = None
 
         self.dicts = {}
+        self.secrets = {}
+
         self.deployed_dicts = {}
         self.deployed_queues = {}
+        self.deployed_secrets = {}
 
         self.cleared_function_calls = set()
 
@@ -563,13 +566,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionPutInputs(self, stream):
         request: api_pb2.FunctionPutInputsRequest = await stream.recv_message()
         response_items = []
-        function_calls = self.client_calls.setdefault(request.function_call_id, [])
+        function_call_inputs = self.client_calls.setdefault(request.function_call_id, [])
         for item in request.inputs:
-            args, kwargs = cloudpickle.loads(item.input.args) if item.input.args else ((), {})
+            args, kwargs = modal._serialization.deserialize(item.input.args, None) if item.input.args else ((), {})
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
             response_items.append(api_pb2.FunctionPutInputsResponseItem(input_id=input_id, idx=item.idx))
-            function_calls.append(((item.idx, input_id), (args, kwargs)))
+            function_call_inputs.append(((item.idx, input_id), (args, kwargs)))
         if self.slow_put_inputs:
             await asyncio.sleep(0.001)
         await stream.send_message(api_pb2.FunctionPutInputsResponse(inputs=response_items))
@@ -814,10 +817,25 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Secret
 
     async def SecretCreate(self, stream):
-        msg: api_pb2.SecretCreateRequest = await stream.recv_message()
+        request: api_pb2.SecretCreateRequest = await stream.recv_message()
         secret_id = "st-" + str(len(self.secrets))
-        self.secrets[secret_id] = msg
+        self.secrets[secret_id] = request.env_dict
         await stream.send_message(api_pb2.SecretCreateResponse(secret_id=secret_id))
+
+    async def SecretGetOrCreate(self, stream):
+        request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+            secret_id = "st-" + str(len(self.secrets))
+            self.secrets[secret_id] = request.env_dict
+            self.deployed_secrets[k] = secret_id
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
+            if k not in self.deployed_secrets:
+                raise GRPCError(Status.NOT_FOUND, "No such secret")
+            secret_id = self.deployed_secrets[k]
+        else:
+            raise Exception("unsupported creation type")
+        await stream.send_message(api_pb2.SecretGetOrCreateResponse(secret_id=secret_id))
 
     async def SecretList(self, stream):
         await stream.recv_message()
@@ -1179,12 +1197,14 @@ def modal_config():
         # so we need to modify the config singletons to pick up any changes
         orig_config_path_env = os.environ.get("MODAL_CONFIG_PATH")
         orig_config_path = config.user_config_path
+        orig_profile = config._profile
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".toml", mode="w") as t:
                 t.write(textwrap.dedent(contents.strip("\n")))
             os.environ["MODAL_CONFIG_PATH"] = t.name
             config.user_config_path = t.name
             config._user_config = config._read_user_config()
+            config._profile = config._config_active_profile()
             yield t.name
         except Exception:
             if show_on_error:
@@ -1198,6 +1218,7 @@ def modal_config():
                 del os.environ["MODAL_CONFIG_PATH"]
             config.user_config_path = orig_config_path
             config._user_config = config._read_user_config()
+            config._profile = orig_profile
             os.remove(t.name)
 
     return mock_modal_toml

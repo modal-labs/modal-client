@@ -21,6 +21,7 @@ try:
     from .proxy import Proxy
     from .queue import Queue
     from .retries import Retries
+    from .s3mount import S3Mount
     from .sandbox import Sandbox
     from .schedule import Cron, Period
     from .secret import Secret
@@ -51,6 +52,7 @@ __all__ = [
     "Proxy",
     "Queue",
     "Retries",
+    "S3Mount",
     "Sandbox",
     "Secret",
     "SharedVolume",

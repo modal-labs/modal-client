@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import inspect
+import os
 import typing
-import warnings
 from datetime import date
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
@@ -13,6 +13,7 @@ from modal_utils.async_utils import synchronize_api
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
+from ._mount_utils import validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
 from .app import _container_app, _ContainerApp, _LocalApp, is_local
@@ -20,7 +21,7 @@ from .client import _Client
 from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function, _validate_volumes
+from .functions import _Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount, _MountCache
@@ -28,9 +29,9 @@ from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .partial_function import PartialFunction, _PartialFunction
 from .proxy import _Proxy
-from .queue import _Queue
 from .retries import Retries
 from .runner import _run_stub
+from .s3mount import _S3Mount
 from .sandbox import _Sandbox
 from .schedule import Schedule
 from .secret import _Secret
@@ -149,7 +150,7 @@ class _Stub:
 
         check_sequence(mounts, _Mount, "mounts has to be a list or tuple of Mount objects")
         check_sequence(secrets, _Secret, "secrets has to be a list or tuple of Secret objects")
-        _validate_volumes(volumes)
+        validate_volumes(volumes)
 
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
@@ -316,18 +317,6 @@ class _Stub:
             return self._indexed_objects["image"]
         else:
             return _default_image
-
-    @property
-    def _pty_input_stream(self):
-        return self._indexed_objects.get("_pty_input_stream", None)
-
-    def _add_pty_input_stream(self):
-        if self._pty_input_stream:
-            warnings.warn(
-                "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
-            )
-        else:
-            self._indexed_objects["_pty_input_stream"] = _Queue.new()
 
     def _get_watch_mounts(self):
         all_mounts = [
@@ -532,9 +521,6 @@ class _Stub:
             if is_generator is None:
                 is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
-            if interactive:
-                self._add_pty_input_stream()
-
             function = _Function.from_args(
                 info,
                 stub=self,
@@ -601,6 +587,7 @@ class _Stub:
         checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
+        _allow_background_volume_commits: bool = False,
         max_inputs: Optional[
             int
         ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
@@ -632,6 +619,7 @@ class _Stub:
             cloud=cloud,
             checkpointing_enabled=checkpointing_enabled,
             block_network=block_network,
+            _allow_background_volume_commits=_allow_background_volume_commits,
             max_inputs=max_inputs,
         )
 
@@ -665,6 +653,9 @@ class _Stub:
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         block_network: bool = False,  # Whether to block network access
+        volumes: Dict[
+            Union[str, os.PathLike], _S3Mount
+        ] = {},  # Volumes to mount in the sandbox. Currently, only S3 mounts are supported in sandboxes.
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -701,6 +692,7 @@ class _Stub:
             memory=memory,
             network_file_systems=network_file_systems,
             block_network=block_network,
+            volumes=volumes,
         )
         await resolver.load(obj)
         return obj

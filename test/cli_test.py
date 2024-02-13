@@ -312,16 +312,16 @@ def fresh_main_thread_assertion_module(test_dir):
 
 
 def test_no_user_code_in_synchronicity_run(servicer, set_env_client, test_dir, fresh_main_thread_assertion_module):
-    pytest._did_load_main_thread_assertion = False
+    pytest._did_load_main_thread_assertion = False  # type: ignore
     _run(["run", fresh_main_thread_assertion_module.as_posix()])
-    assert pytest._did_load_main_thread_assertion
+    assert pytest._did_load_main_thread_assertion  # type: ignore
     print()
 
 
 def test_no_user_code_in_synchronicity_deploy(servicer, set_env_client, test_dir, fresh_main_thread_assertion_module):
-    pytest._did_load_main_thread_assertion = False
+    pytest._did_load_main_thread_assertion = False  # type: ignore
     _run(["deploy", "--name", "foo", fresh_main_thread_assertion_module.as_posix()])
-    assert pytest._did_load_main_thread_assertion
+    assert pytest._did_load_main_thread_assertion  # type: ignore
 
 
 def test_serve(servicer, set_env_client, server_url_env, test_dir):
@@ -351,8 +351,6 @@ def mock_shell_pty():
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
     ), mock.patch("modal._container_exec.get_pty_info", mock_get_pty_info), mock.patch(
-        "modal._pty.write_stdin_to_pty_stream", asyncnullcontext
-    ), mock.patch(
         "modal._container_exec.handle_exec_input", asyncnullcontext
     ), mock.patch(
         "modal._container_exec._write_to_fd", write_to_fd

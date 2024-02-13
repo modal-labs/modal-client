@@ -141,6 +141,7 @@ enum GPUType {
 enum ObjectCreationType {
   OBJECT_CREATION_TYPE_UNSPECIFIED = 0;  // just lookup
   OBJECT_CREATION_TYPE_CREATE_IF_MISSING = 1;
+  OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS = 2;
 }
 
 enum ProgressType {
@@ -546,6 +547,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   bytes serialized_params = 10;
   string runtime = 11;
   string environment_name = 13;
+  optional string checkpoint_id = 14;
 }
 
 message ContainerHeartbeatRequest {
@@ -825,6 +827,8 @@ message Function {
   bool block_network = 44;
 
   uint32 max_inputs = 46;
+  
+  repeated S3Mount s3_mounts = 47;
 }
 
 message FunctionHandleMetadata {
@@ -1095,16 +1099,22 @@ message GenericResult {  // Used for both tasks and function outputs
     // Used when a task was killed using an external signal.
     GENERIC_STATUS_TERMINATED = 3;
     GENERIC_STATUS_TIMEOUT = 4;
+    // Used when the user's function fails to initialize (ex. S3 mount failed due to invalid credentials).
+    // Terminates the function and all remaining inputs.
+    GENERIC_STATUS_INIT_FAILURE = 5;
   }
 
-  GenericStatus status = 1;
-  string exception = 2;
-  int32 exitcode = 3;
-  string traceback = 4;
+  GenericStatus status = 1; // Status of the task or function output.
+  string exception = 2;  // Exception message for failures, if available. (?)
+  int32 exitcode = 3;  // Status code of the container entrypoint or builder process if it terminates unexpectedly.
+
+  string traceback = 4;  // String value of the Python traceback. (?)
+  bytes serialized_tb = 11; // Pickled traceback object. (?)
+  bytes tb_line_cache = 12; // Pickled line cache for traceback object. (?)
 
   oneof data_oneof {
-    bytes data = 5;
-    string data_blob_id = 10;
+    bytes data = 5; // Inline data of the result.
+    string data_blob_id = 10; // Blob ID for large data.
   }
 
   enum GeneratorStatus {
@@ -1114,10 +1124,7 @@ message GenericResult {  // Used for both tasks and function outputs
   }
   GeneratorStatus gen_status = 7;  // Deprecated, only used in client version <0.57
 
-  bytes serialized_tb = 11;
-  bytes tb_line_cache = 12;
-
-  string propagation_reason = 13;
+  string propagation_reason = 13; // (?)
 }
 
 message GPUConfig {
@@ -1243,6 +1250,13 @@ message MultiPartUpload {
   string completion_url = 3;
 }
 
+message MountDeployRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  string mount_id = 4;
+}
+
 message Object {
   string object_id = 1;
   oneof handle_metadata_oneof {
@@ -1334,6 +1348,13 @@ message Resources {
   GPUConfig gpu_config = 4;
 }
 
+message S3Mount {
+  string bucket_name = 1;
+  string mount_path = 2;
+  string credentials_secret_id = 3;
+  bool read_only = 4;
+}
+
 message Sandbox {
   repeated string entrypoint_args = 1;
   repeated string mount_ids = 2;
@@ -1352,6 +1373,8 @@ message Sandbox {
   bool runtime_debug = 10; // For internal debugging use only.
 
   bool block_network = 11;
+
+  repeated S3Mount s3_mounts = 12;
 }
 
 message SandboxCreateRequest {
@@ -1437,11 +1460,23 @@ message Schedule {
 message SecretCreateRequest {
   map<string, string> env_dict = 1;
   string app_id = 2 [ (modal.options.audit_target_attr) = true ];
-  string template_type = 3;
+  string template_type = 3;  // todo: not used?
   string existing_secret_id = 4;
 }
 
 message SecretCreateResponse {
+  string secret_id = 1;
+}
+
+message SecretGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;  // Not used atm
+  map<string, string> env_dict = 5;
+}
+
+message SecretGetOrCreateResponse {
   string secret_id = 1;
 }
 
@@ -1545,6 +1580,11 @@ message SharedVolumeMount {
   bool allow_cross_region = 4;
 }
 
+
+message TaskCurrentInputsResponse {
+  repeated string input_ids = 1;
+}
+
 message TaskInfo {
   string id = 1;
   double started_at = 2;
@@ -1577,6 +1617,7 @@ message TaskLogsBatch {
   string input_id = 12;
   string image_id = 13;  // Used for image logs
   bool eof = 14;
+  string pty_exec_id = 15;  // Used for interactive functions
 }
 
 message TaskProgress {
@@ -1596,6 +1637,7 @@ message TaskStats {
   string app_description = 3;
   double started_at = 4;
 }
+
 
 message TokenFlowCreateRequest {
   string utm_source = 3;
@@ -1863,6 +1905,9 @@ service ModalClient {
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallPutDataOut(FunctionCallPutDataRequest) returns (google.protobuf.Empty);
 
+  // Interactive functions
+  rpc FunctionStartPtyShell(google.protobuf.Empty) returns (google.protobuf.Empty);
+
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
@@ -1870,6 +1915,7 @@ service ModalClient {
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
   rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
+  rpc MountDeploy(MountDeployRequest) returns (google.protobuf.Empty);
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
@@ -1888,6 +1934,7 @@ service ModalClient {
 
   // Secrets
   rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
+  rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
   // SharedVolumes
@@ -1902,6 +1949,9 @@ service ModalClient {
   // Tasks
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
+
+  // Gets the inputs currently assigned to the requesting task, requires task metadata for auth
+  rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
 
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);

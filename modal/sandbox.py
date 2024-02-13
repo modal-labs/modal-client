@@ -6,12 +6,14 @@ from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
+from modal.s3mount import _S3Mount, s3_mounts_to_proto
+from modal.volume import _Volume
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 from ._location import parse_cloud_provider
-from ._mount_utils import validate_mount_points
+from ._mount_utils import validate_mount_points, validate_volumes
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
@@ -117,6 +119,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         memory: Optional[int] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
+        # Note: Only _S3Mounts are supported right now.
+        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]] = {},
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -127,10 +131,21 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
         validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
 
+        # Validate volumes
+        validated_volumes = validate_volumes(volumes)
+        s3_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
+        validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
+
+        if len(validated_volumes) > 0:
+            raise InvalidError("sandboxes currently only support S3Mount volumes")
+
         def _deps() -> List[_Object]:
             deps: List[_Object] = [image] + list(mounts) + list(secrets)
             for _, vol in validated_network_file_systems:
                 deps.append(vol)
+            for _, s3_mount in s3_mounts:
+                if s3_mount.secret:
+                    deps.append(s3_mount.secret)
             return deps
 
         async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
@@ -154,6 +169,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
                 block_network=block_network,
+                s3_mounts=s3_mounts_to_proto(s3_mounts),
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)

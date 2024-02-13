@@ -76,6 +76,7 @@ import os
 import typing
 import warnings
 from datetime import date
+from textwrap import dedent
 from typing import Any, Dict, Optional
 
 import toml
@@ -84,7 +85,7 @@ from google.protobuf.empty_pb2 import Empty
 from modal_proto import api_pb2
 from modal_utils.logger import configure_logger
 
-from .exception import deprecation_error
+from .exception import InvalidError, deprecation_error, deprecation_warning
 
 # Locate config file and read it
 
@@ -135,6 +136,30 @@ def config_set_active_profile(env: str) -> None:
     _write_user_config(_user_config)
 
 
+def _check_config() -> None:
+    num_profiles = len(_user_config)
+    num_active = sum(v.get("active", False) for v in _user_config.values())
+    if num_active > 1:
+        raise InvalidError(
+            "More than one Modal profile is active. "
+            "Please fix with `modal profile activate` or by editing your Modal config file "
+            f"({user_config_path})."
+        )
+    elif num_profiles > 1 and num_active == 0 and _profile == "default":
+        # Eventually we plan to have num_profiles > 1 with num_active = 0 be an error
+        # But we want to give users time to activate one of their profiles without disruption
+        message = dedent(
+            """
+            Support for using an implicit 'default' profile is deprecated.
+            Please use `modal profile activate` to activate one of your profiles.
+            (Use `modal profile list` to see the options.)
+
+            This will become an error in a future update.
+            """
+        )
+        deprecation_warning(date(2024, 2, 6), message, show_source=False)
+
+
 if "MODAL_ENV" in os.environ:
     deprecation_error(date(2023, 5, 24), "MODAL_ENV has been replaced with MODAL_PROFILE")
 
@@ -159,7 +184,6 @@ _SETTINGS = {
     "serve_timeout": _Setting(transform=float),
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
-    "image_python_version": _Setting(),
     "image_id": _Setting(),
     "automount": _Setting(True, transform=lambda x: x not in ("", "0")),
     "automount_exclude": _Setting([], transform=lambda x: x.replace(" ", "").split(",")),
@@ -171,7 +195,7 @@ _SETTINGS = {
     "environment": _Setting(),
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
     "worker_id": _Setting(),  # For internal debugging use.
-    "restore_state_path": _Setting("/opt/modal/restore-state.json"),
+    "restore_state_path": _Setting("/__modal/restore-state.json"),
 }
 
 

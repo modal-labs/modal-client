@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Type
 
+from google.protobuf.empty_pb2 import Empty
 from grpclib import Status
 
 from modal.stub import _Stub
@@ -35,7 +36,6 @@ from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function
 from ._proxy_tunnel import proxy_tunnel
-from ._pty import exec_cmd, run_in_pty
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
@@ -90,6 +90,8 @@ class _FunctionIOManager:
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
+        self.checkpoint_id = container_args.checkpoint_id
+
         self.calls_completed = 0
         self.total_user_time: float = 0.0
         self.current_input_id: Optional[str] = None
@@ -150,6 +152,7 @@ class _FunctionIOManager:
     def deserialize(self, data: bytes) -> Any:
         return deserialize(data, self._client)
 
+    @synchronizer.no_io_translation
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
 
@@ -239,6 +242,7 @@ class _FunctionIOManager:
 
         return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
 
+    @synchronizer.no_io_translation
     async def _generate_inputs(self) -> AsyncIterator[tuple[str, str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
@@ -310,7 +314,6 @@ class _FunctionIOManager:
             for _ in range(input_concurrency):
                 await self._semaphore.acquire()
 
-    @synchronizer.no_io_translation
     async def _push_output(self, input_id, started_at: float, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
@@ -433,7 +436,7 @@ class _FunctionIOManager:
         await self.complete_call(started_at)
 
     async def restore(self) -> None:
-        # Busy-wait for restore. `/opt/modal/restore-state.json` is created
+        # Busy-wait for restore. `/__modal/restore-state.json` is created
         # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
         start = time.perf_counter()
@@ -442,7 +445,7 @@ class _FunctionIOManager:
             await asyncio.sleep(0.01)
             continue
 
-        logger.debug("Container restored.")
+        logger.debug("Container: restored")
 
         # Look for state file and create new client with updated credentials.
         # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
@@ -470,11 +473,11 @@ class _FunctionIOManager:
 
     async def checkpoint(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
-        checkpoint_id = os.getenv("MODAL_CHECKPOINT_ID")
+        if self.checkpoint_id:
+            logger.debug(f"Checkpoint ID: {self.checkpoint_id}")
+
         await self._client.stub.ContainerCheckpoint(
-            api_pb2.ContainerCheckpointRequest(checkpoint_id=checkpoint_id)
-            if checkpoint_id
-            else api_pb2.ContainerCheckpointRequest()
+            api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
         )
 
         self._waiting_for_checkpoint = True
@@ -505,6 +508,13 @@ class _FunctionIOManager:
                 logger.error(f"modal.Volume background commit failed for {volume_id}. Exception: {res}")
             else:
                 logger.debug(f"modal.Volume background commit success for {volume_id}.")
+
+    async def start_pty_shell(self) -> None:
+        try:
+            await self._client.stub.FunctionStartPtyShell(Empty())
+        except Exception as e:
+            logger.error("Failed to start PTY shell.")
+            raise e
 
 
 FunctionIOManager = synchronize_api(_FunctionIOManager)
@@ -703,9 +713,7 @@ def import_function(
     active_stub: Optional[_Stub] = None
     pty_info: api_pb2.PTYInfo = function_def.pty_info
 
-    if pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-        fun = exec_cmd
-    elif ser_fun is not None:
+    if ser_fun is not None:
         # This is a serialized function we already fetched from the server
         cls, fun = ser_cls, ser_fun
     else:
@@ -861,10 +869,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
         if pty_info.pty_type or pty_info.enabled:
-            # TODO(erikbern): the second condition is for legacy compatibility, remove soon
-            # TODO(erikbern): there is no client test for this branch
-            input_stream = container_app._get_pty()
-            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream, pty_info)
+            # This is an interactive function: Immediately start a PTY shell
+            function_io_manager.start_pty_shell()
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)
