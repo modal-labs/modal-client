@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest_asyncio
 
+import modal
+from modal import Mount
 from modal._function_utils import FunctionInfo
 
 from . import helpers
@@ -168,3 +170,35 @@ def test_e2e_modal_run_py_module_mounts(servicer, test_dir):
     # assert servicer.n_mounts == 1  # there should be a single mount
     # assert servicer.n_mount_files == 1
     assert "/root/hello.py" in servicer.files_name2sha
+
+
+def foo():
+    pass
+
+
+def test_mounts_are_not_traversed_on_declaration(test_dir, monkeypatch, client, server_url_env):
+    return_values = []
+    original = modal.mount._MountDir.get_files_to_upload
+
+    def mock_get_files_to_upload(self):
+        r = list(original(self))
+        return_values.append(r)
+        return r
+
+    monkeypatch.setattr("modal.mount._MountDir.get_files_to_upload", mock_get_files_to_upload)
+    stub = modal.Stub()
+    mount_with_many_files = Mount.from_local_dir(test_dir, remote_path="/test")
+    stub.function(mounts=[mount_with_many_files])(foo)
+    assert len(return_values) == 0  # ensure we don't look at the files yet
+
+    with stub.run(client=client):
+        pass
+
+    assert return_values  # at this point we should have gotten all the mount files
+    # flatten inspected files
+    files = set()
+    for r in return_values:
+        for fn, _ in r:
+            files.add(fn)
+    # sanity check - this test file should be included since we mounted the test dir
+    assert __file__ in files  # this test file should have been included
