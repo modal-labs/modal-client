@@ -1374,7 +1374,7 @@ class _Image(_Object, type_prefix="im"):
 
         **Usage:**
 
-        ```python
+        ```python notest
         with image.imports():
             import torch
         ```
@@ -1398,7 +1398,7 @@ class _Image(_Object, type_prefix="im"):
 
         **Usage:**
 
-        ```python
+        ```python notest
         with image.imports():
             import torch
         ```
