@@ -96,6 +96,12 @@ def test_secret_create(servicer, set_env_client):
     _run(["secret", "create", "foo", "bar=baz"])
     assert len(servicer.secrets) == 1
 
+    # Creating the same one again should fail
+    _run(["secret", "create", "foo", "bar=baz"], expected_exit_code=1)
+
+    # But it should succeed with --force
+    _run(["secret", "create", "foo", "bar=baz", "--force"])
+
 
 def test_secret_list(servicer, set_env_client):
     res = _run(["secret", "list"])

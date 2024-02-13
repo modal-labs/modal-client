@@ -826,15 +826,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
-            secret_id = "st-" + str(len(self.secrets))
-            self.secrets[secret_id] = request.env_dict
-            self.deployed_secrets[k] = secret_id
+            if k in self.deployed_secrets:
+                raise GRPCError(Status.ALREADY_EXISTS, "Already exists")
+            secret_id = None
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_OVERWRITE_IF_EXISTS:
+            secret_id = None
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_secrets:
                 raise GRPCError(Status.NOT_FOUND, "No such secret")
             secret_id = self.deployed_secrets[k]
         else:
             raise Exception("unsupported creation type")
+
+        if secret_id is None:  # Create one
+            secret_id = "st-" + str(len(self.secrets))
+            self.secrets[secret_id] = request.env_dict
+            self.deployed_secrets[k] = secret_id
+
         await stream.send_message(api_pb2.SecretGetOrCreateResponse(secret_id=secret_id))
 
     async def SecretList(self, stream):
