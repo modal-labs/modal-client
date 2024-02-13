@@ -122,7 +122,7 @@ class _Object:
         self._init(other._rep, other._load, other._is_another_app, other._preload)
 
     def clone(self: O) -> O:
-        """Clone a given hydrated object."""
+        """mdmd:hidden Clone a given hydrated object."""
 
         # Object to clone must already be hydrated, otherwise from_loader is more suitable.
         assert self._is_hydrated
@@ -215,6 +215,7 @@ class _Object:
 
     @property
     def deps(self) -> Callable[..., List["_Object"]]:
+        """mdmd:hidden"""
         return self._deps if self._deps is not None else lambda: []
 
     async def resolve(self):
