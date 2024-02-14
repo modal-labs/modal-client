@@ -574,15 +574,6 @@ class _MountCache:
         self.cache = {}
 
     def _cache_key(self, mount: _Mount) -> typing.FrozenSet[Tuple[Path, PurePosixPath]]:
-        # deduplicating using *top level paths only* at the moment
-        # TODO: look into ways of deduping based on *all* file paths
-        #   this would require the deduping to happen at a separate
-        #   location from the mount definition, since that typically
-        #   happens in global scope, and we don't want to make module
-        #   load slower
-        # A known issue with only using top level paths is that if
-        # two different mounts add the same directory, but with different
-        # mount conditions/filters, only the first one will ever be included
         return frozenset(_select_files(mount.entries))
 
     def get(self, mount: _Mount) -> _Mount:
