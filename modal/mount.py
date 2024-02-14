@@ -145,7 +145,7 @@ class _MountDir(_MountEntry):
                 yield local_filename, mount_path
 
     def watch_entry(self):
-        return self.local_dir, None
+        return self.local_dir.absolute(), None
 
     def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
         return [(self.local_dir.absolute(), self.remote_path)]
