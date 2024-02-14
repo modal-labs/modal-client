@@ -27,7 +27,7 @@ class StubFilesFilter(DefaultFilter):
         super().__init__()
 
     def __call__(self, change: Change, path: str) -> bool:
-        p = Path(path)
+        p = Path(path).absolute()
         if p.name == ".DS_Store":
             return False
         # Vim creates this temporary file to see whether it can write
