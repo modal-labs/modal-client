@@ -15,10 +15,12 @@ import signal
 import sys
 import time
 import traceback
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Type
 
+from google.protobuf.empty_pb2 import Empty
 from grpclib import Status
 
 from modal.stub import _Stub
@@ -35,7 +37,6 @@ from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function
 from ._proxy_tunnel import proxy_tunnel
-from ._pty import exec_cmd, run_in_pty
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
@@ -156,6 +157,7 @@ class _FunctionIOManager:
     def deserialize(self, data: bytes) -> Any:
         return deserialize(data, self._client)
 
+    @synchronizer.no_io_translation
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
 
@@ -245,6 +247,7 @@ class _FunctionIOManager:
 
         return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
 
+    @synchronizer.no_io_translation
     async def _generate_inputs(self) -> AsyncIterator[tuple[str, str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
@@ -296,6 +299,7 @@ class _FunctionIOManager:
                 if not yielded:
                     self._semaphore.release()
 
+    @synchronizer.no_io_translation
     async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[tuple[str, str, Any, Any]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
@@ -437,6 +441,7 @@ class _FunctionIOManager:
         self.calls_completed += 1
         self._semaphore.release()
 
+    @synchronizer.no_io_translation
     async def push_output(self, input_id, started_at: float, data: Any, data_format: int) -> None:
         await self._push_output(
             input_id,
@@ -448,7 +453,7 @@ class _FunctionIOManager:
         await self.complete_call(started_at)
 
     async def restore(self) -> None:
-        # Busy-wait for restore. `/opt/modal/restore-state.json` is created
+        # Busy-wait for restore. `/__modal/restore-state.json` is created
         # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
         start = time.perf_counter()
@@ -521,6 +526,13 @@ class _FunctionIOManager:
             else:
                 logger.debug(f"modal.Volume background commit success for {volume_id}.")
 
+    async def start_pty_shell(self) -> None:
+        try:
+            await self._client.stub.FunctionStartPtyShell(Empty())
+        except Exception as e:
+            logger.error("Failed to start PTY shell.")
+            raise e
+
 
 FunctionIOManager = synchronize_api(_FunctionIOManager)
 
@@ -533,19 +545,6 @@ def call_function_sync(
         raise InputCancellation("input was cancelled by user")
 
     signal.signal(signal.SIGUSR1, cancel_input_signal_handler)
-    # If this function is on a class, instantiate it and enter it
-    if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER)
-        for enter_method in enter_methods.values():
-            if enter_method == imp_fun.fun:
-                continue
-
-            # Call a user-defined method
-            with function_io_manager.handle_user_exception():
-                enter_res = enter_method()
-            if inspect.iscoroutine(enter_res):
-                logger.warning("Not running asynchronous enter/exit handlers with a sync function")
-
     try:
 
         def run_inputs(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
@@ -611,19 +610,6 @@ async def call_function_async(
     function_io_manager,  #: FunctionIOManager,  # TODO: this one too
     imp_fun: ImportedFunction,
 ):
-    # If this function is on a class, instantiate it and enter it
-    if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER)
-        for enter_method in enter_methods.values():
-            if enter_method == imp_fun.fun:
-                continue
-
-            # Call a user-defined method
-            with function_io_manager.handle_user_exception():
-                enter_res = enter_method()
-                if inspect.iscoroutine(enter_res):
-                    await enter_res
-
     try:
 
         async def run_input(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
@@ -692,6 +678,18 @@ async def call_function_async(
                         await exit_res
 
 
+async def call_functions_for_setup(
+    function_io_manager,  #: FunctionIOManager TODO: this type is generated at runtime
+    funcs: Iterable[Callable],
+) -> None:
+    """Call function(s), can be sync or async, but any return values are ignored."""
+    with function_io_manager.handle_user_exception():
+        for func in funcs:
+            res = func()
+            if inspect.iscoroutine(res):
+                await res
+
+
 @dataclass
 class ImportedFunction:
     obj: Any
@@ -722,9 +720,7 @@ def import_function(
     active_stub: Optional[_Stub] = None
     pty_info: api_pb2.PTYInfo = function_def.pty_info
 
-    if pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-        fun = exec_cmd
-    elif ser_fun is not None:
+    if ser_fun is not None:
         # This is a serialized function we already fetched from the server
         cls, fun = ser_cls, ser_fun
     else:
@@ -872,6 +868,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             dep_object_ids: list[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
 
+        # Identify all "enter" methods that need to run before we checkpoint
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
+            pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
+            run_with_signal_handler(call_functions_for_setup(function_io_manager, pre_checkpoint_methods.values()))
+
         # Checkpoint container after imports. Checkpointed containers start from this point
         # onwards. This assumes that everything up to this point has run successfully,
         # including global imports.
@@ -880,10 +881,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
         if pty_info.pty_type or pty_info.enabled:
-            # TODO(erikbern): the second condition is for legacy compatibility, remove soon
-            # TODO(erikbern): there is no client test for this branch
-            input_stream = container_app._get_pty()
-            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream, pty_info)
+            # This is an interactive function: Immediately start a PTY shell
+            function_io_manager.start_pty_shell()
+
+        # Identify the "enter" methods to run after we resume
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
+            post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+            run_with_signal_handler(call_functions_for_setup(function_io_manager, post_checkpoint_methods.values()))
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)

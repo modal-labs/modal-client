@@ -15,7 +15,6 @@ from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
-from . import _pty
 from ._container_exec import container_exec
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from .app import _LocalApp, is_local
@@ -65,9 +64,14 @@ async def _run_stub(
         )
 
     if stub.description is None:
-        from __main__ import __file__ as main_file
+        import __main__
 
-        stub.set_description(os.path.basename(main_file))
+        if "__file__" in dir(__main__):
+            stub.set_description(os.path.basename(__main__.__file__))
+        else:
+            # Interactive mode does not have __file__.
+            # https://docs.python.org/3/library/__main__.html#import-main
+            stub.set_description(__main__.__name__)
 
     if client is None:
         client = await _Client.from_env()
@@ -98,9 +102,7 @@ async def _run_stub(
         exc_info: Optional[BaseException] = None
         try:
             # Create all members
-            await app._create_all_objects(
-                stub._indexed_objects, app_state, environment_name, shell=False, output_mgr=output_mgr
-            )
+            await app._create_all_objects(stub._indexed_objects, app_state, environment_name, output_mgr=output_mgr)
 
             # Update all functions client-side to have the output mgr
             for obj in stub.registered_functions.values():
@@ -117,11 +119,6 @@ async def _run_stub(
             # Yield to context
             if shell:
                 yield stub
-            elif stub._pty_input_stream:
-                output_mgr._visible_progress = False
-                async with _pty.write_stdin_to_pty_stream(stub._pty_input_stream):
-                    yield stub
-                output_mgr._visible_progress = True
             else:
                 with output_mgr.show_status_spinner():
                     yield stub
@@ -305,7 +302,8 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
 
     **kwargs will be passed into spawn_sandbox().
     """
-    async with _run_stub(_stub, environment_name=environment_name, shell=True):
+    client = await _Client.from_env()
+    async with _run_stub(_stub, client, environment_name=environment_name, shell=True):
         console = Console()
         loading_status = console.status("Starting container...")
         loading_status.start()
@@ -325,7 +323,7 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
             return
 
         loading_status.stop()
-        await container_exec(task_id, cmd, tty=True)
+        await container_exec(task_id, cmd, pty=True, client=client)
 
 
 run_stub = synchronize_api(_run_stub)

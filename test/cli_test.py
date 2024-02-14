@@ -96,6 +96,12 @@ def test_secret_create(servicer, set_env_client):
     _run(["secret", "create", "foo", "bar=baz"])
     assert len(servicer.secrets) == 1
 
+    # Creating the same one again should fail
+    _run(["secret", "create", "foo", "bar=baz"], expected_exit_code=1)
+
+    # But it should succeed with --force
+    _run(["secret", "create", "foo", "bar=baz", "--force"])
+
 
 def test_secret_list(servicer, set_env_client):
     res = _run(["secret", "list"])
@@ -351,8 +357,6 @@ def mock_shell_pty():
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
     ), mock.patch("modal._container_exec.get_pty_info", mock_get_pty_info), mock.patch(
-        "modal._pty.write_stdin_to_pty_stream", asyncnullcontext
-    ), mock.patch(
         "modal._container_exec.handle_exec_input", asyncnullcontext
     ), mock.patch(
         "modal._container_exec._write_to_fd", write_to_fd

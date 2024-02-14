@@ -603,12 +603,6 @@ class _Function(_Object, type_prefix="fu"):
                     f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
                 )
 
-        # TODO: remove when MOD-2043 is addressed and async debugging works.
-        if interactive and is_async(info.raw_f):
-            raise InvalidError("Interactive mode not supported for async functions")
-        elif interactive and is_generator:
-            raise InvalidError("Interactive mode not supported for generator functions")
-
         if secret is not None:
             deprecation_warning(
                 date(2024, 1, 31),
@@ -769,10 +763,7 @@ class _Function(_Object, type_prefix="fu"):
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
             timeout_secs = timeout
-            if resolver.shell and not is_builder_function:
-                timeout_secs = 86400
-                pty_info = _pty.get_pty_info(shell=True)
-            elif interactive:
+            if interactive:
                 assert not is_builder_function, "builder functions do not support interactive usage"
                 pty_info = _pty.get_pty_info(shell=False)
             else:
@@ -1129,16 +1120,19 @@ class _Function(_Object, type_prefix="fu"):
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
+    @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
         async for res in invocation.run_generator():
             yield res
 
+    @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
+    @synchronizer.no_input_translation
     async def map(
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
@@ -1187,6 +1181,7 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
+    @synchronizer.no_input_translation
     async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
         """Execute function for all inputs, ignoring outputs.
 
@@ -1202,6 +1197,7 @@ class _Function(_Object, type_prefix="fu"):
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
+    @synchronizer.no_input_translation
     async def starmap(
         self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
     ) -> AsyncGenerator[Any, None]:
@@ -1225,8 +1221,9 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
+    @synchronizer.no_io_translation
     @live_method
-    async def remote(self, *args, **kwargs) -> Awaitable[Any]:
+    async def remote(self, *args, **kwargs) -> Any:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -1243,6 +1240,7 @@ class _Function(_Object, type_prefix="fu"):
 
         return await self._call_function(args, kwargs)
 
+    @synchronizer.no_io_translation
     @live_method_gen
     async def remote_gen(self, *args, **kwargs) -> AsyncGenerator[Any, None]:
         """
@@ -1272,6 +1270,7 @@ class _Function(_Object, type_prefix="fu"):
         else:
             deprecation_error(date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
 
+    @synchronizer.no_io_translation
     @live_method
     async def shell(self, *args, **kwargs) -> None:
         if self._is_generator:
@@ -1347,6 +1346,7 @@ class _Function(_Object, type_prefix="fu"):
                 " a Modal container in the cloud",
             )
 
+    @synchronizer.no_input_translation
     @live_method
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
