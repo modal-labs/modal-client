@@ -1263,7 +1263,7 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
 
-    def call(self, *args, **kwargs) -> Awaitable[Any]:  # type: ignore[return]
+    def call(self, *args, **kwargs) -> None:
         """Deprecated. Use `f.remote` or `f.remote_gen` instead."""
         # TODO: Generics/TypeVars
         if self._is_generator:
@@ -1389,7 +1389,7 @@ class _Function(_Object, type_prefix="fu"):
 Function = synchronize_api(_Function)
 
 
-class _FunctionCall(_Object, type_prefix="fc"):  # type: ignore[call-arg]
+class _FunctionCall(_Object, type_prefix="fc"):
     """A reference to an executed function call.
 
     Constructed using `.spawn(...)` on a Modal function with the same
