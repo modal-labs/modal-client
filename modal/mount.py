@@ -83,7 +83,7 @@ class _MountEntry(metaclass=abc.ABCMeta):
         ...
 
 
-def _select_files(entries: List[_MountEntry]) -> list[Tuple[Path, PurePosixPath]]:
+def _select_files(entries: List[_MountEntry]) -> List[Tuple[Path, PurePosixPath]]:
     all_files: typing.Set[Tuple[Path, PurePosixPath]] = set()
     for entry in entries:
         all_files |= set(entry.get_files_to_upload())
