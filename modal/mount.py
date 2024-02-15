@@ -24,9 +24,10 @@ from modal_version import __version__
 
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._resolver import Resolver
+from .client import _Client
 from .config import config, logger
 from .exception import NotFoundError
-from .object import _StatefulObject
+from .object import _get_environment_name, _StatefulObject
 
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
@@ -133,6 +134,8 @@ class _MountDir(_MountEntry):
         return self.local_dir, None
 
 
+# TODO(erikbern): get rid of the _StatefulObject inheritance shortly
+# (we still depend on it for _deploy in modal_base_images)
 class _Mount(_StatefulObject, type_prefix="mo"):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
@@ -450,6 +453,37 @@ class _Mount(_StatefulObject, type_prefix="mo"):
                         remote_path=remote_path,
                     )
         return mount
+
+    @staticmethod
+    def from_name(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+    ) -> "_Mount":
+        async def _load(provider: _Mount, resolver: Resolver, existing_object_id: Optional[str]):
+            req = api_pb2.MountGetOrCreateRequest(
+                deployment_name=label,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name, resolver),
+            )
+            response = await resolver.client.stub.MountGetOrCreate(req)
+            provider._hydrate(response.mount_id, resolver.client, response.handle_metadata)
+
+        return _Mount._from_loader(_load, "Mount()")
+
+    @staticmethod
+    async def lookup(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> "_Mount":
+        obj = _Mount.from_name(label, namespace=namespace, environment_name=environment_name)
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
 
 
 Mount = synchronize_api(_Mount)
