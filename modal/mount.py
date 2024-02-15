@@ -9,7 +9,7 @@ import time
 import typing
 from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Union
+from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Type, Union
 
 import aiostream
 from google.protobuf.message import Message
@@ -471,8 +471,9 @@ class _Mount(_StatefulObject, type_prefix="mo"):
 
         return _Mount._from_loader(_load, "Mount()")
 
-    @staticmethod
+    @classmethod
     async def lookup(
+        cls: Type["_Mount"],
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
