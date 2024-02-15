@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import asyncio
-import time
 import socket
+import time
 from datetime import date
 
 from modal import (

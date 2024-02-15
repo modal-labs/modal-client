@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2022	
+# Copyright Modal Labs 2022
 
 """This is a vendored copy of parts of the 'psutil' Python package.
 
@@ -8,12 +8,12 @@ lists active network connections from all processes on the system.
 
 
 import base64
-from collections import defaultdict, namedtuple
 import errno
 import os
 import socket
 import struct
 import sys
+from collections import defaultdict, namedtuple
 
 LITTLE_ENDIAN = sys.byteorder == "little"
 
