@@ -32,7 +32,6 @@ from modal import __version__, config
 from modal._serialization import serialize_data_format
 from modal.app import _ContainerApp
 from modal.client import Client
-from modal.image import _dockerhub_python_version
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import synchronize_api
@@ -75,14 +74,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.queue = []
         self.deployed_apps = {
             client_mount_name(): "ap-x",
-            f"debian-slim-{_dockerhub_python_version()}-{__version__}": "ap-z",
-            f"conda-{__version__}": "ap-c",
             "my-proxy": "ap-proxy",
         }
-        self.app_objects = {
-            "ap-z": {"": "im-123"},
-            "ap-c": {"": "im-456"},
-        }
+        self.app_objects = {}
         self.app_single_objects = {
             "ap-x": "mo-123",
             "ap-proxy": "pr-123",
