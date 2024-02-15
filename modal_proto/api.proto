@@ -1922,7 +1922,7 @@ service ModalClient {
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
   rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
-  rpc MountGetOrCreate(MountGetOrCreateRequest) returns (google.protobuf.Empty);
+  rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
