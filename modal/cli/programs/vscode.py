@@ -32,7 +32,7 @@ def wait_for_port(data):
 
 
 @stub.function(cpu=args["cpu"], memory=args["memory"], gpu=args["gpu"], timeout=args["timeout"])
-def run_jupyter():
+def run_vscode():
     os.chdir("/home/coder")
     token = secrets.token_urlsafe(13)
     with forward(8080) as tunnel:
@@ -47,7 +47,7 @@ def run_jupyter():
 
 @stub.local_entrypoint()
 def main():
-    stub.run_jupyter.spawn()
+    stub.run_vscode.spawn()
     url, token = stub.q.get()
     time.sleep(1)  # Give Jupyter a chance to start up
     print("\nVS Code on Modal, opening in browser...")
