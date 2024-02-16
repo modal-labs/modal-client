@@ -3,8 +3,6 @@
 from dataclasses import dataclass
 from typing import List
 
-from vendor import psutil
-
 
 @dataclass(frozen=True)
 class NetworkConnection:
@@ -13,6 +11,8 @@ class NetworkConnection:
 
 
 def get_open_connections() -> List[NetworkConnection]:
+    from vendor import psutil
+
     open_connections:list[NetworkConnection] = []
     for kind in ["tcp", "udp"]:
         for conn in psutil.net_connections(kind=kind):
