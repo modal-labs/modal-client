@@ -35,7 +35,6 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._checkpointing_utils import get_open_connections
 from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
@@ -477,19 +476,6 @@ class _FunctionIOManager:
         """Message server indicating that function is ready to be checkpointed."""
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id}")
-
-        if connections := get_open_connections():
-            logger.error(f"Found {len(connections)} open network connection(s):")
-            for conn in connections:
-                logger.error(f"Remote Address: {conn.remote_addr}, Status: {conn.status}")
-
-            raise ConnectionError(
-                "Cannot checkpoint container with open network connections. "
-                "Are you closing connections before checkpointing?"
-            )
-        else:
-            logger.debug("No open TCP connections found.")
-
 
         await self._client.stub.ContainerCheckpoint(
             api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)

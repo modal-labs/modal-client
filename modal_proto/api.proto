@@ -1221,6 +1221,19 @@ message MountBuildResponse {
   MountHandleMetadata handle_metadata = 2;
 }
 
+message MountGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;
+  repeated MountFile files = 5;
+}
+
+message MountGetOrCreateResponse {
+  string mount_id = 1;
+  MountHandleMetadata handle_metadata = 2;
+}
+
 message MountHandleMetadata {
   string content_checksum_sha256_hex = 1;
 }
@@ -1249,13 +1262,6 @@ message MultiPartUpload {
   int64 part_length = 1; // split upload based on this part length - all except the last part must have this length
   repeated string upload_urls = 2;
   string completion_url = 3;
-}
-
-message MountDeployRequest {
-  string deployment_name = 1;
-  DeploymentNamespace namespace = 2;
-  string environment_name = 3;
-  string mount_id = 4;
 }
 
 message Object {
@@ -1916,7 +1922,7 @@ service ModalClient {
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
   rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
-  rpc MountDeploy(MountDeployRequest) returns (google.protobuf.Empty);
+  rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
