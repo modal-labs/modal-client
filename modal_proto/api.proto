@@ -194,6 +194,11 @@ enum WebhookAsyncMode {
   WEBHOOK_ASYNC_MODE_AUTO = 4; // redirect to polling endpoint if execution time nears the http timeout
 }
 
+message AckInputCancellationRequest {
+  CancelInputEvent cancel_input_event = 1;
+}
+
+
 message AppClientDisconnectRequest {
   string app_id = 1;
   AppDisconnectReason reason = 2;
@@ -549,6 +554,14 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   string runtime = 11;
   string environment_name = 13;
   optional string checkpoint_id = 14;
+}
+
+message CancelInputEvent {
+  repeated string cancellation_ids = 1;
+}
+
+message ContainerHeartbeatResponse {
+  CancelInputEvent cancel_input_event = 1;
 }
 
 message ContainerHeartbeatRequest {
@@ -1828,6 +1841,7 @@ message RuntimeInputMessage {
 
 
 service ModalClient {
+  rpc AckInputCancellation(AckInputCancellationRequest) returns (google.protobuf.Empty);
   // Apps
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
   rpc AppClientDisconnect(AppClientDisconnectRequest) returns (google.protobuf.Empty);
@@ -1856,7 +1870,7 @@ service ModalClient {
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Container
-  rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
+  rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
   rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputBatch);
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);

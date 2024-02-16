@@ -167,6 +167,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self._function_body = func
         return func
 
+    def container_heartbeat_return_now(self, response: api_pb2.ContainerHeartbeatResponse):
+        self.container_heartbeat_response = response
+        print("Unblocking call")
+        self.container_heartbeat_abort.set()
+
     def get_function_metadata(self, object_id: str) -> api_pb2.FunctionHandleMetadata:
         definition: api_pb2.Function = self.app_functions[object_id]
         return api_pb2.FunctionHandleMetadata(
@@ -207,6 +212,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         res.object_id = object_id
         return res
+
+    async def AckInputCancellation(
+        self,
+        stream: "grpclib.server.Stream[modal_proto.api_pb2.AckInputCancellationRequest, google.protobuf.empty_pb2.Empty]",
+    ) -> None:
+        await stream.send_message(Empty())
 
     ### App
 
@@ -402,8 +413,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ContainerHeartbeat(self, stream):
         request: api_pb2.ContainerHeartbeatRequest = await stream.recv_message()
+        self.container_heartbeat_abort = threading.Event()
         self.requests.append(request)
-        await stream.send_message(Empty())
+        print("Waiting for event")
+        await asyncio.to_thread(self.container_heartbeat_abort.wait, 5)
+        print("Got event")
+        if self.container_heartbeat_response:
+            await stream.send_message(self.container_heartbeat_response)
+            self.container_heartbeat_response = None
+        else:
+            await stream.send_message(api_pb2.ContainerHeartbeatResponse())
 
     async def ContainerExec(self, stream):
         _request: api_pb2.ContainerExecRequest = await stream.recv_message()
@@ -878,6 +897,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.SharedVolumeGetFileResponse(data=put_req.data))
 
     ### Task
+
+    async def TaskCurrentInputs(
+        self, stream: "grpclib.server.Stream[Empty, api_pb2.TaskCurrentInputsResponse]"
+    ) -> None:
+        await stream.send_message(api_pb2.TaskCurrentInputsResponse(input_ids=[]))  # dummy implementation
 
     async def TaskResult(self, stream):
         request: api_pb2.TaskResultRequest = await stream.recv_message()

@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from unittest import mock
 from unittest.mock import MagicMock
 
+from google.protobuf import empty_pb2
 from grpclib.exceptions import GRPCError
 
 import modal_utils
@@ -33,6 +34,7 @@ from modal._serialization import (
 from modal.exception import InvalidError
 from modal.stub import _Stub
 from modal_proto import api_pb2
+from modal_utils.grpc_testing import InterceptionContext
 
 from .helpers import deploy_stub_externally
 from .supports.skip import skip_windows, skip_windows_unix_socket
@@ -67,7 +69,7 @@ def _get_multi_inputs(args: list[tuple[tuple, dict]] = []) -> list[api_pb2.Funct
         resp = api_pb2.FunctionGetInputsResponse(
             inputs=[
                 api_pb2.FunctionGetInputsItem(
-                    input_id=f"in-{input_n}", input=api_pb2.FunctionInput(args=serialize(input_args))
+                    input_id=f"in-{input_n:03}", input=api_pb2.FunctionInput(args=serialize(input_args))
                 )
             ]
         )
@@ -1057,20 +1059,29 @@ def _run_container_process(
 @skip_windows("signals not supported on windows and this only runs on containers")
 @pytest.mark.usefixtures("server_url_env")
 def test_sigusr1_aborts_current_input(servicer):
+    ctx: InterceptionContext
+
+    # send three inputs in container: in-100, in-101, in-102
     container_process = _run_container_process(
-        servicer, "modal_test_support.functions", "delay", inputs=[((1,), {}), ((0.01,), {})]
+        servicer, "modal_test_support.functions", "delay", inputs=[((0.10,), {}), ((0.11,), {}), ((0.12,), {})]
     )
-    servicer.called_function_get_inputs.wait(timeout=1)
-    time.sleep(0.05)  # let the container get the input
-    container_process.send_signal(signal.SIGUSR1)
-    servicer.called_function_get_inputs = threading.Event()  # new event to wait for
-    servicer.called_function_get_inputs.wait(timeout=1)
-    time.sleep(0.1)  # let the container handle the remaining input
+    servicer.called_function_get_inputs.wait(timeout=1)  # wait for called_function_get_inputs to get called and handled
+    time.sleep(0.05)  # let the container get the input batch
+
+    # now let container receive container heartbeat indicating there is a cancellation
+    with servicer.intercept() as ctx:
+        # simulate that second input gets cancelled
+        ctx.add_response("TaskCurrentInputs", api_pb2.TaskCurrentInputsResponse(input_ids=["in-100", "in-102"]))
+        ctx.add_response("AckInputCancellation", empty_pb2.Empty())
+        servicer.container_heartbeat_return_now(
+            api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(cancellation_ids=["ca-123"]))
+        )
+        time.sleep(0.5)  # make sure container handles everything
+
     items = _flatten_outputs(servicer.container_outputs)
-    assert len(items) == 1
-    print(items[0])
-    data = deserialize(items[0].result.data, client=None)
-    assert data == 0.01
+    assert len(items) == 2
+    data = [deserialize(i.result.data, client=None) for i in items]
+    assert data == [0.10, 0.12]
     assert container_process.wait() == 0
 
 
