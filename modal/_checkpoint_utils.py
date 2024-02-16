@@ -11,6 +11,7 @@ class NetworkConnection:
 
 
 def get_open_connections() -> List[NetworkConnection]:
+    # Prevents import in non-Linux environments.
     from vendor import psutil
 
     open_connections:list[NetworkConnection] = []
