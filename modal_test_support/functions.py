@@ -296,3 +296,14 @@ class CheckpointingCls:
     @method()
     def f(self, x):
         return "".join(self._vals) + x
+
+
+@stub.cls()
+class EventLoopCls:
+    @enter()
+    async def enter(self):
+        self.loop = asyncio.get_running_loop()
+
+    @method()
+    async def f(self):
+        return self.loop.is_running()
