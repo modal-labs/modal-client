@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.57.52 (2024-02-17)
+
+- In `modal token new` and `modal token set`, the `--no-no-verify` flag has been removed in favor of a `--verify` flag. This remains the default behavior.
+
+
+
 ### 0.57.51 (2024-02-17)
 
 - Fixes a regression from 0.57.40 where `@enter` methods used a separate event loop.
