@@ -830,6 +830,8 @@ message Function {
   uint32 max_inputs = 46;
   
   repeated S3Mount s3_mounts = 47;
+  
+  bool _experimental_boost = 48;
 }
 
 message FunctionHandleMetadata {
