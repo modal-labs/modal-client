@@ -582,7 +582,7 @@ def call_function_sync(
             ):
                 run_inputs(input_id, function_call_id, args, kwargs)
     finally:
-        if imp_fun.obj is not None:
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 with function_io_manager.handle_user_exception():
@@ -652,7 +652,7 @@ async def call_function_async(
             ):
                 await run_input(input_id, function_call_id, args, kwargs)
     finally:
-        if imp_fun.obj is not None:
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 # Call a user-defined method
