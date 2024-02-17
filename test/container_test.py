@@ -564,6 +564,17 @@ def test_checkpointing_cls_function(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
+def test_cls_enter_uses_event_loop(unix_servicer):
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "EventLoopCls.f",
+        inputs=_get_inputs(((), {})),
+    )
+    assert _unwrap_scalar(ret) == True
+
+
+@skip_windows_unix_socket
 def test_container_heartbeats(unix_servicer, event_loop):
     _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)
