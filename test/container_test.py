@@ -57,6 +57,7 @@ class ContainerResult:
     client: Client
     items: List[api_pb2.FunctionPutOutputsItem]
     data_chunks: List[api_pb2.DataChunk]
+    task_result: api_pb2.GenericResult
 
 
 def _run_container(
@@ -165,7 +166,7 @@ def _run_container(
             except asyncio.QueueEmpty:
                 pass
 
-        return ContainerResult(client, items, data_chunks)
+        return ContainerResult(client, items, data_chunks, servicer.task_result)
 
 
 def _unwrap_scalar(ret: ContainerResult):
@@ -938,6 +939,7 @@ def test_build_decorator_cls(unix_servicer, event_loop):
         is_auto_snapshot=True,
     )
     assert _unwrap_scalar(ret) == 101
+    assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
 
 
 @skip_windows_unix_socket
@@ -951,6 +953,7 @@ def test_multiple_build_decorator_cls(unix_servicer, event_loop):
         is_auto_snapshot=True,
     )
     assert _unwrap_scalar(ret) == 1001
+    assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
 
 
 @skip_windows_unix_socket
