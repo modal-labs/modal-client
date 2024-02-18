@@ -596,9 +596,7 @@ async def call_function_async(
             started_at = time.time()
             reset_context = _set_current_context_ids(input_id, function_call_id)
             async with function_io_manager.handle_input_exception.aio(input_id, started_at):
-                print(f"{time.time() - started_at:.5f}s before calling fn")
                 res = imp_fun.fun(*args, **kwargs)
-                print(f"{time.time() - started_at:.5f}s after calling fn")
 
                 # TODO(erikbern): any exception below shouldn't be considered a user exception
                 if imp_fun.is_generator:
@@ -619,9 +617,7 @@ async def call_function_async(
                     async for value in res:
                         await function_io_manager._queue_put.aio(generator_queue, value)
                         item_count += 1
-                    print(f"{time.time() - started_at:.5f}s after putting all values")
 
-                    print(f"{time.time() - started_at:.5f}s before waiting on generator")
                     asyncio.gather(
                         function_io_manager._queue_put.aio(
                             generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL
@@ -629,7 +625,6 @@ async def call_function_async(
                         generator_output_task,  # Wait to finish sending generator outputs.
                     )
                     message = api_pb2.GeneratorDone(items_total=item_count)
-                    print(f"{time.time() - started_at:.5f}s for output to be produced")
                     await function_io_manager.push_output.aio(
                         input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
                     )
