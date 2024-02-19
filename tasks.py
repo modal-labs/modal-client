@@ -41,7 +41,12 @@ def lint(ctx):
 
 @task
 def mypy(ctx):
+    mypy_allowlist = [
+        "modal/functions.py",
+    ]
+
     ctx.run("mypy .", pty=True)
+    ctx.run(f"mypy {' '.join(mypy_allowlist)} --follow-imports=skip", pty=True)
 
 
 @task
