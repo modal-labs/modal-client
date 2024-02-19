@@ -728,7 +728,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.deployed_mounts[k] = mount_id
         else:
             raise GRPCError(Status.NOT_FOUND, "Mount not found")
-        await stream.send_message(api_pb2.MountGetOrCreateResponse(mount_id=mount_id, handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef")))
+        await stream.send_message(
+            api_pb2.MountGetOrCreateResponse(
+                mount_id=mount_id, handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef")
+            )
+        )
 
     ### Queue
 

@@ -128,7 +128,9 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
             run_echo_server(8000)
     """
 
-    if not isinstance(port, int) or port < 1 or port > 65535:
+    if not isinstance(port, int):
+        raise InvalidError(f"The port argument should be an int, not {port!r}")
+    if port < 1 or port > 65535:
         raise InvalidError(f"Invalid port number {port}")
 
     if not client:

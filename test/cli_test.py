@@ -358,9 +358,7 @@ def mock_shell_pty():
         "modal._pty.get_pty_info", mock_get_pty_info
     ), mock.patch("modal._container_exec.get_pty_info", mock_get_pty_info), mock.patch(
         "modal._container_exec.handle_exec_input", asyncnullcontext
-    ), mock.patch(
-        "modal._container_exec._write_to_fd", write_to_fd
-    ):
+    ), mock.patch("modal._container_exec._write_to_fd", write_to_fd):
         yield captured_out
 
 
