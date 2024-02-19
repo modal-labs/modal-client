@@ -25,6 +25,7 @@ from typing import (
     Optional,
     Sequence,
     Set,
+    Sized,
     Type,
     Union,
 )
@@ -82,7 +83,7 @@ from .schedule import Schedule
 from .secret import _Secret
 from .volume import _Volume
 
-OUTPUTS_TIMEOUT = 55  # seconds
+OUTPUTS_TIMEOUT = 55.0  # seconds
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
 
 
@@ -563,13 +564,13 @@ class _Function(_Object, type_prefix="fu"):
         stub,
         image=None,
         secret: Optional[_Secret] = None,
-        secrets: Collection[_Secret] = (),
+        secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
         gpu: GPU_T = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
@@ -926,7 +927,7 @@ class _Function(_Object, type_prefix="fu"):
         obj,
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
-        args: Iterable[Any],
+        args: Sized,
         kwargs: Dict[str, Any],
     ) -> "_Function":
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -1017,6 +1018,7 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def tag(self):
         """mdmd:hidden"""
+        assert hasattr(self, "_tag")
         return self._tag
 
     @property
@@ -1033,6 +1035,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""
+        assert hasattr(self, "_raw_f") and hasattr(self, "_build_args")
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
     # Live handle methods
@@ -1262,7 +1265,7 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
 
-    def call(self, *args, **kwargs) -> Awaitable[Any]:
+    def call(self, *args, **kwargs) -> None:
         """Deprecated. Use `f.remote` or `f.remote_gen` instead."""
         # TODO: Generics/TypeVars
         if self._is_generator:
@@ -1462,8 +1465,8 @@ async def _gather(*function_calls: _FunctionCall):
 gather = synchronize_api(_gather)
 
 
-_current_input_id = ContextVar("_current_input_id")
-_current_function_call_id = ContextVar("_current_function_call_id")
+_current_input_id: ContextVar = ContextVar("_current_input_id")
+_current_function_call_id: ContextVar = ContextVar("_current_function_call_id")
 
 
 def current_input_id() -> Optional[str]:
