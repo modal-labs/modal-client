@@ -585,6 +585,7 @@ class _Function(_Object, type_prefix="fu"):
         keep_warm: Optional[int] = None,
         interactive: bool = False,
         cloud: Optional[str] = None,
+        _experimental_boost: bool = False,
         is_builder_function: bool = False,
         cls: Optional[type] = None,
         is_auto_snapshot: bool = False,
@@ -850,6 +851,7 @@ class _Function(_Object, type_prefix="fu"):
                 block_network=block_network,
                 max_inputs=max_inputs,
                 s3_mounts=s3_mounts_to_proto(s3_mounts),
+                _experimental_boost=_experimental_boost,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -946,7 +948,7 @@ class _Function(_Object, type_prefix="fu"):
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
 
         provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
-        if len(args) + len(kwargs) == 0 and not from_other_workspace and self.is_hydrated:
+        if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
             provider._hydrate_from_other(self)
         provider._is_remote_cls_method = True  # TODO(erikbern): deprecated

@@ -57,6 +57,7 @@ class ContainerResult:
     client: Client
     items: List[api_pb2.FunctionPutOutputsItem]
     data_chunks: List[api_pb2.DataChunk]
+    task_result: api_pb2.GenericResult
 
 
 def _run_container(
@@ -165,7 +166,7 @@ def _run_container(
             except asyncio.QueueEmpty:
                 pass
 
-        return ContainerResult(client, items, data_chunks)
+        return ContainerResult(client, items, data_chunks, servicer.task_result)
 
 
 def _unwrap_scalar(ret: ContainerResult):
@@ -564,6 +565,17 @@ def test_checkpointing_cls_function(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
+def test_cls_enter_uses_event_loop(unix_servicer):
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "EventLoopCls.f",
+        inputs=_get_inputs(((), {})),
+    )
+    assert _unwrap_scalar(ret) == True
+
+
+@skip_windows_unix_socket
 def test_container_heartbeats(unix_servicer, event_loop):
     _run_container(unix_servicer, "modal_test_support.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)
@@ -926,7 +938,12 @@ def test_build_decorator_cls(unix_servicer, event_loop):
         is_builder_function=True,
         is_auto_snapshot=True,
     )
+    print(ret)
     assert _unwrap_scalar(ret) == 101
+    # TODO: this is GENERIC_STATUS_FAILURE when `@exit` fails,
+    # but why is it not set when `@exit` is successful?
+    # assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert ret.task_result is None
 
 
 @skip_windows_unix_socket
@@ -940,6 +957,7 @@ def test_multiple_build_decorator_cls(unix_servicer, event_loop):
         is_auto_snapshot=True,
     )
     assert _unwrap_scalar(ret) == 1001
+    assert ret.task_result is None
 
 
 @skip_windows_unix_socket

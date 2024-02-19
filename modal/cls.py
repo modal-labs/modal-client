@@ -275,7 +275,6 @@ class _Cls(_Object, type_prefix="cs"):
         concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
-        keep_warm: Optional[int] = None,
         allow_background_volume_commits: bool = False,
     ) -> "_Cls":
         retry_policy = _parse_retries(retries)
@@ -305,7 +304,6 @@ class _Cls(_Object, type_prefix="cs"):
             concurrency_limit=concurrency_limit,
             timeout_secs=timeout,
             task_idle_timeout_secs=container_idle_timeout,
-            warm_pool_size=keep_warm,
             replace_volume_mounts=replace_volume_mounts,
             volume_mounts=volume_mounts,
             allow_concurrent_inputs=allow_concurrent_inputs,
