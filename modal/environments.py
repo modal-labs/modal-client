@@ -23,7 +23,7 @@ async def update_environment(
     *,
     new_name: Optional[str] = None,
     new_web_suffix: Optional[str] = None,
-    client: Optional[_Client] = None
+    client: Optional[_Client] = None,
 ):
     if new_name is not None:
         if len(new_name) < 1:
