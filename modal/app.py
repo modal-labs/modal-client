@@ -328,9 +328,11 @@ class _ContainerApp:
         self._object_handle_metadata = {}
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, include_unindexed=True)
         resp = await retry_transient_errors(client.stub.AppGetObjects, req)
+        logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {app_id}")
         for item in resp.items:
             handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
             self._object_handle_metadata[item.object.object_id] = handle_metadata
+            logger.debug(f"Setting metadata for {item.object.object_id} ({item.tag})")
             if item.tag:
                 self._tag_to_object_id[item.tag] = item.object.object_id
 
