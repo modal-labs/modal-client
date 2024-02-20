@@ -557,7 +557,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
 }
 
 message CancelInputEvent {
-  repeated string cancellation_ids = 1;
+  repeated string input_ids = 1;
 }
 
 message ContainerHeartbeatResponse {
