@@ -31,6 +31,6 @@ runs:
     - name: Install Python packages
       shell: bash
       run: |
-        pip install -U uv
+        pip install -U uv pip
         uv pip install -r requirements.dev.txt
         uv pip install -e .
