@@ -14,14 +14,6 @@ runs:
       with:
         python-version: ${{ inputs.version }}
 
-    - name: Get cached python dependencies
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.pythonLocation }}
-        key: |
-          ${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('**/setup.cfg', 'requirements.dev.txt', 'pyproject.toml') }}
-        restore-keys: ${{ runner.os }}-${{ env.pythonLocation }}-
-
     # See: https://github.com/astral-sh/uv/issues/1526
     - name: Workaround to make uv work
       shell: bash
