@@ -246,7 +246,6 @@ class _Invocation:
         response = await retry_transient_errors(client.stub.FunctionMap, request)
 
         if len(response.pipelined_input_ids) > 0:
-            print("Taking advantage of pipelining!")
             return _Invocation(client.stub, response.function_call_id, client)
 
         function_call_id = response.function_call_id
