@@ -61,7 +61,7 @@ class ContainerResult:
     task_result: api_pb2.GenericResult
 
 
-def _get_multi_inputs(args: List[Tuple[Tuple, Dict]] = []) -> list[api_pb2.FunctionGetInputsResponse]:
+def _get_multi_inputs(args: List[Tuple[Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
     responses = []
     for input_n, input_args in enumerate(args):
         resp = api_pb2.FunctionGetInputsResponse(
@@ -127,8 +127,8 @@ def _container_args(
     )
 
 
-def _flatten_outputs(outputs) -> list[api_pb2.FunctionPutOutputsItem]:
-    items: list[api_pb2.FunctionPutOutputsItem] = []
+def _flatten_outputs(outputs) -> List[api_pb2.FunctionPutOutputsItem]:
+    items: List[api_pb2.FunctionPutOutputsItem] = []
     for req in outputs:
         items += list(req.outputs)
     return items
@@ -1060,7 +1060,7 @@ def _run_container_process(
     servicer,
     module_name,
     function_name,
-    inputs: list[tuple[tuple[Any], dict[str, Any]]],
+    inputs: List[Tuple[Tuple[Any], Dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
 ) -> subprocess.Popen:
     container_args = _container_args(module_name, function_name, allow_concurrent_inputs=allow_concurrent_inputs)
