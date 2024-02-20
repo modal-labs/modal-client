@@ -554,9 +554,9 @@ def call_function_sync(
                         item_count += 1
 
                     function_io_manager._queue_put(generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL)
-                    generator_output_task.result()  # Wait to finish sending generator outputs.
                     message = api_pb2.GeneratorDone(items_total=item_count)
                     function_io_manager.push_output(input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
+                    generator_output_task.result()  # Wait to finish sending generator outputs.
                 else:
                     if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
