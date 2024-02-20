@@ -984,7 +984,7 @@ message FunctionMapRequest {
 
 message FunctionMapResponse {
   string function_call_id = 1;
-  repeated string pipelined_input_ids = 2;
+  repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
 }
 
 message FunctionPutInputsItem {
