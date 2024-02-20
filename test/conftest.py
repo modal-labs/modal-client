@@ -33,7 +33,6 @@ from modal import __version__, config
 from modal._serialization import serialize_data_format
 from modal.app import _ContainerApp
 from modal.client import HEARTBEAT_INTERVAL, Client
-from modal.image import _dockerhub_python_version
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import synchronize_api
@@ -76,16 +75,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.queue = []
         self.deployed_apps = {
             client_mount_name(): "ap-x",
-            f"debian-slim-{_dockerhub_python_version()}-{__version__}": "ap-z",
-            f"conda-{__version__}": "ap-c",
             "my-proxy": "ap-proxy",
         }
-        self.app_objects = {
-            "ap-z": {"": "im-123"},
-            "ap-c": {"": "im-456"},
-        }
+        self.app_objects = {}
         self.app_single_objects = {
-            "ap-x": "mo-123",
             "ap-proxy": "pr-123",
         }
         self.app_unindexed_objects = {
@@ -133,6 +126,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.secrets = {}
 
         self.deployed_dicts = {}
+        self.deployed_mounts = {
+            (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): "mo-123",
+        }
         self.deployed_queues = {}
         self.deployed_secrets = {}
 
@@ -741,6 +737,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.n_mounts += 1
         await stream.send_message(api_pb2.MountBuildResponse(mount_id=mount_id))
+
+    async def MountGetOrCreate(self, stream):
+        request: api_pb2.MountGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace)
+        if k in self.deployed_mounts:
+            mount_id = self.deployed_mounts[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+            self.n_mounts += 1
+            mount_id = f"qu-{self.n_mounts}"
+            self.deployed_mounts[k] = mount_id
+        else:
+            raise GRPCError(Status.NOT_FOUND, "Mount not found")
+        await stream.send_message(
+            api_pb2.MountGetOrCreateResponse(
+                mount_id=mount_id, handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef")
+            )
+        )
 
     ### Queue
 

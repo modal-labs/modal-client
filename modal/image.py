@@ -278,7 +278,7 @@ class _Image(_Object, type_prefix="im"):
                 image=image_definition,
                 existing_image_id=existing_object_id,  # TODO: ignored
                 build_function_id=build_function_id,
-                force_build=force_build,
+                force_build=config.get("force_build") or force_build,
                 namespace=_namespace,
             )
             resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)

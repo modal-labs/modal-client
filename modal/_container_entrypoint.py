@@ -64,21 +64,25 @@ class UserException(Exception):
 INPUT_CANCELLATION_MESSAGE = "modal-external-cancellation"
 
 
-def run_with_signal_handler(coro):
-    """Execute coro in an event loop, with a signal handler that cancels
-    the task in the case of SIGINT or SIGTERM. Prevents stray cancellation errors
-    from propagating up."""
+class SignalHandlingEventLoop:
+    """Manage an event loop for executing coroutines while handling SIGINT/SIGTERM.
 
-    loop = asyncio.new_event_loop()
-    task = asyncio.ensure_future(coro, loop=loop)
-    for s in [signal.SIGINT, signal.SIGTERM]:
-        loop.add_signal_handler(s, task.cancel)
-    loop.add_signal_handler(signal.SIGUSR1, task.cancel, INPUT_CANCELLATION_MESSAGE)
-    try:
-        result = loop.run_until_complete(task)
-    finally:
-        loop.close()
-    return result
+    Prevents stray cancellation errors from propagating up.
+    """
+
+    def __enter__(self):
+        self.loop = asyncio.new_event_loop()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.loop.close()
+
+    def run(self, coro):
+        task = asyncio.ensure_future(coro, loop=self.loop)
+        for s in [signal.SIGINT, signal.SIGTERM]:
+            self.loop.add_signal_handler(s, task.cancel)
+        self.loop.add_signal_handler(signal.SIGUSR1, task.cancel, INPUT_CANCELLATION_MESSAGE)
+        return self.loop.run_until_complete(task)
 
 
 class _FunctionIOManager:
@@ -628,7 +632,7 @@ def call_function_sync(
             ):
                 run_inputs(input_id, function_call_id, args, kwargs)
     finally:
-        if imp_fun.obj is not None:
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 with function_io_manager.handle_user_exception():
@@ -698,7 +702,7 @@ async def call_function_async(
             ):
                 await run_input(input_id, function_call_id, args, kwargs)
     finally:
-        if imp_fun.obj is not None:
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 # Call a user-defined method
@@ -879,7 +883,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # Define a global app (need to do this before imports)
     container_app = function_io_manager.initialize_app()
 
-    with function_io_manager.heartbeats():
+    with SignalHandlingEventLoop() as event_loop, function_io_manager.heartbeats():
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = function_io_manager.get_serialized_function()
@@ -901,7 +905,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify all "enter" methods that need to run before we checkpoint
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
-            run_with_signal_handler(call_functions_for_setup(function_io_manager, pre_checkpoint_methods.values()))
+            event_loop.run(call_functions_for_setup(function_io_manager, pre_checkpoint_methods.values()))
 
         # Checkpoint container after imports. Checkpointed containers start from this point
         # onwards. This assumes that everything up to this point has run successfully,
@@ -917,12 +921,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify the "enter" methods to run after we resume
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
-            run_with_signal_handler(call_functions_for_setup(function_io_manager, post_checkpoint_methods.values()))
+            event_loop.run(call_functions_for_setup(function_io_manager, post_checkpoint_methods.values()))
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)
         else:
-            run_with_signal_handler(call_function_async(function_io_manager, imp_fun))
+            event_loop.run(call_function_async(function_io_manager, imp_fun))
 
         # Commit on exit to catch uncommitted volume changes and surface background
         # commit errors.

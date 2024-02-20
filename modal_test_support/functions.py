@@ -14,6 +14,7 @@ from modal import (
     current_function_call_id,
     current_input_id,
     enter,
+    exit,
     method,
     web_endpoint,
 )
@@ -271,7 +272,7 @@ class BuildCls:
         self._k = 1
 
     @enter()
-    def enter(self):
+    def enter1(self):
         self._k += 10
 
     @build()
@@ -283,6 +284,10 @@ class BuildCls:
     def build2(self):
         self._k += 1000
         return self._k
+
+    @exit()
+    def exit1(self, *args):
+        raise Exception("exit called!")
 
     @method()
     def f(self, x):
@@ -309,3 +314,14 @@ class CheckpointingCls:
     @method()
     def f(self, x):
         return "".join(self._vals) + x
+
+
+@stub.cls()
+class EventLoopCls:
+    @enter()
+    async def enter(self):
+        self.loop = asyncio.get_running_loop()
+
+    @method()
+    async def f(self):
+        return self.loop.is_running()
