@@ -1108,12 +1108,12 @@ message GenericResult {  // Used for both tasks and function outputs
   }
 
   GenericStatus status = 1; // Status of the task or function output.
-  string exception = 2;  // Exception message for failures, if available. (?)
+  string exception = 2;  // Exception message for failures, if available.
   int32 exitcode = 3;  // Status code of the container entrypoint or builder process if it terminates unexpectedly.
 
-  string traceback = 4;  // String value of the Python traceback. (?)
-  bytes serialized_tb = 11; // Pickled traceback object. (?)
-  bytes tb_line_cache = 12; // Pickled line cache for traceback object. (?)
+  string traceback = 4;  // String value of the Python traceback.
+  bytes serialized_tb = 11; // Pickled traceback object.
+  bytes tb_line_cache = 12; // Pickled line cache for traceback object.
 
   oneof data_oneof {
     bytes data = 5; // Inline data of the result.
