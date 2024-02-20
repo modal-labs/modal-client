@@ -40,13 +40,10 @@ jobs:
 
       - if: matrix.proto-version != 'latest'
         name: Install protobuf
-        run: pip install protobuf==${{ matrix.proto-version }}
+        run: uv pip install protobuf==${{ matrix.proto-version }}
 
       - name: Build protobuf
         run: inv protoc
-
-      - name: Build client package (installs all dependencies)
-        run: pip install -e .
 
       - name: Run client tests
         run: pytest -v -s
@@ -87,9 +84,6 @@ jobs:
       - name: Build protobuf
         run: inv protoc
 
-      - name: Build client package (installs all dependencies)
-        run: pip install -e .
-
       - name: Set the Modal environment
         run: modal config set-environment main
 
@@ -119,8 +113,6 @@ jobs:
           token: ${{ steps.generate_token.outputs.token }}
 
       - uses: ./.github/actions/setup-cached-python
-        with:
-          version: "3.10"
 
       - name: Bump the version number
         run: inv update-build-number
@@ -137,9 +129,6 @@ jobs:
 
       - name: Build protobuf
         run: inv protoc
-
-      - name: Install all dependencies
-        run: pip install -e .
 
       - name: Build type stubs
         run: inv type-stubs
