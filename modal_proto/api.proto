@@ -979,10 +979,12 @@ message FunctionMapRequest {
   string parent_input_id = 2;
   bool return_exceptions = 3;
   FunctionCallType function_call_type = 4;
+  repeated FunctionPutInputsItem pipelined_inputs = 5;
 }
 
 message FunctionMapResponse {
   string function_call_id = 1;
+  repeated string pipelined_input_ids = 2;
 }
 
 message FunctionPutInputsItem {
