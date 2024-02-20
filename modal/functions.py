@@ -244,11 +244,11 @@ class _Invocation:
             pipelined_inputs=[item],
         )
         response = await retry_transient_errors(client.stub.FunctionMap, request)
+        function_call_id = response.function_call_id
 
         if len(response.pipelined_input_ids) > 0:
-            return _Invocation(client.stub, response.function_call_id, client)
+            return _Invocation(client.stub, function_call_id, client)
 
-        function_call_id = response.function_call_id
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
         )
