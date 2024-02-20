@@ -1007,17 +1007,6 @@ message FunctionPutInputsResponse {
   repeated FunctionPutInputsResponseItem inputs = 1;
 }
 
-message FunctionCallSingleInputRequest {
-  string function_id = 1;
-  repeated FunctionInput inputs = 2;
-  string parent_input_id = 3;
-}
-
-message FunctionCallSingleInputResponse {
-  string function_call_id = 1;
-  string input_id = 2;
-}
-
 message FunctionPutOutputsItem {
   string input_id = 1;
   GenericResult result = 2;
@@ -1919,7 +1908,6 @@ service ModalClient {
   rpc FunctionPrecreate(FunctionPrecreateRequest) returns (FunctionPrecreateResponse);
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
-  rpc FunctionCallSingleInput(FunctionCallSingleInputRequest) returns (FunctionCallSingleInputResponse);
 
   // Function calls
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
