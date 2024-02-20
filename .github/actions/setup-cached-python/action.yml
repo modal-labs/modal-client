@@ -24,6 +24,7 @@ runs:
 
     # See: https://github.com/astral-sh/uv/issues/1526
     - name: Workaround to make uv work
+      shell: bash
       run: |
         echo "VIRTUAL_ENV=${Python_ROOT_DIR}" >> $GITHUB_ENV
 
