@@ -42,6 +42,7 @@ jobs:
         run: uv pip install protobuf==${{ matrix.proto-version }}
 
       - name: Build protobuf
+        shell: bash
         run: inv protoc
 
       - name: Run client tests
