@@ -619,19 +619,17 @@ async def call_function_async(
                         item_count += 1
 
                     message = api_pb2.GeneratorDone(items_total=item_count)
+                    await function_io_manager._queue_put.aio(
+                        generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL
+                    )
                     # Concurrently:
-                    #
-                    # 1. put stop sentinel to complete the generator outputs sending task
-                    # 2. wait to finish sending generator outputs
-                    # 3. send 'generator done' message with total item count
+                    # 1. wait to finish sending generator outputs
+                    # 2. send 'generator done' message with total item count
                     #
                     # Backend should not rely on a happens-before relationship between the
                     # last item and the 'generator done' message, only that the latter message
                     # will correctly report the total number of items to receive.
                     await asyncio.gather(
-                        function_io_manager._queue_put.aio(
-                            generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL
-                        ),
                         generator_output_task,
                         function_io_manager.push_output.aio(
                             input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
