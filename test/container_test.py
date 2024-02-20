@@ -1061,7 +1061,7 @@ def _run_container_process(
     module_name,
     function_name,
     inputs: list[tuple[tuple[Any], dict[str, Any]]],
-    allow_concurrent_inputs: int | None = None,
+    allow_concurrent_inputs: Optional[int] = None,
 ) -> subprocess.Popen:
     container_args = _container_args(module_name, function_name, allow_concurrent_inputs=allow_concurrent_inputs)
     encoded_container_args = base64.b64encode(container_args.SerializeToString())
