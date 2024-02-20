@@ -618,7 +618,6 @@ async def call_function_async(
                         await function_io_manager._queue_put.aio(generator_queue, value)
                         item_count += 1
 
-                    message = api_pb2.GeneratorDone(items_total=item_count)
                     await function_io_manager._queue_put.aio(
                         generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL
                     )
@@ -629,6 +628,7 @@ async def call_function_async(
                     # Backend should not rely on a happens-before relationship between the
                     # last item and the 'generator done' message, only that the latter message
                     # will correctly report the total number of items to receive.
+                    message = api_pb2.GeneratorDone(items_total=item_count)
                     await asyncio.gather(
                         generator_output_task,
                         function_io_manager.push_output.aio(
