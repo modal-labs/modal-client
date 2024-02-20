@@ -61,7 +61,7 @@ class ContainerResult:
     task_result: api_pb2.GenericResult
 
 
-def _get_multi_inputs(args: list[tuple[tuple, dict]] = []) -> list[api_pb2.FunctionGetInputsResponse]:
+def _get_multi_inputs(args: List[Tuple[Tuple, Dict]] = []) -> list[api_pb2.FunctionGetInputsResponse]:
     responses = []
     for input_n, input_args in enumerate(args):
         resp = api_pb2.FunctionGetInputsResponse(
