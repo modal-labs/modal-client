@@ -15,7 +15,6 @@ from modal_utils.grpc_utils import create_channel, retry_transient_errors
 from modal_utils.http_utils import http_client_with_tls
 from modal_version import __version__
 
-from ._tracing import inject_tracing_context
 from .config import _check_config, config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 
@@ -114,7 +113,6 @@ class _Client:
         self._channel = create_channel(
             self.server_url,
             metadata=metadata,
-            inject_tracing_context=inject_tracing_context,
         )
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 

@@ -186,7 +186,6 @@ _SETTINGS = {
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
     "automount": _Setting(True, transform=lambda x: x not in ("", "0")),
-    "tracing_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
     "profiling_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
