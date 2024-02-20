@@ -19,13 +19,13 @@ jobs:
         include:
           - os: "macos-13" # x86-64
             python-version: "3.10"
-            proto-version: "latest"
+            proto-version: "4.25"
           - os: "macos-14" # ARM64 (M1)
             python-version: "3.10"
-            proto-version: "latest"
+            proto-version: "4.25"
           - os: "windows-latest"
             python-version: "3.10"
-            proto-version: "latest"
+            proto-version: "4.25"
           - os: "ubuntu-20.04"
             python-version: "3.8"
             proto-version: "3.19"
@@ -38,8 +38,7 @@ jobs:
         with:
           version: ${{ matrix.python-version }}
 
-      - if: matrix.proto-version != 'latest'
-        name: Install protobuf
+      - name: Install protobuf
         run: uv pip install protobuf==${{ matrix.proto-version }}
 
       - name: Build protobuf
