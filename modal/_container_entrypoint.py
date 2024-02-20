@@ -91,7 +91,6 @@ class _FunctionIOManager:
     _GENERATOR_STOP_SENTINEL = object()
 
     def __init__(self, container_args: api_pb2.ContainerArguments, client: _Client):
-        self.buffered_input_ids: List[str] = []
         self.cancelled_input_ids: Set[str] = set()
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
@@ -118,6 +117,14 @@ class _FunctionIOManager:
         await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name)
         return _container_app
 
+    async def _heartbeat_loop(self):
+        while 1:
+            t0 = time.monotonic()
+            await self._heartbeat()
+            heartbeat_duration = time.monotonic() - t0
+            time_until_next_hearbeat = HEARTBEAT_INTERVAL - heartbeat_duration
+            await asyncio.sleep(time_until_next_hearbeat)
+
     async def _heartbeat(self):
         # Don't send heartbeats for tasks waiting to be checkpointed.
         # Calling gRPC methods open new connections which block the
@@ -135,17 +142,24 @@ class _FunctionIOManager:
         response = await retry_transient_errors(
             self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
         )
+
         if response.cancel_input_event:
             # 1. Pause processing of *new* inputs by signalling self a SIGUSR1, which will raise an exception in the main thread if necessary
-            os.kill(os.getpid(), signal.SIGUSR1)
-            await self._client.stub.AckInputCancellation(
-                api_pb2.AckInputCancellationRequest(cancel_input_event=response.cancel_input_event)
-            )
+            input_ids_to_cancel = response.cancel_input_event.input_ids
+            if self._input_concurrency > 1:
+                logger.info(
+                    "Shutting down task to stop some subset of inputs (concurrent functions don't support fine grained cancellation)"
+                )
+                os.kill(os.getpid(), signal.SIGTERM)
+
+            if self.current_input_id in input_ids_to_cancel:
+                os.kill(os.getpid(), signal.SIGUSR1)  # raises an exception in the main thread (hopefully user code)
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):
         async with TaskContext(grace=1.0) as tc:
-            tc.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
+            t = tc.create_task(self._heartbeat_loop())
+            t.set_name("heartbeat loop")
             yield
 
     async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
@@ -285,8 +299,9 @@ class _FunctionIOManager:
                     )
                     await asyncio.sleep(response.rate_limit_sleep_duration)
                 elif response.inputs:
-                    self.buffered_input_ids = [item.input_id for item in response.inputs]
-                    print("setting buffered input items", self.buffered_input_ids)
+                    # for input cancellations we currently assume there is no input buffering in the container
+                    assert len(response.inputs) == 1
+
                     for item in response.inputs:
                         if item.kill_switch:
                             logger.debug(f"Task {self.task_id} input received kill signal.")
@@ -547,18 +562,6 @@ class _FunctionIOManager:
             logger.error("Failed to start PTY shell.")
             raise e
 
-    async def verify_inputs(self):
-        response = await self._client.stub.TaskCurrentInputs(empty_pb2.Empty())
-        # check buffered inputs and add any cancellations
-        inputs_to_keep = set(response.input_ids) & set(self.buffered_input_ids)
-        print(f"Keeping {inputs_to_keep=}, {self.buffered_input_ids=} {response.input_ids=}")
-        self.cancelled_input_ids = set(self.buffered_input_ids) - inputs_to_keep
-        print(f"Cancelling inputs: {self.cancelled_input_ids}")
-        if self.current_input_id in self.cancelled_input_ids:
-            print("Cancelling main", self.current_input_id)
-            return True
-        return False
-
 
 FunctionIOManager = synchronize_api(_FunctionIOManager)
 
@@ -568,11 +571,7 @@ def call_function_sync(
     imp_fun: ImportedFunction,
 ):
     def cancel_input_signal_handler(signum, stackframe):
-        cancel_ongoing = (
-            function_io_manager.verify_inputs()
-        )  # this will run on a separate thread, but block the main thread which is intentional
-        if cancel_ongoing:
-            raise InputCancellation("input was cancelled by user")
+        raise InputCancellation("input was cancelled by user")
 
     signal.signal(signal.SIGUSR1, cancel_input_signal_handler)
 

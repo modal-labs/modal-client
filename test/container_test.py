@@ -12,14 +12,12 @@ import signal
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 from unittest import mock
 from unittest.mock import MagicMock
 
-from google.protobuf import empty_pb2
 from grpclib.exceptions import GRPCError
 
 import modal_utils
@@ -34,7 +32,6 @@ from modal._serialization import (
 from modal.exception import InvalidError
 from modal.stub import _Stub
 from modal_proto import api_pb2
-from modal_utils.grpc_testing import InterceptionContext
 
 from .helpers import deploy_stub_externally
 from .supports.skip import skip_windows, skip_windows_unix_socket
@@ -1058,70 +1055,55 @@ def _run_container_process(
 
 @skip_windows("signals not supported on windows and this only runs on containers")
 @pytest.mark.usefixtures("server_url_env")
-def test_sigusr1_aborts_current_input(servicer):
-    ctx: InterceptionContext
-
+@pytest.mark.parametrize(
+    ["function_name", "cancelled_input_ids", "expected_container_output"],
+    [
+        ("delay", ["in-001"], [0.01, 0.02]),
+        ("delay", ["in-000"], [0.01, 0.11, 0.02]),
+        ("delay_async", ["in-001"], [0.01, 0.02]),
+        ("delay_async", ["in-000"], [0.01, 0.11, 0.02]),
+    ],
+)
+def test_cancellation_aborts_current_input_on_match(
+    servicer, function_name, cancelled_input_ids, expected_container_output
+):
     # send three inputs in container: in-100, in-101, in-102
     container_process = _run_container_process(
-        servicer, "modal_test_support.functions", "delay", inputs=[((0.10,), {}), ((0.11,), {}), ((0.12,), {})]
+        servicer, "modal_test_support.functions", function_name, inputs=[((0.01,), {}), ((0.11,), {}), ((0.02,), {})]
     )
     servicer.called_function_get_inputs.wait(timeout=1)  # wait for called_function_get_inputs to get called and handled
-    time.sleep(0.05)  # let the container get the input batch
+    time.sleep(0.1)  # let the container get and process the first input
 
     # now let container receive container heartbeat indicating there is a cancellation
-    with servicer.intercept() as ctx:
-        # simulate that second input gets cancelled
-        ctx.add_response("TaskCurrentInputs", api_pb2.TaskCurrentInputsResponse(input_ids=["in-100", "in-102"]))
-        ctx.add_response("AckInputCancellation", empty_pb2.Empty())
-        servicer.container_heartbeat_return_now(
-            api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(cancellation_ids=["ca-123"]))
-        )
-        time.sleep(0.5)  # make sure container handles everything
+    servicer.container_heartbeat_return_now(
+        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
+    )
+    time.sleep(0.5)  # make sure container handles any fallout or remaining inputs
 
     items = _flatten_outputs(servicer.container_outputs)
-    assert len(items) == 2
+    assert len(items) == len(expected_container_output)
     data = [deserialize(i.result.data, client=None) for i in items]
-    assert data == [0.10, 0.12]
+    assert data == expected_container_output
     assert container_process.wait() == 0
 
 
 @skip_windows("signals not supported on windows and this only runs on containers")
 @pytest.mark.usefixtures("server_url_env")
-def test_sigusr1_aborts_current_input_async(servicer):
+@pytest.mark.parametrize(
+    ["function_name"],
+    [
+        ("delay_concurrent",),
+    ],
+)
+def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name):
+    # send three inputs in container: in-100, in-101, in-102
     container_process = _run_container_process(
-        servicer, "modal_test_support.functions", "delay_async", inputs=[((1,), {}), ((0.01,), {})]
+        servicer, "modal_test_support.functions", function_name, inputs=[((0.5,), {})], allow_concurrent_inputs=2
     )
-    servicer.called_function_get_inputs.wait(timeout=1)
-    time.sleep(0.05)  # let the container get the input
-    container_process.send_signal(signal.SIGUSR1)
-    servicer.called_function_get_inputs = threading.Event()  # new event to wait for
-    servicer.called_function_get_inputs.wait(timeout=1)
-    time.sleep(0.1)  # let the container handle the remaining input
-    items = _flatten_outputs(servicer.container_outputs)
-    assert len(items) == 1
-    data = deserialize(items[0].result.data, client=None)
-    assert data == 0.01
-    assert container_process.wait() == 0
-
-
-@skip_windows("signals not supported on windows and this only runs on containers")
-@pytest.mark.usefixtures("server_url_env")
-def test_sigusr1_aborts_current_input_async_concurrent_inputs(servicer):
-    container_process = _run_container_process(
-        servicer,
-        "modal_test_support.functions",
-        "delay_async",
-        inputs=[((1,), {}), ((1.1,), {}), ((0.01,), {})],
-        allow_concurrent_inputs=2,
+    servicer.called_function_get_inputs.wait(timeout=1)  # wait for called_function_get_inputs to get called and handled
+    time.sleep(0.1)  # let the container get and start processing the input
+    servicer.container_heartbeat_return_now(
+        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000"]))
     )
-    servicer.called_function_get_inputs.wait(timeout=1)
-    time.sleep(0.05)  # let the container get the input
-    container_process.send_signal(signal.SIGUSR1)
-    servicer.called_function_get_inputs = threading.Event()  # new event to wait for
-    servicer.called_function_get_inputs.wait(timeout=1)
-    time.sleep(0.1)  # let the container handle the remaining input
-    items = _flatten_outputs(servicer.container_outputs)
-    assert len(items) == 2
-    outputs = [deserialize(item.result.data, client=None) for item in items]
-    assert set(outputs) == {0.01, 1.1}
-    assert container_process.wait() == 0
+    exit_code = container_process.wait(0.5)
+    assert exit_code == -signal.SIGTERM

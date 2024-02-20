@@ -20,7 +20,7 @@ from .config import _check_config, config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
-HEARTBEAT_TIMEOUT: float = 10.1
+HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
 CLIENT_CREATE_ATTEMPT_TIMEOUT: float = 4.0
 CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 

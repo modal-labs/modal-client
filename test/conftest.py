@@ -32,7 +32,7 @@ import modal._serialization
 from modal import __version__, config
 from modal._serialization import serialize_data_format
 from modal.app import _ContainerApp
-from modal.client import Client
+from modal.client import HEARTBEAT_INTERVAL, Client
 from modal.image import _dockerhub_python_version
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
@@ -169,7 +169,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     def container_heartbeat_return_now(self, response: api_pb2.ContainerHeartbeatResponse):
         self.container_heartbeat_response = response
-        print("Unblocking call")
         self.container_heartbeat_abort.set()
 
     def get_function_metadata(self, object_id: str) -> api_pb2.FunctionHandleMetadata:
@@ -215,7 +214,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def AckInputCancellation(
         self,
-        stream: "grpclib.server.Stream[modal_proto.api_pb2.AckInputCancellationRequest, google.protobuf.empty_pb2.Empty]",
+        stream: "grpclib.server.Stream[api_pb2.AckInputCancellationRequest, Empty]",
     ) -> None:
         await stream.send_message(Empty())
 
@@ -415,9 +414,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ContainerHeartbeatRequest = await stream.recv_message()
         self.container_heartbeat_abort = threading.Event()
         self.requests.append(request)
-        print("Waiting for event")
-        await asyncio.to_thread(self.container_heartbeat_abort.wait, 5)
-        print("Got event")
+        await asyncio.to_thread(self.container_heartbeat_abort.wait, HEARTBEAT_INTERVAL - 1)
         if self.container_heartbeat_response:
             await stream.send_message(self.container_heartbeat_response)
             self.container_heartbeat_response = None
