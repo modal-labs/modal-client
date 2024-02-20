@@ -62,6 +62,7 @@ class UserException(Exception):
 
 
 INPUT_CANCELLATION_MESSAGE = "modal-external-cancellation"
+_ignore_cancellation = False  # used by Python 3.8 to know if a CancellationError is due to graceful input cancellation
 
 
 class SignalHandlingEventLoop:
@@ -81,7 +82,13 @@ class SignalHandlingEventLoop:
         task = asyncio.ensure_future(coro, loop=self.loop)
         for s in [signal.SIGINT, signal.SIGTERM]:
             self.loop.add_signal_handler(s, task.cancel)
-        self.loop.add_signal_handler(signal.SIGUSR1, task.cancel, INPUT_CANCELLATION_MESSAGE)
+        # before Python 3.9 there is no argument to Task.cancel, so we need to communicate the "type" of cancellation in an ugly way
+        if sys.version_info[:2] >= (3, 9):
+            self.loop.add_signal_handler(signal.SIGUSR1, task.cancel, INPUT_CANCELLATION_MESSAGE)
+        else:
+            global _ignore_cancellation
+            _ignore_cancellation = True
+            self.loop.add_signal_handler(signal.SIGUSR1, task.cancel)
         return self.loop.run_until_complete(task)
 
 
@@ -428,6 +435,7 @@ class _FunctionIOManager:
 
     @contextlib.asynccontextmanager
     async def handle_input_exception(self, input_id, started_at: float) -> AsyncGenerator[None, None]:
+        global _ignore_cancellation
         try:
             with trace("input"):
                 set_span_tag("input_id", input_id)
@@ -443,8 +451,12 @@ class _FunctionIOManager:
             await self.complete_call(started_at)
             return
         except BaseException as exc:
-            if isinstance(exc, asyncio.CancelledError) and str(exc) == INPUT_CANCELLATION_MESSAGE:
+            if isinstance(exc, asyncio.CancelledError) and (
+                str(exc) == INPUT_CANCELLATION_MESSAGE or _ignore_cancellation
+            ):
+                _ignore_cancellation = False
                 # for async functions, InputCancellation is represented by CancelledError with the INPUT_CANCELLATION_MESSAGE message
+                # or in the case of Python 3.8, we use a regular CancelledError with a global to indicate that it's to be ignored
                 await self.complete_call(started_at)
                 return
             # print exception so it's logged

@@ -410,7 +410,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ContainerHeartbeatRequest = await stream.recv_message()
         self.container_heartbeat_abort = threading.Event()
         self.requests.append(request)
-        await asyncio.to_thread(self.container_heartbeat_abort.wait, HEARTBEAT_INTERVAL - 1)
+        await asyncio.get_event_loop().run_in_executor(
+            None, self.container_heartbeat_abort.wait, HEARTBEAT_INTERVAL - 1
+        )
         if self.container_heartbeat_response:
             await stream.send_message(self.container_heartbeat_response)
             self.container_heartbeat_response = None
