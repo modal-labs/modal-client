@@ -444,10 +444,8 @@ class _FunctionIOManager:
             raise
         except InputCancellation:
             # just skip creating any output for this input and keep going with the next instead
-            # it should have been marked as cancelled already in the db at this point so it
+            # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
-            # TODO: at this point we might want to fetch a list of additional inputs
-            # TODO: handle concurrent inputs
             await self.complete_call(started_at)
             return
         except BaseException as exc:

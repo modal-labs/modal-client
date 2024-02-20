@@ -1076,9 +1076,9 @@ def _run_container_process(
     ["function_name", "cancelled_input_ids", "expected_container_output"],
     [
         ("delay", ["in-001"], [0.01, 0.02]),
-        ("delay", ["in-000"], [0.01, 0.11, 0.02]),
+        ("delay", ["in-000"], [0.01, 0.2, 0.02]),
         ("delay_async", ["in-001"], [0.01, 0.02]),
-        ("delay_async", ["in-000"], [0.01, 0.11, 0.02]),
+        ("delay_async", ["in-000"], [0.01, 0.2, 0.02]),
     ],
 )
 def test_cancellation_aborts_current_input_on_match(
@@ -1086,10 +1086,10 @@ def test_cancellation_aborts_current_input_on_match(
 ):
     # send three inputs in container: in-100, in-101, in-102
     container_process = _run_container_process(
-        servicer, "modal_test_support.functions", function_name, inputs=[((0.01,), {}), ((0.11,), {}), ((0.02,), {})]
+        servicer, "modal_test_support.functions", function_name, inputs=[((0.01,), {}), ((0.2,), {}), ((0.02,), {})]
     )
     servicer.called_function_get_inputs.wait(timeout=1)  # wait for called_function_get_inputs to get called and handled
-    time.sleep(0.1)  # let the container get and process the first input
+    time.sleep(0.03)  # let the container get and process the first input
 
     # now let container receive container heartbeat indicating there is a cancellation
     servicer.container_heartbeat_return_now(
