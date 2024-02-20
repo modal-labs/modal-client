@@ -196,7 +196,7 @@ async def _stream_function_call_data(
     while True:
         req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
         try:
-            async for chunk in unary_stream(stub_fn, req):
+            async for chunk in unary_stream(stub_fn, req):  # type: ignore[var-annotated]
                 if chunk.index <= last_index:
                     continue
                 last_index = chunk.index

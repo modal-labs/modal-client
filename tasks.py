@@ -43,6 +43,18 @@ def lint(ctx):
 def mypy(ctx):
     mypy_allowlist = [
         "modal/functions.py",
+        "modal_utils/__init__.py",
+        "modal_utils/app_utils.py",
+        "modal_utils/async_utils.py",
+        "modal_utils/grpc_testing.py",
+        "modal_utils/grpc_utils.py",
+        "modal_utils/hash_utils.py",
+        "modal_utils/http_utils.py",
+        "modal_utils/logger.py",
+        "modal_utils/package_utils.py",
+        "modal_utils/rand_pb_testing.py",
+        "modal_version/__init__.py",
+        "modal_version/_version_generated.py",
     ]
 
     ctx.run("mypy .", pty=True)
