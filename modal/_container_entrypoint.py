@@ -454,7 +454,7 @@ class _FunctionIOManager:
             if isinstance(exc, asyncio.CancelledError) and (
                 str(exc) == INPUT_CANCELLATION_MESSAGE or _ignore_cancellation
             ):
-                _ignore_cancellation = False
+                _ignore_cancellation = False  # reset for next cancellations
                 # for async functions, InputCancellation is represented by CancelledError with the INPUT_CANCELLATION_MESSAGE message
                 # or in the case of Python 3.8, we use a regular CancelledError with a global to indicate that it's to be ignored
                 await self.complete_call(started_at)

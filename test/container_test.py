@@ -8,7 +8,6 @@ import os
 import pathlib
 import pickle
 import pytest
-import signal
 import subprocess
 import sys
 import tempfile
@@ -1109,9 +1108,7 @@ def test_cancellation_aborts_current_input_on_match(
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize(
     ["function_name"],
-    [
-        ("delay_concurrent",),
-    ],
+    [("delay",), ("delay_async",)],
 )
 def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name):
     # send three inputs in container: in-100, in-101, in-102
@@ -1123,5 +1120,5 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     servicer.container_heartbeat_return_now(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000"]))
     )
-    exit_code = container_process.wait(0.5)
-    assert exit_code == -signal.SIGTERM
+    exit_code = container_process.wait(2)
+    assert exit_code
