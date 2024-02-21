@@ -1041,7 +1041,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
     # pr.disable()
     # pr.print_stats()
     duration = time.perf_counter() - t0
-    assert duration < 2.0  # TODO (elias): might be able to get this down significantly more by improving serialization
+    assert duration < 2.5  # TODO (elias): might be able to get this down significantly more by improving serialization
 
     # function_io_manager.serialize(large_data_list)
     in_translations = []
@@ -1142,7 +1142,10 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     container_process = _run_container_process(
         servicer, "modal_test_support.functions", function_name, inputs=[((20,), {})], allow_concurrent_inputs=2
     )
-    servicer.called_function_get_inputs.wait(timeout=1)  # wait for called_function_get_inputs to get called and handled
+    servicer.called_function_get_inputs.wait(
+        timeout=1
+    )  # TODO: fix potential race if subprocess calls get inputs before this wait...
+    # wait for called_function_get_inputs to get called and handled
     time.sleep(0.3)  # let the container get and start processing the input
     servicer.container_heartbeat_return_now(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000"]))

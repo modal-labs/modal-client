@@ -153,6 +153,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.queue_max_len = 1_00
 
         self.called_function_get_inputs = threading.Event()
+        self.container_heartbeat_abort = threading.Event()
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -408,7 +409,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ContainerHeartbeat(self, stream):
         request: api_pb2.ContainerHeartbeatRequest = await stream.recv_message()
-        self.container_heartbeat_abort = threading.Event()
         self.requests.append(request)
         await asyncio.get_event_loop().run_in_executor(
             None, self.container_heartbeat_abort.wait, HEARTBEAT_INTERVAL - 1
