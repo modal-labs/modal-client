@@ -1075,20 +1075,28 @@ def _run_container_process(
 @skip_windows("signals not supported on windows and this only runs on containers")
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize(
-    ["function_name", "cancelled_input_ids", "expected_container_output"],
+    ["function_name", "input_args", "cancelled_input_ids", "expected_container_output"],
     [
-        ("delay", ["in-001"], [0.01, 0.02]),  # cancel second input
-        ("delay_async", ["in-001"], [0.01, 0.02]),  # async variant
+        # the 10 second inputs here are to be cancelled:
+        ("delay", [0.01, 10, 0.02], ["in-001"], [0.01, 0.02]),  # cancel second input
+        ("delay_async", [0.01, 10, 0.02], ["in-001"], [0.01, 0.02]),  # async variant
+        # cancel first input, but it has already been processed, so all three should come through:
         (
             "delay",
+            [0.01, 0.5, 0.03],
             ["in-000"],
-            [0.01, 2, 0.02],
-        ),  # cancel first input, but it has already been processed, so all three should come through
-        ("delay_async", ["in-000"], [0.01, 2, 0.02]),  # async variant
+            [0.01, 0.5, 0.03],
+        ),
+        (
+            "delay_async",
+            [0.01, 0.5, 0.03],
+            ["in-000"],
+            [0.01, 0.5, 0.03],
+        ),
     ],
 )
 def test_cancellation_aborts_current_input_on_match(
-    servicer, function_name, cancelled_input_ids, expected_container_output
+    servicer, function_name, input_args, cancelled_input_ids, expected_container_output
 ):
     # NOTE: for a cancellation to actually happen in this test, it needs to be
     #    triggered while the relevant input is being processed. A future input
@@ -1097,7 +1105,7 @@ def test_cancellation_aborts_current_input_on_match(
 
     # send three inputs in container: in-100, in-101, in-102
     container_process = _run_container_process(
-        servicer, "modal_test_support.functions", function_name, inputs=[((0.01,), {}), ((2,), {}), ((0.02,), {})]
+        servicer, "modal_test_support.functions", function_name, inputs=[((arg,), {}) for arg in input_args]
     )
     # wait for the second input to be sent
     servicer.called_function_get_inputs.wait(timeout=1)
@@ -1110,8 +1118,7 @@ def test_cancellation_aborts_current_input_on_match(
     servicer.container_heartbeat_return_now(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
-    time.sleep(0.3)  # wait some time, since esp. async cancellation can take a while to propagate
-    assert container_process.wait() == 0
+    assert container_process.wait() == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit
 
     items = _flatten_outputs(servicer.container_outputs)
@@ -1119,7 +1126,7 @@ def test_cancellation_aborts_current_input_on_match(
     data = [deserialize(i.result.data, client=None) for i in items]
     assert data == expected_container_output
 
-    assert duration < sum(data[num_prior_outputs:]) + 0.3  # it takes some time to shut down the process
+    assert duration < sum(data[num_prior_outputs:]) + 2.0  # it can take some time to shut down the process
 
 
 @skip_windows("signals not supported on windows and this only runs on containers")
