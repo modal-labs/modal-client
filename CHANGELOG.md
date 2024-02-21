@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.57.61 (2024-02-21)
+
+- Reduced the amount of context for frames in modal's CLI framework when showing a traceback.
+
+
+
 ### 0.57.52 (2024-02-17)
 
 - In `modal token new` and `modal token set`, the `--no-no-verify` flag has been removed in favor of a `--verify` flag. This remains the default behavior.
