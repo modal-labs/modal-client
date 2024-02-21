@@ -234,16 +234,20 @@ class _Invocation:
 
     @staticmethod
     async def create(function_id: str, args, kwargs, client: _Client):
+        item = await _create_input(args, kwargs, client)
+
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
             parent_input_id=current_input_id(),
             function_call_type=api_pb2.FUNCTION_CALL_TYPE_UNARY,
+            pipelined_inputs=[item],
         )
         response = await retry_transient_errors(client.stub.FunctionMap, request)
-
         function_call_id = response.function_call_id
 
-        item = await _create_input(args, kwargs, client)
+        if response.pipelined_inputs:
+            return _Invocation(client.stub, function_call_id, client)
+
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
         )
