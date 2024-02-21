@@ -10,7 +10,7 @@ from modal import Cls, Function, Image, Stub, build, enter, exit, method
 from modal._serialization import deserialize
 from modal.app import ContainerApp
 from modal.cls import ClsMixin
-from modal.exception import DeprecationError, ExecutionError
+from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_cls,
@@ -569,6 +569,18 @@ def test_build_image(client, servicer):
         assert f_image.base_images[0].image_id == image.object_id
 
 
+@pytest.mark.parametrize("decorator", [build, enter, exit])
+def test_disallow_lifecycle_decorators_with_method(decorator):
+    name = decorator.__name__.split("_")[-1]  # remove synchronicity prefix
+    with pytest.raises(InvalidError, match=f"Cannot use `@{name}` decorator with `@method`."):
+
+        class ClsDecoratorMethodStack:
+            @decorator()
+            @method()
+            def f(self):
+                pass
+
+
 def test_deprecated_sync_methods():
     class ClsWithDeprecatedSyncMethods:
         def __enter__(self):
@@ -601,7 +613,7 @@ def test_deprecated_sync_methods():
 
 
 @pytest.mark.asyncio
-async def test_legacy_async_methods():
+async def test_deprecated_async_methods():
     class ClsWithDeprecatedAsyncMethods:
         async def __aenter__(self):
             return 42
