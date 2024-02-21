@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import date
 
 from modal import (
     Image,
@@ -76,7 +75,7 @@ def gen_n_fail_on_m(n, m):
 
 
 def deprecated_function(x):
-    deprecation_warning(date(2000, 1, 1), "This function is deprecated")
+    deprecation_warning((2000, 1, 1), "This function is deprecated")
     return x**2
 
 
@@ -147,7 +146,8 @@ class Cls:
     def __init__(self):
         self._k = 11
 
-    def __enter__(self):
+    @enter()
+    def enter(self):
         self._k += 100
 
     @method()
@@ -211,7 +211,8 @@ def unassociated_function(x):
 
 
 class BaseCls:
-    def __enter__(self):
+    @enter()
+    def enter(self):
         self.x = 2
 
     @method()

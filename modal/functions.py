@@ -7,7 +7,6 @@ import time
 import warnings
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import date
 from pathlib import PurePosixPath
 from typing import (
     TYPE_CHECKING,
@@ -609,7 +608,7 @@ class _Function(_Object, type_prefix="fu"):
 
         if secret is not None:
             deprecation_warning(
-                date(2024, 1, 31),
+                (2024, 1, 31),
                 "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
             )
             secrets = [secret, *secrets]
@@ -1271,11 +1270,9 @@ class _Function(_Object, type_prefix="fu"):
         """Deprecated. Use `f.remote` or `f.remote_gen` instead."""
         # TODO: Generics/TypeVars
         if self._is_generator:
-            deprecation_error(
-                date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`"
-            )
+            deprecation_error((2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`")
         else:
-            deprecation_error(date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
+            deprecation_error((2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
 
     @synchronizer.no_io_translation
     @live_method
@@ -1341,13 +1338,13 @@ class _Function(_Object, type_prefix="fu"):
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if self._get_is_remote_cls_method():
             deprecation_error(
-                date(2023, 9, 1),
+                (2023, 9, 1),
                 "Calling remote class methods like `obj.f(...)` is deprecated. Use `obj.f.remote(...)` for remote calls"
                 " and `obj.f.local(...)` for local calls",
             )
         else:
             deprecation_error(
-                date(2023, 8, 16),
+                (2023, 8, 16),
                 "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
                 " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
                 " a Modal container in the cloud",
