@@ -144,7 +144,7 @@ class _FunctionIOManager:
         if self._waiting_for_checkpoint:
             return
 
-        request = api_pb2.ContainerHeartbeatRequest()
+        request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
         if self.current_input_id is not None:
             request.current_input_id = self.current_input_id
         if self.current_input_started_at is not None:

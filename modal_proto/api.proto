@@ -194,11 +194,6 @@ enum WebhookAsyncMode {
   WEBHOOK_ASYNC_MODE_AUTO = 4; // redirect to polling endpoint if execution time nears the http timeout
 }
 
-message AckInputCancellationRequest {
-  CancelInputEvent cancel_input_event = 1;
-}
-
-
 message AppClientDisconnectRequest {
   string app_id = 1;
   AppDisconnectReason reason = 2;
@@ -567,6 +562,7 @@ message ContainerHeartbeatResponse {
 message ContainerHeartbeatRequest {
   string current_input_id = 1;
   double current_input_started_at = 2;
+  bool supports_graceful_input_cancellation = 3; // implicitly also supports long poll
 }
 
 message ContainerCheckpointRequest {
@@ -1849,7 +1845,6 @@ message RuntimeInputMessage {
 
 
 service ModalClient {
-  rpc AckInputCancellation(AckInputCancellationRequest) returns (google.protobuf.Empty);
   // Apps
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
   rpc AppClientDisconnect(AppClientDisconnectRequest) returns (google.protobuf.Empty);
