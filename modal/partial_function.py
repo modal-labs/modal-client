@@ -113,7 +113,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
     # Grab legacy lifecycle methods
     for attr in check_attrs:
         if hasattr(user_cls, attr):
-            suggested = attr.strip("__")
+            suggested = attr.strip("_")
             if is_async := suggested.startswith("a"):
                 suggested = f"{suggested[1:]}"
             async_suggestion = " (on an async method)" if is_async else ""
