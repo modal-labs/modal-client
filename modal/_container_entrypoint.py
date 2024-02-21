@@ -200,6 +200,10 @@ class _FunctionIOManager:
             message = await message_rx.get()
             if message is self._GENERATOR_STOP_SENTINEL:
                 break
+            # ASGI 'http.response.start' and 'http.response.body' msgs are observed to be separated by 1ms.
+            # If we don't sleep here for 1ms we end up with an extra call to .put_data_out().
+            if index == 1:
+                await asyncio.sleep(0.001)
             messages_bytes = [serialize_data_format(message, data_format)]
             total_size = len(messages_bytes[0]) + 512
             while total_size < 16 * 1024 * 1024:  # 16 MiB, maximum size in a single message
