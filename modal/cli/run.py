@@ -13,8 +13,6 @@ import typer
 from rich.console import Console
 from typing_extensions import TypedDict
 
-from modal.volume import _Volume
-
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError
@@ -375,10 +373,6 @@ def shell(
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
         assert isinstance(function, Function)
         function_env: FunctionEnv = function.env
-        if any(isinstance(v, _Volume) for v in function_env.volumes.values()):
-            print(
-                "Warning: please verify that any changes to volumes have committed successfully (ex. by launching another shell and checking that all modified files are there) before exiting."
-            )
         start_shell = partial(
             interactive_shell,
             image=function_env.image,
