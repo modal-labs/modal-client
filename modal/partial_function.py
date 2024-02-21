@@ -115,7 +115,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
         if hasattr(user_cls, attr):
             suggested = attr.strip("_")
             if is_async := suggested.startswith("a"):
-                suggested = f"{suggested[1:]}"
+                suggested = suggested[1:]
             async_suggestion = " (on an async method)" if is_async else ""
             message = (
                 f"Using `{attr}` methods for class lifecycle management is deprecated."
