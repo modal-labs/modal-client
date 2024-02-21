@@ -26,7 +26,7 @@ class _Dict(_Object, type_prefix="di"):
 
     **Lifetime of a Dict and its items**
 
-but an individual entry will expire 30 days after it was last added to its ​​Dict object.
+    but an individual entry will expire 30 days after it was last added to its ​​Dict object.
     Because of this, `Dict`s are best not used for
     long-term storage. All data is deleted when the app is stopped.
 
