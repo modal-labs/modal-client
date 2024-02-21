@@ -39,7 +39,6 @@ from ._function_utils import LocalFunctionError, is_async as get_is_async, is_gl
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
-from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _container_app, _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
@@ -111,7 +110,6 @@ class _FunctionIOManager:
         self._client = client
         assert isinstance(self._client, _Client)
 
-    @wrap()
     async def initialize_app(self) -> _ContainerApp:
         await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name)
         return _container_app
@@ -226,7 +224,6 @@ class _FunctionIOManager:
         """Put a value onto a queue, using the synchronicity event loop."""
         await queue.put(value)
 
-    @wrap()
     async def populate_input_blobs(self, item: api_pb2.FunctionInput):
         args = await blob_download(item.args_blob_id, self._client.stub)
 
@@ -261,12 +258,11 @@ class _FunctionIOManager:
             try:
                 # If number of active inputs is at max queue size, this will block.
                 yielded = False
-                with trace("get_inputs"):
-                    set_span_tag("iteration", str(iteration))  # force this to be a tag string
-                    iteration += 1
-                    response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
-                        self._client.stub.FunctionGetInputs, request
-                    )
+
+                iteration += 1
+                response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
+                    self._client.stub.FunctionGetInputs, request
+                )
 
                 if response.rate_limit_sleep_duration:
                     logger.info(
@@ -396,9 +392,7 @@ class _FunctionIOManager:
     @contextlib.asynccontextmanager
     async def handle_input_exception(self, input_id, started_at: float) -> AsyncGenerator[None, None]:
         try:
-            with trace("input"):
-                set_span_tag("input_id", input_id)
-                yield
+            yield
         except KeyboardInterrupt:
             raise
         except BaseException as exc:
@@ -589,7 +583,6 @@ def call_function_sync(
                     exit_method(*sys.exc_info())
 
 
-@wrap()
 async def call_function_async(
     function_io_manager,  #: FunctionIOManager,  # TODO: this one too
     imp_fun: ImportedFunction,
@@ -687,7 +680,6 @@ class ImportedFunction:
     function: _Function
 
 
-@wrap()
 def import_function(
     function_def: api_pb2.Function,
     ser_cls,
@@ -891,22 +883,18 @@ if __name__ == "__main__":
     container_args = api_pb2.ContainerArguments()
     container_args.ParseFromString(base64.b64decode(sys.argv[1]))
 
-    extract_tracing_context(dict(container_args.tracing_context.items()))
+    # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
+    # This is good because if the function is long running then we the client can still send heartbeats
+    # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
+    client = Client.from_env()
 
-    with trace("main"):
-        # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
-        # This is good because if the function is long running then we the client can still send heartbeats
-        # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
-        with trace("client_from_env"):
-            client = Client.from_env()
-
-        try:
-            with proxy_tunnel(container_args.proxy_info):
-                try:
-                    main(container_args, client)
-                except UserException:
-                    logger.info("User exception caught, exiting")
-        except KeyboardInterrupt:
-            logger.debug("Container: interrupted")
+    try:
+        with proxy_tunnel(container_args.proxy_info):
+            try:
+                main(container_args, client)
+            except UserException:
+                logger.info("User exception caught, exiting")
+    except KeyboardInterrupt:
+        logger.debug("Container: interrupted")
 
     logger.debug("Container: done")
