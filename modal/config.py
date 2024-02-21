@@ -75,7 +75,6 @@ import logging
 import os
 import typing
 import warnings
-from datetime import date
 from textwrap import dedent
 from typing import Any, Dict, Optional
 
@@ -157,11 +156,11 @@ def _check_config() -> None:
             This will become an error in a future update.
             """
         )
-        deprecation_warning(date(2024, 2, 6), message, show_source=False)
+        deprecation_warning((2024, 2, 6), message, show_source=False)
 
 
 if "MODAL_ENV" in os.environ:
-    deprecation_error(date(2023, 5, 24), "MODAL_ENV has been replaced with MODAL_PROFILE")
+    deprecation_error((2023, 5, 24), "MODAL_ENV has been replaced with MODAL_PROFILE")
 
 _profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
 

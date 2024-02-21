@@ -5,7 +5,6 @@ import shlex
 import sys
 import typing
 import warnings
-from datetime import date
 from inspect import isfunction
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -1037,9 +1036,7 @@ class _Image(_Object, type_prefix="im"):
         **kwargs,
     ):
         """`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."""
-        deprecation_error(
-            date(2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
-        )
+        deprecation_error((2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead.")
 
     @staticmethod
     @typechecked
@@ -1403,7 +1400,7 @@ class _Image(_Object, type_prefix="im"):
             import torch
         ```
         """
-        deprecation_warning(date(2023, 12, 15), Image.run_inside.__doc__)
+        deprecation_warning((2023, 12, 15), Image.run_inside.__doc__)
         return self.imports()
 
 
