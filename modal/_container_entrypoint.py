@@ -119,6 +119,7 @@ class _FunctionIOManager:
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._environment_name = container_args.environment_name
         self._waiting_for_checkpoint = False
+        self._heartbeat_loop = None
 
         self._client = client
         assert isinstance(self._client, _Client)
@@ -128,7 +129,7 @@ class _FunctionIOManager:
         await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name)
         return _container_app
 
-    async def _heartbeat_loop(self):
+    async def _run_heartbeat_loop(self):
         while 1:
             t0 = time.monotonic()
             await self._heartbeat()
@@ -169,9 +170,12 @@ class _FunctionIOManager:
     @contextlib.asynccontextmanager
     async def heartbeats(self):
         async with TaskContext(grace=1.0) as tc:
-            t = tc.create_task(self._heartbeat_loop())
-            t.set_name("heartbeat loop")
+            self._heartbeat_loop = tc.create_task(self._run_heartbeat_loop())
+            self._heartbeat_loop.set_name("heartbeat loop")
             yield
+
+    def stop_heartbeat(self):
+        self._heartbeat_loop.cancel()
 
     async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
@@ -456,6 +460,7 @@ class _FunctionIOManager:
                 _ignore_cancellation = False  # reset for next cancellations
                 # for async functions, InputCancellation is represented by CancelledError with the INPUT_CANCELLATION_MESSAGE message
                 # or in the case of Python 3.8, we use a regular CancelledError with a global to indicate that it's to be ignored
+                logger.info(f"The current input ({input_id=}) was cancelled by a user request")
                 await self.complete_call(started_at)
                 return
             # print exception so it's logged
@@ -944,6 +949,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         function_io_manager.volume_commit(
             [v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits]
         )
+        function_io_manager.stop_heartbeat()  # avoid "Canceling remaining unfinished task" warnings etc.
 
 
 if __name__ == "__main__":

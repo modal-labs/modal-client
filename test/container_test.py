@@ -1119,9 +1119,7 @@ def test_cancellation_aborts_current_input_on_match(
     data = [deserialize(i.result.data, client=None) for i in items]
     assert data == expected_container_output
 
-    assert (
-        duration < sum(data[num_prior_outputs:]) + 1.1
-    )  # for some reason the subprocess always takes ~1s to shut down after completion (!)
+    assert duration < sum(data[num_prior_outputs:]) + 0.3  # it takes some time to shut down the process
 
 
 @skip_windows("signals not supported on windows and this only runs on containers")
