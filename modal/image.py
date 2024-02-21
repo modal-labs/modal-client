@@ -1036,7 +1036,7 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         **kwargs,
     ):
-        f"""`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."""
+        """`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."""
         deprecation_error(
             date(2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
         )
