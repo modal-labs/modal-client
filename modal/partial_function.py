@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import enum
+from datetime import date
 from typing import (
     Any,
     Callable,
@@ -16,7 +17,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api, synchronizer
 
 from .config import logger
-from .exception import InvalidError
+from .exception import InvalidError, deprecation_warning
 from .functions import _Function
 
 
@@ -112,6 +113,16 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
     # Grab legacy lifecycle methods
     for attr in check_attrs:
         if hasattr(user_cls, attr):
+            suggested = attr.strip("_")
+            if is_async := suggested.startswith("a"):
+                suggested = suggested[1:]
+            async_suggestion = " (on an async method)" if is_async else ""
+            message = (
+                f"Using `{attr}` methods for class lifecycle management is deprecated."
+                f" Please try using the `modal.{suggested}` decorator{async_suggestion} instead."
+                " See https://modal.com/docs/guide/lifecycle-functions for more information."
+            )
+            deprecation_warning(date(2024, 2, 21), message, show_source=True)
             functions[attr] = getattr(user_cls, attr)
 
     # Grab new decorator-based methods
