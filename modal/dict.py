@@ -28,7 +28,7 @@ class _Dict(_Object, type_prefix="di"):
 
     A `Dict` matches the lifetime of the app it is attached to, but individual key-value pairs will expire 30 days after it was last added to its ​​Dict object.
     Because of this, `Dict`s are best not used for
-    long-term storage. All data is deleted when the app is stopped. 
+    long-term storage. All data is deleted when the app is stopped.
 
     **Usage**
 
