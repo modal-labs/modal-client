@@ -31,8 +31,6 @@ from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret
 
-_from_dockerhub_deprecation_msg = "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
-
 
 def _validate_python_version(version: str) -> None:
     components = version.split(".")
@@ -1038,8 +1036,10 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         **kwargs,
     ):
-        f"""{_from_dockerhub_deprecation_msg}"""
-        deprecation_error(date(2023, 8, 25), _from_dockerhub_deprecation_msg)
+        """`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."""
+        deprecation_error(
+            date(2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
+        )
 
     @staticmethod
     @typechecked
