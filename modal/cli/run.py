@@ -356,8 +356,6 @@ def shell(
     modal shell hello_world.py::my_function
     ```
 
-    Note that you can select the function interactively if you omit the function name.
-
     Start a `python` shell:
 
     ```bash
