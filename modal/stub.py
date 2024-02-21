@@ -2,7 +2,6 @@
 import inspect
 import os
 import typing
-from datetime import date
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -156,7 +155,7 @@ class _Stub:
 
         if indexed_objects:
             deprecation_warning(
-                date(2023, 12, 13),
+                (2023, 12, 13),
                 "Passing **kwargs to a stub is deprecated. In most cases, you can just define the objects in global scope.",
             )
 
@@ -195,7 +194,7 @@ class _Stub:
         """`stub.app` is deprecated: use e.g. `stub.obj` instead of `stub.app.obj`
         if you need to access objects on the running app.
         """
-        deprecation_error(date(2023, 9, 11), _Stub.app.__doc__)
+        deprecation_error((2023, 9, 11), _Stub.app.__doc__)
 
     @property
     def app_id(self) -> Optional[str]:
@@ -278,7 +277,7 @@ class _Stub:
             import torch
         ```
         """
-        deprecation_error(date(2023, 11, 8), _Stub.is_inside.__doc__)
+        deprecation_error((2023, 11, 8), _Stub.is_inside.__doc__)
 
     @asynccontextmanager
     async def _set_local_app(self, app: _LocalApp) -> AsyncGenerator[None, None]:
@@ -486,7 +485,7 @@ class _Stub:
 
         if shared_volumes:
             deprecation_error(
-                date(2023, 7, 5),
+                (2023, 7, 5),
                 "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
             )
 
@@ -631,7 +630,7 @@ class _Stub:
 
             if len(cls._functions) > 1 and keep_warm is not None:
                 deprecation_warning(
-                    date(2023, 10, 20),
+                    (2023, 10, 20),
                     "`@stub.cls(keep_warm=...)` is deprecated when there is more than 1 method."
                     " Use `@method(keep_warm=...)` on each method instead!",
                 )

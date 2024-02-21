@@ -7,7 +7,6 @@ import functools
 import os
 import time
 import typing
-from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Type, Union
 
@@ -538,7 +537,7 @@ _create_package_mounts_deprecation_msg = (
 def _create_package_mounts(module_names: Sequence[str]):
     f"""{_create_package_mounts_deprecation_msg}"""
     modal.exception.deprecation_error(
-        date(2023, 7, 19),
+        (2023, 7, 19),
         _create_package_mounts_deprecation_msg,
     )
 

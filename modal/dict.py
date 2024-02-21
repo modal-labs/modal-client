@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-from datetime import date
 from typing import Any, Optional
 
 from modal_proto import api_pb2
@@ -71,7 +70,7 @@ class _Dict(_Object, type_prefix="di"):
 
     def __init__(self, data={}):
         """mdmd:hidden"""
-        deprecation_error(date(2023, 6, 27), "`Dict({...})` is deprecated. Please use `Dict.new({...})` instead.")
+        deprecation_error((2023, 6, 27), "`Dict({...})` is deprecated. Please use `Dict.new({...})` instead.")
         obj = _Dict.new(data)
         self._init_from_other(obj)
 
