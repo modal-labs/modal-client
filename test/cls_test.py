@@ -324,7 +324,8 @@ class ClsWithEnter:
         self.thread_id = thread_id
         assert get_thread_id() == self.thread_id
 
-    def __enter__(self):
+    @enter()
+    def enter(self):
         self.entered = True
         assert get_thread_id() == self.thread_id
 
@@ -359,12 +360,13 @@ def test_enter_on_local_modal_call():
 
 
 @cls_with_enter_stub.cls()
-class ClsWithAenter:
+class ClsWithAsyncEnter:
     def __init__(self):
         self.inited = True
         self.entered = False
 
-    async def __aenter__(self):
+    @enter()
+    async def enter(self):
         self.entered = True
 
     @method()
@@ -373,8 +375,8 @@ class ClsWithAenter:
 
 
 @pytest.mark.asyncio
-async def test_aenter_on_local_modal_call():
-    obj = ClsWithAenter()
+async def test_async_enter_on_local_modal_call():
+    obj = ClsWithAsyncEnter()
     assert await obj.modal_method.local(7) == 49
     assert obj.inited
     assert obj.entered
@@ -384,7 +386,8 @@ inheritance_stub = Stub()
 
 
 class BaseCls:
-    def __enter__(self):
+    @enter()
+    def enter(self):
         self.x = 2
 
     @method()
@@ -521,7 +524,7 @@ class ClsWithHandlers:
         pass
 
     @exit()
-    def my_exit(self, exc_type, exc, traceback):
+    def my_exit(self, exc_type, exc_value, traceback):
         pass
 
 
@@ -566,54 +569,64 @@ def test_build_image(client, servicer):
         assert f_image.base_images[0].image_id == image.object_id
 
 
-class ClsWithLegacySyncMethods:
-    def __enter__(self):
-        return 42
+def test_deprecated_sync_methods():
+    class ClsWithDeprecatedSyncMethods:
+        def __enter__(self):
+            return 42
 
-    @enter()
-    def my_enter(self):
-        return 43
+        @enter()
+        def my_enter(self):
+            return 43
 
-    def __exit__(self, exc_type, exc, tb):
-        return 44
+        def __exit__(self, exc_type, exc, tb):
+            return 44
 
-    @exit()
-    def my_exit(self, exc_type, exc, tb):
-        return 45
+        @exit()
+        def my_exit(self, exc_type, exc, tb):
+            return 45
 
+    obj = ClsWithDeprecatedSyncMethods()
 
-def test_legacy_sync_methods():
-    obj = ClsWithLegacySyncMethods()
-
-    enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+    with pytest.warns(DeprecationError, match="Using `__enter__`.+`modal.enter` decorator"):
+        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
     assert [meth() for meth in enter_methods.values()] == [42, 43]
 
-    exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+    with pytest.warns(DeprecationError, match="Using `__exit__`.+`modal.exit` decorator"):
+        exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
     assert [meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
 
-
-class ClsWithLegacyAsyncMethods:
-    async def __aenter__(self):
-        return 42
-
-    @enter()
-    async def my_enter(self):
-        return 43
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return 44
-
-    @exit()
-    async def my_exit(self, exc_type, exc, tb):
-        return 45
+    stub = Stub("deprecated-sync-cls")
+    with pytest.warns(DeprecationError):
+        stub.cls()(ClsWithDeprecatedSyncMethods)()
 
 
 @pytest.mark.asyncio
 async def test_legacy_async_methods():
-    obj = ClsWithLegacyAsyncMethods()
+    class ClsWithDeprecatedAsyncMethods:
+        async def __aenter__(self):
+            return 42
 
-    enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+        @enter()
+        async def my_enter(self):
+            return 43
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return 44
+
+        @exit()
+        async def my_exit(self, exc_type, exc, tb):
+            return 45
+
+    obj = ClsWithDeprecatedAsyncMethods()
+
+    with pytest.warns(DeprecationError, match=r"Using `__aenter__`.+`modal.enter` decorator \(on an async method\)"):
+        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
     assert [await meth() for meth in enter_methods.values()] == [42, 43]
 
-    exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+    with pytest.warns(DeprecationError, match=r"Using `__aexit__`.+`modal.exit` decorator \(on an async method\)"):
+        exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
     assert [await meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
+
+    stub = Stub("deprecated-async-cls")
+    with pytest.warns(DeprecationError):
+        stub.cls()(ClsWithDeprecatedAsyncMethods)()
