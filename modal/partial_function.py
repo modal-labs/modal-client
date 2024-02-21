@@ -122,7 +122,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
                 f" Please try using the `modal.{suggested}` decorator{async_suggestion} instead."
                 " See https://modal.com/docs/guide/lifecycle-functions for more information."
             )
-            deprecation_warning(date(2024, 2, 20), message, show_source=True)
+            deprecation_warning(date(2024, 2, 21), message, show_source=True)
             functions[attr] = getattr(user_cls, attr)
 
     # Grab new decorator-based methods
