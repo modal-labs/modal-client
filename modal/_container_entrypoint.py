@@ -170,12 +170,13 @@ class _FunctionIOManager:
     @contextlib.asynccontextmanager
     async def heartbeats(self):
         async with TaskContext(grace=1.0) as tc:
-            self._heartbeat_loop = tc.create_task(self._run_heartbeat_loop())
-            self._heartbeat_loop.set_name("heartbeat loop")
+            self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
+            t.set_name("heartbeat loop")
             yield
 
     def stop_heartbeat(self):
-        self._heartbeat_loop.cancel()
+        if self._heartbeat_loop:
+            self._heartbeat_loop.cancel()
 
     async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
