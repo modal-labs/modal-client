@@ -30,7 +30,6 @@ from .partial_function import PartialFunction, _PartialFunction
 from .proxy import _Proxy
 from .retries import Retries
 from .runner import _run_stub
-from .s3mount import _S3Mount
 from .sandbox import _Sandbox
 from .schedule import Schedule
 from .secret import _Secret
@@ -663,7 +662,7 @@ class _Stub:
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         block_network: bool = False,  # Whether to block network access
-        volumes: Dict[Union[str, os.PathLike], _S3Mount] = {},  # Volumes to mount in the sandbox.
+        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Volumes to mount in the sandbox.
         _allow_background_volume_commits: bool = False,
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
