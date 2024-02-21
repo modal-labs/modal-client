@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-from datetime import date
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
 from google.protobuf.message import Message
@@ -285,9 +284,7 @@ class _ContainerApp:
         deprecation_error((2023, 8, 10), "`app[...]` is no longer supported. Use the stub to get objects instead.")
 
     def __contains__(self, tag: str) -> bool:
-        deprecation_error(
-            date(2023, 8, 10), "`obj in app` is no longer supported. Use the stub to get objects instead."
-        )
+        deprecation_error((2023, 8, 10), "`obj in app` is no longer supported. Use the stub to get objects instead.")
 
     def __getattr__(self, tag: str) -> _Object:
         if tag.startswith("__"):
