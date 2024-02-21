@@ -87,7 +87,7 @@ def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
                 scheme=obj.get("scheme", "http"),
                 path=obj["path"],
                 query_string=obj.get("query_string"),
-                headers=flatten_headers(obj["headers"]),
+                headers=flatten_headers(obj.get("headers", [])),
                 client_host=obj["client"][0] if obj.get("client") else None,
                 client_port=obj["client"][1] if obj.get("client") else None,
             )
@@ -103,7 +103,7 @@ def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
         return api_pb2.Asgi(
             http_response_start=api_pb2.Asgi.HttpResponseStart(
                 status=obj["status"],
-                headers=flatten_headers(obj["headers"]),
+                headers=flatten_headers(obj.get("headers", [])),
                 trailers=obj.get("trailers"),
             )
         )
@@ -117,7 +117,7 @@ def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
     elif msg_type == "http.response.trailers":
         return api_pb2.Asgi(
             http_response_trailers=api_pb2.Asgi.HttpResponseTrailers(
-                headers=flatten_headers(obj["headers"]),
+                headers=flatten_headers(obj.get("headers", [])),
                 more_trailers=obj.get("more_trailers"),
             )
         )
@@ -131,7 +131,7 @@ def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
                 scheme=obj.get("scheme", "ws"),
                 path=obj["path"],
                 query_string=obj.get("query_string"),
-                headers=flatten_headers(obj["headers"]),
+                headers=flatten_headers(obj.get("headers", [])),
                 client_host=obj["client"][0] if obj.get("client") else None,
                 client_port=obj["client"][1] if obj.get("client") else None,
                 subprotocols=obj.get("subprotocols"),
@@ -287,6 +287,9 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
         return serialize(obj)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
         return _serialize_asgi(obj).SerializeToString(deterministic=True)
+    elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
+        assert isinstance(obj, api_pb2.GeneratorDone)
+        return obj.SerializeToString(deterministic=True)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
 
@@ -298,8 +301,8 @@ def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return deserialize(s, client)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
-        asgi = api_pb2.Asgi()
-        asgi.ParseFromString(s)
-        return _deserialize_asgi(asgi)
+        return _deserialize_asgi(api_pb2.Asgi.FromString(s))
+    elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
+        return api_pb2.GeneratorDone.FromString(s)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")

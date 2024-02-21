@@ -13,18 +13,21 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         os: ["ubuntu-20.04"]
         proto-version: ["latest"]
         include:
-          - os: "macos-latest"
+          - os: "macos-12" # x86-64
+            python-version: "3.10"
+            proto-version: "latest"
+          - os: "macos-14" # ARM64 (M1)
             python-version: "3.10"
             proto-version: "latest"
           - os: "windows-latest"
             python-version: "3.10"
             proto-version: "latest"
           - os: "ubuntu-20.04"
-            python-version: "3.7"
+            python-version: "3.8"
             proto-version: "3.19"
 
     runs-on: ${{ matrix.os }}
@@ -63,18 +66,23 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     strategy:
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         image-name: ["debian_slim", "conda", "micromamba"]
         exclude:
-          - python-version: "3.7"
-            image-name: "conda"
+          # Exclude base images that currently fail to build becasue multidict,
+          # a transitive dependency, has not published wheels for Python 3.12:
+          # https://github.com/aio-libs/multidict/issues/887
+          - python-version: 3.12
+            image-name: conda
+          - python-version: 3.12
+            image-name: micromamba
 
     steps:
       - uses: actions/checkout@v3
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: "3.10"
+          version: ${{ matrix.python-version }}
 
       - name: Build protobuf
         run: inv protoc
@@ -96,6 +104,8 @@ jobs:
     needs: [client-test]
     runs-on: ubuntu-20.04
     concurrency: publish-client
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Generate token for Github PR Bot
         id: generate_token
@@ -113,11 +123,14 @@ jobs:
           version: "3.10"
 
       - name: Bump the version number
-        run: inv update-build-number $GITHUB_RUN_NUMBER
+        run: inv update-build-number
+
+      - name: Update the changelog
+        run: inv update-changelog
 
       - uses: EndBug/add-and-commit@v9
         with:
-          add: modal_version/_version_generated.py
+          add: modal_version/_version_generated.py CHANGELOG.md
           message: "[auto-commit] [skip ci] Bump the build number"
           pull: "--rebase --autostash"
           default_author: github_actions
@@ -153,13 +166,13 @@ jobs:
 
       - name: Upload to PyPI
         env:
-          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: twine upload dist/* --non-interactive
 
       - name: Upload alias package to PyPI
         env:
-          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         working-directory: alias-package
         run: twine upload dist/* --non-interactive

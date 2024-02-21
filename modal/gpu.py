@@ -8,7 +8,7 @@ from modal_proto import api_pb2
 from .exception import InvalidError, deprecation_error, deprecation_warning
 
 
-@dataclass
+@dataclass(frozen=True)
 class _GPUConfig:
     type: "api_pb2.GPUType.V"
     count: int
@@ -68,14 +68,28 @@ class A100(_GPUConfig):
         self,
         *,
         count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
-        memory: int = 0,  # Set this to 80 if you want to use the 80GB version. Otherwise defaults to 40.
+        memory: int = 0,  # Deprecated. Use `size` instead.
+        size: Union[str, None] = None,  # Select GiB configuration of GPU device: "40GB" or "80GB". Defaults to "40GB".
     ):
+        allowed_memory_values = {40, 80}
+        allowed_size_values = {"40GB", "80GB"}
         if memory == 20:
-            raise ValueError("A100 20GB is unsupported, consider A10 or A100 40GB instead")
-
-        allowed_memory_values = {0, 40, 80}
-        if memory not in allowed_memory_values:
-            raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
+            raise ValueError(
+                "A100 20GB is unsupported, consider `modal.A10G`, `modal.A100(memory_gb='40')`, or `modal.H100` instead"
+            )
+        elif memory and size:
+            raise ValueError("Cannot specify both `memory` and `size`. Just specify `size`.")
+        elif memory:
+            if memory not in allowed_memory_values:
+                raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
+        elif size:
+            if size not in allowed_size_values:
+                raise ValueError(
+                    f"size='{size}' is invalid. A100s can only have memory values of {allowed_size_values}."
+                )
+            memory = int(size.replace("GB", ""))
+        else:
+            memory = 40
 
         if memory == 80:
             super().__init__(api_pb2.GPU_TYPE_A100_80GB, count, memory)
@@ -108,6 +122,24 @@ class A10G(_GPUConfig):
         return f"GPU(A10G, count={self.count})"
 
 
+class H100(_GPUConfig):
+    """
+    [NVIDIA H100 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
+
+    H100 features fourth-generation Tensor Cores and a Transformer Engine with FP8 precision that provides up to 4X faster training over the prior generation for GPT-3 (175B) models.
+    """
+
+    def __init__(
+        self,
+        *,
+        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+    ):
+        super().__init__(api_pb2.GPU_TYPE_H100, count)
+
+    def __repr__(self):
+        return f"GPU(H100, count={self.count})"
+
+
 class Any(_GPUConfig):
     """Selects any one of the GPU classes available within Modal, according to availability."""
 
@@ -122,10 +154,13 @@ STRING_TO_GPU_CONFIG = {
     "t4": T4,
     "l4": L4,
     "a100": A100,
+    "h100": H100,
     "a10g": A10G,
     "any": Any,
 }
-display_string_to_config = "\n".join(f'- "{key}" → `{cls()}`' for key, cls in STRING_TO_GPU_CONFIG.items())
+display_string_to_config = "\n".join(
+    f'- "{key}" → `{cls()}`' for key, cls in STRING_TO_GPU_CONFIG.items() if key != "inf2"
+)
 __doc__ = f"""
 **GPU configuration shortcodes**
 
@@ -154,6 +189,10 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
 
         if value.lower() == "a100-20g":
             return A100(memory=20, count=count)  # Triggers unsupported error underneath.
+        elif value.lower() == "a100-40gb":
+            return A100(size="40GB", count=count)
+        elif value.lower() == "a100-80gb":
+            return A100(size="80GB", count=count)
         elif value.lower() not in STRING_TO_GPU_CONFIG:
             raise InvalidError(
                 f"Invalid GPU type: {value}. Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive)."

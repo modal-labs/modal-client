@@ -2,15 +2,18 @@
 import os
 from typing import Dict, List, Optional, Sequence, Union
 
+from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
+from modal.s3mount import _S3Mount, s3_mounts_to_proto
+from modal.volume import _Volume
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 from ._location import parse_cloud_provider
-from ._mount_utils import validate_mount_points
+from ._mount_utils import validate_mount_points, validate_volumes
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
@@ -115,6 +118,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         cpu: Optional[float] = None,
         memory: Optional[int] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        block_network: bool = False,
+        # Note: Only _S3Mounts are supported right now.
+        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]] = {},
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -125,10 +131,21 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
         validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
 
+        # Validate volumes
+        validated_volumes = validate_volumes(volumes)
+        s3_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
+        validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
+
+        if len(validated_volumes) > 0:
+            raise InvalidError("sandboxes currently only support S3Mount volumes")
+
         def _deps() -> List[_Object]:
             deps: List[_Object] = [image] + list(mounts) + list(secrets)
             for _, vol in validated_network_file_systems:
                 deps.append(vol)
+            for _, s3_mount in s3_mounts:
+                if s3_mount.secret:
+                    deps.append(s3_mount.secret)
             return deps
 
         async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
@@ -151,6 +168,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 cloud_provider=cloud_provider,
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
+                block_network=block_network,
+                s3_mounts=s3_mounts_to_proto(s3_mounts),
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
@@ -158,14 +177,21 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             sandbox_id = create_resp.sandbox_id
             provider._hydrate(sandbox_id, resolver.client, None)
-            provider._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, resolver.client)
-            provider._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, resolver.client)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
 
+    def _hydrate_metadata(self, handle_metadata: Optional[Message]):
+        self._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, self._client)
+        self._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, self._client)
+        if handle_metadata is not None:
+            assert isinstance(handle_metadata, api_pb2.SandboxHandleMetadata)
+            self._result = handle_metadata.result
+        else:
+            self._result = None
+
     # Live handle methods
 
-    async def wait(self):
+    async def wait(self, raise_on_termination: bool = True):
         """Wait for the sandbox to finish running."""
 
         while True:
@@ -176,9 +202,33 @@ class _Sandbox(_Object, type_prefix="sb"):
 
                 if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
                     raise SandboxTimeoutError()
-                elif resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+                elif resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED and raise_on_termination:
                     raise SandboxTerminatedError()
                 break
+
+    async def terminate(self):
+        """Terminate sandbox execution.
+
+        This is a no-op if the sandbox has already finished running."""
+
+        await retry_transient_errors(
+            self._client.stub.SandboxTerminate, api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
+        )
+        await self.wait(raise_on_termination=False)
+
+    async def poll(self) -> Optional[int]:
+        """Check if the sandbox has finished running.
+
+        Returns `None` if the sandbox is still running, else returns the exit code.
+        """
+
+        req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=0)
+        resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
+
+        if resp.result.status:
+            self._result = resp.result
+
+        return self.returncode
 
     @property
     def stdout(self) -> _LogsReader:

@@ -1,22 +1,10 @@
 # Copyright Modal Labs 2022
-import asyncio
 import contextlib
-import functools
 import os
-import platform
-import select
-import signal
 import sys
-import traceback
-from typing import Optional, Tuple, no_type_check
+from typing import Optional, Tuple
 
-import rich
-
-from modal.queue import _Queue
 from modal_proto import api_pb2
-from modal_utils.async_utils import TaskContext, asyncify
-
-from .exception import InvalidError
 
 
 def get_winsz(fd) -> Tuple[Optional[int], Optional[int]]:
@@ -28,18 +16,6 @@ def get_winsz(fd) -> Tuple[Optional[int], Optional[int]]:
         return struct.unpack("hh", fcntl.ioctl(fd, termios.TIOCGWINSZ, "1234"))  # type: ignore
     except Exception:
         return None, None
-
-
-def set_winsz(fd, rows, cols):
-    try:
-        import fcntl
-        import struct
-        import termios
-
-        s = struct.pack("HHHH", rows, cols, 0, 0)
-        fcntl.ioctl(fd, termios.TIOCSWINSZ, s)
-    except Exception:
-        pass
 
 
 def set_nonblocking(fd: int):
@@ -64,96 +40,6 @@ def raw_terminal():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-def _child_sig_handler(signum, frame):
-    assert signum == signal.SIGCHLD
-    if os.environ.get("MODAL_FUNCTION_RUNTIME") == "gvisor":
-        raise KeyboardInterrupt(f"Received {signal.strsignal(signum)}. Interrupting pty.")
-
-
-@no_type_check
-def _pty_spawn(pty_info: api_pb2.PTYInfo, fn, args, kwargs):
-    """Modified from pty.spawn, so we can set the window size on the forked FD
-    and run a custom function in the forked child process."""
-
-    import pty
-    import termios
-    import tty
-
-    pid, master_fd = pty.fork()
-    if pid == pty.CHILD:
-        try:
-            res = fn(*args, **kwargs)
-        except Exception:
-            traceback.print_exc()
-            os._exit(1)
-        if res is not None:
-            print(
-                "Return values from interactive functions are currently ignored. Ignoring result of %s." % fn.__name__
-            )
-        os._exit(0)
-
-    # https://github.com/google/gvisor/issues/9333
-    signal.signal(signal.SIGCHLD, _child_sig_handler)
-
-    if pty_info.winsz_rows or pty_info.winsz_cols:
-        set_winsz(master_fd, pty_info.winsz_rows, pty_info.winsz_cols)
-
-    try:
-        mode = tty.tcgetattr(pty.STDIN_FILENO)
-        tty.setraw(pty.STDIN_FILENO, when=termios.TCSANOW)
-        restore = 1
-    except tty.error:  # This is the same as termios.error
-        restore = 0
-    try:
-        pty._copy(master_fd, pty._read, pty._read)
-    except (KeyboardInterrupt, OSError):
-        if restore:
-            tty.tcsetattr(pty.STDIN_FILENO, tty.TCSANOW, mode)
-
-    os.close(master_fd)
-    return os.waitpid(pid, 0)[1]
-
-
-def run_in_pty(fn, queue, pty_info: api_pb2.PTYInfo):
-    import pty
-    import threading
-
-    @functools.wraps(fn)
-    def wrapped_fn(*args, **kwargs):
-        write_fd, read_fd = pty.openpty()
-        os.dup2(read_fd, sys.stdin.fileno())
-        writer = os.fdopen(write_fd, "wb")
-
-        def _read():
-            while True:
-                try:
-                    data_segments = queue.get_many(1024)
-                    assert data_segments  # cannot be empty, since we read in blocking mode
-                    if data_segments[-1] is None:
-                        if len(data_segments) > 1:
-                            writer.write(b"".join(data_segments[:-1]))
-                            writer.flush()
-                        return
-                    writer.write(b"".join(data_segments))
-                    writer.flush()
-                except asyncio.CancelledError:
-                    return
-
-        t = threading.Thread(target=_read, daemon=True)
-        t.start()
-
-        os.environ.update(
-            {"TERM": pty_info.env_term, "COLORTERM": pty_info.env_colorterm, "TERM_PROGRAM": pty_info.env_term_program}
-        )
-
-        _pty_spawn(pty_info, fn, args, kwargs)
-        queue.put(None)
-        t.join()
-        writer.close()
-
-    return wrapped_fn
-
-
 def get_pty_info(shell: bool) -> api_pb2.PTYInfo:
     rows, cols = get_winsz(sys.stdin.fileno())
     return api_pb2.PTYInfo(
@@ -165,47 +51,3 @@ def get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         env_term_program=os.environ.get("TERM_PROGRAM"),
         pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL if shell else api_pb2.PTYInfo.PTY_TYPE_FUNCTION,
     )
-
-
-@contextlib.asynccontextmanager
-async def write_stdin_to_pty_stream(queue: _Queue):
-    if platform.system() == "Windows":
-        raise InvalidError("Interactive mode is not currently supported on Windows.")
-
-    quit_pipe_read, quit_pipe_write = os.pipe()
-
-    set_nonblocking(sys.stdin.fileno())
-
-    @asyncify
-    def _read_stdin() -> Optional[bytes]:
-        nonlocal quit_pipe_read
-        # TODO: Windows support.
-        (readable, _, _) = select.select([sys.stdin.buffer, quit_pipe_read], [], [])
-        if quit_pipe_read in readable:
-            return None
-        return sys.stdin.buffer.read()
-
-    async def _write():
-        while True:
-            data = await _read_stdin()
-            if data is None:
-                return
-            await queue.put(data)
-
-    async with TaskContext(grace=0.1) as tc:
-        write_task = tc.create_task(_write())
-        with raw_terminal():
-            yield
-        os.write(quit_pipe_write, b"\n")
-        write_task.cancel()
-
-
-def exec_cmd(cmd: str = None):
-    run_cmd = cmd or os.environ.get("SHELL", "sh")
-
-    rich.print(f"[yellow]Spawning [bold]{run_cmd}[/bold][/yellow]")
-
-    # TODO: support args.
-    argv = [run_cmd]
-
-    os.execvp(argv[0], argv)

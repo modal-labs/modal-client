@@ -9,7 +9,7 @@ import time
 import typing
 from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Union
+from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Type, Union
 
 import aiostream
 from google.protobuf.message import Message
@@ -22,12 +22,14 @@ from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info, module_mount_condition
 from modal_version import __version__
 
-from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec
+from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._resolver import Resolver
+from .client import _Client
 from .config import config, logger
 from .exception import NotFoundError
-from .object import _Object
+from .object import _get_environment_name, _StatefulObject
 
+ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
 # Supported releases and versions for python-build-standalone.
@@ -39,6 +41,7 @@ PYTHON_STANDALONE_VERSIONS: typing.Dict[str, typing.Tuple[str, str]] = {
     "3.9": ("20230826", "3.9.18"),
     "3.10": ("20230826", "3.10.13"),
     "3.11": ("20230826", "3.11.5"),
+    "3.12": ("20240107", "3.12.1"),
 }
 
 
@@ -131,7 +134,9 @@ class _MountDir(_MountEntry):
         return self.local_dir, None
 
 
-class _Mount(_Object, type_prefix="mo"):
+# TODO(erikbern): get rid of the _StatefulObject inheritance shortly
+# (we still depend on it for _deploy in modal_base_images)
+class _Mount(_StatefulObject, type_prefix="mo"):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
@@ -281,7 +286,7 @@ class _Mount(_Object, type_prefix="mo"):
         # Mount the DBT profile in user's home directory into container.
         dbt_profiles = modal.Mount.from_local_file(
             local_path="~/profiles.yml",
-            remote_path="/root/dbt_profile/profiles.yml"),
+            remote_path="/root/dbt_profile/profiles.yml",
         )
         ```
         """
@@ -302,7 +307,7 @@ class _Mount(_Object, type_prefix="mo"):
         with concurrent.futures.ThreadPoolExecutor() as exe:
             futs = []
             for local_filename, remote_filename in all_files:
-                futs.append(loop.run_in_executor(exe, get_file_upload_spec, local_filename, remote_filename))
+                futs.append(loop.run_in_executor(exe, get_file_upload_spec_from_path, local_filename, remote_filename))
 
             logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
             for fut in asyncio.as_completed(futs):
@@ -356,13 +361,15 @@ class _Mount(_Object, type_prefix="mo"):
             total_bytes += file_spec.size
 
             if file_spec.use_blob:
-                logger.debug(f"Creating blob file for {file_spec.filename} ({file_spec.size} bytes)")
-                with open(file_spec.filename, "rb") as fp:
+                logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
+                with file_spec.source() as fp:
                     blob_id = await blob_upload_file(fp, resolver.client.stub)
-                logger.debug(f"Uploading blob file {file_spec.filename} as {remote_filename}")
+                logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
-                logger.debug(f"Uploading file {file_spec.filename} to {remote_filename} ({file_spec.size} bytes)")
+                logger.debug(
+                    f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
+                )
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()
@@ -371,7 +378,7 @@ class _Mount(_Object, type_prefix="mo"):
                 if response.exists:
                     return mount_file
 
-            raise modal.exception.MountUploadTimeoutError(f"Mounting of {file_spec.filename} timed out")
+            raise modal.exception.MountUploadTimeoutError(f"Mounting of {file_spec.source_description} timed out")
 
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
@@ -394,7 +401,9 @@ class _Mount(_Object, type_prefix="mo"):
         provider._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
 
     @staticmethod
-    def from_local_python_packages(*module_names: str) -> "_Mount":
+    def from_local_python_packages(
+        *module_names: str, remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix()
+    ) -> "_Mount":
         """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
         This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
 
@@ -421,6 +430,7 @@ class _Mount(_Object, type_prefix="mo"):
         if not is_local():
             return mount
 
+        remote_dir = PurePosixPath(remote_dir)
         for module_name in module_names:
             mount_infos = get_module_mount_info(module_name)
 
@@ -432,17 +442,49 @@ class _Mount(_Object, type_prefix="mo"):
                 if is_package:
                     mount = mount.add_local_dir(
                         base_path,
-                        remote_path=f"/pkg/{module_name}",
+                        remote_path=remote_dir / module_name,
                         condition=module_mount_condition,
                         recursive=True,
                     )
                 else:
-                    remote_path = PurePosixPath("/pkg") / Path(base_path).name
+                    remote_path = remote_dir / Path(base_path).name
                     mount = mount.add_local_file(
                         base_path,
                         remote_path=remote_path,
                     )
         return mount
+
+    @staticmethod
+    def from_name(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+    ) -> "_Mount":
+        async def _load(provider: _Mount, resolver: Resolver, existing_object_id: Optional[str]):
+            req = api_pb2.MountGetOrCreateRequest(
+                deployment_name=label,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name, resolver),
+            )
+            response = await resolver.client.stub.MountGetOrCreate(req)
+            provider._hydrate(response.mount_id, resolver.client, response.handle_metadata)
+
+        return _Mount._from_loader(_load, "Mount()")
+
+    @classmethod
+    async def lookup(
+        cls: Type["_Mount"],
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> "_Mount":
+        obj = _Mount.from_name(label, namespace=namespace, environment_name=environment_name)
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
 
 
 Mount = synchronize_api(_Mount)

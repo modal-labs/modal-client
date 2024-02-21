@@ -34,17 +34,6 @@ def display_table(column_names: List[str], rows: List[List[Union[Text, str]]], j
         console.print(table)
 
 
-def display_selection(choices: List[str], active: str, json: bool):
-    console = Console()
-    if json:
-        json_data = [{"name": choice, "active": choice == active} for choice in choices]
-        console.print(JSON.from_data(json_data))
-    else:
-        for choice in choices:
-            text = Text(f"{choice} [active]", style="green") if active == choice else Text(choice, style="dim")
-            console.print(text)
-
-
 ENV_OPTION_HELP = """Environment to interact with.
 
 If not specified, Modal will use the default environment of your current profile, or the `MODAL_ENVIRONMENT` variable.

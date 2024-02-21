@@ -65,7 +65,6 @@ class _LocalApp:
         indexed_objects: Dict[str, _Object],
         new_app_state: int,
         environment_name: str,
-        shell: bool = False,
         output_mgr: Optional[OutputManager] = None,
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
@@ -74,7 +73,6 @@ class _LocalApp:
             output_mgr=output_mgr,
             environment_name=environment_name,
             app_id=self.app_id,
-            shell=shell,
         )
         with resolver.display():
             # Get current objects, and reset all objects
@@ -208,13 +206,15 @@ class _LocalApp:
                 client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
             )
 
-    async def deploy(self, name: str, namespace) -> str:
+    async def deploy(self, name: str, namespace, public: bool) -> str:
         """`App.deploy` is deprecated in favor of `modal.runner.deploy_stub`."""
+
         deploy_req = api_pb2.AppDeployRequest(
             app_id=self.app_id,
             name=name,
             namespace=namespace,
             object_entity="ap",
+            visibility=(api_pb2.APP_DEPLOY_VISIBILITY_PUBLIC if public else api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE),
         )
         try:
             deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
@@ -304,13 +304,6 @@ class _ContainerApp:
         metadata: Message = self._object_handle_metadata[object_id]
         obj._hydrate(object_id, self._client, metadata)
 
-    def _get_pty(self) -> _Object:
-        # TOOD(erikbern): This method has zero tests. It's used in _container_entrypoint
-        # Let's try to clean this up ASAP
-        object_id = self._tag_to_object_id["_pty_input_stream"]
-        metadata = self._object_handle_metadata[object_id]
-        return _Object._new_hydrated(object_id, self._client, metadata)
-
     def hydrate_function_deps(self, function: _Function, dep_object_ids: List[str]):
         function_deps = function.deps(only_explicit_mounts=True)
         if len(function_deps) != len(dep_object_ids):
@@ -335,9 +328,11 @@ class _ContainerApp:
         self._object_handle_metadata = {}
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, include_unindexed=True)
         resp = await retry_transient_errors(client.stub.AppGetObjects, req)
+        logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {app_id}")
         for item in resp.items:
             handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
             self._object_handle_metadata[item.object.object_id] = handle_metadata
+            logger.debug(f"Setting metadata for {item.object.object_id} ({item.tag})")
             if item.tag:
                 self._tag_to_object_id[item.tag] = item.object.object_id
 
@@ -373,3 +368,14 @@ def is_local() -> bool:
     Returns `False` when executed from a Modal container in the cloud.
     """
     return not _is_container_app
+
+
+async def _list_apps(env: str, client: Optional[_Client] = None) -> List[api_pb2.AppStats]:
+    """List apps in a given Modal environment."""
+    if client is None:
+        client = await _Client.from_env()
+    resp: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
+    return list(resp.apps)
+
+
+list_apps = synchronize_api(_list_apps)

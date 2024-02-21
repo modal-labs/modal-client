@@ -1,13 +1,13 @@
 # Copyright Modal Labs 2023
 import os
 import time
+from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, BinaryIO, List, Optional, Tuple, Union
 
 from grpclib import GRPCError, Status
 
 import modal
-from modal._location import parse_cloud_provider
 from modal_proto import api_pb2
 from modal_utils.async_utils import ConcurrencyPool, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
@@ -16,7 +16,8 @@ from modal_utils.hash_utils import get_sha256_hex
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
 from ._types import typechecked
-from .object import _Object, live_method, live_method_gen
+from .exception import deprecation_warning
+from .object import _StatefulObject, live_method, live_method_gen
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
@@ -40,7 +41,7 @@ def network_file_system_mount_protos(
     return network_file_system_mounts
 
 
-class _NetworkFileSystem(_Object, type_prefix="sv"):
+class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
     """A shared, writable file system accessible by one or more Modal functions.
 
     By attaching this file system as a mount to one or more functions, they can
@@ -95,10 +96,11 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 provider._hydrate(existing_object_id, resolver.client, None)
                 return
 
-            cloud_provider = parse_cloud_provider(cloud) if cloud else None
+            if cloud:
+                deprecation_warning(date(2024, 1, 17), "Argument `cloud` is deprecated (has no effect).")
 
             status_row.message("Creating network file system...")
-            req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id, cloud_provider=cloud_provider)
+            req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id)
             resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
             status_row.finish("Created network file system.")
             provider._hydrate(resp.shared_volume_id, resolver.client, None)

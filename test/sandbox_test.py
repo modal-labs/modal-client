@@ -6,7 +6,7 @@ import pytest
 import time
 from pathlib import Path
 
-from modal import Image, Mount, NetworkFileSystem, Secret, Stub
+from modal import Image, Mount, NetworkFileSystem, Sandbox, Secret, Stub
 from modal.exception import InvalidError
 
 stub = Stub()
@@ -20,6 +20,8 @@ def test_spawn_sandbox(client, servicer):
     with stub.run(client=client):
         sb = stub.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600)
 
+        assert sb.poll() is None
+
         t0 = time.time()
         sb.wait()
         # Test that we actually waited for the sandbox to finish.
@@ -29,6 +31,7 @@ def test_spawn_sandbox(client, servicer):
         assert sb.stderr.read() == "bye\n"
 
         assert sb.returncode == 42
+        assert sb.poll() == 42
 
 
 @skip_non_linux
@@ -81,3 +84,24 @@ def test_sandbox_nfs(client, servicer, tmpdir):
         stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs})
 
     assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
+
+
+@skip_non_linux
+def test_sandbox_from_id(client, servicer):
+    with stub.run(client=client):
+        sb = stub.spawn_sandbox("bash", "-c", "echo foo && exit 42", timeout=600)
+        sb.wait()
+
+    sb2 = Sandbox.from_id(sb.object_id, client=client)
+    assert sb2.stdout.read() == "foo\n"
+    assert sb2.returncode == 42
+
+
+@skip_non_linux
+def test_sandbox_terminate(client, servicer):
+    with stub.run(client=client):
+        sb = stub.spawn_sandbox("bash", "-c", "sleep 10000")
+
+        sb.terminate()
+
+        assert sb.returncode != 0

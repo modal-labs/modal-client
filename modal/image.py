@@ -36,7 +36,7 @@ _from_dockerhub_deprecation_msg = "`Image.from_dockerhub` is deprecated. Use `Im
 
 def _validate_python_version(version: str) -> None:
     components = version.split(".")
-    supported_versions = {"3.11", "3.10", "3.9", "3.8", "3.7"}
+    supported_versions = {"3.12", "3.11", "3.10", "3.9", "3.8"}
     if len(components) == 2 and version in supported_versions:
         return
     elif len(components) == 3:
@@ -48,8 +48,6 @@ def _validate_python_version(version: str) -> None:
 
 def _dockerhub_python_version(python_version=None):
     if python_version is None:
-        python_version = config["image_python_version"]
-    if python_version is None:
         python_version = "%d.%d" % sys.version_info[:2]
 
     parts = python_version.split(".")
@@ -60,23 +58,28 @@ def _dockerhub_python_version(python_version=None):
     # We use the same major/minor version, but the highest micro version
     # See https://hub.docker.com/_/python
     latest_micro_version = {
+        "3.12": "1",
         "3.11": "0",
         "3.10": "8",
         "3.9": "15",
         "3.8": "15",
-        "3.7": "15",
     }
     major_minor_version = ".".join(parts[:2])
     python_version = major_minor_version + "." + latest_micro_version[major_minor_version]
     return python_version
 
 
-def _get_client_requirements_path():
+def _get_client_requirements_path(python_version: Optional[str] = None) -> str:
     # Locate Modal client requirements.txt
     import modal
 
     modal_path = modal.__path__[0]
-    return os.path.join(modal_path, "requirements.txt")
+    if python_version is None:
+        major, minor, *_ = sys.version_info
+    else:
+        major, minor = python_version.split("-")[0].split(".")[:2]
+    suffix = {(3, 12): ".312"}.get((int(major), int(minor)), "")
+    return os.path.join(modal_path, f"requirements{suffix}.txt")
 
 
 def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, List[str]], ...]) -> List[str]:
@@ -275,7 +278,7 @@ class _Image(_Object, type_prefix="im"):
                 image=image_definition,
                 existing_image_id=existing_object_id,  # TODO: ignored
                 build_function_id=build_function_id,
-                force_build=force_build,
+                force_build=config.get("force_build") or force_build,
                 namespace=_namespace,
             )
             resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
@@ -679,7 +682,9 @@ class _Image(_Object, type_prefix="im"):
             if poetry_lockfile is None:
                 p = Path(poetry_pyproject_toml).parent / "poetry.lock"
                 if not p.exists():
-                    raise NotFoundError(f"poetry.lock not found at inferred location, {p}")
+                    raise NotFoundError(
+                        f"poetry.lock not found at inferred location: {p.absolute()}. If a lockfile is not needed, `ignore_lockfile=True` can be used."
+                    )
                 poetry_lockfile = p.as_posix()
             context_files["/.poetry.lock"] = poetry_lockfile
             dockerfile_commands += ["COPY /.poetry.lock /tmp/poetry/poetry.lock"]
@@ -769,7 +774,7 @@ class _Image(_Object, type_prefix="im"):
         In most cases, using [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install) is recommended over `Image.conda()`, as it leads to significantly faster image build times.
         """
         _validate_python_version(python_version)
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(python_version)
         # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
         # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
         conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
@@ -978,12 +983,12 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Build a Modal image from a public image registry, such as Docker Hub.
 
-        The image must be built for the `linux/amd64` platform and have Python 3.7 or above
+        The image must be built for the `linux/amd64` platform and have Python 3.8 or above
         installed and available on PATH as `python`. It should also have `pip`.
 
         If your image does not come with Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, and `3.11`. For Alpine-based images, use `3.8-musl` through `3.11-musl`, which
+        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
         are statically-linked Python installations.
 
         You may also use `setup_dockerfile_commands` to run Dockerfile commands before the
@@ -1001,10 +1006,10 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_registry("python:3.11-slim-bookworm")
         modal.Image.from_registry("ubuntu:22.04", add_python="3.11")
-        modal.Image.from_registry("alpine:3.18.3", add_python="3.11-musl")
+        modal.Image.from_registry("alpine:3.18.3", add_python="3.12-musl")
         ```
         """
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(add_python)
         dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, add_python)
 
         context_mount = None
@@ -1047,11 +1052,13 @@ class _Image(_Object, type_prefix="im"):
         add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """Build a Modal image from a private image in GCP Artifact Registry.
+        """Build a Modal image from a private image in Google Cloud Platform (GCP) Artifact Registry.
 
-        You will need to pass a `modal.Secret` containing your GCP service account key
+        You will need to pass a `modal.Secret` containing [your GCP service account key data](https://cloud.google.com/iam/docs/keys-create-delete#creating)
         as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page.
-        The service account needs to have at least an "Artifact Registry Reader" role.
+        The service account needs to have at least an ["Artifact Registry Reader"](https://cloud.google.com/artifact-registry/docs/access-control#roles) role.
+
+        **Note:** This method does not use `GOOGLE_APPLICATION_CREDENTIALS` as that variable accepts a path to a JSON file, not the actual JSON string.
 
         See `Image.from_registry()` for information about the other parameters.
 
@@ -1065,6 +1072,8 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+        if "secrets" in kwargs:
+            raise TypeError("Passing a list of 'secrets' is not supported; use the singular 'secret' argument.")
         image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_GCP, secret)
         return _Image.from_registry(
             tag,
@@ -1106,6 +1115,8 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+        if "secrets" in kwargs:
+            raise TypeError("Passing a list of 'secrets' is not supported; use the singular 'secret' argument.")
         image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_AWS, secret)
         return _Image.from_registry(
             tag,
@@ -1133,13 +1144,13 @@ class _Image(_Object, type_prefix="im"):
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, and `3.11`. For Alpine-based images, use `3.8-musl` through `3.11-musl`, which
+        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
         are statically-linked Python installations.
 
         **Example**
 
         ```python
-        image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.10")
+        image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.12")
         ```
         """
 
@@ -1158,7 +1169,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(add_python)
 
         context_mount = None
         add_python_commands = []
@@ -1194,7 +1205,7 @@ class _Image(_Object, type_prefix="im"):
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
         python_version = _dockerhub_python_version(python_version)
 
-        requirements_path = _get_client_requirements_path()
+        requirements_path = _get_client_requirements_path(python_version)
         dockerfile_commands = [
             f"FROM python:{python_version}-slim-bullseye",
             "COPY /modal_requirements.txt /modal_requirements.txt",
@@ -1254,8 +1265,7 @@ class _Image(_Object, type_prefix="im"):
         self,
         raw_f: Callable[[], Any],
         *,
-        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
@@ -1264,14 +1274,15 @@ class _Image(_Object, type_prefix="im"):
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
         force_build: bool = False,
+        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
     ) -> "_Image":
-        """Run user-defined function `raw_function` as an image build step. The function runs just like an ordinary Modal
+        """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
         function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `NetworkFileSystem`s, and resource requests) can
         be supplied to it. After it finishes execution, a snapshot of the resulting container file system is saved as an image.
 
         **Note**
 
-        Only the source code of `raw_function`, the contents of `**kwargs`, and any referenced *global* variables are used to determine whether the image has changed
+        Only the source code of `raw_f`, the contents of `**kwargs`, and any referenced *global* variables are used to determine whether the image has changed
         and needs to be rebuilt. If this function references other functions or variables, the image will not be rebuilt if you
         make changes to them. You can force a rebuild by changing the function's source code itself.
 
@@ -1356,6 +1367,18 @@ class _Image(_Object, type_prefix="im"):
 
     @contextlib.contextmanager
     def imports(self):
+        """
+        Used to import packages in global scope that are only available when running remotely.
+        By using this context manager you can avoid an `ImportError` due to not having certain
+        packages installed locally.
+
+        **Usage:**
+
+        ```python notest
+        with image.imports():
+            import torch
+        ```
+        """
         env_image_id = config.get("image_id")
         try:
             yield
@@ -1373,8 +1396,9 @@ class _Image(_Object, type_prefix="im"):
     def run_inside(self):
         """`Image.run_inside` is deprecated - use `Image.imports` instead.
 
-        Usage:
-        ```
+        **Usage:**
+
+        ```python notest
         with image.imports():
             import torch
         ```

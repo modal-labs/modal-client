@@ -9,7 +9,7 @@ from unittest import mock
 
 from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu, method
 from modal.exception import DeprecationError, InvalidError, NotFoundError
-from modal.image import _dockerhub_python_version
+from modal.image import _dockerhub_python_version, _get_client_requirements_path
 from modal_proto import api_pb2
 
 
@@ -405,7 +405,6 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
     with stub.run(client=client):
         for image_name, expected_layer in [("copy", 0), ("dockerfile_commands", 1), ("from_dockerfile", 0)]:
             layers = get_image_layers(stub[image_name].object_id, servicer)
-            assert layers[expected_layer].context_mount_id == "mo-123", f"error in {image_name}"
             assert "COPY . /dummy" in layers[expected_layer].dockerfile_commands
 
         files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
@@ -558,3 +557,16 @@ def test_inside_ctx_hydrated(client):
         # We're not inside this image so this should be swallowed
         with image_2.imports():
             raise ImportError("bar")
+
+
+@pytest.mark.parametrize(
+    "version,expected",
+    [
+        ("3.12", "requirements.312.txt"),
+        ("3.12.1", "requirements.312.txt"),
+        ("3.12.1-gnu", "requirements.312.txt"),
+    ],
+)
+def test_get_client_requirements_path(version, expected):
+    path = _get_client_requirements_path(version)
+    assert os.path.basename(path) == expected

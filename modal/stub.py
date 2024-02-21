@@ -2,8 +2,8 @@
 import inspect
 import os
 import typing
-import warnings
 from datetime import date
+from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
 from synchronicity.async_wrap import asynccontextmanager
@@ -13,6 +13,7 @@ from modal_utils.async_utils import synchronize_api
 
 from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
+from ._mount_utils import validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
 from .app import _container_app, _ContainerApp, _LocalApp, is_local
@@ -20,20 +21,17 @@ from .client import _Client
 from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import (
-    PartialFunction,
-    _Function,
-    _PartialFunction,
-)
+from .functions import _Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
+from .partial_function import PartialFunction, _PartialFunction
 from .proxy import _Proxy
-from .queue import _Queue
 from .retries import Retries
 from .runner import _run_stub
+from .s3mount import _S3Mount
 from .sandbox import _Sandbox
 from .schedule import Schedule
 from .secret import _Secret
@@ -99,7 +97,7 @@ class _Stub:
     stub = modal.Stub()
 
     @stub.function(
-        secret=modal.Secret.from_name("some_secret"),
+        secrets=[modal.Secret.from_name("some_secret")],
         schedule=modal.Period(days=1),
     )
     def foo():
@@ -115,6 +113,7 @@ class _Stub:
     _function_mounts: Dict[str, _Mount]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
+    _volumes: Dict[Union[str, PurePosixPath], _Volume]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, _LocalEntrypoint]
     _container_app: Optional[_ContainerApp]
@@ -129,6 +128,7 @@ class _Stub:
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
+        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
         **indexed_objects: _Object,  # any Modal Object dependencies (Dict, Queue, etc.)
     ) -> None:
         """Construct a new app stub, optionally with default image, mounts, secrets
@@ -147,8 +147,10 @@ class _Stub:
         self._name = name
         self._description = name
 
-        check_sequence(mounts, _Mount, "mounts has to be a list or tuple of Mount/AioMount objects")
-        check_sequence(secrets, _Secret, "secrets has to be a list or tuple of Secret/AioSecret objects")
+        check_sequence(mounts, _Mount, "mounts has to be a list or tuple of Mount objects")
+        check_sequence(secrets, _Secret, "secrets has to be a list or tuple of Secret objects")
+        validate_volumes(volumes)
+
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
 
@@ -168,6 +170,7 @@ class _Stub:
         self._function_mounts = {}
         self._mounts = mounts
         self._secrets = secrets
+        self._volumes = volumes
         self._local_entrypoints = {}
         self._web_endpoints = []
         self._local_app = None  # when this is the launcher process
@@ -314,18 +317,6 @@ class _Stub:
         else:
             return _default_image
 
-    @property
-    def _pty_input_stream(self):
-        return self._indexed_objects.get("_pty_input_stream", None)
-
-    def _add_pty_input_stream(self):
-        if self._pty_input_stream:
-            warnings.warn(
-                "Running multiple interactive functions at the same time is not fully supported, and could lead to unexpected behavior."
-            )
-        else:
-            self._indexed_objects["_pty_input_stream"] = _Queue.new()
-
     def _get_watch_mounts(self):
         all_mounts = [
             *self._mounts,
@@ -443,17 +434,16 @@ class _Stub:
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
-        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[
-            Union[str, os.PathLike], _NetworkFileSystem
+            Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Deprecated, use `network_file_systems` instead
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
+        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -464,7 +454,7 @@ class _Stub:
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        interactive: bool = False,  # Whether to run the function in interactive mode./
+        interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Optional[
             int
         ] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
@@ -474,12 +464,18 @@ class _Stub:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+        block_network: bool = False,  # Whether to block network access
+        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         _allow_background_volume_commits: bool = False,
+        max_inputs: Optional[
+            int
+        ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
+        _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg
-            raise InvalidError("`image` needs to be a positional argument: `@stub.function(image=image)`.")
+            raise InvalidError("`image` needs to be a keyword argument: `@stub.function(image=image)`.")
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.function()`.")
 
@@ -509,6 +505,8 @@ class _Stub:
                 keep_warm = f.keep_warm or keep_warm
 
                 if webhook_config:
+                    if interactive:
+                        raise InvalidError("interactive=True is not supported with web endpoint functions")
                     self._web_endpoints.append(info.get_tag())
             else:
                 info = FunctionInfo(f, serialized=serialized, name_override=name, cls=_cls)
@@ -523,9 +521,6 @@ class _Stub:
             if is_generator is None:
                 is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
-            if interactive:
-                self._add_pty_input_stream()
-
             function = _Function.from_args(
                 info,
                 stub=self,
@@ -538,7 +533,7 @@ class _Stub:
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
                 allow_cross_region_volumes=allow_cross_region_volumes,
-                volumes=volumes,
+                volumes={**self._volumes, **volumes},
                 memory=memory,
                 proxy=proxy,
                 retries=retries,
@@ -549,12 +544,14 @@ class _Stub:
                 cpu=cpu,
                 interactive=interactive,
                 keep_warm=keep_warm,
-                name=name,
                 cloud=cloud,
                 webhook_config=webhook_config,
                 cls=_cls,
                 checkpointing_enabled=checkpointing_enabled,
                 allow_background_volume_commits=_allow_background_volume_commits,
+                block_network=block_network,
+                max_inputs=max_inputs,
+                _experimental_boost=_experimental_boost,
             )
 
             self._add_function(function)
@@ -567,17 +564,16 @@ class _Stub:
         _warn_parentheses_missing=None,
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
-        secret: Optional[_Secret] = None,  # An optional Modal Secret with environment variables for the container
-        secrets: Sequence[_Secret] = (),  # Plural version of `secret` when multiple secrets are needed
+        secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
         shared_volumes: Dict[
-            Union[str, os.PathLike], _NetworkFileSystem
+            Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Deprecated, use `network_file_systems` instead
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Experimental. Do not use!
+        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -590,6 +586,13 @@ class _Stub:
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+        block_network: bool = False,  # Whether to block network access
+        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
+        _allow_background_volume_commits: bool = False,
+        max_inputs: Optional[
+            int
+        ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
+        _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
@@ -617,6 +620,10 @@ class _Stub:
             keep_warm=keep_warm,
             cloud=cloud,
             checkpointing_enabled=checkpointing_enabled,
+            block_network=block_network,
+            _allow_background_volume_commits=_allow_background_volume_commits,
+            max_inputs=max_inputs,
+            _experimental_boost=_experimental_boost,
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
@@ -649,13 +656,17 @@ class _Stub:
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        block_network: bool = False,  # Whether to block network access
+        volumes: Dict[
+            Union[str, os.PathLike], _S3Mount
+        ] = {},  # Volumes to mount in the sandbox. Currently, only S3 mounts are supported in sandboxes.
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -691,6 +702,8 @@ class _Stub:
             cpu=cpu,
             memory=memory,
             network_file_systems=network_file_systems,
+            block_network=block_network,
+            volumes=volumes,
         )
         await resolver.load(obj)
         return obj

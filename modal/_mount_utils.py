@@ -1,19 +1,21 @@
 # Copyright Modal Labs 2022
 import os
 import posixpath
-from pathlib import PurePath
-from typing import TYPE_CHECKING, Dict, List, Tuple, Union
+from pathlib import PurePath, PurePosixPath
+from typing import TYPE_CHECKING, Dict, List, Mapping, Tuple, Union
 
 from .exception import InvalidError
+from .volume import _Volume
 
 if TYPE_CHECKING:
     from .network_file_system import _NetworkFileSystem
-    from .volume import _Volume
+    from .s3mount import _S3Mount
 
 
 def validate_mount_points(
-    display_name: str, volume_likes: Dict[Union[str, os.PathLike], Union["_Volume", "_NetworkFileSystem"]]
-) -> List[Tuple[str, Union["_Volume", "_NetworkFileSystem"]]]:
+    display_name: str,
+    volume_likes: Mapping[Union[str, os.PathLike], Union["_Volume", "_NetworkFileSystem", "_S3Mount"]],
+) -> List[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_S3Mount"]]]:
     """Mount point path validation for volumes and network file systems."""
 
     validated = []
@@ -31,3 +33,25 @@ def validate_mount_points(
             raise InvalidError(f"{display_name} {path} cannot be mounted at '/tmp'.")
         validated.append((path, vol))
     return validated
+
+
+def validate_volumes(
+    volumes: Mapping[Union[str, PurePosixPath], Union["_Volume", "_S3Mount"]],
+) -> List[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_S3Mount"]]]:
+    if not isinstance(volumes, dict):
+        raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
+
+    validated_volumes = validate_mount_points("Volume", volumes)
+    # We don't support mounting a volume in more than one location
+    volume_to_paths: Dict["_Volume", List[str]] = {}
+    for path, volume in validated_volumes:
+        if isinstance(volume, _Volume):
+            volume_to_paths.setdefault(volume, []).append(path)
+    for paths in volume_to_paths.values():
+        if len(paths) > 1:
+            conflicting = ", ".join(paths)
+            raise InvalidError(
+                f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
+            )
+
+    return validated_volumes

@@ -8,6 +8,7 @@ import typing
 import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
+import modal
 from modal import Image, NetworkFileSystem, Proxy, Stub, web_endpoint
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
@@ -247,6 +248,26 @@ async def test_generator(client, servicer):
 
 
 @pytest.mark.asyncio
+async def test_generator_map_invalid(client, servicer):
+    stub = Stub()
+
+    later_gen_modal = stub.function()(later_gen)
+
+    def dummy(x):
+        yield x
+
+    servicer.function_body(dummy)
+
+    with stub.run(client=client):
+        with pytest.raises(InvalidError):
+            # Support for .map() on generators was removed in version 0.57
+            for _ in later_gen_modal.map([1, 2, 3]):
+                pass
+        with pytest.raises(InvalidError):
+            later_gen_modal.for_each([1, 2, 3])
+
+
+@pytest.mark.asyncio
 async def test_generator_async(client, servicer):
     stub = Stub()
 
@@ -283,81 +304,6 @@ async def test_generator_future(client, servicer):
 
 def gen_with_arg(i):
     yield "foo"
-
-
-@pytest.mark.asyncio
-async def test_generator_map_success(client, servicer):
-    stub = Stub()
-
-    gen_with_arg_modal = stub.function()(gen_with_arg)
-
-    def dummy(i):
-        yield i, "bar"
-        yield i, "baz"
-
-    servicer.function_body(dummy)
-
-    assert len(servicer.cleared_function_calls) == 0
-    with stub.run(client=client):
-        assert gen_with_arg_modal.is_generator
-        res = set(gen_with_arg_modal.map([1, 2, 3]))
-        assert res == {(1, "bar"), (1, "baz"), (2, "bar"), (2, "baz"), (3, "bar"), (3, "baz")}
-
-
-@pytest.mark.asyncio
-async def test_generator_map_exception(client, servicer):
-    stub = Stub()
-
-    gen_with_arg_modal = stub.function()(gen_with_arg)
-
-    def dummy(i):
-        yield i, "bar"
-        if i == 2:
-            raise CustomException("boo!")
-        yield i, "baz"
-
-    servicer.function_body(dummy)
-
-    assert len(servicer.cleared_function_calls) == 0
-    with stub.run(client=client):
-        assert gen_with_arg_modal.is_generator
-
-        with pytest.raises(CustomException) as exc_info:
-            list(gen_with_arg_modal.map([1, 2, 3]))
-        assert exc_info.value.args == ("boo!",)
-
-
-@pytest.mark.asyncio
-async def test_generator_map_return_exceptions(client, servicer):
-    stub = Stub()
-
-    gen_with_arg_modal = stub.function()(gen_with_arg)
-
-    def dummy(i):
-        yield i, "bar"
-        if i == 2:
-            raise CustomException("boo!")
-        yield i, "baz"
-
-    servicer.function_body(dummy)
-
-    assert len(servicer.cleared_function_calls) == 0
-    with stub.run(client=client):
-        assert gen_with_arg_modal.is_generator
-
-        results = set()
-        received_exc = False
-        for result in gen_with_arg_modal.map([1, 2, 3], return_exceptions=True):
-            # TODO: this should just be CustomException directly.
-            if isinstance(result, UserCodeException):
-                assert isinstance(result.exc, CustomException)
-                assert result.exc.args == ("boo!",)
-                received_exc = True
-            else:
-                results.add(result)
-
-        assert received_exc
-        assert results == {(1, "bar"), (1, "baz"), (2, "bar"), (3, "bar"), (3, "baz")}
 
 
 async def slo1(sleep_seconds):
@@ -680,3 +626,59 @@ def test_deps_closurevars(client, servicer):
         f = servicer.app_functions[modal_f.object_id]
 
     assert set(d.object_id for d in f.object_dependencies) == set([nfs.object_id, image.object_id])
+
+
+def interact_wit_me():
+    return 1
+
+
+def test_interactive_mode():
+    stub = Stub()
+
+    stub.function(image=Image.debian_slim(), interactive=True)(interact_wit_me)
+
+
+def assert_is_wrapped_dict(some_arg):
+    assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
+    return some_arg
+
+
+def test_calls_should_not_unwrap_modal_objects(servicer, client):
+    stub = Stub()
+    stub.some_modal_object = modal.Dict.from_name("blah", create_if_missing=True)
+
+    foo = stub.function()(assert_is_wrapped_dict)
+    servicer.function_body(assert_is_wrapped_dict)
+
+    # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
+    with stub.run(client=client):
+        assert type(foo.remote(stub.some_modal_object)) == modal.Dict
+        fc = foo.spawn(stub.some_modal_object)
+        assert type(fc.get()) == modal.Dict
+        for ret in foo.map([stub.some_modal_object]):
+            assert type(ret) == modal.Dict
+        for ret in foo.starmap([[stub.some_modal_object]]):
+            assert type(ret) == modal.Dict
+        foo.for_each([stub.some_modal_object])
+
+    assert len(servicer.client_calls) == 5
+
+
+def assert_is_wrapped_dict_gen(some_arg):
+    assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
+    yield some_arg
+
+
+def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
+    stub = Stub()
+    stub.some_modal_object = modal.Dict.from_name("blah", create_if_missing=True)
+
+    foo = stub.function()(assert_is_wrapped_dict_gen)
+    servicer.function_body(assert_is_wrapped_dict_gen)
+
+    # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
+    with stub.run(client=client):
+        assert type(next(foo.remote_gen(stub.some_modal_object))) == modal.Dict
+        foo.spawn(stub.some_modal_object)  # spawn on generator returns None, but starts the generator
+
+    assert len(servicer.client_calls) == 2

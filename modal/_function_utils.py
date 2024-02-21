@@ -15,10 +15,8 @@ from modal_proto import api_pb2
 from ._serialization import serialize
 from .config import config, logger
 from .exception import InvalidError
-from .mount import _Mount
+from .mount import ROOT_DIR, _Mount
 from .object import Object
-
-ROOT_DIR = PurePosixPath("/root")
 
 # Expand symlinks in paths (homebrew Python paths are all symlinks).
 SYS_PREFIXES = set(
@@ -51,6 +49,21 @@ def package_mount_condition(filename):
         return False
 
     return os.path.splitext(filename)[1] in [".py"]
+
+
+def entrypoint_only_package_mount_condition(entrypoint_file):
+    entrypoint_path = Path(entrypoint_file)
+
+    def inner(filename):
+        path = Path(filename)
+        if path == entrypoint_path:
+            return True
+        if path.name == "__init__.py" and path.parent in entrypoint_path.parents:
+            # ancestor __init__.py are included
+            return True
+        return False
+
+    return inner
 
 
 def _is_modal_path(remote_path: PurePosixPath):
@@ -215,13 +228,23 @@ class FunctionInfo:
             mounts = {}
 
         # make sure the function's own entrypoint is included:
-        if self.type == FunctionInfoType.PACKAGE and config.get("automount"):
-            mounts[self.base_dir] = _Mount.from_local_dir(
-                self.base_dir,
-                remote_path=self.remote_dir,
-                recursive=True,
-                condition=package_mount_condition,
-            )
+        if self.type == FunctionInfoType.PACKAGE:
+            if config.get("automount"):
+                # mount full package
+                mounts[self.base_dir] = _Mount.from_local_dir(
+                    self.base_dir,
+                    remote_path=self.remote_dir,
+                    recursive=True,
+                    condition=package_mount_condition,
+                )
+            elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+                # mount only relevant file and __init__.py:s
+                mounts[self.base_dir] = _Mount.from_local_dir(
+                    self.base_dir,
+                    remote_path=self.remote_dir,
+                    recursive=True,
+                    condition=entrypoint_only_package_mount_condition(self.file),
+                )
         elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             remote_path = ROOT_DIR / Path(self.file).name
             mounts[self.file] = _Mount.from_local_file(
@@ -298,7 +321,13 @@ class FunctionInfo:
         return self.function_name
 
     def is_nullary(self):
-        return all(param.default is not param.empty for param in self.signature.parameters.values())
+        for param in self.signature.parameters.values():
+            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                # variadic parameters are nullary
+                continue
+            if param.default is param.empty:
+                return False
+        return True
 
 
 def get_referred_objects(f: Callable) -> List[Object]:

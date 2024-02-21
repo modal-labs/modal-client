@@ -29,7 +29,24 @@ def asgi_app_wrapper(asgi_app, function_io_manager):
             try:
                 first_message = await asyncio.wait_for(message_gen.__anext__(), 5.0)
             except asyncio.TimeoutError:
-                await messages_to_app.put({"type": "http.disconnect"})
+                if scope["type"] == "http":
+                    await messages_from_app.put({"type": "http.response.start", "status": 502})
+                    await messages_from_app.put(
+                        {
+                            "type": "http.response.body",
+                            "body": b"Missing request, possibly due to cancellation or crash",
+                        }
+                    )
+                    await messages_to_app.put({"type": "http.disconnect"})
+                elif scope["type"] == "websocket":
+                    await messages_from_app.put(
+                        {
+                            "type": "websocket.close",
+                            "code": 1011,
+                            "reason": "Missing request, possibly due to cancellation or crash",
+                        }
+                    )
+                    await messages_to_app.put({"type": "websocket.disconnect"})
                 return
 
             await messages_to_app.put(first_message)

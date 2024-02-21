@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import uuid
-from datetime import date
 from functools import wraps
 from typing import Awaitable, Callable, ClassVar, Dict, List, Optional, Type, TypeVar
 
@@ -16,11 +15,20 @@ from ._deployments import deploy_single_object
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
-from .exception import ExecutionError, InvalidError, NotFoundError, deprecation_error
+from .exception import ExecutionError, InvalidError, NotFoundError
 
 O = TypeVar("O", bound="_Object")
 
 _BLOCKING_O = synchronize_api(O)
+
+
+def _get_environment_name(environment_name: Optional[str], resolver: Optional[Resolver] = None) -> Optional[str]:
+    if environment_name:
+        return environment_name
+    elif resolver and resolver.environment_name:
+        return resolver.environment_name
+    else:
+        return config.get("environment")
 
 
 class _Object:
@@ -82,6 +90,10 @@ class _Object:
         # default implementation, can be overriden in subclasses
         pass
 
+    def _initialize_from_other(self, other):
+        # default implementation, can be overriden in subclasses
+        pass
+
     def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
         assert isinstance(object_id, str)
         if not object_id.startswith(self._type_prefix):
@@ -108,6 +120,16 @@ class _Object:
     def _init_from_other(self, other: O):
         # Transient use case, see Dict, Queue, and SharedVolume
         self._init(other._rep, other._load, other._is_another_app, other._preload)
+
+    def clone(self: O) -> O:
+        """mdmd:hidden Clone a given hydrated object."""
+
+        # Object to clone must already be hydrated, otherwise from_loader is more suitable.
+        assert self._is_hydrated
+
+        obj = _Object.__new__(type(self))
+        obj._initialize_from_other(self)
+        return obj
 
     @classmethod
     def _from_loader(
@@ -155,9 +177,17 @@ class _Object:
         # This is used in a few examples to construct FunctionCall objects
         if client is None:
             client = await _Client.from_env()
-        response: api_pb2.AppLookupObjectResponse = await retry_transient_errors(
-            client.stub.AppLookupObject, api_pb2.AppLookupObjectRequest(object_id=object_id)
-        )
+        try:
+            response: api_pb2.AppLookupObjectResponse = await retry_transient_errors(
+                client.stub.AppLookupObject, api_pb2.AppLookupObjectRequest(object_id=object_id)
+            )
+        except GRPCError as exc:
+            if exc.status == Status.NOT_FOUND:
+                raise NotFoundError(exc.message)
+            elif exc.status == Status.INVALID_ARGUMENT:
+                raise InvalidError(exc.message)
+            else:
+                raise
 
         handle_metadata = get_proto_oneof(response.object, "handle_metadata_oneof")
         return cls._new_hydrated(object_id, client, handle_metadata)
@@ -185,6 +215,7 @@ class _Object:
 
     @property
     def deps(self) -> Callable[..., List["_Object"]]:
+        """mdmd:hidden"""
         return self._deps if self._deps is not None else lambda: []
 
     async def resolve(self):
@@ -202,6 +233,13 @@ class _Object:
             resolver = Resolver()
             await resolver.load(self)
 
+
+class _StatefulObject(_Object):
+    # This base class is used for _Volume, _Queue, _Secret, _NetworkFileSystem
+    # This is a temporary class needed until we rewrite AppLookupObject to be specific to each class.
+    # At that point, we can "push down" each of these methods into each class.
+    # These classes all have in common that they are always looked up using a single app name.
+
     async def _deploy(
         self,
         label: str,
@@ -212,33 +250,21 @@ class _Object:
         """
         Note: still considering this an "internal" method, but we'll make it "official" later
         """
-        if environment_name is None:
-            environment_name = config.get("environment")
-
         if client is None:
             client = await _Client.from_env()
 
-        await deploy_single_object(self, self._type_prefix, client, label, namespace, environment_name)
-
-    def persist(
-        self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ):
-        """`Object.persist` is deprecated for generic objects. See `NetworkFileSystem.persisted` or `Dict.persisted`."""
-        # Note: this method is overridden in SharedVolume and Dict to print a warning
-        deprecation_error(
-            date(2023, 6, 30),
-            self.persist.__doc__,
+        await deploy_single_object(
+            self, self._type_prefix, client, label, namespace, _get_environment_name(environment_name)
         )
 
     @typechecked
     def _persist(
         self, label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ):
-        if environment_name is None:
-            environment_name = config.get("environment")
-
         async def _load_persisted(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
-            await self._deploy(label, namespace, resolver.client, environment_name=environment_name)
+            await self._deploy(
+                label, namespace, resolver.client, environment_name=_get_environment_name(environment_name, resolver)
+            )
             obj._hydrate_from_other(self)
 
         cls = type(self)
@@ -249,11 +275,10 @@ class _Object:
     def from_name(
         cls: Type[O],
         app_name: str,
-        tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> O:
-        """Retrieve an object with a given name and tag.
+        """Retrieve an object with a given name.
 
         Useful for referencing secrets, as well as calling a function from a different app.
         Use this when attaching the object to a stub or function.
@@ -261,13 +286,7 @@ class _Object:
         **Examples**
 
         ```python notest
-        # Retrieve a secret
         stub.my_secret = Secret.from_name("my-secret")
-
-        # Retrieve a function from a different app
-        stub.other_function = Function.from_name("other-app", "function")
-
-        # Retrieve a persisted Volume, Queue, or Dict
         stub.my_volume = Volume.from_name("my-volume")
         stub.my_queue = Queue.from_name("my-queue")
         stub.my_dict = Dict.from_name("my-dict")
@@ -275,19 +294,11 @@ class _Object:
         """
 
         async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
-            nonlocal environment_name
-            if environment_name is None:
-                # fall back if no explicit environment was set in the call itself.
-                # If there is a current app setup, the resolver has the env name. If doing a .lookup
-                # with no associated app, must fetch environment from config.
-                environment_name = resolver.environment_name or config.get("environment")
-
             request = api_pb2.AppLookupObjectRequest(
                 app_name=app_name,
-                object_tag=tag,
                 namespace=namespace,
                 object_entity=cls._type_prefix,
-                environment_name=environment_name,
+                environment_name=_get_environment_name(environment_name, resolver),
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.AppLookupObject, request)
@@ -307,12 +318,11 @@ class _Object:
     async def lookup(
         cls: Type[O],
         app_name: str,
-        tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> O:
-        """Lookup an object with a given name and tag.
+        """Lookup an object with a given name.
 
         This is a general-purpose method for objects like functions, network file systems,
         and secrets. It gives a reference to the object in a running app.
@@ -320,19 +330,13 @@ class _Object:
         **Examples**
 
         ```python notest
-        # Lookup a secret
         my_secret = Secret.lookup("my-secret")
-
-        # Lookup a function from a different app
-        other_function = Function.lookup("other-app", "function")
-
-        # Lookup a persisted Volume, Queue, or Dict
         my_volume = Volume.lookup("my-volume")
         my_queue = Queue.lookup("my-queue")
         my_dict = Dict.lookup("my-dict")
         ```
         """
-        obj = cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        obj = cls.from_name(app_name, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
@@ -343,34 +347,20 @@ class _Object:
     async def _exists(
         cls: Type[O],
         app_name: str,
-        tag: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> bool:
         """Internal for now - will make this "public" later."""
-        if client is None:
-            client = await _Client.from_env()
-        if environment_name is None:
-            environment_name = config.get("environment")
-        request = api_pb2.AppLookupObjectRequest(
-            app_name=app_name,
-            object_tag=tag,
-            namespace=namespace,
-            object_entity=cls._type_prefix,
-            environment_name=environment_name,
-        )
         try:
-            response = await retry_transient_errors(client.stub.AppLookupObject, request)
-            return bool(response.object.object_id)  # old code path - change to `return True` shortly
-        except GRPCError as exc:
-            if exc.status == Status.NOT_FOUND:
-                return False
-            else:
-                raise
+            await cls.lookup(app_name, namespace, client, environment_name)
+            return True
+        except NotFoundError:
+            return False
 
 
 Object = synchronize_api(_Object, target_module=__name__)
+StatefulObject = synchronize_api(_StatefulObject, target_module=__name__)
 
 
 def live_method(method):

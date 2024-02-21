@@ -15,10 +15,12 @@ import signal
 import sys
 import time
 import traceback
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, Optional, Type
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Type
 
+from google.protobuf.empty_pb2 import Empty
 from grpclib import Status
 
 from modal.stub import _Stub
@@ -29,13 +31,12 @@ from modal_utils.async_utils import (
     synchronize_api,
     synchronizer,
 )
-from modal_utils.grpc_utils import retry_transient_errors, unary_stream
+from modal_utils.grpc_utils import retry_transient_errors
 
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function
 from ._proxy_tunnel import proxy_tunnel
-from ._pty import exec_cmd, run_in_pty
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
@@ -44,13 +45,8 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
 from .exception import InvalidError
-from .functions import (  # type: ignore
-    Function,
-    _find_callables_for_obj,
-    _Function,
-    _PartialFunctionFlags,
-    _set_current_context_ids,
-)
+from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
+from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -65,32 +61,24 @@ class UserException(Exception):
     pass
 
 
-class SequenceNumber:
-    def __init__(self, initial_value: int):
-        self._value: int = initial_value
+class SignalHandlingEventLoop:
+    """Manage an event loop for executing coroutines while handling SIGINT/SIGTERM.
 
-    def increase(self):
-        self._value += 1
+    Prevents stray cancellation errors from propagating up.
+    """
 
-    @property
-    def value(self) -> int:
-        return self._value
+    def __enter__(self):
+        self.loop = asyncio.new_event_loop()
+        return self
 
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.loop.close()
 
-def run_with_signal_handler(coro):
-    """Execute coro in an event loop, with a signal handler that cancels
-    the task in the case of SIGINT or SIGTERM. Prevents stray cancellation errors
-    from propagating up."""
-
-    loop = asyncio.new_event_loop()
-    task = asyncio.ensure_future(coro, loop=loop)
-    for s in [signal.SIGINT, signal.SIGTERM]:
-        loop.add_signal_handler(s, task.cancel)
-    try:
-        result = loop.run_until_complete(task)
-    finally:
-        loop.close()
-    return result
+    def run(self, coro):
+        task = asyncio.ensure_future(coro, loop=self.loop)
+        for s in [signal.SIGINT, signal.SIGTERM]:
+            self.loop.add_signal_handler(s, task.cancel)
+        return self.loop.run_until_complete(task)
 
 
 class _FunctionIOManager:
@@ -100,11 +88,15 @@ class _FunctionIOManager:
     Then we could potentially move a bunch of the global functions onto it.
     """
 
+    _GENERATOR_STOP_SENTINEL = object()
+
     def __init__(self, container_args: api_pb2.ContainerArguments, client: _Client):
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
+        self.checkpoint_id = container_args.checkpoint_id
+
         self.calls_completed = 0
         self.total_user_time: float = 0.0
         self.current_input_id: Optional[str] = None
@@ -165,6 +157,7 @@ class _FunctionIOManager:
     def deserialize(self, data: bytes) -> Any:
         return deserialize(data, self._client)
 
+    @synchronizer.no_io_translation
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
 
@@ -173,22 +166,65 @@ class _FunctionIOManager:
 
     async def get_data_in(self, function_call_id: str) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
-        last_index = 0
-        while True:
-            req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
-            try:
-                async for chunk in unary_stream(client.stub.FunctionCallGetDataIn, req):
-                    if chunk.index <= last_index:
-                        continue
-                    last_index = chunk.index
-                    if chunk.data_blob_id:
-                        message_bytes = await blob_download(chunk.data_blob_id, client.stub)
-                    else:
-                        message_bytes = chunk.data
-                    message = deserialize_data_format(message_bytes, chunk.data_format, client)
-                    yield message
-            except Exception:  # TODO: Catch specific exceptions versus transient errors.
-                await asyncio.sleep(0.1)
+        async for data in _stream_function_call_data(self._client, function_call_id, "data_in"):
+            yield data
+
+    async def put_data_out(
+        self,
+        function_call_id: str,
+        start_index: int,
+        data_format: int,
+        messages_bytes: List[Any],
+    ) -> None:
+        """Put data onto the `data_out` stream of a function call.
+
+        This is used for generator outputs, which includes web endpoint responses. Note that this
+        was introduced as a performance optimization in client version 0.57, so older clients will
+        still use the previous Postgres-backed system based on `FunctionPutOutputs()`.
+        """
+        data_chunks: List[api_pb2.DataChunk] = []
+        for i, message_bytes in enumerate(messages_bytes):
+            chunk = api_pb2.DataChunk(data_format=data_format, index=start_index + i)  # type: ignore
+            if len(message_bytes) > MAX_OBJECT_SIZE_BYTES:
+                chunk.data_blob_id = await blob_upload(message_bytes, self._client.stub)
+            else:
+                chunk.data = message_bytes
+            data_chunks.append(chunk)
+
+        req = api_pb2.FunctionCallPutDataRequest(function_call_id=function_call_id, data_chunks=data_chunks)
+        await retry_transient_errors(self._client.stub.FunctionCallPutDataOut, req)
+
+    async def generator_output_task(self, function_call_id: str, data_format: int, message_rx: asyncio.Queue) -> None:
+        """Task that feeds generator outputs into a function call's `data_out` stream."""
+        index = 1
+        received_sentinel = False
+        while not received_sentinel:
+            message = await message_rx.get()
+            if message is self._GENERATOR_STOP_SENTINEL:
+                break
+            messages_bytes = [serialize_data_format(message, data_format)]
+            total_size = len(messages_bytes[0]) + 512
+            while total_size < 16 * 1024 * 1024:  # 16 MiB, maximum size in a single message
+                try:
+                    message = message_rx.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                if message is self._GENERATOR_STOP_SENTINEL:
+                    received_sentinel = True
+                    break
+                else:
+                    messages_bytes.append(serialize_data_format(message, data_format))
+                    total_size += len(messages_bytes[-1]) + 512  # 512 bytes for estimated framing overhead
+            await self.put_data_out(function_call_id, index, data_format, messages_bytes)
+            index += len(messages_bytes)
+
+    async def _queue_create(self, size: int) -> asyncio.Queue:
+        """Create a queue, on the synchronicity event loop (needed on Python 3.8 and 3.9)."""
+        return asyncio.Queue(size)
+
+    async def _queue_put(self, queue: asyncio.Queue, value: Any) -> None:
+        """Put a value onto a queue, using the synchronicity event loop."""
+        await queue.put(value)
 
     @wrap()
     async def populate_input_blobs(self, item: api_pb2.FunctionInput):
@@ -211,6 +247,7 @@ class _FunctionIOManager:
 
         return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
 
+    @synchronizer.no_io_translation
     async def _generate_inputs(self) -> AsyncIterator[tuple[str, str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
@@ -254,13 +291,15 @@ class _FunctionIOManager:
                         yield (item.input_id, item.function_call_id, input_pb)
                         yielded = True
 
-                        if item.input.final_input:
+                        # We only support max_inputs = 1 at the moment
+                        if item.input.final_input or self.function_def.max_inputs == 1:
                             eof_received = True
                             break
             finally:
                 if not yielded:
                     self._semaphore.release()
 
+    @synchronizer.no_io_translation
     async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[tuple[str, str, Any, Any]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
@@ -280,9 +319,7 @@ class _FunctionIOManager:
             for _ in range(input_concurrency):
                 await self._semaphore.acquire()
 
-    async def _push_output(
-        self, input_id, started_at: float, gen_index: int, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs
-    ):
+    async def _push_output(self, input_id, started_at: float, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs):
         # upload data to S3 if too big.
         if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
             data_blob_id = await blob_upload(kwargs["data"], self._client.stub)
@@ -294,7 +331,6 @@ class _FunctionIOManager:
             input_id=input_id,
             input_started_at=started_at,
             output_created_at=time.time(),
-            gen_index=gen_index,
             result=api_pb2.GenericResult(**kwargs),
             data_format=data_format,
         )
@@ -358,9 +394,7 @@ class _FunctionIOManager:
             raise UserException()
 
     @contextlib.asynccontextmanager
-    async def handle_input_exception(
-        self, input_id, started_at: float, output_index: SequenceNumber
-    ) -> AsyncGenerator[None, None]:
+    async def handle_input_exception(self, input_id, started_at: float) -> AsyncGenerator[None, None]:
         try:
             with trace("input"):
                 set_span_tag("input_id", input_id)
@@ -380,7 +414,6 @@ class _FunctionIOManager:
             await self._push_output(
                 input_id,
                 started_at=started_at,
-                gen_index=output_index.value,
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                 data=self.serialize_exception(exc),
@@ -396,69 +429,67 @@ class _FunctionIOManager:
         self.calls_completed += 1
         self._semaphore.release()
 
-    async def push_output(self, input_id, started_at: float, output_index: int, data: Any, data_format: int) -> None:
+    @synchronizer.no_io_translation
+    async def push_output(self, input_id, started_at: float, data: Any, data_format: int) -> None:
         await self._push_output(
             input_id,
             started_at=started_at,
-            gen_index=output_index,
             data_format=data_format,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             data=self.serialize_data_format(data, data_format),
         )
         await self.complete_call(started_at)
 
-    async def push_generator_value(
-        self, input_id, started_at: float, output_index: int, data: Any, data_format: int
-    ) -> None:
-        await self._push_output(
-            input_id,
-            started_at=started_at,
-            gen_index=output_index,
-            data_format=data_format,
-            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-            data=self.serialize_data_format(data, data_format),
-            gen_status=api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE,
-        )
+    async def restore(self) -> None:
+        # Busy-wait for restore. `/__modal/restore-state.json` is created
+        # by the worker process with updates to the container config.
+        restored_path = Path(config.get("restore_state_path"))
+        start = time.perf_counter()
+        while not restored_path.exists():
+            logger.debug(f"Waiting for restore (elapsed={time.perf_counter() - start:.3f}s)")
+            await asyncio.sleep(0.01)
+            continue
 
-    async def push_generator_eof(self, input_id, started_at: float, output_index: int) -> None:
-        await self._push_output(
-            input_id,
-            started_at=started_at,
-            gen_index=output_index,
-            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-            gen_status=api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE,
-        )
-        await self.complete_call(started_at)
+        logger.debug("Container: restored")
+
+        # Look for state file and create new client with updated credentials.
+        # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
+        with restored_path.open("r") as file:
+            restored_state = json.load(file)
+
+        # Local FunctionIOManager state.
+        for key in ["task_id", "function_id"]:
+            if value := restored_state.get(key):
+                logger.debug(f"Updating FunctionIOManager.{key} = {value}")
+                setattr(self, key, restored_state[key])
+
+        # Env vars and global state.
+        for key, value in restored_state.items():
+            # Empty string indicates that value does not need to be updated.
+            if value != "":
+                config.override_locally(key, value)
+
+        # Restore input to default state.
+        self.current_input_id = None
+        self.current_input_started_at = None
+
+        self._client = await _Client.from_env()
+        self._waiting_for_checkpoint = False
 
     async def checkpoint(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
-        await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest())
+        if self.checkpoint_id:
+            logger.debug(f"Checkpoint ID: {self.checkpoint_id}")
+
+        await self._client.stub.ContainerCheckpoint(
+            api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+        )
 
         self._waiting_for_checkpoint = True
         await self._client._close()
 
-        logger.debug("checkpointing request sent and connection closed")
-
-        # Busy-wait for restore. `/opt/modal/restore-state.json` is created
-        # by the worker process with updates to the container config.
-        restored_path = Path(config.get("restore_state_path"))
-        while not restored_path.exists():
-            logger.debug("waiting for restore ...")
-            await asyncio.sleep(0.01)
-            continue
-
-        # Look for state file and create new client with updated credentials.
-        with restored_path.open("r") as file:
-            restored_state = json.load(file)
-
-        # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
-        # Empty string indicates that value does not need to be updated.
-        for key, value in restored_state.items():
-            if value != "":
-                config.override_locally(key, value)
-
-        self._client = await _Client.from_env()
-        self._waiting_for_checkpoint = False
+        logger.debug("Checkpointing request sent. Connection closed.")
+        await self.restore()
 
     async def volume_commit(self, volume_ids: list[str]) -> None:
         """
@@ -483,6 +514,13 @@ class _FunctionIOManager:
             else:
                 logger.debug(f"modal.Volume background commit success for {volume_id}.")
 
+    async def start_pty_shell(self) -> None:
+        try:
+            await self._client.stub.FunctionStartPtyShell(Empty())
+        except Exception as e:
+            logger.error("Failed to start PTY shell.")
+            raise e
+
 
 FunctionIOManager = synchronize_api(_FunctionIOManager)
 
@@ -491,23 +529,12 @@ def call_function_sync(
     function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
     imp_fun: ImportedFunction,
 ):
-    # If this function is on a class, instantiate it and enter it
-    if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER)
-        for enter_method in enter_methods.values():
-            # Call a user-defined method
-            with function_io_manager.handle_user_exception():
-                enter_res = enter_method()
-            if inspect.iscoroutine(enter_res):
-                logger.warning("Not running asynchronous enter/exit handlers with a sync function")
-
     try:
 
         def run_inputs(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
-            output_index = SequenceNumber(0)
             started_at = time.time()
             reset_context = _set_current_context_ids(input_id, function_call_id)
-            with function_io_manager.handle_input_exception(input_id, started_at, output_index):
+            with function_io_manager.handle_input_exception(input_id, started_at):
                 # TODO(gongy): run this in an executor
                 res = imp_fun.fun(*args, **kwargs)
 
@@ -516,20 +543,31 @@ def call_function_sync(
                     if not inspect.isgenerator(res):
                         raise InvalidError(f"Generator function returned value of type {type(res)}")
 
-                    for value in res:
-                        function_io_manager.push_generator_value(
-                            input_id, started_at, output_index.value, value, imp_fun.data_format
-                        )
-                        output_index.increase()
+                    # Send up to this many outputs at a time.
+                    generator_queue: asyncio.Queue[Any] = function_io_manager._queue_create(1024)
+                    generator_output_task = function_io_manager.generator_output_task(
+                        function_call_id,
+                        imp_fun.data_format,
+                        generator_queue,
+                        _future=True,  # Synchronicity magic to return a future.
+                    )
 
-                    function_io_manager.push_generator_eof(input_id, started_at, output_index.value)
+                    item_count = 0
+                    for value in res:
+                        function_io_manager._queue_put(generator_queue, value)
+                        item_count += 1
+
+                    function_io_manager._queue_put(generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL)
+                    generator_output_task.result()  # Wait to finish sending generator outputs.
+                    message = api_pb2.GeneratorDone(items_total=item_count)
+                    function_io_manager.push_output(input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
                 else:
                     if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
                             f"Sync (non-generator) function return value of type {type(res)}."
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
-                    function_io_manager.push_output(input_id, started_at, output_index.value, res, imp_fun.data_format)
+                    function_io_manager.push_output(input_id, started_at, res, imp_fun.data_format)
             reset_context()
 
         if imp_fun.input_concurrency > 1:
@@ -544,7 +582,7 @@ def call_function_sync(
             ):
                 run_inputs(input_id, function_call_id, args, kwargs)
     finally:
-        if imp_fun.obj is not None:
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 with function_io_manager.handle_user_exception():
@@ -556,35 +594,42 @@ async def call_function_async(
     function_io_manager,  #: FunctionIOManager,  # TODO: this one too
     imp_fun: ImportedFunction,
 ):
-    # If this function is on a class, instantiate it and enter it
-    if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER)
-        for enter_method in enter_methods.values():
-            # Call a user-defined method
-            with function_io_manager.handle_user_exception():
-                enter_res = enter_method()
-                if inspect.iscoroutine(enter_res):
-                    await enter_res
-
     try:
 
         async def run_input(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
-            output_index = SequenceNumber(0)  # mutable number we can increase from the generator loop
             started_at = time.time()
             reset_context = _set_current_context_ids(input_id, function_call_id)
-            async with function_io_manager.handle_input_exception.aio(input_id, started_at, output_index):
+            async with function_io_manager.handle_input_exception.aio(input_id, started_at):
                 res = imp_fun.fun(*args, **kwargs)
 
                 # TODO(erikbern): any exception below shouldn't be considered a user exception
                 if imp_fun.is_generator:
                     if not inspect.isasyncgen(res):
                         raise InvalidError(f"Async generator function returned value of type {type(res)}")
-                    async for value in res:
-                        await function_io_manager.push_generator_value.aio(
-                            input_id, started_at, output_index.value, value, imp_fun.data_format
+
+                    # Send up to this many outputs at a time.
+                    generator_queue: asyncio.Queue[Any] = await function_io_manager._queue_create.aio(1024)
+                    generator_output_task = asyncio.create_task(
+                        function_io_manager.generator_output_task.aio(
+                            function_call_id,
+                            imp_fun.data_format,
+                            generator_queue,
                         )
-                        output_index.increase()
-                    await function_io_manager.push_generator_eof.aio(input_id, started_at, output_index.value)
+                    )
+
+                    item_count = 0
+                    async for value in res:
+                        await function_io_manager._queue_put.aio(generator_queue, value)
+                        item_count += 1
+
+                    await function_io_manager._queue_put.aio(
+                        generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL
+                    )
+                    await generator_output_task  # Wait to finish sending generator outputs.
+                    message = api_pb2.GeneratorDone(items_total=item_count)
+                    await function_io_manager.push_output.aio(
+                        input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
+                    )
                 else:
                     if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                         raise InvalidError(
@@ -592,9 +637,7 @@ async def call_function_async(
                             " You might need to use @stub.function(..., is_generator=True)."
                         )
                     value = await res
-                    await function_io_manager.push_output.aio(
-                        input_id, started_at, output_index.value, value, imp_fun.data_format
-                    )
+                    await function_io_manager.push_output.aio(input_id, started_at, value, imp_fun.data_format)
             reset_context()
 
         if imp_fun.input_concurrency > 1:
@@ -609,7 +652,7 @@ async def call_function_async(
             ):
                 await run_input(input_id, function_call_id, args, kwargs)
     finally:
-        if imp_fun.obj is not None:
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 # Call a user-defined method
@@ -617,6 +660,18 @@ async def call_function_async(
                     exit_res = exit_method(*sys.exc_info())
                     if inspect.iscoroutine(exit_res):
                         await exit_res
+
+
+async def call_functions_for_setup(
+    function_io_manager,  #: FunctionIOManager TODO: this type is generated at runtime
+    funcs: Iterable[Callable],
+) -> None:
+    """Call function(s), can be sync or async, but any return values are ignored."""
+    with function_io_manager.handle_user_exception():
+        for func in funcs:
+            res = func()
+            if inspect.iscoroutine(res):
+                await res
 
 
 @dataclass
@@ -649,9 +704,7 @@ def import_function(
     active_stub: Optional[_Stub] = None
     pty_info: api_pb2.PTYInfo = function_def.pty_info
 
-    if pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-        fun = exec_cmd
-    elif ser_fun is not None:
+    if ser_fun is not None:
         # This is a serialized function we already fetched from the server
         cls, fun = ser_cls, ser_fun
     else:
@@ -732,27 +785,28 @@ def import_function(
     else:
         obj = None
 
-    if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
-        # function returns an asgi_app, that we can use as a callable.
-        asgi_app = fun()
-        fun = asgi_app_wrapper(asgi_app, function_io_manager)
-        is_async = True
-        is_generator = True
-        data_format = api_pb2.DATA_FORMAT_ASGI
-    elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
-        # function returns an wsgi_app, that we can use as a callable.
-        wsgi_app = fun()
-        fun = wsgi_app_wrapper(wsgi_app, function_io_manager)
-        is_async = True
-        is_generator = True
-        data_format = api_pb2.DATA_FORMAT_ASGI
-    elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-        # function is webhook without an ASGI app. Create one for it.
-        asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
-        fun = asgi_app_wrapper(asgi_app, function_io_manager)
-        is_async = True
-        is_generator = True
-        data_format = api_pb2.DATA_FORMAT_ASGI
+    if not pty_info.pty_type:  # do not wrap PTY-enabled functions
+        if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
+            # function returns an asgi_app, that we can use as a callable.
+            asgi_app = fun()
+            fun = asgi_app_wrapper(asgi_app, function_io_manager)
+            is_async = True
+            is_generator = True
+            data_format = api_pb2.DATA_FORMAT_ASGI
+        elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
+            # function returns an wsgi_app, that we can use as a callable.
+            wsgi_app = fun()
+            fun = wsgi_app_wrapper(wsgi_app, function_io_manager)
+            is_async = True
+            is_generator = True
+            data_format = api_pb2.DATA_FORMAT_ASGI
+        elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+            # function is webhook without an ASGI app. Create one for it.
+            asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
+            fun = asgi_app_wrapper(asgi_app, function_io_manager)
+            is_async = True
+            is_generator = True
+            data_format = api_pb2.DATA_FORMAT_ASGI
 
     return ImportedFunction(
         obj,
@@ -779,7 +833,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # Define a global app (need to do this before imports)
     container_app = function_io_manager.initialize_app()
 
-    with function_io_manager.heartbeats():
+    with SignalHandlingEventLoop() as event_loop, function_io_manager.heartbeats():
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = function_io_manager.get_serialized_function()
@@ -798,6 +852,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             dep_object_ids: list[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
 
+        # Identify all "enter" methods that need to run before we checkpoint
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
+            pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
+            event_loop.run(call_functions_for_setup(function_io_manager, pre_checkpoint_methods.values()))
+
         # Checkpoint container after imports. Checkpointed containers start from this point
         # onwards. This assumes that everything up to this point has run successfully,
         # including global imports.
@@ -806,15 +865,18 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
         if pty_info.pty_type or pty_info.enabled:
-            # TODO(erikbern): the second condition is for legacy compatibility, remove soon
-            # TODO(erikbern): there is no client test for this branch
-            input_stream = container_app._get_pty()
-            imp_fun.fun = run_in_pty(imp_fun.fun, input_stream, pty_info)
+            # This is an interactive function: Immediately start a PTY shell
+            function_io_manager.start_pty_shell()
+
+        # Identify the "enter" methods to run after we resume
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
+            post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+            event_loop.run(call_functions_for_setup(function_io_manager, post_checkpoint_methods.values()))
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)
         else:
-            run_with_signal_handler(call_function_async(function_io_manager, imp_fun))
+            event_loop.run(call_function_async(function_io_manager, imp_fun))
 
         # Commit on exit to catch uncommitted volume changes and surface background
         # commit errors.

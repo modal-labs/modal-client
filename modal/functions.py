@@ -1,6 +1,5 @@
-# Copyright Modal Labs 2022
+# Copyright Modal Labs 2023
 import asyncio
-import enum
 import inspect
 import os
 import pickle
@@ -9,20 +8,22 @@ import warnings
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date
+from pathlib import PurePosixPath
 from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
     AsyncIterable,
     AsyncIterator,
-    Awaitable,
     Callable,
     Collection,
     Dict,
-    Iterable,
     List,
+    Literal,
     Optional,
+    Sequence,
     Set,
+    Sized,
     Type,
     Union,
 )
@@ -30,10 +31,10 @@ from typing import (
 from aiostream import pipe, stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
 
 from modal import _pty
-from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import (
     queue_batch_iterator,
@@ -41,7 +42,7 @@ from modal_utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from modal_utils.grpc_utils import retry_transient_errors
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 from ._blob_utils import (
     BLOB_MAX_PARALLELISM,
@@ -51,7 +52,7 @@ from ._blob_utils import (
 )
 from ._function_utils import FunctionInfo, get_referred_objects, is_async
 from ._location import parse_cloud_provider
-from ._mount_utils import validate_mount_points
+from ._mount_utils import validate_mount_points, validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import deserialize, deserialize_data_format, serialize
@@ -63,20 +64,24 @@ from .exception import (
     ExecutionError,
     FunctionTimeoutError,
     InvalidError,
+    NotFoundError,
     RemoteError,
     deprecation_error,
+    deprecation_warning,
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import Object, _Object, live_method, live_method_gen
+from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
+from .s3mount import _S3Mount, s3_mounts_to_proto
 from .schedule import Schedule
 from .secret import _Secret
 from .volume import _Volume
 
+OUTPUTS_TIMEOUT = 55.0  # seconds
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
 
 
@@ -174,6 +179,45 @@ async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutIn
         )
 
 
+async def _stream_function_call_data(
+    client, function_call_id: str, variant: Literal["data_in", "data_out"]
+) -> AsyncIterator[Any]:
+    """Read from the `data_in` or `data_out` stream of a function call."""
+    last_index = 0
+    retries_remaining = 10
+
+    if variant == "data_in":
+        stub_fn = client.stub.FunctionCallGetDataIn
+    elif variant == "data_out":
+        stub_fn = client.stub.FunctionCallGetDataOut
+    else:
+        raise ValueError(f"Invalid variant {variant}")
+
+    while True:
+        req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
+        try:
+            async for chunk in unary_stream(stub_fn, req):
+                if chunk.index <= last_index:
+                    continue
+                last_index = chunk.index
+                if chunk.data_blob_id:
+                    message_bytes = await blob_download(chunk.data_blob_id, client.stub)
+                else:
+                    message_bytes = chunk.data
+                message = deserialize_data_format(message_bytes, chunk.data_format, client)
+                yield message
+        except (GRPCError, StreamTerminatedError) as exc:
+            if retries_remaining > 0:
+                retries_remaining -= 1
+                if isinstance(exc, GRPCError):
+                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                        await asyncio.sleep(1.0)
+                        continue
+                elif isinstance(exc, StreamTerminatedError):
+                    continue
+            raise
+
+
 @dataclass
 class _OutputValue:
     # box class for distinguishing None results from non-existing/None markers
@@ -217,9 +261,9 @@ class _Invocation:
     ) -> AsyncIterator[api_pb2.FunctionGetOutputsItem]:
         t0 = time.time()
         if timeout is None:
-            backend_timeout = config["outputs_timeout"]
+            backend_timeout = OUTPUTS_TIMEOUT
         else:
-            backend_timeout = min(config["outputs_timeout"], timeout)  # refresh backend call every 55s
+            backend_timeout = min(OUTPUTS_TIMEOUT, timeout)  # refresh backend call every 55s
 
         while True:
             # always execute at least one poll for results, regardless if timeout is 0
@@ -241,7 +285,7 @@ class _Invocation:
 
             if timeout is not None:
                 # update timeout in retry loop
-                backend_timeout = min(config["outputs_timeout"], t0 + timeout - time.time())
+                backend_timeout = min(OUTPUTS_TIMEOUT, t0 + timeout - time.time())
                 if backend_timeout < 0:
                     break
 
@@ -269,37 +313,20 @@ class _Invocation:
         return await _process_result(items[0].result, items[0].data_format, self.stub, self.client)
 
     async def run_generator(self):
-        last_entry_id = "0-0"
-        completed = False
-        try:
-            while not completed:
-                request = api_pb2.FunctionGetOutputsRequest(
-                    function_call_id=self.function_call_id,
-                    timeout=config["outputs_timeout"],
-                    last_entry_id=last_entry_id,
-                    clear_on_success=False,  # there could be more results
-                )
-                response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
-                    self.stub.FunctionGetOutputs,
-                    request,
-                    attempt_timeout=config["outputs_timeout"] + ATTEMPT_TIMEOUT_GRACE_PERIOD,
-                )
-                if len(response.outputs) > 0:
-                    last_entry_id = response.last_entry_id
-                    for item in response.outputs:
-                        if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                            completed = True
-                            break
-                        yield await _process_result(item.result, item.data_format, self.stub, self.client)
-        finally:
-            # "ack" that we have all outputs we are interested in and let backend clear results
-            request = api_pb2.FunctionGetOutputsRequest(
-                function_call_id=self.function_call_id,
-                timeout=0,
-                last_entry_id="0-0",
-                clear_on_success=True,
-            )
-            await self.stub.FunctionGetOutputs(request)
+        data_stream = _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
+        combined_stream = stream.merge(data_stream, stream.call(self.run_function))
+
+        items_received = 0
+        items_total: Union[int, None] = None  # populated when self.run_function() completes
+        async with combined_stream.stream() as streamer:
+            async for item in streamer:
+                if isinstance(item, api_pb2.GeneratorDone):
+                    items_total = item.items_total
+                else:
+                    yield item
+                    items_received += 1
+                if items_received == items_total:
+                    break
 
 
 MAP_INVOCATION_CHUNK_SIZE = 49
@@ -310,7 +337,6 @@ async def _map_invocation(
     input_stream: AsyncIterable[Any],
     kwargs: Dict[str, Any],
     client: _Client,
-    is_generator: bool,
     order_outputs: bool,
     return_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
@@ -382,7 +408,7 @@ async def _map_invocation(
         while not have_all_inputs or len(pending_outputs) > len(completed_outputs):
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=function_call_id,
-                timeout=config["outputs_timeout"],
+                timeout=OUTPUTS_TIMEOUT,
                 last_entry_id=last_entry_id,
                 clear_on_success=False,
             )
@@ -390,7 +416,7 @@ async def _map_invocation(
                 client.stub.FunctionGetOutputs,
                 request,
                 max_retries=20,
-                attempt_timeout=config["outputs_timeout"] + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
             if len(response.outputs) == 0:
@@ -399,32 +425,13 @@ async def _map_invocation(
             last_entry_id = response.last_entry_id
             for item in response.outputs:
                 pending_outputs.setdefault(item.input_id, 0)
-                if item.input_id in completed_outputs or (
-                    item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_INCOMPLETE
-                    and item.gen_index < pending_outputs[item.input_id]
-                ):
-                    # If this input is already completed, or if it's a generator output and we've already seen a later
-                    # output, it means the output has already been processed and was received again due
-                    # to a duplicate output enqueue on the server.
+                if item.input_id in completed_outputs:
+                    # If this input is already completed, it means the output has already been
+                    # processed and was received again due to a duplicate.
                     continue
-
-                if is_generator:
-                    # Mark this input completed if the generator completed successfully, or it crashed (exception, timeout, etc).
-                    if item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_COMPLETE:
-                        completed_outputs.add(item.input_id)
-                        num_outputs += 1
-                    elif item.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-                        completed_outputs.add(item.input_id)
-                        num_outputs += 1
-                        yield item
-                    else:
-                        assert pending_outputs[item.input_id] == item.gen_index
-                        pending_outputs[item.input_id] += 1
-                        yield item
-                else:
-                    completed_outputs.add(item.input_id)
-                    num_outputs += 1
-                    yield item
+                completed_outputs.add(item.input_id)
+                num_outputs += 1
+                yield item
 
     async def get_all_outputs_and_clean_up():
         try:
@@ -462,9 +469,7 @@ async def _map_invocation(
             async for idx, output in streamer:
                 if count_update_callback is not None:
                     count_update_callback(num_outputs, num_inputs)
-                if is_generator:
-                    yield _OutputValue(output)
-                elif not order_outputs:
+                if not order_outputs:
                     yield _OutputValue(output)
                 else:
                     # hold on to outputs for function maps, so we can reorder them correctly.
@@ -485,13 +490,52 @@ async def _map_invocation(
 
 
 # Wrapper type for api_pb2.FunctionStats
-@dataclass
+@dataclass(frozen=True)
 class FunctionStats:
     """Simple data structure storing stats for a running function."""
 
     backlog: int
     num_active_runners: int
     num_total_runners: int
+
+
+def _parse_retries(
+    retries: Optional[Union[int, Retries]],
+    raw_f: Optional[Callable] = None,
+) -> Optional[api_pb2.FunctionRetryPolicy]:
+    if isinstance(retries, int):
+        return Retries(
+            max_retries=retries,
+            initial_delay=1.0,
+            backoff_coefficient=1.0,
+        )._to_proto()
+    elif isinstance(retries, Retries):
+        return retries._to_proto()
+    elif retries is None:
+        return None
+    else:
+        err_object = f"Function {raw_f}" if raw_f else "Function"
+        raise InvalidError(
+            f"{err_object} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
+        )
+
+
+@dataclass
+class FunctionEnv:
+    """
+    Stores information about the function environment. This is used for `modal shell` to support
+    running shells in the same environment as a user-defined function.
+    """
+
+    image: Optional[_Image]
+    mounts: Sequence[_Mount]
+    secrets: Sequence[_Secret]
+    network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
+    volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]]
+    gpu: GPU_T
+    cloud: Optional[str]
+    cpu: Optional[float]
+    memory: Optional[int]
 
 
 class _Function(_Object, type_prefix="fu"):
@@ -510,6 +554,7 @@ class _Function(_Object, type_prefix="fu"):
     _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
     _function_name: Optional[str]
     _is_method: bool
+    _env: FunctionEnv
 
     @staticmethod
     def from_args(
@@ -517,15 +562,15 @@ class _Function(_Object, type_prefix="fu"):
         stub,
         image=None,
         secret: Optional[_Secret] = None,
-        secrets: Collection[_Secret] = (),
+        secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
         gpu: GPU_T = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},
+        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[_Proxy] = None,
@@ -537,13 +582,15 @@ class _Function(_Object, type_prefix="fu"):
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,
         interactive: bool = False,
-        name: Optional[str] = None,
         cloud: Optional[str] = None,
+        _experimental_boost: bool = False,
         is_builder_function: bool = False,
         cls: Optional[type] = None,
         is_auto_snapshot: bool = False,
         checkpointing_enabled: bool = False,
         allow_background_volume_commits: bool = False,
+        block_network: bool = False,
+        max_inputs: Optional[int] = None,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -556,6 +603,13 @@ class _Function(_Object, type_prefix="fu"):
                     f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
                 )
 
+        if secret is not None:
+            deprecation_warning(
+                date(2024, 1, 31),
+                "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
+            )
+            secrets = [secret, *secrets]
+
         all_mounts = [
             _get_client_mount(),  # client
             *mounts,  # explicit mounts
@@ -566,23 +620,7 @@ class _Function(_Object, type_prefix="fu"):
         else:
             all_mounts.extend(info.get_mounts().values())  # this would typically only happen for builder functions
 
-        if secret:
-            secrets = [secret, *secrets]
-
-        if isinstance(retries, int):
-            retry_policy = Retries(
-                max_retries=retries,
-                initial_delay=1.0,
-                backoff_coefficient=1.0,
-            )._to_proto()
-        elif isinstance(retries, Retries):
-            retry_policy = retries._to_proto()
-        elif retries is None:
-            retry_policy = None
-        else:
-            raise InvalidError(
-                f"Function {raw_f} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
-            )
+        retry_policy = _parse_retries(retries, raw_f)
 
         gpu_config = parse_gpu_config(gpu)
 
@@ -591,7 +629,22 @@ class _Function(_Object, type_prefix="fu"):
             if image:
                 image = image.apt_install("autossh")
 
+        function_env = FunctionEnv(
+            mounts=all_mounts,
+            secrets=secrets,
+            gpu=gpu,
+            network_file_systems=network_file_systems,
+            volumes=volumes,
+            image=image,
+            cloud=cloud,
+            cpu=cpu,
+            memory=memory,
+        )
+
         if cls and not is_auto_snapshot:
+            # Needed to avoid circular imports
+            from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
+
             build_functions = list(_find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD).values())
             for build_function in build_functions:
                 snapshot_info = FunctionInfo(build_function, cls=info.cls)
@@ -599,7 +652,6 @@ class _Function(_Object, type_prefix="fu"):
                     snapshot_info,
                     stub=None,
                     image=image,
-                    secret=secret,
                     secrets=secrets,
                     gpu=gpu,
                     mounts=mounts,
@@ -639,19 +691,9 @@ class _Function(_Object, type_prefix="fu"):
                 raise InvalidError("Webhooks cannot be generators")
 
         # Validate volumes
-        if not isinstance(volumes, dict):
-            raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
-        validated_volumes = validate_mount_points("Volume", volumes)
-        # We don't support mounting a volume in more than one location
-        volume_to_paths: Dict[_Volume, List[str]] = {}
-        for path, volume in validated_volumes:
-            volume_to_paths.setdefault(volume, []).append(path)
-        for paths in volume_to_paths.values():
-            if len(paths) > 1:
-                conflicting = ", ".join(paths)
-                raise InvalidError(
-                    f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
-                )
+        validated_volumes = validate_volumes(volumes)
+        s3_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
+        validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         # Validate NFS
         if not isinstance(network_file_systems, dict):
@@ -679,6 +721,9 @@ class _Function(_Object, type_prefix="fu"):
                 deps.append(nfs)
             for _, vol in validated_volumes:
                 deps.append(vol)
+            for _, s3_mount in s3_mounts:
+                if s3_mount.secret:
+                    deps.append(s3_mount.secret)
 
             # Add implicit dependencies from the function's code
             objs: list[Object] = get_referred_objects(info.raw_f)
@@ -704,7 +749,7 @@ class _Function(_Object, type_prefix="fu"):
             # Update the precreated function handle (todo: hack until we merge providers/handles)
             provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
 
@@ -718,10 +763,7 @@ class _Function(_Object, type_prefix="fu"):
             milli_cpu = int(1000 * cpu) if cpu is not None else None
 
             timeout_secs = timeout
-            if resolver.shell and not is_builder_function:
-                timeout_secs = 86400
-                pty_info = _pty.get_pty_info(shell=True)
-            elif interactive:
+            if interactive:
                 assert not is_builder_function, "builder functions do not support interactive usage"
                 pty_info = _pty.get_pty_info(shell=False)
             else:
@@ -804,6 +846,10 @@ class _Function(_Object, type_prefix="fu"):
                 object_dependencies=[
                     api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
                 ],
+                block_network=block_network,
+                max_inputs=max_inputs,
+                s3_mounts=s3_mounts_to_proto(s3_mounts),
+                _experimental_boost=_experimental_boost,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -856,10 +902,11 @@ class _Function(_Object, type_prefix="fu"):
         obj._info = info
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
-        obj._stub = stub  # Needed for CLI right now
+        obj._stub = stub  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
         obj._is_method = bool(cls)
+        obj._env = function_env  # needed for modal shell
 
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
@@ -873,7 +920,14 @@ class _Function(_Object, type_prefix="fu"):
 
         return obj
 
-    def from_parametrized(self, obj, args: Iterable[Any], kwargs: Dict[str, Any]) -> "_Function":
+    def from_parametrized(
+        self,
+        obj,
+        from_other_workspace: bool,
+        options: Optional[api_pb2.FunctionOptions],
+        args: Sized,
+        kwargs: Dict[str, Any],
+    ) -> "_Function":
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if not self.is_hydrated:
                 raise ExecutionError(
@@ -885,12 +939,14 @@ class _Function(_Object, type_prefix="fu"):
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=self._object_id,
                 serialized_params=serialized_params,
+                function_options=options,
+                environment_name=_get_environment_name(None, resolver),
             )
             response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
 
         provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
-        if len(args) + len(kwargs) == 0 and self.is_hydrated:
+        if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
             provider._hydrate_from_other(self)
         provider._is_remote_cls_method = True  # TODO(erikbern): deprecated
@@ -901,9 +957,66 @@ class _Function(_Object, type_prefix="fu"):
 
         return provider
 
+    @classmethod
+    def from_name(
+        cls: Type["_Function"],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+    ) -> "_Function":
+        """Retrieve a function with a given name and tag.
+
+        ```python
+        other_function = modal.Function.from_name("other-app", "function")
+        ```
+        """
+
+        async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+            request = api_pb2.FunctionGetRequest(
+                app_name=app_name,
+                object_tag=tag,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name, resolver),
+            )
+            try:
+                response = await retry_transient_errors(resolver.client.stub.FunctionGet, request)
+            except GRPCError as exc:
+                if exc.status == Status.NOT_FOUND:
+                    raise NotFoundError(exc.message)
+                else:
+                    raise
+
+            obj._hydrate(response.function_id, resolver.client, response.handle_metadata)
+
+        rep = f"Ref({app_name})"
+        return cls._from_loader(_load_remote, rep, is_another_app=True)
+
+    @staticmethod
+    async def lookup(
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> "_Function":
+        """Lookup a function with a given name and tag.
+
+        ```python
+        other_function = modal.Function.lookup("other-app", "function")
+        ```
+        """
+        obj = _Function.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
+
     @property
     def tag(self):
         """mdmd:hidden"""
+        assert hasattr(self, "_tag")
         return self._tag
 
     @property
@@ -914,8 +1027,13 @@ class _Function(_Object, type_prefix="fu"):
     def info(self) -> FunctionInfo:
         return self._info
 
+    @property
+    def env(self) -> FunctionEnv:
+        return self._env
+
     def get_build_def(self) -> str:
         """mdmd:hidden"""
+        assert hasattr(self, "_raw_f") and hasattr(self, "_build_args")
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
     # Live handle methods
@@ -944,9 +1062,11 @@ class _Function(_Object, type_prefix="fu"):
         # Overridden concrete implementation of base class method
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
-            function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR
-            if self._is_generator
-            else api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+            function_type=(
+                api_pb2.Function.FUNCTION_TYPE_GENERATOR
+                if self._is_generator
+                else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+            ),
             web_url=self._web_url,
         )
 
@@ -971,9 +1091,8 @@ class _Function(_Object, type_prefix="fu"):
                 "A web endpoint function cannot be directly invoked for parallel remote execution. "
                 f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
             )
-
-        if order_outputs and self._is_generator:
-            raise ValueError("Can't return ordered results for a generator")
+        if self._is_generator:
+            raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         count_update_callback = (
             self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
@@ -984,7 +1103,6 @@ class _Function(_Object, type_prefix="fu"):
             input_stream,
             kwargs,
             self._client,
-            self._is_generator,
             order_outputs,
             return_exceptions,
             count_update_callback,
@@ -1005,22 +1123,25 @@ class _Function(_Object, type_prefix="fu"):
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
+    @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
         async for res in invocation.run_generator():
             yield res
 
+    @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
+    @synchronizer.no_input_translation
     async def map(
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
         kwargs={},  # any extra keyword arguments for the function
-        order_outputs=None,  # defaults to True for regular functions, False for generators
-        return_exceptions=False,  # whether to propogate exceptions (False) or aggregate them in the results list (True)
+        order_outputs: bool = True,  # return outputs in order
+        return_exceptions: bool = False,  # propogate exceptions (False) or aggregate them in the results list (True)
     ) -> AsyncGenerator[Any, None]:
         """Parallel map over a set of inputs.
 
@@ -1032,6 +1153,7 @@ class _Function(_Object, type_prefix="fu"):
         def my_func(a):
             return a ** 2
 
+
         @stub.local_entrypoint()
         def main():
             assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
@@ -1041,23 +1163,8 @@ class _Function(_Object, type_prefix="fu"):
         is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
         in the order that they are completed instead.
 
-        By yielding zero or more than once, mapping over generators can also be used
-        as a "flat map".
-
-        ```python
-        @stub.function()
-        def flat(i: int):
-            choices = [[], ["once"], ["two", "times"], ["three", "times", "a lady"]]
-            for item in choices[i % len(choices)]:
-                yield item
-
-        @stub.local_entrypoint()
-        def main():
-            for item in flat.map(range(10)):
-                print(item)
-        ```
-
         `return_exceptions` can be used to treat exceptions as successful results:
+
         ```python
         @stub.function()
         def my_func(a):
@@ -1065,21 +1172,21 @@ class _Function(_Object, type_prefix="fu"):
                 raise Exception("ohno")
             return a ** 2
 
+
         @stub.local_entrypoint()
         def main():
             # [0, 1, UserCodeException(Exception('ohno'))]
             print(list(my_func.map(range(3), return_exceptions=True)))
         ```
         """
-        if order_outputs is None:
-            order_outputs = not self._is_generator
 
         input_stream = stream.zip(*(stream.iterate(it) for it in input_iterators))
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
-    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions=False):
-        """Execute function for all outputs, ignoring outputs
+    @synchronizer.no_input_translation
+    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
+        """Execute function for all inputs, ignoring outputs.
 
         Convenient alias for `.map()` in cases where the function just needs to be called.
         as the caller doesn't have to consume the generator to process the inputs.
@@ -1093,10 +1200,11 @@ class _Function(_Object, type_prefix="fu"):
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
+    @synchronizer.no_input_translation
     async def starmap(
-        self, input_iterator, kwargs={}, order_outputs=None, return_exceptions=False
+        self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
     ) -> AsyncGenerator[Any, None]:
-        """Like `map` but spreads arguments over multiple function arguments
+        """Like `map`, but spreads arguments over multiple function arguments.
 
         Assumes every input is a sequence (e.g. a tuple).
 
@@ -1106,20 +1214,19 @@ class _Function(_Object, type_prefix="fu"):
         def my_func(a, b):
             return a + b
 
+
         @stub.local_entrypoint()
         def main():
             assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
         ```
         """
-        if order_outputs is None:
-            order_outputs = not self._is_generator
-
         input_stream = stream.iterate(input_iterator)
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
+    @synchronizer.no_io_translation
     @live_method
-    async def remote(self, *args, **kwargs) -> Awaitable[Any]:
+    async def remote(self, *args, **kwargs) -> Any:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -1136,6 +1243,7 @@ class _Function(_Object, type_prefix="fu"):
 
         return await self._call_function(args, kwargs)
 
+    @synchronizer.no_io_translation
     @live_method_gen
     async def remote_gen(self, *args, **kwargs) -> AsyncGenerator[Any, None]:
         """
@@ -1155,7 +1263,7 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
 
-    def call(self, *args, **kwargs) -> Awaitable[Any]:
+    def call(self, *args, **kwargs) -> None:
         """Deprecated. Use `f.remote` or `f.remote_gen` instead."""
         # TODO: Generics/TypeVars
         if self._is_generator:
@@ -1165,6 +1273,7 @@ class _Function(_Object, type_prefix="fu"):
         else:
             deprecation_error(date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
 
+    @synchronizer.no_io_translation
     @live_method
     async def shell(self, *args, **kwargs) -> None:
         if self._is_generator:
@@ -1240,6 +1349,7 @@ class _Function(_Object, type_prefix="fu"):
                 " a Modal container in the cloud",
             )
 
+    @synchronizer.no_input_translation
     @live_method
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
@@ -1353,8 +1463,8 @@ async def _gather(*function_calls: _FunctionCall):
 gather = synchronize_api(_gather)
 
 
-_current_input_id = ContextVar("_current_input_id")
-_current_function_call_id = ContextVar("_current_function_call_id")
+_current_input_id: ContextVar = ContextVar("_current_input_id")
+_current_function_call_id: ContextVar = ContextVar("_current_function_call_id")
 
 
 def current_input_id() -> Optional[str]:
@@ -1404,386 +1514,3 @@ def _set_current_context_ids(input_id: str, function_call_id: str) -> Callable[[
         _current_function_call_id.reset(function_call_token)
 
     return _reset_current_context_ids
-
-
-class _PartialFunctionFlags(enum.IntFlag):
-    FUNCTION: int = 1
-    BUILD: int = 2
-    ENTER: int = 4
-    EXIT: int = 8
-
-
-class _PartialFunction:
-    """Intermediate function, produced by @method or @web_endpoint"""
-
-    raw_f: Callable[..., Any]
-    flags: _PartialFunctionFlags
-    webhook_config: Optional[api_pb2.WebhookConfig]
-    is_generator: Optional[bool]
-    keep_warm: Optional[int]
-
-    def __init__(
-        self,
-        raw_f: Callable[..., Any],
-        flags: _PartialFunctionFlags,
-        webhook_config: Optional[api_pb2.WebhookConfig] = None,
-        is_generator: Optional[bool] = None,
-        keep_warm: Optional[int] = None,
-    ):
-        self.raw_f = raw_f
-        self.flags = flags
-        self.webhook_config = webhook_config
-        self.is_generator = is_generator
-        self.keep_warm = keep_warm
-        self.wrapped = False  # Make sure that this was converted into a FunctionHandle
-
-    def __get__(self, obj, objtype=None) -> _Function:
-        # This only happens inside user methods when they refer to other methods
-        k = self.raw_f.__name__
-        if obj:  # Cls().fun
-            function = getattr(obj, "_modal_functions")[k]
-        else:  # Cls.fun
-            function = getattr(objtype, "_modal_functions")[k]
-        return function
-
-    def __del__(self):
-        if self.wrapped is False:
-            logger.warning(
-                f"Method or web function {self.raw_f} was never turned into a function."
-                " Did you forget a @stub.function or @stub.cls decorator?"
-            )
-
-    def add_flags(self, flags) -> "_PartialFunction":
-        # Helper method used internally when stacking decorators
-        self.wrapped = True
-        return _PartialFunction(
-            raw_f=self.raw_f,
-            flags=(self.flags | flags),
-            webhook_config=self.webhook_config,
-            keep_warm=self.keep_warm,
-        )
-
-
-def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
-    """Grabs all method on a user class"""
-    partial_functions: Dict[str, PartialFunction] = {}
-    for parent_cls in user_cls.mro():
-        if parent_cls is not object:
-            for k, v in parent_cls.__dict__.items():
-                if isinstance(v, PartialFunction):
-                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                    if partial_function.flags & flags:
-                        partial_functions[k] = partial_function
-
-    return partial_functions
-
-
-def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, Callable]:
-    """Grabs all method on a user class, and returns callables. Includes legacy methods."""
-    functions: Dict[str, Callable] = {}
-
-    # Build up a list of legacy attributes to check
-    check_attrs: List[str] = []
-    if flags & _PartialFunctionFlags.BUILD:
-        check_attrs += ["__build__", "__abuild__"]
-    if flags & _PartialFunctionFlags.ENTER:
-        check_attrs += ["__enter__", "__aenter__"]
-    if flags & _PartialFunctionFlags.EXIT:
-        check_attrs += ["__exit__", "__aexit__"]
-
-    # Grab legacy lifecycle methods
-    for attr in check_attrs:
-        if hasattr(user_cls, attr):
-            functions[attr] = getattr(user_cls, attr)
-
-    # Grab new decorator-based methods
-    for k, pf in _find_partial_methods_for_cls(user_cls, flags).items():
-        functions[k] = pf.raw_f
-
-    return functions
-
-
-def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict[str, Callable]:
-    """Grabs all methods for an object, and binds them to the class"""
-    user_cls: Type = type(user_obj)
-    return {k: meth.__get__(user_obj) for k, meth in _find_callables_for_cls(user_cls, flags).items()}
-
-
-PartialFunction = synchronize_api(_PartialFunction)
-
-
-def _method(
-    _warn_parentheses_missing=None,
-    *,
-    # Set this to True if it's a non-generator function returning
-    # a [sync/async] generator object
-    is_generator: Optional[bool] = None,
-    keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Decorator for methods that should be transformed into a Modal Function registered against this class's stub.
-
-    **Usage:**
-
-    ```python
-    @stub.cls(cpu=8)
-    class MyCls:
-
-        @modal.method()
-        def f(self):
-            ...
-    ```
-    """
-    if _warn_parentheses_missing:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
-
-    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
-            raw_f.wrapped = True  # suppress later warning
-            raise InvalidError(
-                "Web endpoints on classes should not be wrapped by `@method`. Suggestion: remove the `@method` decorator."
-            )
-        return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
-
-    return wrapper
-
-
-def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> List[api_pb2.CustomDomainConfig]:
-    _custom_domains: List[api_pb2.CustomDomainConfig] = []
-    if custom_domains is not None:
-        for custom_domain in custom_domains:
-            _custom_domains.append(api_pb2.CustomDomainConfig(name=custom_domain))
-
-    return _custom_domains
-
-
-@typechecked
-def _web_endpoint(
-    _warn_parentheses_missing=None,
-    *,
-    method: str = "GET",  # REST method for the created endpoint.
-    label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    custom_domains: Optional[
-        Iterable[str]
-    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Register a basic web endpoint with this application.
-
-    This is the simple way to create a web endpoint on Modal. The function
-    behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
-    return a response object to the caller.
-
-    Endpoints created with `@stub.web_endpoint` are meant to be simple, single
-    request handlers and automatically have
-    [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
-    For more flexibility, use `@stub.asgi_app`.
-
-    To learn how to use Modal with popular web frameworks, see the
-    [guide on web endpoints](https://modal.com/docs/guide/webhooks).
-    """
-    if isinstance(_warn_parentheses_missing, str):
-        # Probably passing the method string as a positional argument.
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@web_endpoint(method="GET")`.')
-    elif _warn_parentheses_missing:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
-        )
-
-    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if isinstance(raw_f, _Function):
-            raw_f = raw_f.get_raw_f()
-            raise InvalidError(
-                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
-                "@stub.function()\n@stub.web_endpoint()\ndef my_webhook():\n    ..."
-            )
-        if not wait_for_response:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
-
-        # self._loose_webhook_configs.add(raw_f)
-
-        return _PartialFunction(
-            raw_f,
-            _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-                method=method,
-                requested_suffix=label,
-                async_mode=_response_mode,
-                custom_domains=_parse_custom_domains(custom_domains),
-            ),
-        )
-
-    return wrapper
-
-
-@typechecked
-def _asgi_app(
-    _warn_parentheses_missing=None,
-    *,
-    label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    custom_domains: Optional[
-        Iterable[str]
-    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Decorator for registering an ASGI app with a Modal function.
-
-    Asynchronous Server Gateway Interface (ASGI) is a standard for Python
-    synchronous and asynchronous apps, supported by all popular Python web
-    libraries. This is an advanced decorator that gives full flexibility in
-    defining one or more web endpoints on Modal.
-
-    **Usage:**
-
-    ```python
-    from typing import Callable
-
-    @stub.function()
-    @modal.asgi_app()
-    def create_asgi() -> Callable:
-        ...
-    ```
-
-    To learn how to use Modal with popular web frameworks, see the
-    [guide on web endpoints](https://modal.com/docs/guide/webhooks).
-    """
-    if isinstance(_warn_parentheses_missing, str):
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@asgi_app(label="foo")`.')
-    elif _warn_parentheses_missing:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`."
-        )
-
-    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if not wait_for_response:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
-
-        return _PartialFunction(
-            raw_f,
-            _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
-                requested_suffix=label,
-                async_mode=_response_mode,
-                custom_domains=_parse_custom_domains(custom_domains),
-            ),
-        )
-
-    return wrapper
-
-
-@typechecked
-def _wsgi_app(
-    _warn_parentheses_missing=None,
-    *,
-    label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    custom_domains: Optional[
-        Iterable[str]
-    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Decorator for registering a WSGI app with a Modal function.
-
-    Web Server Gateway Interface (WSGI) is a standard for synchronous Python web apps.
-    It has been [succeeded by the ASGI interface](https://asgi.readthedocs.io/en/latest/introduction.html#wsgi-compatibility) which is compatible with ASGI and supports
-    additional functionality such as web sockets. Modal supports ASGI via [`asgi_app`](/docs/reference/modal.asgi_app).
-
-    **Usage:**
-
-    ```python
-    from typing import Callable
-
-    @stub.function()
-    @modal.wsgi_app()
-    def create_wsgi() -> Callable:
-        ...
-    ```
-
-    To learn how to use this decorator with popular web frameworks, see the
-    [guide on web endpoints](https://modal.com/docs/guide/webhooks).
-    """
-    if isinstance(_warn_parentheses_missing, str):
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@wsgi_app(label="foo")`.')
-    elif _warn_parentheses_missing:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`."
-        )
-
-    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if not wait_for_response:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
-
-        return _PartialFunction(
-            raw_f,
-            _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
-                requested_suffix=label,
-                async_mode=_response_mode,
-                custom_domains=_parse_custom_domains(custom_domains),
-            ),
-        )
-
-    return wrapper
-
-
-@typechecked
-def _build(
-    _warn_parentheses_missing=None,
-) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
-    if _warn_parentheses_missing:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
-
-    def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
-        if isinstance(f, _PartialFunction):
-            return f.add_flags(_PartialFunctionFlags.BUILD)
-        else:
-            return _PartialFunction(f, _PartialFunctionFlags.BUILD)
-
-    return wrapper
-
-
-@typechecked
-def _enter(
-    _warn_parentheses_missing=None,
-) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
-    if _warn_parentheses_missing:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
-
-    def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
-        if isinstance(f, _PartialFunction):
-            return f.add_flags(_PartialFunctionFlags.ENTER)
-        else:
-            return _PartialFunction(f, _PartialFunctionFlags.ENTER)
-
-    return wrapper
-
-
-# TODO(erikbern): last argument should be Optional[TracebackType]
-ExitHandlerType = Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None]
-
-
-@typechecked
-def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _PartialFunction]:
-    if _warn_parentheses_missing:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
-
-    def wrapper(f: ExitHandlerType) -> _PartialFunction:
-        return _PartialFunction(f, _PartialFunctionFlags.EXIT)
-
-    return wrapper
-
-
-method = synchronize_api(_method)
-web_endpoint = synchronize_api(_web_endpoint)
-asgi_app = synchronize_api(_asgi_app)
-wsgi_app = synchronize_api(_wsgi_app)
-build = synchronize_api(_build)
-enter = synchronize_api(_enter)
-exit = synchronize_api(_exit)

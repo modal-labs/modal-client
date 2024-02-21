@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Optional
+from typing import List, Optional
 
 from click import UsageError
 from grpclib import GRPCError, Status
@@ -22,7 +22,7 @@ from modal.cli._download import _glob_download
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.volume import _Volume
+from modal.volume import _Volume, _VolumeUploadContextManager
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
@@ -221,12 +221,14 @@ async def put(
     volume_name: str,
     local_path: str = Argument(),
     remote_path: str = Argument(default="/"),
+    force: bool = Option(False, "-f", "--force", help="Overwrite existing files."),
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
     vol = await _Volume.lookup(volume_name, environment_name=env)
     if not isinstance(vol, _Volume):
         raise UsageError("The specified app entity is not a modal.Volume")
+
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
     console = Console()
@@ -234,15 +236,22 @@ async def put(
     if Path(local_path).is_dir():
         spinner = step_progress(f"Uploading directory '{local_path}' to '{remote_path}'...")
         with Live(spinner, console=console):
-            await vol._add_local_dir(local_path, remote_path)
+            try:
+                async with _VolumeUploadContextManager(vol.object_id, vol._client, force=force) as batch:
+                    batch.put_directory(local_path, remote_path)
+            except FileExistsError as exc:
+                raise UsageError(str(exc))
         console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
-
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
     else:
         spinner = step_progress(f"Uploading file '{local_path}' to '{remote_path}'...")
         with Live(spinner, console=console):
-            await vol._add_local_file(local_path, remote_path)
+            try:
+                async with _VolumeUploadContextManager(vol.object_id, vol._client, force=force) as batch:
+                    batch.put_file(local_path, remote_path)
+            except FileExistsError as exc:
+                raise UsageError(str(exc))
         console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
 
 
@@ -264,3 +273,20 @@ async def rm(
         if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
             raise UsageError(exc.message)
         raise
+
+
+@volume_cli.command(
+    name="cp", help="Copy source file to destination file or multiple source files to destination directory."
+)
+@synchronizer.create_blocking
+async def cp(
+    volume_name: str,
+    paths: List[str],  # accepts multiple paths, last path is treated as destination path
+    env: Optional[str] = ENV_OPTION,
+):
+    ensure_env(env)
+    volume = await _Volume.lookup(volume_name, environment_name=env)
+    if not isinstance(volume, _Volume):
+        raise UsageError("The specified app entity is not a modal.Volume")
+    *src_paths, dst_path = paths
+    await volume.copy_files(src_paths, dst_path)

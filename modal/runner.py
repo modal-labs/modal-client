@@ -3,21 +3,24 @@ import asyncio
 import contextlib
 import dataclasses
 import os
+import sys
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, AsyncGenerator, Optional, TypeVar
+from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, TypeVar
+
+import rich
+from rich.console import Console
 
 from modal_proto import api_pb2
 from modal_utils.app_utils import is_valid_app_name
 from modal_utils.async_utils import TaskContext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
-from . import _pty
+from ._container_exec import container_exec
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from .app import _LocalApp, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
 from .exception import InvalidError
-from .functions import _Function
 
 if TYPE_CHECKING:
     from .stub import _Stub
@@ -61,14 +64,21 @@ async def _run_stub(
         )
 
     if stub.description is None:
-        from __main__ import __file__ as main_file
+        import __main__
 
-        stub.set_description(os.path.basename(main_file))
+        if "__file__" in dir(__main__):
+            stub.set_description(os.path.basename(__main__.__file__))
+        else:
+            # Interactive mode does not have __file__.
+            # https://docs.python.org/3/library/__main__.html#import-main
+            stub.set_description(__main__.__name__)
 
     if client is None:
         client = await _Client.from_env()
     if output_mgr is None:
         output_mgr = OutputManager(stdout, show_progress, "Running app...")
+    if shell:
+        output_mgr._visible_progress = False
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     app = await _LocalApp._init_new(
         client,
@@ -86,14 +96,13 @@ async def _run_stub(
             output_mgr.update_app_page_url(app.log_url())
 
         # Start logs loop
-        logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
+        if not shell:
+            logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
 
         exc_info: Optional[BaseException] = None
         try:
             # Create all members
-            await app._create_all_objects(
-                stub._indexed_objects, app_state, environment_name, shell=shell, output_mgr=output_mgr
-            )
+            await app._create_all_objects(stub._indexed_objects, app_state, environment_name, output_mgr=output_mgr)
 
             # Update all functions client-side to have the output mgr
             for obj in stub.registered_functions.values():
@@ -108,11 +117,8 @@ async def _run_stub(
             output_mgr.enable_image_logs()
 
             # Yield to context
-            if stub._pty_input_stream:
-                output_mgr._visible_progress = False
-                async with _pty.write_stdin_to_pty_stream(stub._pty_input_stream):
-                    yield stub
-                output_mgr._visible_progress = True
+            if shell:
+                yield stub
             else:
                 with output_mgr.show_status_spinner():
                     yield stub
@@ -127,7 +133,8 @@ async def _run_stub(
                 output_mgr.print_if_visible(
                     f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
                 )
-                logs_loop.cancel()
+                if not shell:
+                    logs_loop.cancel()
             else:
                 output_mgr.print_if_visible(
                     step_completed(f"App aborted. [grey70]View run at [underline]{app.log_url()}[/underline][/grey70]")
@@ -181,8 +188,10 @@ async def _serve_update(
         pass
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class DeployResult:
+    """Dataclass representing the result of deploying an app."""
+
     app_id: str
 
 
@@ -194,6 +203,7 @@ async def _deploy_stub(
     stdout=None,
     show_progress=True,
     environment_name: Optional[str] = None,
+    public: bool = False,
 ) -> DeployResult:
     """Deploy an app and export its objects persistently.
 
@@ -258,7 +268,7 @@ async def _deploy_stub(
 
             # Deploy app
             # TODO(erikbern): not needed if the app already existed
-            url = await app.deploy(name, namespace)
+            url = await app.deploy(name, namespace, public)
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
             await app.disconnect(reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
@@ -269,7 +279,7 @@ async def _deploy_stub(
     return DeployResult(app_id=app.app_id)
 
 
-async def _interactive_shell(_function: _Function, cmd: str, environment_name: str = ""):
+async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str = "", **kwargs):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -289,11 +299,31 @@ async def _interactive_shell(_function: _Function, cmd: str, environment_name: s
     ```bash
     modal shell script.py --cmd /bin/bash
     ```
+
+    **kwargs will be passed into spawn_sandbox().
     """
-    _stub = _function._stub
-    _stub._add_pty_input_stream()  # TOOD(erikbern): slightly hacky
-    async with _run_stub(_stub, environment_name=environment_name, shell=True):
-        await _function.shell(cmd)
+    client = await _Client.from_env()
+    async with _run_stub(_stub, client, environment_name=environment_name, shell=True):
+        console = Console()
+        loading_status = console.status("Starting container...")
+        loading_status.start()
+
+        sb = await _stub.spawn_sandbox("sleep", "360000", **kwargs)
+
+        for _ in range(40):
+            await asyncio.sleep(0.5)
+            resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
+            if resp.task_id != "":
+                task_id = resp.task_id
+                break
+            # else: sandbox hasn't been assigned a task yet
+        else:
+            loading_status.stop()
+            rich.print("Error: timed out waiting for sandbox to start", file=sys.stderr)
+            return
+
+        loading_status.stop()
+        await container_exec(task_id, cmd, pty=True, client=client)
 
 
 run_stub = synchronize_api(_run_stub)

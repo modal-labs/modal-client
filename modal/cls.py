@@ -1,24 +1,36 @@
 # Copyright Modal Labs 2022
+import os
 import pickle
 from datetime import date
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Collection, Dict, List, Optional, Type, TypeVar, Union
 
 from google.protobuf.message import Message
+from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api, synchronizer
+from modal_utils.grpc_utils import retry_transient_errors
 
+from ._mount_utils import validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
-from .exception import deprecation_error
+from .client import _Client
+from .exception import InvalidError, NotFoundError, deprecation_error
 from .functions import (
+    _parse_retries,
+)
+from .gpu import GPU_T, parse_gpu_config
+from .object import _get_environment_name, _Object
+from .partial_function import (
     PartialFunction,
     _find_callables_for_cls,
     _find_partial_methods_for_cls,
     _Function,
     _PartialFunctionFlags,
 )
-from .object import _Object
+from .retries import Retries
+from .secret import _Secret
+from .volume import _Volume
 
 T = TypeVar("T")
 
@@ -49,7 +61,14 @@ class _Obj:
     _local_obj_constr: Optional[Callable[[], Any]]
 
     def __init__(
-        self, user_cls: type, output_mgr: Optional[OutputManager], base_functions: Dict[str, _Function], args, kwargs
+        self,
+        user_cls: type,
+        output_mgr: Optional[OutputManager],
+        base_functions: Dict[str, _Function],
+        from_other_workspace: bool,
+        options: Optional[api_pb2.FunctionOptions],
+        args,
+        kwargs,
     ):
         for i, arg in enumerate(args):
             check_picklability(i + 1, arg)
@@ -58,7 +77,7 @@ class _Obj:
 
         self._functions = {}
         for k, fun in base_functions.items():
-            self._functions[k] = fun.from_parametrized(self, args, kwargs)
+            self._functions[k] = fun.from_parametrized(self, from_other_workspace, options, args, kwargs)
             self._functions[k]._set_output_mgr(output_mgr)
 
         # Used for construction local object lazily
@@ -125,13 +144,25 @@ Obj = synchronize_api(_Obj)
 class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
     _functions: Dict[str, _Function]
+    _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
+    _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
 
     def _initialize_from_empty(self):
         self._user_cls = None
         self._functions = {}
+        self._options = None
         self._callables = {}
+        self._from_other_workspace = None
         self._output_mgr: Optional[OutputManager] = None
+
+    def _initialize_from_other(self, other: "_Cls"):
+        self._user_cls = other._user_cls
+        self._functions = other._functions
+        self._options = other._options
+        self._callables = other._callables
+        self._from_other_workspace = other._from_other_workspace
+        self._output_mgr: Optional[OutputManager] = other._output_mgr
 
     def _set_output_mgr(self, output_mgr: OutputManager):
         self._output_mgr = output_mgr
@@ -173,7 +204,7 @@ class _Cls(_Object, type_prefix="cs"):
         def _deps() -> List[_Function]:
             return list(functions.values())
 
-        async def _load(provider: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(provider: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
             for f_name, f in functions.items():
                 req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
@@ -186,12 +217,127 @@ class _Cls(_Object, type_prefix="cs"):
         cls._user_cls = user_cls
         cls._functions = functions
         cls._callables = callables
+        cls._from_other_workspace = False
         setattr(cls._user_cls, "_modal_functions", functions)  # Needed for PartialFunction.__get__
         return cls
 
+    @classmethod
+    def from_name(
+        cls: Type["_Cls"],
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+        workspace: Optional[str] = None,
+    ) -> "_Cls":
+        """Retrieve a class with a given name and tag.
+
+        ```python
+        Class = modal.Cls.from_name("other-app", "Class")
+        ```
+        """
+
+        async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+            request = api_pb2.ClassGetRequest(
+                app_name=app_name,
+                object_tag=tag,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name, resolver),
+                lookup_published=workspace is not None,
+                workspace_name=workspace,
+            )
+            try:
+                response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
+            except GRPCError as exc:
+                if exc.status == Status.NOT_FOUND:
+                    raise NotFoundError(exc.message)
+                elif exc.status == Status.FAILED_PRECONDITION:
+                    raise InvalidError(exc.message)
+                else:
+                    raise
+
+            obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
+
+        rep = f"Ref({app_name})"
+        cls = cls._from_loader(_load_remote, rep, is_another_app=True)
+        cls._from_other_workspace = bool(workspace is not None)
+        return cls
+
+    def with_options(
+        self: "_Cls",
+        cpu: Optional[float] = None,
+        memory: Optional[int] = None,
+        gpu: GPU_T = None,
+        secrets: Collection[_Secret] = (),
+        volumes: Dict[Union[str, os.PathLike], _Volume] = {},
+        retries: Optional[Union[int, Retries]] = None,
+        timeout: Optional[int] = None,
+        concurrency_limit: Optional[int] = None,
+        allow_concurrent_inputs: Optional[int] = None,
+        container_idle_timeout: Optional[int] = None,
+        allow_background_volume_commits: bool = False,
+    ) -> "_Cls":
+        retry_policy = _parse_retries(retries)
+        if gpu or cpu or memory:
+            milli_cpu = int(1000 * cpu) if cpu is not None else None
+            gpu_config = parse_gpu_config(gpu)
+            resources = api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory)
+        else:
+            resources = None
+
+        volume_mounts = [
+            api_pb2.VolumeMount(
+                mount_path=path,
+                volume_id=volume.object_id,
+                allow_background_commits=allow_background_volume_commits,
+            )
+            for path, volume in validate_volumes(volumes)
+        ]
+        replace_volume_mounts = len(volume_mounts) > 0
+
+        cls = self.clone()
+        cls._options = api_pb2.FunctionOptions(
+            replace_secret_ids=bool(secrets),
+            secret_ids=[secret.object_id for secret in secrets],
+            resources=resources,
+            retry_policy=retry_policy,
+            concurrency_limit=concurrency_limit,
+            timeout_secs=timeout,
+            task_idle_timeout_secs=container_idle_timeout,
+            replace_volume_mounts=replace_volume_mounts,
+            volume_mounts=volume_mounts,
+            allow_concurrent_inputs=allow_concurrent_inputs,
+        )
+
+        return cls
+
+    @staticmethod
+    async def lookup(
+        app_name: str,
+        tag: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        workspace: Optional[str] = None,
+    ) -> "_Cls":
+        """Lookup a class with a given name and tag.
+
+        ```python
+        Class = modal.Cls.lookup("other-app", "Class")
+        ```
+        """
+        obj = _Cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name, workspace=workspace)
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
+
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
-        return _Obj(self._user_cls, self._output_mgr, self._functions, args, kwargs)
+        return _Obj(
+            self._user_cls, self._output_mgr, self._functions, self._from_other_workspace, self._options, args, kwargs
+        )
 
     async def remote(self, *args, **kwargs):
         deprecation_error(

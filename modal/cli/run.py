@@ -1,26 +1,36 @@
 # Copyright Modal Labs 2022
 import asyncio
-import datetime
 import functools
 import inspect
+import re
 import sys
 import time
-from typing import Any, Callable, Dict, Optional
+from functools import partial
+from typing import Any, Callable, Dict, Optional, get_type_hints
 
 import click
 import typer
 from rich.console import Console
+from typing_extensions import TypedDict
 
 from ..config import config
 from ..environments import ensure_env
-from ..exception import InvalidError
-from ..functions import Function
+from ..exception import ExecutionError, InvalidError
+from ..functions import Function, FunctionEnv
 from ..image import Image
 from ..runner import deploy_stub, interactive_shell, run_stub
+from ..s3mount import _S3Mount
 from ..serving import serve_stub
 from ..stub import LocalEntrypoint, Stub
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
+
+
+class ParameterMetadata(TypedDict):
+    name: str
+    default: Any
+    annotation: Any
+    type_hint: Any
 
 
 class AnyParamType(click.ParamType):
@@ -30,20 +40,13 @@ class AnyParamType(click.ParamType):
         return value
 
 
-# Why do we need to support both types and the strings? Because something weird with
-# how __annotations__ works in Python (which inspect.signature uses). See #220.
 option_parsers = {
-    str: str,
     "str": str,
-    int: int,
     "int": int,
-    float: float,
     "float": float,
-    bool: bool,
     "bool": bool,
-    datetime.datetime: click.DateTime(),
     "datetime.datetime": click.DateTime(),
-    Any: AnyParamType(),
+    "Any": AnyParamType(),
 }
 
 
@@ -51,32 +54,64 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, inspect.Parameter]:
+def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, ParameterMetadata]:
+    try:
+        type_hints = get_type_hints(f)
+    except Exception as exc:
+        # E.g., if entrypoint type hints cannot be evaluated by local Python runtime
+        msg = "Unable to generate command line interface for app entrypoint. See traceback above for details."
+        raise ExecutionError(msg) from exc
+
     if is_method:
         self = None  # Dummy, doesn't matter
         f = functools.partial(f, self)
-    return {param.name: param for param in inspect.signature(f).parameters.values()}
+    signature: Dict[str, ParameterMetadata] = {}
+    for param in inspect.signature(f).parameters.values():
+        signature[param.name] = {
+            "name": param.name,
+            "default": param.default,
+            "annotation": param.annotation,
+            "type_hint": type_hints.get(param.name, "Any"),
+        }
+    return signature
 
 
-def _add_click_options(func, signature: Dict[str, inspect.Parameter]):
+def _get_param_type_as_str(annot: Any) -> str:
+    """Return annotation as a string, handling various spellings for optional types."""
+    annot_str = str(annot)
+    annot_patterns = [
+        r"typing\.Optional\[([\w.]+)\]",
+        r"typing\.Union\[([\w.]+), NoneType\]",
+        r"([\w.]+) \| None",
+        r"<class '([\w\.]+)'>",
+    ]
+    for pat in annot_patterns:
+        m = re.match(pat, annot_str)
+        if m is not None:
+            return m.group(1)
+    return annot_str
+
+
+def _add_click_options(func, signature: Dict[str, ParameterMetadata]):
     """Adds @click.option based on function signature
 
     Kind of like typer, but using options instead of positional arguments
     """
     for param in signature.values():
-        param_type = Any if param.annotation is inspect.Signature.empty else param.annotation
-        param_name = param.name.replace("_", "-")
+        param_type_str = _get_param_type_as_str(param["type_hint"])
+        param_name = param["name"].replace("_", "-")
         cli_name = "--" + param_name
-        if param_type in (bool, "bool"):
+        if param_type_str == "bool":
             cli_name += "/--no-" + param_name
-        parser = option_parsers.get(param_type)
+        parser = option_parsers.get(param_type_str)
         if parser is None:
-            raise NoParserAvailable(repr(param_type))
+            msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']!r}"
+            raise NoParserAvailable(msg)
         kwargs: Any = {
             "type": parser,
         }
-        if param.default is not inspect.Signature.empty:
-            kwargs["default"] = param.default
+        if param["default"] is not inspect.Signature.empty:
+            kwargs["default"] = param["default"]
         else:
             kwargs["required"] = True
 
@@ -100,7 +135,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    signature: Dict[str, inspect.Parameter]
+    signature: Dict[str, ParameterMetadata]
     if function.info.cls is not None:
         cls_signature = _get_signature(function.info.cls)
         fun_signature = _get_signature(function.info.raw_f, is_method=True)
@@ -124,7 +159,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
                 # TODO(erikbern): this code is a bit hacky
                 cls_kwargs = {k: kwargs[k] for k in cls_signature}
                 fun_kwargs = {k: kwargs[k] for k in fun_signature}
-                method = function.from_parametrized(None, tuple(), cls_kwargs)
+                method = function.from_parametrized(None, False, None, tuple(), cls_kwargs)
                 method.remote(**fun_kwargs)
 
     with_click_options = _add_click_options(f, signature)
@@ -159,6 +194,11 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
 
 class RunGroup(click.Group):
     def get_command(self, ctx, func_ref):
+        # note: get_command here is run before the "group logic" in the `run` logic below
+        # so to ensure that `env` has been globally populated before user code is loaded, it
+        # needs to be handled here, and not in the `run` logic below
+        ctx.ensure_object(dict)
+        ctx.obj["env"] = ensure_env(ctx.params["env"])
         function_or_entrypoint = import_function(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
         stub: Stub = function_or_entrypoint.stub
         if stub.description is None:
@@ -213,13 +253,16 @@ def run(ctx, detach, quiet, env):
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
-    ctx.obj["env"] = env
 
 
 def deploy(
     stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
+    public: bool = typer.Option(
+        False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
+    ),
+    skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -229,7 +272,15 @@ def deploy(
     if name is None:
         name = stub.name
 
-    deploy_stub(stub, name=name, environment_name=env)
+    if public and not skip_confirm:
+        if not click.confirm(
+            "⚠️ Public apps are a beta feature. ⚠️\n"
+            "Making an app public will allow any user (including from outside your workspace) to look up and use your functions.\n"
+            "Are you sure you want your app to be public?"
+        ):
+            return
+
+    deploy_stub(stub, name=name, environment_name=env, public=public)
 
 
 def serve(
@@ -319,24 +370,32 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
+    stub = Stub("modal shell")
+
     if func_ref is not None:
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
+        assert isinstance(function, Function)
+        function_env: FunctionEnv = function.env
+        s3_mounts = {k: v for k, v in function_env.volumes.items() if isinstance(v, _S3Mount)}
+        start_shell = partial(
+            interactive_shell,
+            image=function_env.image,
+            mounts=function_env.mounts,
+            secrets=function_env.secrets,
+            network_file_systems=function_env.network_file_systems,
+            gpu=function_env.gpu,
+            cloud=function_env.cloud,
+            cpu=function_env.cpu,
+            memory=function_env.memory,
+            volumes=s3_mounts,  # currently, sandboxes only support s3 mounts
+        )
     else:
-        image_obj = Image.from_registry(image, add_python=add_python) if image else None
-        stub = Stub("modal shell", image=image_obj)
-        function = stub.function(
-            serialized=True,
-            cpu=cpu,
-            memory=memory,
-            gpu=gpu,
-            cloud=cloud,
-            timeout=3600,
-        )(lambda: None)
+        modal_image = Image.from_registry(image, add_python=add_python) if image else None
+        start_shell = partial(interactive_shell, image=modal_image, cpu=cpu, memory=memory, gpu=gpu, cloud=cloud)
 
-    assert isinstance(function, Function)  # ensured by accept_local_entrypoint=False
-
-    interactive_shell(
-        function,
-        cmd,
+    start_shell(
+        stub,
+        cmd=[cmd],
         environment_name=env,
+        timeout=3600,
     )

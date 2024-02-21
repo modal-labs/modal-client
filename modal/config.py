@@ -76,10 +76,16 @@ import os
 import typing
 import warnings
 from datetime import date
+from textwrap import dedent
+from typing import Any, Dict, Optional
 
 import toml
+from google.protobuf.empty_pb2 import Empty
 
-from .exception import deprecation_error
+from modal_proto import api_pb2
+from modal_utils.logger import configure_logger
+
+from .exception import InvalidError, deprecation_error, deprecation_warning
 
 # Locate config file and read it
 
@@ -97,12 +103,20 @@ def _read_user_config():
 _user_config = _read_user_config()
 
 
+async def _lookup_workspace(server_url: str, token_id: str, token_secret: str) -> api_pb2.WorkspaceNameLookupResponse:
+    from .client import _Client
+
+    credentials = (token_id, token_secret)
+    async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
+        return await client.stub.WorkspaceNameLookup(Empty())
+
+
 def config_profiles():
     """List the available modal profiles in the .modal.toml file."""
     return _user_config.keys()
 
 
-def _config_active_profile():
+def _config_active_profile() -> str:
     for key, values in _user_config.items():
         if values.get("active", False) is True:
             return key
@@ -110,7 +124,7 @@ def _config_active_profile():
         return "default"
 
 
-def config_set_active_profile(env: str):
+def config_set_active_profile(env: str) -> None:
     """Set the user's active modal profile by writing it to the `.modal.toml` file."""
     if env not in _user_config:
         raise KeyError(env)
@@ -122,10 +136,34 @@ def config_set_active_profile(env: str):
     _write_user_config(_user_config)
 
 
+def _check_config() -> None:
+    num_profiles = len(_user_config)
+    num_active = sum(v.get("active", False) for v in _user_config.values())
+    if num_active > 1:
+        raise InvalidError(
+            "More than one Modal profile is active. "
+            "Please fix with `modal profile activate` or by editing your Modal config file "
+            f"({user_config_path})."
+        )
+    elif num_profiles > 1 and num_active == 0 and _profile == "default":
+        # Eventually we plan to have num_profiles > 1 with num_active = 0 be an error
+        # But we want to give users time to activate one of their profiles without disruption
+        message = dedent(
+            """
+            Support for using an implicit 'default' profile is deprecated.
+            Please use `modal profile activate` to activate one of your profiles.
+            (Use `modal profile list` to see the options.)
+
+            This will become an error in a future update.
+            """
+        )
+        deprecation_warning(date(2024, 2, 6), message, show_source=False)
+
+
 if "MODAL_ENV" in os.environ:
     deprecation_error(date(2023, 5, 24), "MODAL_ENV has been replaced with MODAL_PROFILE")
 
-_profile = os.environ.get("MODAL_PROFILE", _config_active_profile())
+_profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
 
 # Define settings
 
@@ -137,6 +175,7 @@ class _Setting(typing.NamedTuple):
 
 _SETTINGS = {
     "loglevel": _Setting("WARNING", lambda s: s.upper()),
+    "log_format": _Setting("STRING", lambda s: s.upper()),
     "server_url": _Setting("https://api.modal.com"),
     "token_id": _Setting(),
     "token_secret": _Setting(),
@@ -145,8 +184,6 @@ _SETTINGS = {
     "serve_timeout": _Setting(transform=float),
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
-    "outputs_timeout": _Setting(55.0, float),
-    "image_python_version": _Setting(),
     "image_id": _Setting(),
     "automount": _Setting(True, transform=lambda x: x not in ("", "0")),
     "tracing_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
@@ -157,7 +194,8 @@ _SETTINGS = {
     "environment": _Setting(),
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
     "worker_id": _Setting(),  # For internal debugging use.
-    "restore_state_path": _Setting("/opt/modal/restore-state.json"),
+    "restore_state_path": _Setting("/__modal/restore-state.json"),
+    "force_build": _Setting(False, transform=lambda x: x not in ("", "0")),
 }
 
 
@@ -167,11 +205,11 @@ class Config:
     def __init__(self):
         pass
 
-    def get(self, key, profile=None):
+    def get(self, key, profile=None, use_env=True):
         """Looks up a configuration value.
 
         Will check (in decreasing order of priority):
-        1. Any environment variable of the form MODAL_FOO_BAR
+        1. Any environment variable of the form MODAL_FOO_BAR (when use_env is True)
         2. Settings in the user's .toml configuration file
         3. The default value of the setting
         """
@@ -179,7 +217,7 @@ class Config:
             profile = _profile
         s = _SETTINGS[key]
         env_var_key = "MODAL_" + key.upper()
-        if env_var_key in os.environ:
+        if use_env and env_var_key in os.environ:
             return s.transform(os.environ[env_var_key])
         elif profile in _user_config and key in _user_config[profile]:
             return s.transform(_user_config[profile][key])
@@ -213,22 +251,25 @@ config = Config()
 # Logging
 
 logger = logging.getLogger("modal-client")
-ch = logging.StreamHandler()
-log_level_numeric = logging.getLevelName(config["loglevel"])
-logger.setLevel(log_level_numeric)
-ch.setLevel(log_level_numeric)
-ch.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z"))
-logger.addHandler(ch)
+configure_logger(logger, config["loglevel"], config["log_format"])
 
 # Utils to write config
 
 
-def _store_user_config(new_settings, profile=None):
+def _store_user_config(
+    new_settings: Dict[str, Any], profile: Optional[str] = None, active_profile: Optional[str] = None
+):
     """Internal method, used by the CLI to set tokens."""
     if profile is None:
         profile = _profile
     user_config = _read_user_config()
     user_config.setdefault(profile, {}).update(**new_settings)
+    if active_profile is not None:
+        for prof_name, prof_config in user_config.items():
+            if prof_name == active_profile:
+                prof_config["active"] = True
+            else:
+                prof_config.pop("active", None)
     _write_user_config(user_config)
 
 

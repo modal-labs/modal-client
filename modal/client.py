@@ -16,7 +16,7 @@ from modal_utils.http_utils import http_client_with_tls
 from modal_version import __version__
 
 from ._tracing import inject_tracing_context
-from .config import config, logger
+from .config import _check_config, config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
@@ -141,6 +141,7 @@ class _Client:
 
     async def _verify(self):
         logger.debug("Client: Starting")
+        _check_config()
         try:
             req = empty_pb2.Empty()
             resp = await retry_transient_errors(
@@ -168,7 +169,11 @@ class _Client:
     async def __aenter__(self):
         await self._open()
         if not self.no_verify:
-            await self._verify()
+            try:
+                await self._verify()
+            except BaseException:
+                await self._close()
+                raise
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
@@ -238,6 +243,18 @@ class _Client:
                         raise
                 cls._client_from_env = client
                 return client
+
+    @classmethod
+    async def from_credentials(cls, token_id: str, token_secret: str) -> "_Client":
+        """mdmd:hidden"""
+        client_type = api_pb2.CLIENT_TYPE_CLIENT
+        credentials = (token_id, token_secret)
+        server_url = config["server_url"]
+
+        client = _Client(server_url, client_type, credentials)
+        await client._open()
+        async_utils.on_shutdown(client._close())
+        return client
 
     @classmethod
     def set_env_client(cls, client: Optional["_Client"]):

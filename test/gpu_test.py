@@ -102,15 +102,26 @@ def test_cloud_provider_selection(client, servicer):
         stub.function(cloud="foo")(dummy)
 
 
-A100_GPU_MEMORY_MAPPING = {0: api_pb2.GPU_TYPE_A100, 40: api_pb2.GPU_TYPE_A100}
-
-
-@pytest.mark.parametrize("memory,gpu_type", A100_GPU_MEMORY_MAPPING.items())
-def test_memory_selection_gpu_variant(client, servicer, memory, gpu_type):
+@pytest.mark.parametrize(
+    "memory_arg,gpu_type,memory_gb",
+    [
+        (0, api_pb2.GPU_TYPE_A100, 40),
+        (40, api_pb2.GPU_TYPE_A100, 40),
+        (80, api_pb2.GPU_TYPE_A100_80GB, 80),
+        ("40GB", api_pb2.GPU_TYPE_A100, 40),
+        ("80GB", api_pb2.GPU_TYPE_A100_80GB, 80),
+    ],
+)
+def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type, memory_gb):
     import modal
 
     stub = Stub()
-    stub.function(gpu=modal.gpu.A100(memory=memory))(dummy)
+    if isinstance(memory_arg, int):
+        stub.function(gpu=modal.gpu.A100(memory=memory_arg))(dummy)
+    elif isinstance(memory_arg, str):
+        stub.function(gpu=modal.gpu.A100(size=memory_arg))(dummy)
+    else:
+        raise RuntimeError(f"Unexpected test parameterization arg type {type(memory_arg)}")
 
     with stub.run(client=client):
         pass
@@ -119,7 +130,7 @@ def test_memory_selection_gpu_variant(client, servicer, memory, gpu_type):
 
     assert func_def.resources.gpu_config.count == 1
     assert func_def.resources.gpu_config.type == gpu_type
-    assert func_def.resources.gpu_config.memory == memory
+    assert func_def.resources.gpu_config.memory == memory_gb
 
 
 def test_a100_20gb_gpu_unsupported():
@@ -127,30 +138,17 @@ def test_a100_20gb_gpu_unsupported():
 
     stub = Stub()
 
-    with pytest.raises(ValueError) as err:
+    with pytest.raises(ValueError, match="A100 20GB is unsupported, consider"):
         stub.function(gpu=modal.gpu.A100(memory=20))(dummy)
-    assert err.value.args == ("A100 20GB is unsupported, consider A10 or A100 40GB instead",)
 
 
-A100_GPU_COUNT_MAPPING = {1: api_pb2.GPU_TYPE_A100, **{i: api_pb2.GPU_TYPE_A100 for i in range(2, 5)}}
-
-
-@pytest.mark.parametrize("count,gpu_type", A100_GPU_COUNT_MAPPING.items())
-def test_gpu_type_selection_from_count(client, servicer, count, gpu_type):
+@pytest.mark.parametrize("count", [1, 2, 3, 4])
+def test_gpu_type_selection_from_count(client, servicer, count):
     import modal
 
     stub = Stub()
 
-    # Functions that use A100 20GB can only request one GPU
-    # at a time.
-    with pytest.raises(ValueError):
-        with pytest.warns(DeprecationError):
-            stub.function(gpu=modal.gpu.A100(count=2, memory=20))(dummy)
-        with stub.run(client=client):
-            pass
-
-    # Task type changes whenever user asks more than 1 GPU on
-    # an A100.
+    # Task type does not change when user asks more than 1 GPU on an A100.
     stub.function(gpu=modal.gpu.A100(count=count))(dummy)
     with stub.run(client=client):
         pass
@@ -158,4 +156,4 @@ def test_gpu_type_selection_from_count(client, servicer, count, gpu_type):
     func_def = next(iter(servicer.app_functions.values()))
 
     assert func_def.resources.gpu_config.count == count
-    assert func_def.resources.gpu_config.type == gpu_type
+    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A100

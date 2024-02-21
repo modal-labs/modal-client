@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022-2023
+import json
 import os
 import pytest
+import re
 import sys
 import tempfile
 import traceback
@@ -10,11 +12,14 @@ from unittest import mock
 import click
 import click.testing
 import pytest_asyncio
+import toml
 
 from modal import Client
 from modal.cli.entry_point import entrypoint_cli
 from modal_proto import api_pb2
 from modal_utils.async_utils import asyncnullcontext
+
+from .supports.skip import skip_windows
 
 dummy_app_file = """
 import modal
@@ -91,6 +96,12 @@ def test_secret_create(servicer, set_env_client):
     _run(["secret", "create", "foo", "bar=baz"])
     assert len(servicer.secrets) == 1
 
+    # Creating the same one again should fail
+    _run(["secret", "create", "foo", "bar=baz"], expected_exit_code=1)
+
+    # But it should succeed with --force
+    _run(["secret", "create", "foo", "bar=baz", "--force"])
+
 
 def test_secret_list(servicer, set_env_client):
     res = _run(["secret", "list"])
@@ -107,12 +118,16 @@ def test_secret_list(servicer, set_env_client):
     assert "dummy-secret-3" not in res.stdout
 
 
-def test_app_token_new(servicer, set_env_client, server_url_env):
-    _run(["token", "new", "--profile", "_test"])
+def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
+    with modal_config() as config_file_path:
+        _run(["token", "new", "--profile", "_test"])
+        assert "_test" in toml.load(config_file_path)
 
 
-def test_app_setup(servicer, set_env_client, server_url_env):
-    _run(["setup", "--profile", "_test"])
+def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
+    with modal_config() as config_file_path:
+        _run(["setup", "--profile", "_test"])
+        assert "_test" in toml.load(config_file_path)
 
 
 def test_run(servicer, set_env_client, test_dir):
@@ -247,11 +262,29 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         (["run", f"{stub_file.as_posix()}::default_arg"], "10 <class 'int'>"),
         (["run", f"{stub_file.as_posix()}::unannotated_arg", "--i=2022-10-31"], "'2022-10-31' <class 'str'>"),
         (["run", f"{stub_file.as_posix()}::unannotated_default_arg"], "10 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::optional_arg", "--i=20"], "20 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::optional_arg"], "None <class 'NoneType'>"),
+        (["run", f"{stub_file.as_posix()}::optional_arg_postponed"], "None <class 'NoneType'>"),
     ]
+    if sys.version_info >= (3, 10):
+        valid_call_args.extend(
+            [
+                (["run", f"{stub_file.as_posix()}::optional_arg_pep604", "--i=20"], "20 <class 'int'>"),
+                (["run", f"{stub_file.as_posix()}::optional_arg_pep604"], "None <class 'NoneType'>"),
+            ]
+        )
     for args, expected in valid_call_args:
         res = _run(args)
         assert expected in res.stdout
         assert len(servicer.client_calls) == 0
+
+    if sys.version_info >= (3, 10):
+        res = _run(["run", f"{stub_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
+        assert "Parameter `i` has unparseable annotation: typing.Union[int, str]" in str(res.exception)
+
+    if sys.version_info <= (3, 10):
+        res = _run(["run", f"{stub_file.as_posix()}::optional_arg_pep604"], expected_exit_code=1)
+        assert "Unable to generate command line interface for app entrypoint." in str(res.exception)
 
 
 def test_run_parse_args_function(servicer, set_env_client, test_dir):
@@ -268,6 +301,7 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir):
         (["run", f"{stub_file.as_posix()}::int_arg_fn", "--i=200"], "200 <class 'int'>"),
         (["run", f"{stub_file.as_posix()}::ALifecycle.some_method", "--i=hello"], "'hello' <class 'str'>"),
         (["run", f"{stub_file.as_posix()}::ALifecycle.some_method_int", "--i=42"], "42 <class 'int'>"),
+        (["run", f"{stub_file.as_posix()}::optional_arg_fn"], "None <class 'NoneType'>"),
     ]
     for args, expected in valid_call_args:
         res = _run(args)
@@ -284,16 +318,16 @@ def fresh_main_thread_assertion_module(test_dir):
 
 
 def test_no_user_code_in_synchronicity_run(servicer, set_env_client, test_dir, fresh_main_thread_assertion_module):
-    pytest._did_load_main_thread_assertion = False
+    pytest._did_load_main_thread_assertion = False  # type: ignore
     _run(["run", fresh_main_thread_assertion_module.as_posix()])
-    assert pytest._did_load_main_thread_assertion
+    assert pytest._did_load_main_thread_assertion  # type: ignore
     print()
 
 
 def test_no_user_code_in_synchronicity_deploy(servicer, set_env_client, test_dir, fresh_main_thread_assertion_module):
-    pytest._did_load_main_thread_assertion = False
+    pytest._did_load_main_thread_assertion = False  # type: ignore
     _run(["deploy", "--name", "foo", fresh_main_thread_assertion_module.as_posix()])
-    assert pytest._did_load_main_thread_assertion
+    assert pytest._did_load_main_thread_assertion  # type: ignore
 
 
 def test_serve(servicer, set_env_client, server_url_env, test_dir):
@@ -314,35 +348,39 @@ def mock_shell_pty():
             env_term_program=os.environ.get("TERM_PROGRAM"),
         )
 
+    captured_out = []
+
+    async def write_to_fd(fd: int, data: bytes):
+        nonlocal captured_out
+        captured_out.append((fd, data))
+
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
-    ), mock.patch("modal._pty.write_stdin_to_pty_stream", asyncnullcontext):
-        yield
+    ), mock.patch("modal._container_exec.get_pty_info", mock_get_pty_info), mock.patch(
+        "modal._container_exec.handle_exec_input", asyncnullcontext
+    ), mock.patch("modal._container_exec._write_to_fd", write_to_fd):
+        yield captured_out
 
 
-@pytest.mark.usefixtures("mock_shell_pty")
-def test_shell(servicer, set_env_client, test_dir):
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     webhook_stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
 
-    ran_cmd = None
-
-    @servicer.function_body
-    def dummy_exec(cmd: str):
-        nonlocal ran_cmd
-        ran_cmd = cmd
-
     # Function is explicitly specified
     _run(["shell", stub_file.as_posix() + "::foo"])
-    assert ran_cmd == "/bin/bash"
+    assert mock_shell_pty == [(1, b"Hello World")]
+    mock_shell_pty.clear()
 
     # Function is explicitly specified
     _run(["shell", webhook_stub_file.as_posix() + "::foo"])
-    assert ran_cmd == "/bin/bash"
+    assert mock_shell_pty == [(1, b"Hello World")]
+    mock_shell_pty.clear()
 
     # Function must be inferred
     _run(["shell", webhook_stub_file.as_posix()])
-    assert ran_cmd == "/bin/bash"
+    assert mock_shell_pty == [(1, b"Hello World")]
+    mock_shell_pty.clear()
 
 
 def test_app_descriptions(servicer, server_url_env, test_dir):
@@ -412,6 +450,36 @@ def test_volume_get(servicer, set_env_client):
             assert f.read() == file_contents
 
 
+def test_volume_put_force(servicer, set_env_client):
+    vol_name = "my-test-vol"
+    _run(["volume", "create", vol_name])
+    file_path = "test.txt"
+    file_contents = b"foo bar baz"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        upload_path = os.path.join(tmpdir, "upload.txt")
+        with open(upload_path, "wb") as f:
+            f.write(file_contents)
+            f.flush()
+
+        # File upload
+        _run(["volume", "put", vol_name, upload_path, file_path])  # Seed the volume
+        with servicer.intercept() as ctx:
+            _run(["volume", "put", vol_name, upload_path, file_path], expected_exit_code=2, expected_stderr=None)
+            assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+            _run(["volume", "put", vol_name, upload_path, file_path, "--force"])
+            assert not ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+        # Dir upload
+        _run(["volume", "put", vol_name, tmpdir])  # Seed the volume
+        with servicer.intercept() as ctx:
+            _run(["volume", "put", vol_name, tmpdir], expected_exit_code=2, expected_stderr=None)
+            assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+            _run(["volume", "put", vol_name, tmpdir, "--force"])
+            assert not ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+
 def test_volume_rm(servicer, set_env_client):
     vol_name = "my-test-vol"
     _run(["volume", "create", vol_name])
@@ -444,32 +512,23 @@ def test_environment_flag(test_dir, servicer, command):
     stub_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
     with servicer.intercept() as ctx:
         ctx.add_response(
-            "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(
-                object=api_pb2.Object(
-                    object_id="mo-123",
-                    mount_handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
-                )
+            "MountGetOrCreate",
+            api_pb2.MountGetOrCreateResponse(
+                mount_id="mo-123",
+                handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
             ),
-            request_filter=lambda req: req.app_name.startswith("modal-client-mount"),
+            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount")
+            and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
             "AppLookupObject",
             api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="sv-123")),
-            request_filter=lambda req: req.app_name == "volume_app",
+            request_filter=lambda req: req.app_name == "volume_app" and req.environment_name == "staging",
         )
         _run(command + ["--env=staging", str(stub_file)])
 
     app_create: api_pb2.AppCreateRequest = ctx.pop_request("AppCreate")
     assert app_create.environment_name == "staging"
-
-    app_lookup_object: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
-    assert app_lookup_object.app_name.startswith("modal-client-mount")
-    assert app_lookup_object.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
-
-    app_lookup_object2: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
-    assert app_lookup_object2.app_name == "volume_app"
-    assert app_lookup_object2.environment_name == "staging"
 
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
@@ -487,32 +546,24 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
 
     with servicer.intercept() as ctx:
         ctx.add_response(
-            "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(
-                object=api_pb2.Object(
-                    object_id="mo-123",
-                    mount_handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
-                )
+            "MountGetOrCreate",
+            api_pb2.MountGetOrCreateResponse(
+                mount_id="mo-123",
+                handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
             ),
-            request_filter=lambda req: req.app_name.startswith("modal-client-mount"),
+            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount")
+            and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
             "AppLookupObject",
             api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="sv-123")),
-            request_filter=lambda req: req.app_name == "volume_app",
+            request_filter=lambda req: req.app_name == "volume_app"
+            and req.environment_name == "some_weird_default_env",
         )
         _run(command + [str(stub_file)])
 
     app_create: api_pb2.AppCreateRequest = ctx.pop_request("AppCreate")
     assert app_create.environment_name == "some_weird_default_env"
-
-    app_lookup_object: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
-    assert app_lookup_object.app_name.startswith("modal-client-mount")
-    assert app_lookup_object.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
-
-    app_lookup_object2: api_pb2.AppLookupObjectRequest = ctx.pop_request("AppLookupObject")
-    assert app_lookup_object2.app_name == "volume_app"
-    assert app_lookup_object2.environment_name == "some_weird_default_env"
 
 
 def test_cls(servicer, set_env_client, test_dir):
@@ -520,3 +571,47 @@ def test_cls(servicer, set_env_client, test_dir):
 
     _run(["run", stub_file.as_posix(), "--x", "42", "--y", "1000"])
     _run(["run", f"{stub_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"])
+
+
+def test_profile_list(servicer, server_url_env, modal_config):
+    config = """
+    [test-profile]
+    token_id = "ak-abc"
+    token_secret = "as-xyz"
+
+    [other-profile]
+    token_id = "ak-123"
+    token_secret = "as-789"
+    active = true
+    """
+
+    with modal_config(config):
+        res = _run(["profile", "list"])
+        table_rows = res.stdout.split("\n")
+        assert re.search("Profile .+ Workspace", table_rows[1])
+        assert re.search("test-profile .+ test-username", table_rows[3])
+        assert re.search("other-profile .+ test-username", table_rows[4])
+
+        res = _run(["profile", "list", "--json"])
+        json_data = json.loads(res.stdout)
+        assert json_data[0]["name"] == "test-profile"
+        assert json_data[0]["workspace"] == "test-username"
+        assert json_data[1]["name"] == "other-profile"
+        assert json_data[1]["workspace"] == "test-username"
+
+        orig_env_token_id = os.environ.get("MODAL_TOKEN_ID")
+        orig_env_token_secret = os.environ.get("MODAL_TOKEN_SECRET")
+        os.environ["MODAL_TOKEN_ID"] = "ak-abc"
+        os.environ["MODAL_TOKEN_SECRET"] = "as-xyz"
+        try:
+            res = _run(["profile", "list"])
+            assert "Using test-username workspace based on environment variables" in res.stdout
+        finally:
+            if orig_env_token_id:
+                os.environ["MODAL_TOKEN_ID"] = orig_env_token_id
+            else:
+                del os.environ["MODAL_TOKEN_ID"]
+            if orig_env_token_secret:
+                os.environ["MODAL_TOKEN_SECRET"] = orig_env_token_secret
+            else:
+                del os.environ["MODAL_TOKEN_SECRET"]

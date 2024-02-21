@@ -1,22 +1,20 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import Function, Queue, Stub, web_endpoint
+from modal import Function, Stub, Volume, web_endpoint
 from modal.exception import DeprecationError, ExecutionError, NotFoundError
 from modal.runner import deploy_stub
 
 
 def test_persistent_object(servicer, client):
-    stub = Stub()
-    stub["q_1"] = Queue.new()
-    deploy_stub(stub, "my-queue", client=client)
+    Volume.new()._deploy("my-volume", client=client)
 
-    q: Queue = Queue.lookup("my-queue", "q_1", client=client)
-    assert isinstance(q, Queue)
-    assert q.object_id == "qu-1"
+    v: Volume = Volume.lookup("my-volume", client=client)
+    assert isinstance(v, Volume)
+    assert v.object_id == "vo-1"
 
     with pytest.raises(NotFoundError):
-        Queue.lookup("bazbazbaz", client=client)
+        Volume.lookup("bazbazbaz", client=client)
 
 
 def square(x):
@@ -62,17 +60,17 @@ def test_webhook_lookup(servicer, client):
 
 
 def test_deploy_exists(servicer, client):
-    assert not Queue._exists("my-queue", client=client)
-    q1: Queue = Queue.new()
-    q1._deploy("my-queue", client=client)
-    assert Queue._exists("my-queue", client=client)
-    q2: Queue = Queue.lookup("my-queue", client=client)
-    assert q1.object_id == q2.object_id
+    assert not Volume._exists("my-volume", client=client)
+    v1: Volume = Volume.new()
+    v1._deploy("my-volume", client=client)
+    assert Volume._exists("my-volume", client=client)
+    v2: Volume = Volume.lookup("my-volume", client=client)
+    assert v1.object_id == v2.object_id
 
 
 def test_deploy_retain_id(servicer, client):
-    q1: Queue = Queue.new()
-    q2: Queue = Queue.new()
-    q1._deploy("my-queue", client=client)
-    q2._deploy("my-queue", client=client)
-    assert q1.object_id == q2.object_id
+    v1: Volume = Volume.new()
+    v2: Volume = Volume.new()
+    v1._deploy("my-volume", client=client)
+    v2._deploy("my-volume", client=client)
+    assert v1.object_id == v2.object_id

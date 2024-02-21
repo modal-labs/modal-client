@@ -92,14 +92,25 @@ def test_from_local_python_packages(servicer, client, test_dir):
     stub.function(mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
 
     with stub.run(client=client):
-        files = servicer.files_name2sha.keys()
-        assert any(["/pkg/pkg_a/a.py" in f for f in files])
-        assert any(["/pkg/pkg_a/b/c.py" in f for f in files])
-        assert any(["/pkg/pkg_b/f.py" in f for f in files])
-        assert any(["/pkg/pkg_b/g/h.py" in f for f in files])
-        assert any(["/pkg/standalone_file.py" in f for f in files])
-        assert not any(["/pkg/pkg_c/i.py" in f for f in files])
-        assert not any(["/pkg/pkg_c/j/k.py" in f for f in files])
+        files = set(servicer.files_name2sha.keys())
+        assert {
+            # files that should be added
+            "/root/pkg_a/a.py",
+            "/root/pkg_a/b/c.py",
+            "/root/pkg_b/f.py",
+            "/root/pkg_b/g/h.py",
+            "/root/standalone_file.py",
+        } - files == set()
+
+        assert (
+            files
+            & {
+                # files that should not be added
+                "/root/pkg_c/i.py",
+                "/root/pkg_c/j/k.py",
+            }
+            == set()
+        )
 
 
 def test_stub_mounts(servicer, client, test_dir):
@@ -110,13 +121,15 @@ def test_stub_mounts(servicer, client, test_dir):
     stub.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
 
     with stub.run(client=client):
-        files = servicer.files_name2sha.keys()
-        assert any(["pkg/pkg_a/a.py" in f for f in files])
-        assert any(["pkg/pkg_a/b/c.py" in f for f in files])
-        assert any(["pkg/pkg_b/f.py" in f for f in files])
-        assert any(["pkg/pkg_b/g/h.py" in f for f in files])
-        assert not any(["pkg/pkg_c/i.py" in f for f in files])
-        assert not any(["pkg/pkg_c/j/k.py" in f for f in files])
+        files = set(servicer.files_name2sha.keys())
+        assert {
+            "/root/pkg_a/a.py",
+            "/root/pkg_a/b/c.py",
+            "/root/pkg_b/f.py",
+            "/root/pkg_b/g/h.py",
+        } - files == set()
+
+        assert {"/root/pkg_c/i.py", "/root/pkg_c/j/k.py"} & files == set()
 
 
 def test_from_local_python_packages_missing_module(servicer, client, test_dir):
@@ -138,8 +151,8 @@ def test_chained_entries(test_dir):
     assert len(entries) == 2
     files = [file for file in Mount._get_files(entries)]
     assert len(files) == 2
-    files.sort(key=lambda file: file.filename)
-    assert files[0].filename.name == "a.txt"
+    files.sort(key=lambda file: file.source_description)
+    assert files[0].source_description.name == "a.txt"
     assert files[0].mount_filename.endswith("/a.txt")
     assert files[0].content == b"A"
     m = hashlib.sha256()
