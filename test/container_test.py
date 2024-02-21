@@ -1061,12 +1061,14 @@ def _run_container_process(
     function_name,
     inputs: List[Tuple[Tuple[Any], Dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
+    *,
+    popen_kwargs={},
 ) -> subprocess.Popen:
     container_args = _container_args(module_name, function_name, allow_concurrent_inputs=allow_concurrent_inputs)
     encoded_container_args = base64.b64encode(container_args.SerializeToString())
     servicer.container_inputs = _get_multi_inputs(inputs)
     return subprocess.Popen(
-        [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args], env=os.environ
+        [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args], env=os.environ, **popen_kwargs
     )
 
 
@@ -1075,33 +1077,51 @@ def _run_container_process(
 @pytest.mark.parametrize(
     ["function_name", "cancelled_input_ids", "expected_container_output"],
     [
-        ("delay", ["in-001"], [0.01, 0.02]),
-        ("delay", ["in-000"], [0.01, 0.2, 0.02]),
-        ("delay_async", ["in-001"], [0.01, 0.02]),
-        ("delay_async", ["in-000"], [0.01, 0.2, 0.02]),
+        ("delay", ["in-001"], [0.01, 0.02]),  # cancel second input
+        ("delay_async", ["in-001"], [0.01, 0.02]),  # async variant
+        (
+            "delay",
+            ["in-000"],
+            [0.01, 2, 0.02],
+        ),  # cancel first input, but it has already been processed, so all three should come through
+        ("delay_async", ["in-000"], [0.01, 2, 0.02]),  # async variant
     ],
 )
 def test_cancellation_aborts_current_input_on_match(
     servicer, function_name, cancelled_input_ids, expected_container_output
 ):
+    # NOTE: for a cancellation to actually happen in this test, it needs to be
+    #    triggered while the relevant input is being processed. A future input
+    #    would not be cancelled, since those are expected to be handled by
+    #    the backend
+
     # send three inputs in container: in-100, in-101, in-102
     container_process = _run_container_process(
-        servicer, "modal_test_support.functions", function_name, inputs=[((0.01,), {}), ((0.2,), {}), ((0.02,), {})]
+        servicer, "modal_test_support.functions", function_name, inputs=[((0.01,), {}), ((2,), {}), ((0.02,), {})]
     )
-    servicer.called_function_get_inputs.wait(timeout=1)  # wait for called_function_get_inputs to get called and handled
-    time.sleep(0.03)  # let the container get and process the first input
+    # wait for the second input to be sent
+    servicer.called_function_get_inputs.wait(timeout=1)
+    servicer.called_function_get_inputs.wait(timeout=1)
+    time.sleep(0.05)  # at this point the container should have started working on the second input
 
     # now let container receive container heartbeat indicating there is a cancellation
+    t0 = time.monotonic()
+    num_prior_outputs = len(_flatten_outputs(servicer.container_outputs))
     servicer.container_heartbeat_return_now(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
-    time.sleep(0.5)  # make sure container handles any fallout or remaining inputs
+    time.sleep(0.3)  # wait some time, since esp. async cancellation can take a while to propagate
+    assert container_process.wait() == 0
+    duration = time.monotonic() - t0  # time from heartbeat to container exit
 
     items = _flatten_outputs(servicer.container_outputs)
     assert len(items) == len(expected_container_output)
     data = [deserialize(i.result.data, client=None) for i in items]
     assert data == expected_container_output
-    assert container_process.wait() == 0
+
+    assert (
+        duration < sum(data[num_prior_outputs:]) + 1.1
+    )  # for some reason the subprocess always takes ~1s to shut down after completion (!)
 
 
 @skip_windows("signals not supported on windows and this only runs on containers")

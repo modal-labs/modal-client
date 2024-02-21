@@ -507,6 +507,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(self.container_inputs.pop(0))
 
         self.called_function_get_inputs.set()
+        self.called_function_get_inputs.clear()
 
     async def FunctionPutOutputs(self, stream):
         request: api_pb2.FunctionPutOutputsRequest = await stream.recv_message()

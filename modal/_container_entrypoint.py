@@ -446,6 +446,7 @@ class _FunctionIOManager:
             # just skip creating any output for this input and keep going with the next instead
             # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
+            logger.info(f"The current input ({input_id=}) was cancelled by a user request")
             await self.complete_call(started_at)
             return
         except BaseException as exc:
