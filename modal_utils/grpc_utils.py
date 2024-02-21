@@ -9,13 +9,11 @@ import uuid
 from typing import (
     Any,
     AsyncIterator,
-    Callable,
     Dict,
     List,
     Optional,
     Type,
     TypeVar,
-    cast,
 )
 
 import grpclib.client
@@ -143,7 +141,6 @@ def create_channel(
     server_url: str,
     metadata: Dict[str, str] = {},
     *,
-    inject_tracing_context: Optional[Callable[[Dict[str, str]], None]] = None,
     use_pool: Optional[bool] = None,  # If None, inferred from the scheme
 ) -> grpclib.client.Channel:
     """Creates a grpclib.Channel.
@@ -188,9 +185,6 @@ def create_channel(
     async def send_request(event: grpclib.events.SendRequest) -> None:
         for k, v in metadata.items():
             event.metadata[k] = v
-
-        if inject_tracing_context is not None:
-            inject_tracing_context(cast(Dict[str, str], event.metadata))
 
         logger.debug(f"Sending request to {event.method_name}")
 
