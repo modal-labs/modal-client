@@ -359,6 +359,12 @@ def _wsgi_app(
     return wrapper
 
 
+def _disallow_wrapping_method(f: _PartialFunction, wrapper: str) -> None:
+    if f.flags & _PartialFunctionFlags.FUNCTION:
+        f.wrapped = True  # Hack to avoid warning about not using @stub.cls()
+        raise InvalidError(f"Cannot use `@{wrapper}` decorator with `@method`.")
+
+
 @typechecked
 def _build(
     _warn_parentheses_missing=None,
@@ -368,6 +374,7 @@ def _build(
 
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
+            _disallow_wrapping_method(f, "build")
             return f.add_flags(_PartialFunctionFlags.BUILD)
         else:
             return _PartialFunction(f, _PartialFunctionFlags.BUILD)
@@ -391,6 +398,7 @@ def _enter(
 
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
+            _disallow_wrapping_method(f, "enter")
             return f.add_flags(flag)
         else:
             return _PartialFunction(f, flag)
@@ -408,6 +416,8 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
 
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
+        if isinstance(f, _PartialFunction):
+            _disallow_wrapping_method(f, "exit")
         return _PartialFunction(f, _PartialFunctionFlags.EXIT)
 
     return wrapper
