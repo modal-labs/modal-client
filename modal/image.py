@@ -978,7 +978,7 @@ class _Image(_Object, type_prefix="im"):
         add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """Build a Modal image from a public image registry, such as Docker Hub.
+        """Build a Modal image from a public or private image registry, such as Docker Hub.
 
         The image must be built for the `linux/amd64` platform and have Python 3.8 or above
         installed and available on PATH as `python`. It should also have `pip`.
