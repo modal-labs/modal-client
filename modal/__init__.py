@@ -74,6 +74,7 @@ __all__ = [
     "forward",
     "is_local",
     "method",
+    "stop_fetching_inputs",
     "web_endpoint",
     "wsgi_app",
     "interact",
