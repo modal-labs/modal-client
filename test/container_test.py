@@ -1140,12 +1140,13 @@ def test_cancellation_aborts_current_input_on_match(
 def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name):
     # send three inputs in container: in-100, in-101, in-102
     container_process = _run_container_process(
-        servicer, "modal_test_support.functions", function_name, inputs=[((0.5,), {})], allow_concurrent_inputs=2
+        servicer, "modal_test_support.functions", function_name, inputs=[((20,), {})], allow_concurrent_inputs=2
     )
     servicer.called_function_get_inputs.wait(timeout=1)  # wait for called_function_get_inputs to get called and handled
-    time.sleep(0.1)  # let the container get and start processing the input
+    time.sleep(0.3)  # let the container get and start processing the input
     servicer.container_heartbeat_return_now(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000"]))
     )
-    exit_code = container_process.wait(2)
+    # container should exit soon!
+    exit_code = container_process.wait(5)
     assert exit_code
