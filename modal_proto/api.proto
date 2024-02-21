@@ -564,6 +564,8 @@ message ContainerExecRequest {
   string task_id = 1;
   repeated string command = 2;
   PTYInfo pty_info = 3;
+  // Send SIGTERM to running container on exit of exec command.
+  bool terminate_container_on_exit = 4;
 }
 
 message ContainerExecGetOutputRequest {
