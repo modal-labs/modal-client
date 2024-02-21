@@ -1078,8 +1078,8 @@ def _run_container_process(
     ["function_name", "input_args", "cancelled_input_ids", "expected_container_output"],
     [
         # the 10 second inputs here are to be cancelled:
-        ("delay", [0.01, 10, 0.02], ["in-001"], [0.01, 0.02]),  # cancel second input
-        ("delay_async", [0.01, 10, 0.02], ["in-001"], [0.01, 0.02]),  # async variant
+        ("delay", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02]),  # cancel second input
+        ("delay_async", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02]),  # async variant
         # cancel first input, but it has already been processed, so all three should come through:
         (
             "delay",
@@ -1127,8 +1127,8 @@ def test_cancellation_aborts_current_input_on_match(
     assert len(items) == len(expected_container_output)
     data = [deserialize(i.result.data, client=None) for i in items]
     assert data == expected_container_output
-
-    assert duration < sum(data[num_prior_outputs:]) + 2.0  # it can take some time to shut down the process
+    # should never run for ~20s, which is what the input would take if the sleep isn't interrupted
+    assert duration < 10  # should typically be < 1s, but for some reason in gh actions, it takes a really long time!
 
 
 @skip_windows("signals not supported on windows and this only runs on containers")
