@@ -147,7 +147,8 @@ class Cls:
     def __init__(self):
         self._k = 11
 
-    def __enter__(self):
+    @enter()
+    def enter(self):
         self._k += 100
 
     @method()
@@ -211,7 +212,8 @@ def unassociated_function(x):
 
 
 class BaseCls:
-    def __enter__(self):
+    @enter()
+    def enter(self):
         self.x = 2
 
     @method()
