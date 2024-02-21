@@ -1115,6 +1115,8 @@ def test_cancellation_aborts_current_input_on_match(
     # now let container receive container heartbeat indicating there is a cancellation
     t0 = time.monotonic()
     num_prior_outputs = len(_flatten_outputs(servicer.container_outputs))
+    assert num_prior_outputs == 1  # the second input shouldn't have completed yet
+
     servicer.container_heartbeat_return_now(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
