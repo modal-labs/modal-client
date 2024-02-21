@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import date
 
 from modal import (
     Image,
@@ -76,7 +75,7 @@ def gen_n_fail_on_m(n, m):
 
 
 def deprecated_function(x):
-    deprecation_warning(date(2000, 1, 1), "This function is deprecated")
+    deprecation_warning((2000, 1, 1), "This function is deprecated")
     return x**2
 
 

@@ -37,7 +37,7 @@ T = TypeVar("T")
 
 class ClsMixin:
     def __init_subclass__(cls):
-        deprecation_error(date(2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
+        deprecation_error((2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
 
 
 def check_picklability(key, arg):
