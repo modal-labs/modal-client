@@ -571,7 +571,7 @@ def test_build_image(client, servicer):
 
 @pytest.mark.parametrize("decorator", [build, enter, exit])
 def test_disallow_lifecycle_decorators_with_method(decorator):
-    name = decorator.__name__.removeprefix("blocking__")
+    name = decorator.__name__.split("_")[-1]  # remove synchronicity prefix
     with pytest.raises(InvalidError, match=f"Cannot use `@{name}` decorator with `@method`."):
 
         class ClsDecoratorMethodStack:
