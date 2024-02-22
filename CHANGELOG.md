@@ -22,6 +22,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 
 
+### 0.57.60 (2024-02-21)
+
+- The "dunder method" approach for class lifecycle management (`__build__`, `__enter__`, `__exit__`, etc.) is now deprecated in favor of the modal `@build`, `@enter`, and `@exit` decorators.
+
+
+
 ### 0.57.52 (2024-02-17)
 
 - In `modal token new` and `modal token set`, the `--no-no-verify` flag has been removed in favor of a `--verify` flag. This remains the default behavior.
@@ -36,7 +42,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.57.42 (2024-02-14)
 
-Adds a new environment variable/config setting, `MODAL_FORCE_BUILD`/`force_build`, that coerces all images to be built from scratch, rather than loaded from cache.
+- Adds a new environment variable/config setting, `MODAL_FORCE_BUILD`/`force_build`, that coerces all images to be built from scratch, rather than loaded from cache.
 
 
 
@@ -51,7 +57,7 @@ Adds a new environment variable/config setting, `MODAL_FORCE_BUILD`/`force_build
 
 ### 0.57.31 (2024-02-12)
 
-Fixed an issue with displaying deprecation warnings on Windows systems.
+- Fixed an issue with displaying deprecation warnings on Windows systems.
 
 
 
