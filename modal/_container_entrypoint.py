@@ -59,7 +59,13 @@ from .functions import Function, _Function, _set_current_context_ids, _stream_fu
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 
 if TYPE_CHECKING:
-    from types import ModuleType, TracebackType
+    from types import ModuleType
+
+    if sys.version_info > (3, 8):
+        from types import TracebackType
+    else:
+        TracebackType = Any
+
 
 ExceptionInfo = Tuple[Optional[Type[BaseException]], Optional[BaseException], Optional[TracebackType]]
 
