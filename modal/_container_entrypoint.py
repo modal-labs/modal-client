@@ -173,6 +173,7 @@ class _FunctionIOManager:
                 if self.current_input_id in input_ids_to_cancel:
                     os.kill(os.getpid(), signal.SIGUSR1)  # raises an exception in the main thread (hopefully user code)
             return True
+        return False
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):
