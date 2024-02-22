@@ -24,6 +24,7 @@ try:
     from .s3mount import S3Mount
     from .sandbox import Sandbox
     from .schedule import Cron, Period
+    from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
     from .shared_volume import SharedVolume
     from .stub import Stub
@@ -54,6 +55,7 @@ __all__ = [
     "Retries",
     "S3Mount",
     "Sandbox",
+    "SchedulerPlacement",
     "Secret",
     "SharedVolume",
     "Stub",
