@@ -469,6 +469,7 @@ class _Stub:
             int
         ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
+        _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -550,6 +551,7 @@ class _Stub:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 _experimental_boost=_experimental_boost,
+                _experimental_scheduler=_experimental_scheduler,
             )
 
             self._add_function(function)
@@ -591,6 +593,7 @@ class _Stub:
             int
         ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
+        _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
@@ -622,6 +625,7 @@ class _Stub:
             _allow_background_volume_commits=_allow_background_volume_commits,
             max_inputs=max_inputs,
             _experimental_boost=_experimental_boost,
+            _experimental_scheduler=_experimental_scheduler,
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
