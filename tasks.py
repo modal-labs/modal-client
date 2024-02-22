@@ -36,7 +36,8 @@ def protoc(ctx):
 
 @task
 def lint(ctx):
-    ctx.run("ruff .", pty=True)
+    ctx.run("ruff check", pty=True)
+    ctx.run("ruff format --check", pty=True)
 
 
 @task
