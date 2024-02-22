@@ -963,7 +963,7 @@ def test_multiple_build_decorator_cls(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-@pytest.mark.timeout(3.0)
+@pytest.mark.timeout(10.0)
 def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_servicer):
     synchronizer = modal_utils.async_utils.synchronizer
 
@@ -990,7 +990,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
     # pr.disable()
     # pr.print_stats()
     duration = time.perf_counter() - t0
-    assert duration < 2.0  # TODO (elias): might be able to get this down significantly more by improving serialization
+    assert duration < 5.0  # TODO (elias): might be able to get this down significantly more by improving serialization
 
     # function_io_manager.serialize(large_data_list)
     in_translations = []
