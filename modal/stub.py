@@ -32,6 +32,7 @@ from .retries import Retries
 from .runner import _run_stub
 from .sandbox import _Sandbox
 from .schedule import Schedule
+from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
 
@@ -470,6 +471,9 @@ class _Stub:
         ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
+        _experimental_scheduler_placement: Optional[
+            SchedulerPlacement
+        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -552,6 +556,7 @@ class _Stub:
                 max_inputs=max_inputs,
                 _experimental_boost=_experimental_boost,
                 _experimental_scheduler=_experimental_scheduler,
+                _experimental_scheduler_placement=_experimental_scheduler_placement,
             )
 
             self._add_function(function)
@@ -594,6 +599,9 @@ class _Stub:
         ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
+        _experimental_scheduler_placement: Optional[
+            SchedulerPlacement
+        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
@@ -626,6 +634,7 @@ class _Stub:
             max_inputs=max_inputs,
             _experimental_boost=_experimental_boost,
             _experimental_scheduler=_experimental_scheduler,
+            _experimental_scheduler_placement=_experimental_scheduler_placement,
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
