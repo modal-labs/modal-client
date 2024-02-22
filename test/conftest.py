@@ -17,7 +17,7 @@ import threading
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Iterator, Optional
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -492,13 +492,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.FunctionBindParamsResponse(bound_function_id=function_id))
 
     @contextlib.contextmanager
-    def input_lockstep(self) -> threading.Barrier:
+    def input_lockstep(self) -> Iterator[threading.Barrier]:
         self.get_inputs_barrier = threading.Barrier(2, timeout=10)
         yield self.get_inputs_barrier
         self.get_inputs_barrier = threading.Barrier(1)
 
     @contextlib.contextmanager
-    def output_lockstep(self) -> threading.Barrier:
+    def output_lockstep(self) -> Iterator[threading.Barrier]:
         self.put_outputs_barrier = threading.Barrier(2, timeout=10)
         yield self.put_outputs_barrier
         self.put_outputs_barrier = threading.Barrier(1)
