@@ -18,7 +18,18 @@ import traceback
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Type
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    AsyncIterator,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+)
 
 from google.protobuf.empty_pb2 import Empty
 from grpclib import Status
@@ -48,7 +59,9 @@ from .functions import Function, _Function, _set_current_context_ids, _stream_fu
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 
 if TYPE_CHECKING:
-    from types import ModuleType
+    from types import ModuleType, TracebackType
+
+ExceptionInfo = Tuple[Optional[Type[BaseException]], Optional[BaseException], Optional[TracebackType]]
 
 MAX_OUTPUT_BATCH_SIZE: int = 49
 
@@ -101,6 +114,12 @@ class _FunctionIOManager:
         self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
 
+        self._exc_info: ExceptionInfo = (
+            None,
+            None,
+            None,
+        )
+
         self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
@@ -148,6 +167,9 @@ class _FunctionIOManager:
             cls = None
 
         return cls, fun
+
+    def exc_info(self) -> ExceptionInfo:
+        return self._exc_info
 
     def serialize(self, obj: Any) -> bytes:
         return serialize(obj)
@@ -400,6 +422,7 @@ class _FunctionIOManager:
         except KeyboardInterrupt:
             raise
         except BaseException as exc:
+            self._exc_info = sys.exc_info()
             # print exception so it's logged
             traceback.print_exc()
             serialized_tb, tb_line_cache = self.serialize_traceback(exc)
@@ -584,7 +607,7 @@ def call_function_sync(
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 with function_io_manager.handle_user_exception():
-                    exit_method(*sys.exc_info())
+                    exit_method(*function_io_manager.exc_info())
 
 
 async def call_function_async(
@@ -654,7 +677,7 @@ async def call_function_async(
             for exit_method in exit_methods.values():
                 # Call a user-defined method
                 with function_io_manager.handle_user_exception():
-                    exit_res = exit_method(*sys.exc_info())
+                    exit_res = exit_method(*function_io_manager.exc_info())
                     if inspect.iscoroutine(exit_res):
                         await exit_res
 
