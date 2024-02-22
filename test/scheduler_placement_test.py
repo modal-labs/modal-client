@@ -25,5 +25,5 @@ def test_scheduler_placement(servicer, client):
         assert fn._experimental_scheduler_placement == api_pb2.SchedulerPlacement(
             _region="us-east-1",
             _zone="us-east-1a",
-            _spot=False,
+            _lifecycle="on-demand",
         )
