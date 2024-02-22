@@ -830,10 +830,11 @@ message Function {
   bool block_network = 44;
 
   uint32 max_inputs = 46;
-  
+
   repeated S3Mount s3_mounts = 47;
-  
+
   bool _experimental_boost = 48;
+  bool _experimental_scheduler = 49;
 }
 
 message FunctionHandleMetadata {
@@ -1830,7 +1831,7 @@ message RuntimeOutputMessage {
 
 message RuntimeOutputBatch {
   repeated RuntimeOutputMessage items = 1;
-  uint64 batch_index = 2; 
+  uint64 batch_index = 2;
   // if an exit code is given, this is the final message that will be sent.
   optional int32 exit_code = 3;
 }
