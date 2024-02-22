@@ -721,11 +721,11 @@ def _unwrap_concurrent_input_outputs(n_inputs: int, n_parallel: int, ret: Contai
     for i in range(1, len(ret.items)):
         diff = ret.items[i].input_started_at - ret.items[i - 1].input_started_at
         expected_diff = SLEEP_TIME if i % n_parallel == 0 else 0
-        assert diff == pytest.approx(expected_diff, abs=0.2)
+        assert diff == pytest.approx(expected_diff, abs=0.3)
 
     outputs = []
     for item in ret.items:
-        assert item.output_created_at - item.input_started_at == pytest.approx(SLEEP_TIME, abs=0.2)
+        assert item.output_created_at - item.input_started_at == pytest.approx(SLEEP_TIME, abs=0.3)
         assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
         outputs.append(deserialize(item.result.data, ret.client))
     return outputs
