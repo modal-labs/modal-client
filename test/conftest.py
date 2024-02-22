@@ -209,12 +209,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         res.object_id = object_id
         return res
 
-    async def AckInputCancellation(
-        self,
-        stream: "grpclib.server.Stream[api_pb2.AckInputCancellationRequest, Empty]",
-    ) -> None:
-        await stream.send_message(Empty())
-
     ### App
 
     async def AppCreate(self, stream):
