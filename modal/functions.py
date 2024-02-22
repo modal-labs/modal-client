@@ -583,6 +583,7 @@ class _Function(_Object, type_prefix="fu"):
         interactive: bool = False,
         cloud: Optional[str] = None,
         _experimental_boost: bool = False,
+        _experimental_scheduler: bool = False,
         is_builder_function: bool = False,
         cls: Optional[type] = None,
         is_auto_snapshot: bool = False,
@@ -849,6 +850,7 @@ class _Function(_Object, type_prefix="fu"):
                 max_inputs=max_inputs,
                 s3_mounts=s3_mounts_to_proto(s3_mounts),
                 _experimental_boost=_experimental_boost,
+                _experimental_scheduler=_experimental_scheduler,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
