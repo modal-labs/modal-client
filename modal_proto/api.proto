@@ -834,7 +834,21 @@ message Function {
   repeated S3Mount s3_mounts = 47;
 
   bool _experimental_boost = 48;
+
+  // If set, tasks will be scheduled using the new scheduler, which also knows
+  // to look at fine-grained placement constraints.
   bool _experimental_scheduler = 49;
+  optional SchedulerPlacement _experimental_scheduler_placement = 50;
+}
+
+message SchedulerPlacement {
+  // TODO(irfansharif):
+  // - Fold in cloud, resource needs here too.
+  // - Allow specifying list of regions, zones, cloud, fallback and alternative
+  //   GPU types.
+  optional string _region = 1;
+  optional string _zone = 2;
+  optional bool _spot = 3;
 }
 
 message FunctionHandleMetadata {
