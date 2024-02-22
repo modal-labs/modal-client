@@ -1,4 +1,4 @@
-<img width="600" src="./logo.svg" alt="Modal logo">
+<img width="600" src="https://raw.githubusercontent.com/modal-labs/modal-client/main/logo.svg" alt="Modal logo">
 
 [![PyPI Version](https://img.shields.io/pypi/v/modal.svg)](https://pypi.org/project/modal/)
 [![License](https://img.shields.io/badge/license-apache_2.0-darkviolet.svg)](https://github.com/modal-labs/modal-client/blob/master/LICENSE)
