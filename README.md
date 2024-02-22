@@ -1,8 +1,8 @@
-<img width="600" src="./logo.svg" alt="Modal logo">
+<img width="600" src="https://raw.githubusercontent.com/modal-labs/modal-client/main/logo.svg" alt="Modal logo">
 
 [![PyPI Version](https://img.shields.io/pypi/v/modal.svg)](https://pypi.org/project/modal/)
 [![License](https://img.shields.io/badge/license-apache_2.0-darkviolet.svg)](https://github.com/modal-labs/modal-client/blob/master/LICENSE)
-[![Tests](https://github.com/modal-labs/modal-client/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/modal-labs/modal-client/workflows/ci-cd.yml)
+[![Tests](https://github.com/modal-labs/modal-client/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/modal-labs/modal-client/actions/workflows/ci-cd.yml)
 [![Slack](https://img.shields.io/badge/slack-join-blue.svg?logo=slack)](https://modal.com/slack)
 
 The [Modal](https://modal.com/) Python library provides convenient, on-demand
