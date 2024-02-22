@@ -573,6 +573,8 @@ message ContainerExecRequest {
   string task_id = 1;
   repeated string command = 2;
   PTYInfo pty_info = 3;
+  // Send SIGTERM to running container on exit of exec command.
+  bool terminate_container_on_exit = 4;
 }
 
 message ContainerExecGetOutputRequest {
@@ -837,10 +839,11 @@ message Function {
   bool block_network = 44;
 
   uint32 max_inputs = 46;
-  
+
   repeated S3Mount s3_mounts = 47;
-  
+
   bool _experimental_boost = 48;
+  bool _experimental_scheduler = 49;
 }
 
 message FunctionHandleMetadata {
@@ -988,10 +991,12 @@ message FunctionMapRequest {
   string parent_input_id = 2;
   bool return_exceptions = 3;
   FunctionCallType function_call_type = 4;
+  repeated FunctionPutInputsItem pipelined_inputs = 5;
 }
 
 message FunctionMapResponse {
   string function_call_id = 1;
+  repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
 }
 
 message FunctionPutInputsItem {
@@ -1117,12 +1122,12 @@ message GenericResult {  // Used for both tasks and function outputs
   }
 
   GenericStatus status = 1; // Status of the task or function output.
-  string exception = 2;  // Exception message for failures, if available. (?)
+  string exception = 2;  // Exception message for failures, if available.
   int32 exitcode = 3;  // Status code of the container entrypoint or builder process if it terminates unexpectedly.
 
-  string traceback = 4;  // String value of the Python traceback. (?)
-  bytes serialized_tb = 11; // Pickled traceback object. (?)
-  bytes tb_line_cache = 12; // Pickled line cache for traceback object. (?)
+  string traceback = 4;  // String value of the Python traceback.
+  bytes serialized_tb = 11; // Pickled traceback object.
+  bytes tb_line_cache = 12; // Pickled line cache for traceback object.
 
   oneof data_oneof {
     bytes data = 5; // Inline data of the result.
@@ -1393,6 +1398,8 @@ message Sandbox {
   bool block_network = 11;
 
   repeated S3Mount s3_mounts = 12;
+
+  repeated VolumeMount volume_mounts = 13;
 }
 
 message SandboxCreateRequest {
@@ -1833,7 +1840,7 @@ message RuntimeOutputMessage {
 
 message RuntimeOutputBatch {
   repeated RuntimeOutputMessage items = 1;
-  uint64 batch_index = 2; 
+  uint64 batch_index = 2;
   // if an exit code is given, this is the final message that will be sent.
   optional int32 exit_code = 3;
 }

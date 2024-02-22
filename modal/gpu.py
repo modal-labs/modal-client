@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from datetime import date
 from typing import Optional, Union
 
 from modal_proto import api_pb2
@@ -140,16 +139,6 @@ class H100(_GPUConfig):
         return f"GPU(H100, count={self.count})"
 
 
-class Inferentia2(_GPUConfig):
-    """mdmd:hidden"""
-
-    def __init__(self, *, count: int = 1):
-        super().__init__(api_pb2.GPU_TYPE_INFERENTIA2, count)
-
-    def __repr__(self):
-        return f"GPU(INFERENTIA2, count={self.count})"
-
-
 class Any(_GPUConfig):
     """Selects any one of the GPU classes available within Modal, according to availability."""
 
@@ -166,7 +155,6 @@ STRING_TO_GPU_CONFIG = {
     "a100": A100,
     "h100": H100,
     "a10g": A10G,
-    "inf2": Inferentia2,
     "any": Any,
 }
 display_string_to_config = "\n".join(
@@ -213,12 +201,12 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
     elif value is True:
         if raise_on_true:
             deprecation_error(
-                date(2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
+                (2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
             )
         else:
             # We didn't support targeting a GPU type for run_function until 2023-12-12
             deprecation_warning(
-                date(2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
+                (2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
             )
         return Any()
     elif value is None or value is False:

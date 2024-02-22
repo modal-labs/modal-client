@@ -7,7 +7,6 @@ import functools
 import os
 import time
 import typing
-from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Type, Union
 
@@ -529,17 +528,12 @@ def _get_client_mount():
         return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
 
 
-_create_package_mounts_deprecation_msg = (
-    "modal.create_package_mounts() is being deprecated, use modal.Mount.from_local_python_packages() instead"
-)
-
-
 @typechecked
 def _create_package_mounts(module_names: Sequence[str]):
-    f"""{_create_package_mounts_deprecation_msg}"""
+    """`modal.create_package_mounts()` is being deprecated, use `modal.Mount.from_local_python_packages()` instead"""
     modal.exception.deprecation_error(
-        date(2023, 7, 19),
-        _create_package_mounts_deprecation_msg,
+        (2023, 7, 19),
+        _create_package_mounts.__doc__,
     )
 
 

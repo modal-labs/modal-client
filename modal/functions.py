@@ -7,7 +7,6 @@ import time
 import warnings
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import date
 from pathlib import PurePosixPath
 from typing import (
     TYPE_CHECKING,
@@ -234,16 +233,20 @@ class _Invocation:
 
     @staticmethod
     async def create(function_id: str, args, kwargs, client: _Client):
+        item = await _create_input(args, kwargs, client)
+
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
             parent_input_id=current_input_id(),
             function_call_type=api_pb2.FUNCTION_CALL_TYPE_UNARY,
+            pipelined_inputs=[item],
         )
         response = await retry_transient_errors(client.stub.FunctionMap, request)
-
         function_call_id = response.function_call_id
 
-        item = await _create_input(args, kwargs, client)
+        if response.pipelined_inputs:
+            return _Invocation(client.stub, function_call_id, client)
+
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
         )
@@ -584,6 +587,7 @@ class _Function(_Object, type_prefix="fu"):
         interactive: bool = False,
         cloud: Optional[str] = None,
         _experimental_boost: bool = False,
+        _experimental_scheduler: bool = False,
         is_builder_function: bool = False,
         cls: Optional[type] = None,
         is_auto_snapshot: bool = False,
@@ -605,7 +609,7 @@ class _Function(_Object, type_prefix="fu"):
 
         if secret is not None:
             deprecation_warning(
-                date(2024, 1, 31),
+                (2024, 1, 31),
                 "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
             )
             secrets = [secret, *secrets]
@@ -850,6 +854,7 @@ class _Function(_Object, type_prefix="fu"):
                 max_inputs=max_inputs,
                 s3_mounts=s3_mounts_to_proto(s3_mounts),
                 _experimental_boost=_experimental_boost,
+                _experimental_scheduler=_experimental_scheduler,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -1267,11 +1272,9 @@ class _Function(_Object, type_prefix="fu"):
         """Deprecated. Use `f.remote` or `f.remote_gen` instead."""
         # TODO: Generics/TypeVars
         if self._is_generator:
-            deprecation_error(
-                date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`"
-            )
+            deprecation_error((2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`")
         else:
-            deprecation_error(date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
+            deprecation_error((2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
 
     @synchronizer.no_io_translation
     @live_method
@@ -1337,13 +1340,13 @@ class _Function(_Object, type_prefix="fu"):
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if self._get_is_remote_cls_method():
             deprecation_error(
-                date(2023, 9, 1),
+                (2023, 9, 1),
                 "Calling remote class methods like `obj.f(...)` is deprecated. Use `obj.f.remote(...)` for remote calls"
                 " and `obj.f.local(...)` for local calls",
             )
         else:
             deprecation_error(
-                date(2023, 8, 16),
+                (2023, 8, 16),
                 "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
                 " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
                 " a Modal container in the cloud",

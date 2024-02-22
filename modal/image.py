@@ -5,7 +5,6 @@ import shlex
 import sys
 import typing
 import warnings
-from datetime import date
 from inspect import isfunction
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -30,8 +29,6 @@ from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret
-
-_from_dockerhub_deprecation_msg = "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
 
 
 def _validate_python_version(version: str) -> None:
@@ -981,7 +978,7 @@ class _Image(_Object, type_prefix="im"):
         add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """Build a Modal image from a public image registry, such as Docker Hub.
+        """Build a Modal image from a public or private image registry, such as Docker Hub.
 
         The image must be built for the `linux/amd64` platform and have Python 3.8 or above
         installed and available on PATH as `python`. It should also have `pip`.
@@ -1038,8 +1035,8 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         **kwargs,
     ):
-        f"""{_from_dockerhub_deprecation_msg}"""
-        deprecation_error(date(2023, 8, 25), _from_dockerhub_deprecation_msg)
+        """`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."""
+        deprecation_error((2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead.")
 
     @staticmethod
     @typechecked
@@ -1403,7 +1400,7 @@ class _Image(_Object, type_prefix="im"):
             import torch
         ```
         """
-        deprecation_warning(date(2023, 12, 15), Image.run_inside.__doc__)
+        deprecation_warning((2023, 12, 15), Image.run_inside.__doc__)
         return self.imports()
 
 

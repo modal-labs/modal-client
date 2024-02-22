@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-from datetime import date
 from typing import Any, Optional
 
 from modal_proto import api_pb2
@@ -27,8 +26,8 @@ class _Dict(_Object, type_prefix="di"):
 
     **Lifetime of a Dict and its items**
 
-    A `Dict` matches the lifetime of the app it is attached to, but invididual
-    keys expire after 30 days. Because of this, `Dict`s are best not used for
+    but an individual entry will expire 30 days after it was last added to its ​​Dict object.
+    Because of this, `Dict`s are best not used for
     long-term storage. All data is deleted when the app is stopped.
 
     **Usage**
@@ -71,7 +70,7 @@ class _Dict(_Object, type_prefix="di"):
 
     def __init__(self, data={}):
         """mdmd:hidden"""
-        deprecation_error(date(2023, 6, 27), "`Dict({...})` is deprecated. Please use `Dict.new({...})` instead.")
+        deprecation_error((2023, 6, 27), "`Dict({...})` is deprecated. Please use `Dict.new({...})` instead.")
         obj = _Dict.new(data)
         self._init_from_other(obj)
 

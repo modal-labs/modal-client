@@ -2,7 +2,6 @@
 import inspect
 import os
 import typing
-from datetime import date
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -31,7 +30,6 @@ from .partial_function import PartialFunction, _PartialFunction
 from .proxy import _Proxy
 from .retries import Retries
 from .runner import _run_stub
-from .s3mount import _S3Mount
 from .sandbox import _Sandbox
 from .schedule import Schedule
 from .secret import _Secret
@@ -156,7 +154,7 @@ class _Stub:
 
         if indexed_objects:
             deprecation_warning(
-                date(2023, 12, 13),
+                (2023, 12, 13),
                 "Passing **kwargs to a stub is deprecated. In most cases, you can just define the objects in global scope.",
             )
 
@@ -195,7 +193,7 @@ class _Stub:
         """`stub.app` is deprecated: use e.g. `stub.obj` instead of `stub.app.obj`
         if you need to access objects on the running app.
         """
-        deprecation_error(date(2023, 9, 11), _Stub.app.__doc__)
+        deprecation_error((2023, 9, 11), _Stub.app.__doc__)
 
     @property
     def app_id(self) -> Optional[str]:
@@ -278,7 +276,7 @@ class _Stub:
             import torch
         ```
         """
-        deprecation_error(date(2023, 11, 8), _Stub.is_inside.__doc__)
+        deprecation_error((2023, 11, 8), _Stub.is_inside.__doc__)
 
     @asynccontextmanager
     async def _set_local_app(self, app: _LocalApp) -> AsyncGenerator[None, None]:
@@ -471,6 +469,7 @@ class _Stub:
             int
         ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
+        _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this stub."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -486,7 +485,7 @@ class _Stub:
 
         if shared_volumes:
             deprecation_error(
-                date(2023, 7, 5),
+                (2023, 7, 5),
                 "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
             )
 
@@ -552,6 +551,7 @@ class _Stub:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 _experimental_boost=_experimental_boost,
+                _experimental_scheduler=_experimental_scheduler,
             )
 
             self._add_function(function)
@@ -593,6 +593,7 @@ class _Stub:
             int
         ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
+        _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
@@ -624,6 +625,7 @@ class _Stub:
             _allow_background_volume_commits=_allow_background_volume_commits,
             max_inputs=max_inputs,
             _experimental_boost=_experimental_boost,
+            _experimental_scheduler=_experimental_scheduler,
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
@@ -631,7 +633,7 @@ class _Stub:
 
             if len(cls._functions) > 1 and keep_warm is not None:
                 deprecation_warning(
-                    date(2023, 10, 20),
+                    (2023, 10, 20),
                     "`@stub.cls(keep_warm=...)` is deprecated when there is more than 1 method."
                     " Use `@method(keep_warm=...)` on each method instead!",
                 )
@@ -664,9 +666,8 @@ class _Stub:
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         block_network: bool = False,  # Whether to block network access
-        volumes: Dict[
-            Union[str, os.PathLike], _S3Mount
-        ] = {},  # Volumes to mount in the sandbox. Currently, only S3 mounts are supported in sandboxes.
+        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Volumes to mount in the sandbox.
+        _allow_background_volume_commits: bool = False,
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -704,6 +705,7 @@ class _Stub:
             network_file_systems=network_file_systems,
             block_network=block_network,
             volumes=volumes,
+            allow_background_volume_commits=_allow_background_volume_commits,
         )
         await resolver.load(obj)
         return obj

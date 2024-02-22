@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import os
 import time
-from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, BinaryIO, List, Optional, Tuple, Union
 
@@ -97,7 +96,7 @@ class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
                 return
 
             if cloud:
-                deprecation_warning(date(2024, 1, 17), "Argument `cloud` is deprecated (has no effect).")
+                deprecation_warning((2024, 1, 17), "Argument `cloud` is deprecated (has no effect).")
 
             status_row.message("Creating network file system...")
             req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id)

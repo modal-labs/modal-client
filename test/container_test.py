@@ -29,6 +29,7 @@ from modal._serialization import (
     serialize_data_format,
 )
 from modal.exception import InvalidError
+from modal.partial_function import enter
 from modal.stub import _Stub
 from modal_proto import api_pb2
 
@@ -571,7 +572,8 @@ def test_cls_web_endpoint(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_serialized_cls(unix_servicer, event_loop):
     class Cls:
-        def __enter__(self):
+        @enter()
+        def enter(self):
             self.power = 5
 
         def method(self, x):
