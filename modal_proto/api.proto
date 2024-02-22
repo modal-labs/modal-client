@@ -556,7 +556,7 @@ message CancelInputEvent {
 }
 
 message ContainerHeartbeatResponse {
-  CancelInputEvent cancel_input_event = 1;
+  optional CancelInputEvent cancel_input_event = 1;
 }
 
 message ContainerHeartbeatRequest {

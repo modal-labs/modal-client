@@ -115,6 +115,7 @@ class _FunctionIOManager:
 
         self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
+
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._environment_name = container_args.environment_name
         self._waiting_for_checkpoint = False
@@ -153,9 +154,12 @@ class _FunctionIOManager:
             self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
         )
 
-        if response.cancel_input_event:
+        if response.HasField("cancel_input_event"):
             # 1. Pause processing of *new* inputs by signalling self a SIGUSR1, which will raise an exception in the main thread if necessary
             input_ids_to_cancel = response.cancel_input_event.input_ids
+            if not input_ids_to_cancel:
+                return
+
             if self._input_concurrency > 1:
                 logger.info(
                     "Shutting down task to stop some subset of inputs (concurrent functions don't support fine grained cancellation)"
