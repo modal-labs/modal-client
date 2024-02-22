@@ -66,8 +66,7 @@ if TYPE_CHECKING:
     else:
         TracebackType = Any
 
-
-ExceptionInfo = Tuple[Optional[Type[BaseException]], Optional[BaseException], Optional[TracebackType]]
+    ExceptionInfo = Tuple[Optional[Type[BaseException]], Optional[BaseException], Optional[TracebackType]]
 
 MAX_OUTPUT_BATCH_SIZE: int = 49
 
