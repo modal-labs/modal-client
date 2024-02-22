@@ -1102,15 +1102,15 @@ def test_cancellation_aborts_current_input_on_match(
     #    triggered while the relevant input is being processed. A future input
     #    would not be cancelled, since those are expected to be handled by
     #    the backend
-
-    # send three inputs in container: in-100, in-101, in-102
-    container_process = _run_container_process(
-        servicer, "modal_test_support.functions", function_name, inputs=[((arg,), {}) for arg in input_args]
-    )
-    # wait for the second input to be sent
-    servicer.called_function_get_inputs.wait(timeout=1)
-    servicer.called_function_get_inputs.wait(timeout=1)
-    time.sleep(0.05)  # at this point the container should have started working on the second input
+    with servicer.input_lockstep() as input_lock:
+        container_process = _run_container_process(
+            servicer, "modal_test_support.functions", function_name, inputs=[((arg,), {}) for arg in input_args]
+        )
+        time.sleep(1)
+        input_lock.wait()
+        input_lock.wait()
+        # second input has been sent to container here
+    time.sleep(0.05)  # give it a little time to start processing
 
     # now let container receive container heartbeat indicating there is a cancellation
     t0 = time.monotonic()
@@ -1139,14 +1139,13 @@ def test_cancellation_aborts_current_input_on_match(
 )
 def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name):
     # send three inputs in container: in-100, in-101, in-102
-    container_process = _run_container_process(
-        servicer, "modal_test_support.functions", function_name, inputs=[((20,), {})], allow_concurrent_inputs=2
-    )
-    servicer.called_function_get_inputs.wait(
-        timeout=1
-    )  # TODO: fix potential race if subprocess calls get inputs before this wait...
-    # wait for called_function_get_inputs to get called and handled
-    time.sleep(0.3)  # let the container get and start processing the input
+    with servicer.input_lockstep() as input_lock:
+        container_process = _run_container_process(
+            servicer, "modal_test_support.functions", function_name, inputs=[((20,), {})], allow_concurrent_inputs=2
+        )
+        input_lock.wait()
+
+    time.sleep(0.05)  # let the container get and start processing the input
     servicer.container_heartbeat_return_now(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000"]))
     )

@@ -57,6 +57,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     fc_data_out: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
 
     def __init__(self, blob_host, blobs):
+        self.put_outputs_barrier = threading.Barrier(
+            1, timeout=10
+        )  # set to non-1 to get lock-step of output pushing within a test
+        self.get_inputs_barrier = threading.Barrier(
+            1, timeout=10
+        )  # set to non-1 to get lock-step of input releases within a test
+
         self.app_state_history = defaultdict(list)
         self.app_heartbeats: Dict[str, int] = defaultdict(int)
         self.container_checkpoint_requests = 0
@@ -152,7 +159,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.token_flow_localhost_port = None
         self.queue_max_len = 1_00
 
-        self.called_function_get_inputs = threading.Event()
         self.container_heartbeat_abort = threading.Event()
 
         @self.function_body
@@ -485,7 +491,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         await stream.send_message(api_pb2.FunctionBindParamsResponse(bound_function_id=function_id))
 
+    @contextlib.contextmanager
+    def input_lockstep(self) -> threading.Barrier:
+        self.get_inputs_barrier = threading.Barrier(2, timeout=10)
+        yield self.get_inputs_barrier
+        self.get_inputs_barrier = threading.Barrier(1)
+
+    @contextlib.contextmanager
+    def output_lockstep(self) -> threading.Barrier:
+        self.put_outputs_barrier = threading.Barrier(2, timeout=10)
+        yield self.put_outputs_barrier
+        self.put_outputs_barrier = threading.Barrier(1)
+
     async def FunctionGetInputs(self, stream):
+        self.get_inputs_barrier.wait()
         request: api_pb2.FunctionGetInputsRequest = await stream.recv_message()
         assert request.function_id
         if self.fail_get_inputs:
@@ -500,10 +519,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(self.container_inputs.pop(0))
 
-        self.called_function_get_inputs.set()
-        self.called_function_get_inputs.clear()
-
     async def FunctionPutOutputs(self, stream):
+        self.put_outputs_barrier.wait()
         request: api_pb2.FunctionPutOutputsRequest = await stream.recv_message()
         self.container_outputs.append(request)
         await stream.send_message(Empty())
