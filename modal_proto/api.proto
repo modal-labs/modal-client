@@ -848,7 +848,7 @@ message SchedulerPlacement {
   //   GPU types.
   optional string _region = 1;
   optional string _zone = 2;
-  optional bool _spot = 3;
+  optional string _lifecycle = 3; // "on-demand" or "spot", else ignored
 }
 
 message FunctionHandleMetadata {
