@@ -131,17 +131,23 @@ class _FunctionIOManager:
     async def _run_heartbeat_loop(self):
         while 1:
             t0 = time.monotonic()
-            await self._heartbeat()
-            heartbeat_duration = time.monotonic() - t0
-            time_until_next_hearbeat = HEARTBEAT_INTERVAL - heartbeat_duration
+            if await self._heartbeat():
+                # got a cancellation event, fine to start another heartbeat soon since we know
+                # the worker supports long-polling
+                time_until_next_hearbeat = 1.0
+            else:
+                heartbeat_duration = time.monotonic() - t0
+                time_until_next_hearbeat = HEARTBEAT_INTERVAL - heartbeat_duration
             await asyncio.sleep(time_until_next_hearbeat)
 
-    async def _heartbeat(self):
+    async def _heartbeat(self) -> bool:
+        # Return True if a cancellation event was received, in that case we shouldn't wait too long for another heartbeat
+
         # Don't send heartbeats for tasks waiting to be checkpointed.
         # Calling gRPC methods open new connections which block the
         # checkpointing process.
         if self._waiting_for_checkpoint:
-            return
+            return False
 
         request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
         if self.current_input_id is not None:
@@ -157,17 +163,16 @@ class _FunctionIOManager:
         if response.HasField("cancel_input_event"):
             # 1. Pause processing of *new* inputs by signalling self a SIGUSR1, which will raise an exception in the main thread if necessary
             input_ids_to_cancel = response.cancel_input_event.input_ids
-            if not input_ids_to_cancel:
-                return
+            if input_ids_to_cancel:
+                if self._input_concurrency > 1:
+                    logger.info(
+                        "Shutting down task to stop some subset of inputs (concurrent functions don't support fine grained cancellation)"
+                    )
+                    os.kill(os.getpid(), signal.SIGTERM)
 
-            if self._input_concurrency > 1:
-                logger.info(
-                    "Shutting down task to stop some subset of inputs (concurrent functions don't support fine grained cancellation)"
-                )
-                os.kill(os.getpid(), signal.SIGTERM)
-
-            if self.current_input_id in input_ids_to_cancel:
-                os.kill(os.getpid(), signal.SIGUSR1)  # raises an exception in the main thread (hopefully user code)
+                if self.current_input_id in input_ids_to_cancel:
+                    os.kill(os.getpid(), signal.SIGUSR1)  # raises an exception in the main thread (hopefully user code)
+            return True
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):
