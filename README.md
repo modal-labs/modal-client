@@ -1,18 +1,23 @@
-# Modal Python Library
+<img width="600" src="./logo.svg" alt="Modal logo">
 
-The [Modal](https://modal.com/) Python Library provides convenient, on-demand
+[![PyPI Version](https://img.shields.io/pypi/v/modal.svg)](https://pypi.org/project/modal/)
+[![License](https://img.shields.io/badge/license-apache_2.0-darkviolet.svg)](https://github.com/modal-labs/modal-client/blob/master/LICENSE)
+[![Tests](https://github.com/modal-labs/modal-client/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/modal-labs/modal-client/workflows/ci-cd.yml)
+[![Slack](https://img.shields.io/badge/slack-join-blue.svg?logo=slack)](https://modal.com/slack)
+
+The [Modal](https://modal.com/) Python library provides convenient, on-demand
 access to serverless cloud compute from Python scripts on your local computer.
 
 ## Documentation
 
-See the [online documentation](https://modal.com/docs) for many
+See the [online documentation](https://modal.com/docs/guide) for many
 [example applications](https://modal.com/docs/examples),
 a [user guide](https://modal.com/docs/guide), and the detailed
 [API reference](https://modal.com/docs/reference).
 
 ## Installation
 
-**This requires Python 3.8 – 3.12.**
+**This library requires Python 3.8 – 3.12.**
 
 Install the package with `pip`:
 
