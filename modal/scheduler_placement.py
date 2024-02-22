@@ -16,8 +16,12 @@ class SchedulerPlacement:
         spot: Optional[bool] = None,
     ):
         """mdmd:hidden"""
+        _lifecycle: Optional[str] = None
+        if spot is not None:
+            _lifecycle = "spot" if spot else "on-demand"
+
         self.proto = api_pb2.SchedulerPlacement(
             _region=region,
             _zone=zone,
-            _spot=spot,
+            _lifecycle=_lifecycle,
         )
