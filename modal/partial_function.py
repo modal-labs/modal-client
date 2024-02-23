@@ -62,7 +62,7 @@ class _PartialFunction:
         return function
 
     def __del__(self):
-        if self.wrapped is False:
+        if (self.flags & _PartialFunctionFlags.FUNCTION) and self.wrapped is False:
             logger.warning(
                 f"Method or web function {self.raw_f} was never turned into a function."
                 " Did you forget a @stub.function or @stub.cls decorator?"
