@@ -320,18 +320,3 @@ class EventLoopCls:
     @method()
     async def f(self):
         return self.loop.is_running()
-
-
-@stub.cls()
-class ExitMethodCls:
-    @method()
-    def f(self):
-        pass
-
-    @exit()
-    def exit_with_params(self, exc_type, exc, traceback):
-        pass
-
-    @exit()
-    def exit_without_params(self):
-        pass
