@@ -949,13 +949,13 @@ class _Function(_Object, type_prefix="fu"):
         kwargs: Dict[str, Any],
     ) -> "_Function":
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            assert self._client.stub
             if not self.is_hydrated:
                 raise ExecutionError(
                     "Base function in class has not been hydrated. This might happen if an object is"
                     " defined on a different stub, or if it's on the same stub but it didn't get"
                     " created because it wasn't defined in global scope."
                 )
+            assert self._client.stub
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             environment_name = _get_environment_name(None, resolver)
             req = api_pb2.FunctionBindParamsRequest(
