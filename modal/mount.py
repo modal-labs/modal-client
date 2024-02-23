@@ -59,7 +59,7 @@ def python_standalone_mount_name(version: str) -> str:
         raise modal.exception.InvalidError(
             f"Unsupported standalone python version: {version}, supported values are {list(PYTHON_STANDALONE_VERSIONS.keys())}"
         )
-    if libc not in ("gnu", "musl"):
+    if libc != "gnu":
         raise modal.exception.InvalidError(f"Unsupported libc identifier: {libc}")
     release, full_version = PYTHON_STANDALONE_VERSIONS[version]
     return f"python-build-standalone.{release}.{full_version}-{libc}"
