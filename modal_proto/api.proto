@@ -792,7 +792,7 @@ message Function {
 
   uint32 task_idle_timeout_secs = 25;
 
-  CloudProvider cloud_provider = 26;
+  optional CloudProvider cloud_provider = 26;
 
   uint32 warm_pool_size = 27;
 

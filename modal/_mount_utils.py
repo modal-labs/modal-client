@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
-import os
 import posixpath
+import typing
 from pathlib import PurePath, PurePosixPath
 from typing import TYPE_CHECKING, Dict, List, Mapping, Tuple, Union
 
@@ -12,10 +12,13 @@ if TYPE_CHECKING:
     from .s3mount import _S3Mount
 
 
+T = typing.TypeVar(bound=Union["_Volume", "_NetworkFileSystem", "_S3Mount"])
+
+
 def validate_mount_points(
     display_name: str,
-    volume_likes: Mapping[Union[str, os.PathLike], Union["_Volume", "_NetworkFileSystem", "_S3Mount"]],
-) -> List[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_S3Mount"]]]:
+    volume_likes: Mapping[Union[str, PurePosixPath], T],
+) -> List[Tuple[str, T]]:
     """Mount point path validation for volumes and network file systems."""
 
     validated = []

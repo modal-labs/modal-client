@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
 import inspect
-import os
 import pickle
 import time
 import warnings
@@ -377,9 +376,9 @@ async def _map_invocation(
     async def drain_input_generator():
         # Parallelize uploading blobs
         proto_input_stream = stream.iterate(input_stream) | pipe.map(
-            create_input,
+            create_input,  # type: ignore[reportArgumentType]
             ordered=True,
-            task_limit=BLOB_MAX_PARALLELISM,  # type: ignore[reportArgumentType]
+            task_limit=BLOB_MAX_PARALLELISM,
         )
         async with proto_input_stream.stream() as streamer:
             async for item in streamer:
@@ -546,7 +545,7 @@ class FunctionEnv:
     mounts: Sequence[_Mount]
     secrets: Sequence[_Secret]
     network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
-    volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]]
+    volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _S3Mount]]
     gpu: GPU_T
     cloud: Optional[str]
     cpu: Optional[float]
@@ -570,6 +569,7 @@ class _Function(_Object, type_prefix="fu"):
     _function_name: Optional[str]
     _is_method: bool
     _env: FunctionEnv
+    _tag: str
 
     @staticmethod
     def from_args(
@@ -585,7 +585,7 @@ class _Function(_Object, type_prefix="fu"):
         mounts: Collection[_Mount] = (),
         network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
-        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]] = {},
+        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _S3Mount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[_Proxy] = None,
@@ -742,12 +742,13 @@ class _Function(_Object, type_prefix="fu"):
 
             # Add implicit dependencies from the function's code
             objs: list[Object] = get_referred_objects(info.raw_f)
-            _objs: list[_Object] = synchronizer._translate_in(objs)
+            _objs: list[_Object] = synchronizer._translate_in(objs)  # type: ignore
             deps += _objs
 
             return deps
 
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            assert resolver.client and resolver.client.stub
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
             else:
@@ -758,13 +759,14 @@ class _Function(_Object, type_prefix="fu"):
                 function_name=info.function_name,
                 function_type=function_type,
                 webhook_config=webhook_config,
-                existing_function_id=existing_object_id,
+                existing_function_id=existing_object_id or "",
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             # Update the precreated function handle (todo: hack until we merge providers/handles)
             provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            assert resolver.client and resolver.client.stub
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
 
@@ -775,7 +777,7 @@ class _Function(_Object, type_prefix="fu"):
 
             if cpu is not None and cpu < 0.25:
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
-            milli_cpu = int(1000 * cpu) if cpu is not None else None
+            milli_cpu = int(1000 * cpu) if cpu is not None else 0
 
             timeout_secs = timeout
             if interactive:
@@ -825,16 +827,16 @@ class _Function(_Object, type_prefix="fu"):
 
             # Create function remotely
             function_definition = api_pb2.Function(
-                module_name=info.module_name,
+                module_name=info.module_name or "",
                 function_name=info.function_name,
                 mount_ids=[mount.object_id for mount in all_mounts],
                 secret_ids=[secret.object_id for secret in secrets],
-                image_id=(image.object_id if image else None),
+                image_id=(image.object_id if image else ""),
                 definition_type=info.definition_type,
-                function_serialized=function_serialized,
-                class_serialized=class_serialized,
+                function_serialized=function_serialized or b"",
+                class_serialized=class_serialized or b"",
                 function_type=function_type,
-                resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory),
+                resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory or 0),
                 webhook_config=webhook_config,
                 shared_volume_mounts=network_file_system_mount_protos(
                     validated_network_file_systems, allow_cross_region_volumes
@@ -842,17 +844,17 @@ class _Function(_Object, type_prefix="fu"):
                 volume_mounts=volume_mounts,
                 proxy_id=(proxy.object_id if proxy else None),
                 retry_policy=retry_policy,
-                timeout_secs=timeout_secs,
-                task_idle_timeout_secs=container_idle_timeout,
-                concurrency_limit=concurrency_limit,
+                timeout_secs=timeout_secs or 0,
+                task_idle_timeout_secs=container_idle_timeout or 0,
+                concurrency_limit=concurrency_limit or 0,
                 pty_info=pty_info,
                 cloud_provider=cloud_provider,
-                warm_pool_size=keep_warm,
+                warm_pool_size=keep_warm or 0,
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
                 stub_name=stub_name,
                 is_builder_function=is_builder_function,
-                allow_concurrent_inputs=allow_concurrent_inputs,
+                allow_concurrent_inputs=allow_concurrent_inputs or 0,
                 worker_id=config.get("worker_id"),
                 is_auto_snapshot=is_auto_snapshot,
                 is_method=bool(info.cls),
@@ -862,7 +864,7 @@ class _Function(_Object, type_prefix="fu"):
                     api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
                 ],
                 block_network=block_network,
-                max_inputs=max_inputs,
+                max_inputs=max_inputs or 0,
                 s3_mounts=s3_mounts_to_proto(s3_mounts),
                 _experimental_boost=_experimental_boost,
                 _experimental_scheduler=_experimental_scheduler,
@@ -871,7 +873,7 @@ class _Function(_Object, type_prefix="fu"):
                 app_id=resolver.app_id,
                 function=function_definition,
                 schedule=schedule.proto_message if schedule is not None else None,
-                existing_function_id=existing_object_id,
+                existing_function_id=existing_object_id or "",
             )
             try:
                 response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
@@ -882,7 +884,7 @@ class _Function(_Object, type_prefix="fu"):
                     raise InvalidError(exc.message)
                 if exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
-                if "Received :status = '413'" in exc.message:
+                if exc.message and "Received :status = '413'" in exc.message:
                     raise InvalidError(f"Function {raw_f} is too large to deploy.")
                 raise
 
@@ -945,6 +947,7 @@ class _Function(_Object, type_prefix="fu"):
         kwargs: Dict[str, Any],
     ) -> "_Function":
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            assert self._client.stub
             if not self.is_hydrated:
                 raise ExecutionError(
                     "Base function in class has not been hydrated. This might happen if an object is"
@@ -952,11 +955,13 @@ class _Function(_Object, type_prefix="fu"):
                     " created because it wasn't defined in global scope."
                 )
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
+            environment_name = _get_environment_name(None, resolver)
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=self._object_id,
                 serialized_params=serialized_params,
                 function_options=options,
-                environment_name=_get_environment_name(None, resolver),
+                environment_name=environment_name
+                or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
             response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
@@ -989,11 +994,12 @@ class _Function(_Object, type_prefix="fu"):
         """
 
         async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+            assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
-                object_tag=tag,
+                object_tag=tag or "",
                 namespace=namespace,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=_get_environment_name(environment_name, resolver) or "",
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.FunctionGet, request)
@@ -1030,9 +1036,9 @@ class _Function(_Object, type_prefix="fu"):
         return obj
 
     @property
-    def tag(self):
+    def tag(self) -> str:
         """mdmd:hidden"""
-        assert hasattr(self, "_tag")
+        assert self._tag
         return self._tag
 
     @property
