@@ -77,6 +77,7 @@ from .proxy import _Proxy
 from .retries import Retries
 from .s3mount import _S3Mount, s3_mounts_to_proto
 from .schedule import Schedule
+from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
 
@@ -588,6 +589,7 @@ class _Function(_Object, type_prefix="fu"):
         cloud: Optional[str] = None,
         _experimental_boost: bool = False,
         _experimental_scheduler: bool = False,
+        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         cls: Optional[type] = None,
         is_auto_snapshot: bool = False,
@@ -666,6 +668,7 @@ class _Function(_Object, type_prefix="fu"):
                     cpu=cpu,
                     is_builder_function=True,
                     is_auto_snapshot=True,
+                    _experimental_scheduler_placement=_experimental_scheduler_placement,
                 )
                 image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
@@ -855,6 +858,9 @@ class _Function(_Object, type_prefix="fu"):
                 s3_mounts=s3_mounts_to_proto(s3_mounts),
                 _experimental_boost=_experimental_boost,
                 _experimental_scheduler=_experimental_scheduler,
+                _experimental_scheduler_placement=_experimental_scheduler_placement.proto
+                if _experimental_scheduler_placement
+                else None,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,

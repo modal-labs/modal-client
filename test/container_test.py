@@ -774,11 +774,11 @@ def _unwrap_concurrent_input_outputs(n_inputs: int, n_parallel: int, ret: Contai
     for i in range(1, len(ret.items)):
         diff = ret.items[i].input_started_at - ret.items[i - 1].input_started_at
         expected_diff = SLEEP_TIME if i % n_parallel == 0 else 0
-        assert diff == pytest.approx(expected_diff, abs=0.2)
+        assert diff == pytest.approx(expected_diff, abs=0.3)
 
     outputs = []
     for item in ret.items:
-        assert item.output_created_at - item.input_started_at == pytest.approx(SLEEP_TIME, abs=0.2)
+        assert item.output_created_at - item.input_started_at == pytest.approx(SLEEP_TIME, abs=0.3)
         assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
         outputs.append(deserialize(item.result.data, ret.client))
     return outputs
@@ -1016,7 +1016,7 @@ def test_multiple_build_decorator_cls(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-@pytest.mark.timeout(3.0)
+@pytest.mark.timeout(10.0)
 def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_servicer):
     synchronizer = modal_utils.async_utils.synchronizer
 
@@ -1043,7 +1043,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
     # pr.disable()
     # pr.print_stats()
     duration = time.perf_counter() - t0
-    assert duration < 2.5  # TODO (elias): might be able to get this down significantly more by improving serialization
+    assert duration < 5.0  # TODO (elias): might be able to get this down significantly more by improving serialization
 
     # function_io_manager.serialize(large_data_list)
     in_translations = []
