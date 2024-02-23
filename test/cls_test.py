@@ -524,7 +524,7 @@ class ClsWithHandlers:
         pass
 
     @exit()
-    def my_exit(self, exc_type, exc_value, traceback):
+    def my_exit(self):
         pass
 
 
@@ -642,3 +642,17 @@ async def test_deprecated_async_methods():
     stub = Stub("deprecated-async-cls")
     with pytest.warns(DeprecationError):
         stub.cls()(ClsWithDeprecatedAsyncMethods)()
+
+
+def test_exit_parameter_deprecation():
+    return  # Disabling test until we enforce the deprecation
+    with pytest.warns(DeprecationError, match="Support for wrapping parameterized methods with `@exit`"):
+
+        class ClsWithExitParams:
+            @method()
+            def f(self, x):
+                pass
+
+            @exit()
+            def teardown(self, exc_type, exc, tback):
+                pass

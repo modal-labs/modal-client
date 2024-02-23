@@ -281,7 +281,7 @@ class BuildCls:
         return self._k
 
     @exit()
-    def exit1(self, *args):
+    def exit1(self):
         raise Exception("exit called!")
 
     @method()

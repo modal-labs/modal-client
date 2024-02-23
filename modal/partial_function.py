@@ -406,8 +406,12 @@ def _enter(
     return wrapper
 
 
-# TODO(erikbern): last argument should be Optional[TracebackType]
-ExitHandlerType = Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None]
+ExitHandlerType = Union[
+    # Original, __exit__ style method signature (now deprecated)
+    Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None],
+    # Forward-looking unparameterized method
+    Callable[[Any], None],
+]
 
 
 @typechecked
@@ -418,6 +422,12 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "exit")
+        # if method_has_params(f):
+        #     message = (
+        #         "Support for wrapping parameterized methods with `@exit` has been deprecated."
+        #         " To avoid future errors, please update your code and remove the parameters."
+        #     )
+        #     deprecation_warning((2024, 2, 23), message)
         return _PartialFunction(f, _PartialFunctionFlags.EXIT)
 
     return wrapper
