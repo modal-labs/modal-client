@@ -32,6 +32,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
+from typing_extensions import reveal_type
 
 from modal import _pty
 from modal_proto import api_pb2
@@ -157,10 +158,12 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
         )
 
 
-async def _create_input(args, kwargs, client, idx=None) -> api_pb2.FunctionPutInputsItem:
+async def _create_input(args, kwargs, client, idx: Optional[int] = None) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
     """
+    if idx is None:
+        idx = 0
 
     args_serialized = serialize((args, kwargs))
 
@@ -233,11 +236,12 @@ class _Invocation:
 
     @staticmethod
     async def create(function_id: str, args, kwargs, client: _Client):
+        assert client.stub
         item = await _create_input(args, kwargs, client)
 
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
-            parent_input_id=current_input_id(),
+            parent_input_id=current_input_id() or "",
             function_call_type=api_pb2.FUNCTION_CALL_TYPE_UNARY,
             pipelined_inputs=[item],
         )
@@ -292,7 +296,7 @@ class _Invocation:
                 if backend_timeout < 0:
                     break
 
-    async def run_function(self):
+    async def run_function(self) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True))
@@ -317,7 +321,8 @@ class _Invocation:
 
     async def run_generator(self):
         data_stream = _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
-        combined_stream = stream.merge(data_stream, stream.call(self.run_function))
+        reveal_type(self.run_function)
+        combined_stream = stream.merge(data_stream, stream.call(self.run_function))  # type: ignore
 
         items_received = 0
         items_total: Union[int, None] = None  # populated when self.run_function() completes
@@ -344,9 +349,10 @@ async def _map_invocation(
     return_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
 ):
+    assert client.stub
     request = api_pb2.FunctionMapRequest(
         function_id=function_id,
-        parent_input_id=current_input_id(),
+        parent_input_id=current_input_id() or "",
         function_call_type=api_pb2.FUNCTION_CALL_TYPE_MAP,
         return_exceptions=return_exceptions,
     )
@@ -362,7 +368,7 @@ async def _map_invocation(
 
     input_queue: asyncio.Queue = asyncio.Queue()
 
-    async def create_input(arg):
+    async def create_input(arg: Any) -> api_pb2.FunctionPutInputsItem:
         nonlocal num_inputs
         idx = num_inputs
         num_inputs += 1
@@ -371,7 +377,9 @@ async def _map_invocation(
 
     async def drain_input_generator():
         # Parallelize uploading blobs
-        proto_input_stream = input_stream | pipe.map(create_input, ordered=True, task_limit=BLOB_MAX_PARALLELISM)
+        proto_input_stream = stream.iterate(input_stream) | pipe.map(
+            create_input, ordered=True, task_limit=BLOB_MAX_PARALLELISM
+        )
         async with proto_input_stream.stream() as streamer:
             async for item in streamer:
                 await input_queue.put(item)
@@ -1055,9 +1063,9 @@ class _Function(_Object, type_prefix="fu"):
         self._function_name = None
         self._info = None
 
-    def _hydrate_metadata(self, metadata: Message):
+    def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
-        assert isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        assert metadata and isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
