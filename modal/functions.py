@@ -23,6 +23,7 @@ from typing import (
     Sequence,
     Set,
     Sized,
+    Tuple,
     Type,
     Union,
 )
@@ -32,7 +33,6 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
-from typing_extensions import reveal_type
 
 from modal import _pty
 from modal_proto import api_pb2
@@ -321,7 +321,6 @@ class _Invocation:
 
     async def run_generator(self):
         data_stream = _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
-        reveal_type(self.run_function)
         combined_stream = stream.merge(data_stream, stream.call(self.run_function))  # type: ignore
 
         items_received = 0
@@ -378,7 +377,9 @@ async def _map_invocation(
     async def drain_input_generator():
         # Parallelize uploading blobs
         proto_input_stream = stream.iterate(input_stream) | pipe.map(
-            create_input, ordered=True, task_limit=BLOB_MAX_PARALLELISM
+            create_input,
+            ordered=True,
+            task_limit=BLOB_MAX_PARALLELISM,  # type: ignore[reportArgumentType]
         )
         async with proto_input_stream.stream() as streamer:
             async for item in streamer:
@@ -389,6 +390,7 @@ async def _map_invocation(
         yield
 
     async def pump_inputs():
+        assert client.stub
         nonlocal have_all_inputs
         async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
             request = api_pb2.FunctionPutInputsRequest(
@@ -414,6 +416,7 @@ async def _map_invocation(
         yield
 
     async def get_all_outputs():
+        assert client.stub
         nonlocal num_inputs, num_outputs, have_all_inputs
         last_entry_id = "0-0"
         while not have_all_inputs or len(pending_outputs) > len(completed_outputs):
@@ -445,6 +448,7 @@ async def _map_invocation(
                 yield item
 
     async def get_all_outputs_and_clean_up():
+        assert client.stub
         try:
             async for item in get_all_outputs():
                 yield item
@@ -458,7 +462,7 @@ async def _map_invocation(
             )
             await retry_transient_errors(client.stub.FunctionGetOutputs, request)
 
-    async def fetch_output(item: api_pb2.FunctionGetOutputsItem):
+    async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> Tuple[int, Any]:
         try:
             output = await _process_result(item.result, item.data_format, client.stub, client)
         except Exception as e:
@@ -470,7 +474,7 @@ async def _map_invocation(
 
     async def poll_outputs():
         outputs = stream.iterate(get_all_outputs_and_clean_up())
-        outputs_fetched = outputs | pipe.map(fetch_output, ordered=True, task_limit=BLOB_MAX_PARALLELISM)
+        outputs_fetched = outputs | pipe.map(fetch_output, ordered=True, task_limit=BLOB_MAX_PARALLELISM)  # type: ignore
 
         # map to store out-of-order outputs received
         received_outputs = {}
@@ -571,7 +575,7 @@ class _Function(_Object, type_prefix="fu"):
     def from_args(
         info: FunctionInfo,
         stub,
-        image=None,
+        image: _Image,
         secret: Optional[_Secret] = None,
         secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
@@ -597,7 +601,6 @@ class _Function(_Object, type_prefix="fu"):
         _experimental_boost: bool = False,
         _experimental_scheduler: bool = False,
         is_builder_function: bool = False,
-        cls: Optional[type] = None,
         is_auto_snapshot: bool = False,
         checkpointing_enabled: bool = False,
         allow_background_volume_commits: bool = False,
@@ -653,7 +656,7 @@ class _Function(_Object, type_prefix="fu"):
             memory=memory,
         )
 
-        if cls and not is_auto_snapshot:
+        if info.cls and not is_auto_snapshot:
             # Needed to avoid circular imports
             from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
 
@@ -786,7 +789,7 @@ class _Function(_Object, type_prefix="fu"):
                 # serialize at _load time, not function decoration time
                 # otherwise we can't capture a surrounding class for lifetime methods etc.
                 function_serialized = info.serialized_function()
-                class_serialized = serialize(cls) if cls is not None else None
+                class_serialized = serialize(info.cls) if info.cls is not None else None
 
                 # Ensure that large data in global variables does not blow up the gRPC payload,
                 # which has maximum size 100 MiB. We set the limit lower for performance reasons.
@@ -852,7 +855,7 @@ class _Function(_Object, type_prefix="fu"):
                 allow_concurrent_inputs=allow_concurrent_inputs,
                 worker_id=config.get("worker_id"),
                 is_auto_snapshot=is_auto_snapshot,
-                is_method=bool(cls),
+                is_method=bool(info.cls),
                 checkpointing_enabled=checkpointing_enabled,
                 is_checkpointing_function=False,
                 object_dependencies=[
@@ -918,7 +921,7 @@ class _Function(_Object, type_prefix="fu"):
         obj._stub = stub  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
-        obj._is_method = bool(cls)
+        obj._is_method = bool(info.cls)
         obj._env = function_env  # needed for modal shell
 
         # Used to check whether we should rebuild an image using run_function
