@@ -406,7 +406,7 @@ def _enter(
     return wrapper
 
 
-ExitMethod = Union[
+ExitHandlerType = Union[
     # Original, __exit__ style method signature (now deprecated)
     Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None],
     # Forward-looking unparameterized method
@@ -415,11 +415,11 @@ ExitMethod = Union[
 
 
 @typechecked
-def _exit(_warn_parentheses_missing=None) -> Callable[[ExitMethod], _PartialFunction]:
+def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _PartialFunction]:
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
 
-    def wrapper(f: ExitMethod) -> _PartialFunction:
+    def wrapper(f: ExitHandlerType) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "exit")
         # if method_has_params(f):
