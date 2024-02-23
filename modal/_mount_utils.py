@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .s3mount import _S3Mount
 
 
-T = typing.TypeVar(bound=Union["_Volume", "_NetworkFileSystem", "_S3Mount"])
+T = typing.TypeVar("T", bound=Union["_Volume", "_NetworkFileSystem", "_S3Mount"])
 
 
 def validate_mount_points(

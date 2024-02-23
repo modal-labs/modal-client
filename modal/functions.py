@@ -34,7 +34,7 @@ from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
 
 from modal import _pty
-from modal_proto import api_pb2
+from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import (
     queue_batch_iterator,
     synchronize_api,
@@ -228,13 +228,13 @@ class _OutputValue:
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
-    def __init__(self, stub, function_call_id, client=None):
+    def __init__(self, stub: api_grpc.ModalClientStub, function_call_id: str, client: _Client):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(function_id: str, args, kwargs, client: _Client):
+    async def create(function_id: str, args, kwargs, client: _Client) -> "_Invocation":
         assert client.stub
         item = await _create_input(args, kwargs, client)
 
@@ -560,7 +560,7 @@ class _Function(_Object, type_prefix="fu"):
     """
 
     # TODO: more type annotations
-    _info: FunctionInfo
+    _info: Optional[FunctionInfo]
     _all_mounts: Collection[_Mount]
     _stub: "modal.stub._Stub"
     _obj: Any
@@ -570,6 +570,8 @@ class _Function(_Object, type_prefix="fu"):
     _is_method: bool
     _env: FunctionEnv
     _tag: str
+    _raw_f: Callable[..., Any]
+    _build_args: dict
 
     @staticmethod
     def from_args(
@@ -1047,6 +1049,7 @@ class _Function(_Object, type_prefix="fu"):
 
     @property
     def info(self) -> FunctionInfo:
+        assert self._info
         return self._info
 
     @property
@@ -1082,6 +1085,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
+        assert self._function_name
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
             function_type=(
@@ -1089,7 +1093,7 @@ class _Function(_Object, type_prefix="fu"):
                 if self._is_generator
                 else api_pb2.Function.FUNCTION_TYPE_FUNCTION
             ),
-            web_url=self._web_url,
+            web_url=self._web_url or "",
         )
 
     def _set_mute_cancellation(self, value: bool = True):
@@ -1101,10 +1105,15 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
+        if not self._web_url:
+            raise ValueError(
+                f"No web_url can be found for function {self._function_name}. web_url can only be referenced from a running app context"
+            )
         return self._web_url
 
     @property
     def is_generator(self) -> bool:
+        assert self._is_generator is not None
         return self._is_generator
 
     async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
@@ -1116,6 +1125,7 @@ class _Function(_Object, type_prefix="fu"):
         if self._is_generator:
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
+        assert self._function_name
         count_update_callback = (
             self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
         )
@@ -1140,7 +1150,7 @@ class _Function(_Object, type_prefix="fu"):
             if not self._mute_cancellation:
                 raise
 
-    async def _call_function_nowait(self, args, kwargs):
+    async def _call_function_nowait(self, args, kwargs) -> _Invocation:
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
@@ -1397,7 +1407,7 @@ class _Function(_Object, type_prefix="fu"):
     @live_method
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
-
+        assert self._client.stub
         resp = await self._client.stub.FunctionGetCurrentStats(
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id)
         )
@@ -1421,7 +1431,7 @@ class _FunctionCall(_Object, type_prefix="fc"):
     """
 
     def _invocation(self):
-        assert self._client
+        assert self._client.stub
         return _Invocation(self._client.stub, self.object_id, self._client)
 
     async def get(self, timeout: Optional[float] = None):

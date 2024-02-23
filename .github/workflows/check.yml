@@ -15,8 +15,8 @@ jobs:
 
       - run: inv lint
 
-  mypy:
-    name: Mypy
+  type_check:
+    name: Static type checks
     runs-on: ubuntu-20.04
 
     steps:
@@ -33,7 +33,7 @@ jobs:
       - name: Build type stubs
         run: inv type-stubs
 
-      - run: inv mypy
+      - run: inv type-check
 
   check-copyright:
     name: Check copyright

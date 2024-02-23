@@ -40,13 +40,16 @@ def lint(ctx):
 
 
 @task
-def mypy(ctx):
-    mypy_allowlist = [
+def type_check(ctx):
+    # mypy will not check the *implementation* (.py) for files that also have .pyi type stubs
+    ctx.run("mypy . --exclude=playground --exclude=venv311 --exclude=venv38", pty=True)
+
+    # use pyright for checking implementation of those files
+    pyright_allowlist = [
         "modal/functions.py",
     ]
 
-    ctx.run("mypy .", pty=True)
-    ctx.run(f"mypy {' '.join(mypy_allowlist)} --follow-imports=skip", pty=True)
+    ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
 
 @task
