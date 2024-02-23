@@ -551,9 +551,18 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   optional string checkpoint_id = 14;
 }
 
+message CancelInputEvent {
+  repeated string input_ids = 1;
+}
+
+message ContainerHeartbeatResponse {
+  optional CancelInputEvent cancel_input_event = 1;
+}
+
 message ContainerHeartbeatRequest {
   string current_input_id = 1;
   double current_input_started_at = 2;
+  bool supports_graceful_input_cancellation = 3; // implicitly also means we support long polling. Can be removed once v0.57 is no longer supported
 }
 
 message ContainerCheckpointRequest {
@@ -1885,7 +1894,7 @@ service ModalClient {
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Container
-  rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
+  rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
   rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputBatch);
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);

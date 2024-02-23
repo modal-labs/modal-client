@@ -18,9 +18,9 @@ import traceback
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Type
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Set, Type
 
-from google.protobuf.empty_pb2 import Empty
+from google.protobuf import empty_pb2
 from grpclib import Status
 
 from modal.stub import _Stub
@@ -43,7 +43,7 @@ from .app import _container_app, _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
-from .exception import InvalidError
+from .exception import InputCancellation, InvalidError
 from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 
@@ -58,6 +58,10 @@ RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
 class UserException(Exception):
     # Used to shut down the task gracefully
     pass
+
+
+INPUT_CANCELLATION_MESSAGE = "modal-external-cancellation"
+_ignore_cancellation = False  # used by Python 3.8 to know if a CancellationError is due to graceful input cancellation
 
 
 class SignalHandlingEventLoop:
@@ -77,6 +81,13 @@ class SignalHandlingEventLoop:
         task = asyncio.ensure_future(coro, loop=self.loop)
         for s in [signal.SIGINT, signal.SIGTERM]:
             self.loop.add_signal_handler(s, task.cancel)
+        # before Python 3.9 there is no argument to Task.cancel, so we need to communicate the "type" of cancellation in an ugly way
+        if sys.version_info[:2] >= (3, 9):
+            self.loop.add_signal_handler(signal.SIGUSR1, task.cancel, INPUT_CANCELLATION_MESSAGE)
+        else:
+            global _ignore_cancellation
+            _ignore_cancellation = True
+            self.loop.add_signal_handler(signal.SIGUSR1, task.cancel)
         return self.loop.run_until_complete(task)
 
 
@@ -90,6 +101,7 @@ class _FunctionIOManager:
     _GENERATOR_STOP_SENTINEL = object()
 
     def __init__(self, container_args: api_pb2.ContainerArguments, client: _Client):
+        self.cancelled_input_ids: Set[str] = set()
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
@@ -103,9 +115,11 @@ class _FunctionIOManager:
 
         self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
+
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._environment_name = container_args.environment_name
         self._waiting_for_checkpoint = False
+        self._heartbeat_loop = None
 
         self._client = client
         assert isinstance(self._client, _Client)
@@ -114,27 +128,66 @@ class _FunctionIOManager:
         await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name)
         return _container_app
 
-    async def _heartbeat(self):
+    async def _run_heartbeat_loop(self):
+        while 1:
+            t0 = time.monotonic()
+            if await self._heartbeat():
+                # got a cancellation event, fine to start another heartbeat immediately
+                # since the cancellation queue should be empty on the worker server
+                # however, we wait at least 1s to prevent short-circuiting the heartbeat loop
+                # in case there is ever a bug. This means it will take at least 1s between
+                # two subsequent cancellations on the same task at the moment
+                time_until_next_hearbeat = 1.0
+            else:
+                heartbeat_duration = time.monotonic() - t0
+                time_until_next_hearbeat = max(0.0, HEARTBEAT_INTERVAL - heartbeat_duration)
+            await asyncio.sleep(time_until_next_hearbeat)
+
+    async def _heartbeat(self) -> bool:
+        # Return True if a cancellation event was received, in that case we shouldn't wait too long for another heartbeat
+
         # Don't send heartbeats for tasks waiting to be checkpointed.
         # Calling gRPC methods open new connections which block the
         # checkpointing process.
         if self._waiting_for_checkpoint:
-            return
+            return False
 
-        request = api_pb2.ContainerHeartbeatRequest()
+        request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
         if self.current_input_id is not None:
             request.current_input_id = self.current_input_id
         if self.current_input_started_at is not None:
             request.current_input_started_at = self.current_input_started_at
 
         # TODO(erikbern): capture exceptions?
-        await retry_transient_errors(self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
+        response = await retry_transient_errors(
+            self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
+        )
+
+        if response.HasField("cancel_input_event"):
+            # 1. Pause processing of *new* inputs by signalling self a SIGUSR1, which will raise an exception in the main thread if necessary
+            input_ids_to_cancel = response.cancel_input_event.input_ids
+            if input_ids_to_cancel:
+                if self._input_concurrency > 1:
+                    logger.info(
+                        "Shutting down task to stop some subset of inputs (concurrent functions don't support fine grained cancellation)"
+                    )
+                    os.kill(os.getpid(), signal.SIGTERM)
+
+                if self.current_input_id in input_ids_to_cancel:
+                    os.kill(os.getpid(), signal.SIGUSR1)  # raises an exception in the main thread (hopefully user code)
+            return True
+        return False
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):
         async with TaskContext(grace=1.0) as tc:
-            tc.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
+            self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
+            t.set_name("heartbeat loop")
             yield
+
+    def stop_heartbeat(self):
+        if self._heartbeat_loop:
+            self._heartbeat_loop.cancel()
 
     async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
@@ -259,10 +312,9 @@ class _FunctionIOManager:
             request.input_concurrency = self._input_concurrency
 
             await self._semaphore.acquire()
+            yielded = False
             try:
                 # If number of active inputs is at max queue size, this will block.
-                yielded = False
-
                 iteration += 1
                 response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
                     self._client.stub.FunctionGetInputs, request
@@ -275,11 +327,16 @@ class _FunctionIOManager:
                     )
                     await asyncio.sleep(response.rate_limit_sleep_duration)
                 elif response.inputs:
+                    # for input cancellations we currently assume there is no input buffering in the container
+                    assert len(response.inputs) == 1
+
                     for item in response.inputs:
                         if item.kill_switch:
                             logger.debug(f"Task {self.task_id} input received kill signal.")
                             eof_received = True
                             break
+                        if item.input_id in self.cancelled_input_ids:
+                            continue
 
                         # If we got a pointer to a blob, download it from S3.
                         if item.input.WhichOneof("args_oneof") == "args_blob_id":
@@ -287,7 +344,7 @@ class _FunctionIOManager:
                         else:
                             input_pb = item.input
 
-                        # If yielded, allow semaphore to be released via push_outputs
+                        # If yielded, allow semaphore to be released via complete_call
                         yield (item.input_id, item.function_call_id, input_pb)
                         yielded = True
 
@@ -395,11 +452,28 @@ class _FunctionIOManager:
 
     @contextlib.asynccontextmanager
     async def handle_input_exception(self, input_id, started_at: float) -> AsyncGenerator[None, None]:
+        global _ignore_cancellation
         try:
             yield
         except KeyboardInterrupt:
             raise
+        except InputCancellation:
+            # just skip creating any output for this input and keep going with the next instead
+            # it should have been marked as cancelled already in the backend at this point so it
+            # won't be retried
+            logger.info(f"The current input ({input_id=}) was cancelled by a user request")
+            await self.complete_call(started_at)
+            return
         except BaseException as exc:
+            if isinstance(exc, asyncio.CancelledError) and (
+                str(exc) == INPUT_CANCELLATION_MESSAGE or _ignore_cancellation
+            ):
+                _ignore_cancellation = False  # reset for next cancellations
+                # for async functions, InputCancellation is represented by CancelledError with the INPUT_CANCELLATION_MESSAGE message
+                # or in the case of Python 3.8, we use a regular CancelledError with a global to indicate that it's to be ignored
+                logger.info(f"The current input ({input_id=}) was cancelled by a user request")
+                await self.complete_call(started_at)
+                return
             # print exception so it's logged
             traceback.print_exc()
             serialized_tb, tb_line_cache = self.serialize_traceback(exc)
@@ -514,7 +588,7 @@ class _FunctionIOManager:
 
     async def start_pty_shell(self) -> None:
         try:
-            await self._client.stub.FunctionStartPtyShell(Empty())
+            await self._client.stub.FunctionStartPtyShell(empty_pb2.Empty())
         except Exception as e:
             logger.error("Failed to start PTY shell.")
             raise e
@@ -527,6 +601,11 @@ def call_function_sync(
     function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
     imp_fun: ImportedFunction,
 ):
+    def cancel_input_signal_handler(signum, stackframe):
+        raise InputCancellation("input was cancelled by user")
+
+    signal.signal(signal.SIGUSR1, cancel_input_signal_handler)
+
     try:
 
         def run_inputs(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
@@ -879,6 +958,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         function_io_manager.volume_commit(
             [v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits]
         )
+        function_io_manager.stop_heartbeat()  # avoid "Canceling remaining unfinished task" warnings etc.
 
 
 if __name__ == "__main__":
