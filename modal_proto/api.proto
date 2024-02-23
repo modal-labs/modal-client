@@ -1745,6 +1745,8 @@ message VolumeCommitResponse {
 message VolumeGetFileRequest {
   string volume_id = 1;
   bytes path = 2;
+  uint64 start = 3;
+  uint64 len = 4; // 0 is interpreted as 'read to end'
 }
 
 message VolumeGetFileResponse {
@@ -1752,7 +1754,9 @@ message VolumeGetFileResponse {
     bytes data = 1;
     string data_blob_id = 2;
   }
-  uint64 size = 3;
+  uint64 size = 3; // total file size
+  uint64 start = 4; // file position of first byte returned
+  uint64 len = 5; // number of bytes returned
 }
 
 message VolumeListFilesEntry {
