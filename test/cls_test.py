@@ -524,7 +524,7 @@ class ClsWithHandlers:
         pass
 
     @exit()
-    def my_exit(self, exc_type, exc_value, traceback):
+    def my_exit(self):
         pass
 
 
