@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.58.75 (2024-02-23)
+
+* Function calls can now be cancelled without killing the container running the inputs. This allows new inputs by different function calls to the same function to be picked up immediately without having to cold-start new containers after cancelling calls.
+
+
+
 ### 0.57.62 (2024-02-21)
 
 - An `InvalidError` is now raised when a lifecycle decorator (`@build`, `@enter`, or `@exit`) is used in conjunction with `@method`. Previously, this was undefined and could produce confusing failures.
@@ -19,6 +25,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 ### 0.57.61 (2024-02-21)
 
 - Reduced the amount of context for frames in modal's CLI framework when showing a traceback.
+
+
+
+### 0.57.60 (2024-02-21)
+
+- The "dunder method" approach for class lifecycle management (`__build__`, `__enter__`, `__exit__`, etc.) is now deprecated in favor of the modal `@build`, `@enter`, and `@exit` decorators.
 
 
 
@@ -36,7 +48,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.57.42 (2024-02-14)
 
-Adds a new environment variable/config setting, `MODAL_FORCE_BUILD`/`force_build`, that coerces all images to be built from scratch, rather than loaded from cache.
+- Adds a new environment variable/config setting, `MODAL_FORCE_BUILD`/`force_build`, that coerces all images to be built from scratch, rather than loaded from cache.
 
 
 
@@ -51,7 +63,7 @@ Adds a new environment variable/config setting, `MODAL_FORCE_BUILD`/`force_build
 
 ### 0.57.31 (2024-02-12)
 
-Fixed an issue with displaying deprecation warnings on Windows systems.
+- Fixed an issue with displaying deprecation warnings on Windows systems.
 
 
 

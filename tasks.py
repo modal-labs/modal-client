@@ -35,8 +35,8 @@ def protoc(ctx):
 
 
 @task
-def lint(ctx):
-    ctx.run("ruff .", pty=True)
+def lint(ctx, fix=False):
+    ctx.run(f"ruff . {'--fix' if fix else ''}", pty=True)
 
 
 @task
