@@ -37,6 +37,13 @@ def ident(x):
 @stub.function()
 def delay(t):
     time.sleep(t)
+    return t
+
+
+@stub.function()
+async def delay_async(t):
+    await asyncio.sleep(t)
+    return t
 
 
 @stub.function()

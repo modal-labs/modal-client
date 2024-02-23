@@ -189,8 +189,7 @@ class TaskContext:
                 break
 
         t = self.create_task(loop_coro())
-        if hasattr(t, "set_name"):  # Was added in Python 3.8:
-            t.set_name(f"{function_name} loop")
+        t.set_name(f"{function_name} loop")
         self._loops.add(t)
         t.add_done_callback(self._loops.discard)
         return t
