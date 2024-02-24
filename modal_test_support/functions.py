@@ -37,6 +37,13 @@ def ident(x):
 @stub.function()
 def delay(t):
     time.sleep(t)
+    return t
+
+
+@stub.function()
+async def delay_async(t):
+    await asyncio.sleep(t)
+    return t
 
 
 @stub.function()
@@ -274,7 +281,7 @@ class BuildCls:
         return self._k
 
     @exit()
-    def exit1(self, *args):
+    def exit1(self):
         raise Exception("exit called!")
 
     @method()

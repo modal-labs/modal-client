@@ -3,7 +3,7 @@
 from typing import List
 
 from modal import Queue
-from modal._function_utils import FunctionInfo, get_referred_objects
+from modal._function_utils import FunctionInfo, get_referred_objects, method_has_params
 from modal.object import Object
 
 q1 = Queue.new()
@@ -70,3 +70,23 @@ def test_is_nullary():
     assert FunctionInfo(noarg).is_nullary()
     assert FunctionInfo(defaultarg).is_nullary()
     assert FunctionInfo(wildcard_args).is_nullary()
+
+
+class Cls:
+    def foo(self):
+        pass
+
+    def bar(self, x):
+        pass
+
+    def buz(self, *args):
+        pass
+
+
+def test_method_has_params():
+    assert not method_has_params(Cls.foo)
+    assert not method_has_params(Cls().foo)
+    assert method_has_params(Cls.bar)
+    assert method_has_params(Cls().bar)
+    assert method_has_params(Cls.buz)
+    assert method_has_params(Cls().buz)

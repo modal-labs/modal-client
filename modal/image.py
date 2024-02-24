@@ -980,13 +980,12 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Build a Modal image from a public or private image registry, such as Docker Hub.
 
-        The image must be built for the `linux/amd64` platform and have Python 3.8 or above
-        installed and available on PATH as `python`. It should also have `pip`.
+        The image must be built for the `linux/amd64` platform.
 
         If your image does not come with Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
-        are statically-linked Python installations.
+        `3.10`, `3.11`, and `3.12`. Otherwise, the image is expected to have Python>3.8 available
+        on PATH as `python`, along with `pip`.
 
         You may also use `setup_dockerfile_commands` to run Dockerfile commands before the
         remaining commands run. This might be useful if you want a custom Python installation or to
@@ -1003,7 +1002,7 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_registry("python:3.11-slim-bookworm")
         modal.Image.from_registry("ubuntu:22.04", add_python="3.11")
-        modal.Image.from_registry("alpine:3.18.3", add_python="3.12-musl")
+        modal.Image.from_registry("nvcr.io/nvidia/pytorch:22.12-py3")
         ```
         """
         requirements_path = _get_client_requirements_path(add_python)
@@ -1141,8 +1140,7 @@ class _Image(_Object, type_prefix="im"):
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
-        are statically-linked Python installations.
+        `3.10`, `3.11`, and `3.12`.
 
         **Example**
 
