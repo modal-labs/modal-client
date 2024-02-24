@@ -24,9 +24,9 @@ class _GPUConfig:
 
 class T4(_GPUConfig):
     """
-    [NVIDIA T4](https://www.nvidia.com/en-us/data-center/tesla-t4/) GPU class.
+    [NVIDIA T4 Tensor Core](https://www.nvidia.com/en-us/data-center/tesla-t4/) GPU class.
 
-    Low-cost GPU option, providing 16GiB of GPU memory.
+    A low-cost data center GPU based on the Turing architecture, providing 16GiB of GPU memory.
     """
 
     def __init__(
@@ -41,9 +41,9 @@ class T4(_GPUConfig):
 
 class L4(_GPUConfig):
     """
-    [NVIDIA L4](https://www.nvidia.com/en-us/data-center/l4/) GPU class.
+    [NVIDIA L4 Tensor Core](https://www.nvidia.com/en-us/data-center/l4/) GPU class.
 
-    Mid-tier GPU option, providing 24GiB of GPU memory.
+    A mid-tier data center GPU based on the Ada Lovelace architecture, providing 24GiB of GPU memory. Includes RTX (ray tracing) support.
     """
 
     def __init__(
@@ -60,7 +60,7 @@ class A100(_GPUConfig):
     """
     [NVIDIA A100 Tensor Core](https://www.nvidia.com/en-us/data-center/a100/) GPU class.
 
-    The most powerful GPU available in the cloud. Available in 40GiB and 80GiB GPU memory configurations.
+    The flagship data center GPU of the Ampere architecture. Available in 40GiB and 80GiB GPU memory configurations.
     """
 
     def __init__(
@@ -106,7 +106,7 @@ class A10G(_GPUConfig):
     """
     [NVIDIA A10G Tensor Core](https://www.nvidia.com/en-us/data-center/products/a10-gpu/) GPU class.
 
-    A10G GPUs deliver up to 3.3x better ML training performance, 3x better ML inference performance,
+    A mid-tier data center GPU based on the Ampere architecture, providing 24 GiB of memory. A10G GPUs deliver up to 3.3x better ML training performance, 3x better ML inference performance,
     and 3x better graphics performance, in comparison to NVIDIA T4 GPUs.
     """
 
@@ -125,7 +125,7 @@ class H100(_GPUConfig):
     """
     [NVIDIA H100 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
 
-    H100 features fourth-generation Tensor Cores and a Transformer Engine with FP8 precision that provides up to 4X faster training over the prior generation for GPT-3 (175B) models.
+    The flagship data center GPU of the Hopper architecture. Enhanced support for FP8 precision and a Transformer Engine that provides up to 4X faster training over the prior generation for GPT-3 (175B) models.
     """
 
     def __init__(
