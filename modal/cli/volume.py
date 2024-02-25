@@ -8,6 +8,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import List, Optional
 
+import typer
 from click import UsageError
 from grpclib import GRPCError, Status
 from rich.console import Console
@@ -290,3 +291,29 @@ async def cp(
         raise UsageError("The specified app entity is not a modal.Volume")
     *src_paths, dst_path = paths
     await volume.copy_files(src_paths, dst_path)
+
+
+@volume_cli.command(name="delete", help="Delete a named, persistent modal.Volume.")
+@synchronizer.create_blocking
+async def delete(
+    name: str = Argument(help="Name of the modal.Volume to be deleted. Case sensitive"),
+    confirm: bool = Option(default=False, help="Set this flag to delete without prompting for confirmation"),
+    env: Optional[str] = ENV_OPTION,
+):
+    if not confirm:
+        typer.confirm(
+            f"Are you sure you want to irrevocably delete the modal.Volume '{name}'?",
+            default=False,
+            abort=True,
+        )
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    response = await retry_transient_errors(client.stub.VolumeList, api_pb2.VolumeListRequest(environment_name=env))
+    for item in response.items:
+        if item.label == name:
+            await retry_transient_errors(
+                client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=item.volume_id, environment_name=env)
+            )
+            return
+    else:
+        raise UsageError(f"No modal.Volume found with name '{name}' in modal.Environment '{env}'")
