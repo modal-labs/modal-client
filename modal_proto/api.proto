@@ -143,6 +143,7 @@ enum ObjectCreationType {
   OBJECT_CREATION_TYPE_CREATE_IF_MISSING = 1;
   OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS = 2;
   OBJECT_CREATION_TYPE_CREATE_OVERWRITE_IF_EXISTS = 3;
+  OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP = 4;  // deprecate at some point
 }
 
 enum ProgressType {
@@ -1257,6 +1258,7 @@ message MountGetOrCreateRequest {
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   repeated MountFile files = 5;
+  string app_id = 6;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
 }
 
 message MountGetOrCreateResponse {
@@ -1513,6 +1515,7 @@ message SecretGetOrCreateRequest {
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // Not used atm
   map<string, string> env_dict = 5;
+  string app_id = 6;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
 }
 
 message SecretGetOrCreateResponse {
