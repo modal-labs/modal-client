@@ -997,7 +997,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if vol_file.data_blob_id:
             await stream.send_message(api_pb2.VolumeGetFileResponse(data_blob_id=vol_file.data_blob_id))
         else:
-            await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data))
+            size = len(vol_file.data)
+            if req.start or req.len:
+                start = req.start
+                len_ = req.len or len(vol_file.data)
+                await stream.send_message(
+                    api_pb2.VolumeGetFileResponse(data=vol_file.data[start : start + len_], size=size)
+                )
+            else:
+                await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data, size=size))
 
     async def VolumeRemoveFile(self, stream):
         req = await stream.recv_message()
