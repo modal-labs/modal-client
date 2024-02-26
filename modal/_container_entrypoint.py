@@ -35,7 +35,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function
+from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
@@ -663,7 +663,10 @@ def call_function_sync(
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 with function_io_manager.handle_user_exception():
-                    exit_method(*sys.exc_info())
+                    # We are deprecating parameterized exit methods but want to gracefully handle old code.
+                    # We can remove this once the deprecation in the actual @exit decorator is enforced.
+                    args = (None, None, None) if method_has_params(exit_method) else ()
+                    exit_method(*args)
 
 
 async def call_function_async(
@@ -733,7 +736,10 @@ async def call_function_async(
             for exit_method in exit_methods.values():
                 # Call a user-defined method
                 with function_io_manager.handle_user_exception():
-                    exit_res = exit_method(*sys.exc_info())
+                    # We are deprecating parameterized exit methods but want to gracefully handle old code.
+                    # We can remove this once the deprecation in the actual @exit decorator is enforced.
+                    args = (None, None, None) if method_has_params(exit_method) else ()
+                    exit_res = exit_method(*args)
                     if inspect.iscoroutine(exit_res):
                         await exit_res
 

@@ -15,6 +15,7 @@ from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api, synchronizer
 
+from ._function_utils import method_has_params
 from .config import logger
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function
@@ -406,8 +407,12 @@ def _enter(
     return wrapper
 
 
-# TODO(erikbern): last argument should be Optional[TracebackType]
-ExitHandlerType = Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None]
+ExitHandlerType = Union[
+    # Original, __exit__ style method signature (now deprecated)
+    Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None],
+    # Forward-looking unparameterized method
+    Callable[[Any], None],
+]
 
 
 @typechecked
@@ -418,6 +423,12 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "exit")
+        if method_has_params(f):
+            message = (
+                "Support for decorating parameterized methods with `@exit` has been deprecated."
+                " To avoid future errors, please update your code by removing the parameters."
+            )
+            deprecation_warning((2024, 2, 23), message)
         return _PartialFunction(f, _PartialFunctionFlags.EXIT)
 
     return wrapper

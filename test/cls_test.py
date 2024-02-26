@@ -524,7 +524,7 @@ class ClsWithHandlers:
         pass
 
     @exit()
-    def my_exit(self, exc_type, exc_value, traceback):
+    def my_exit(self):
         pass
 
 
@@ -582,20 +582,22 @@ def test_disallow_lifecycle_decorators_with_method(decorator):
 
 
 def test_deprecated_sync_methods():
-    class ClsWithDeprecatedSyncMethods:
-        def __enter__(self):
-            return 42
+    with pytest.warns(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
 
-        @enter()
-        def my_enter(self):
-            return 43
+        class ClsWithDeprecatedSyncMethods:
+            def __enter__(self):
+                return 42
 
-        def __exit__(self, exc_type, exc, tb):
-            return 44
+            @enter()
+            def my_enter(self):
+                return 43
 
-        @exit()
-        def my_exit(self, exc_type, exc, tb):
-            return 45
+            def __exit__(self, exc_type, exc, tb):
+                return 44
+
+            @exit()
+            def my_exit(self, exc_type, exc, tb):
+                return 45
 
     obj = ClsWithDeprecatedSyncMethods()
 
@@ -614,20 +616,22 @@ def test_deprecated_sync_methods():
 
 @pytest.mark.asyncio
 async def test_deprecated_async_methods():
-    class ClsWithDeprecatedAsyncMethods:
-        async def __aenter__(self):
-            return 42
+    with pytest.warns(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
 
-        @enter()
-        async def my_enter(self):
-            return 43
+        class ClsWithDeprecatedAsyncMethods:
+            async def __aenter__(self):
+                return 42
 
-        async def __aexit__(self, exc_type, exc, tb):
-            return 44
+            @enter()
+            async def my_enter(self):
+                return 43
 
-        @exit()
-        async def my_exit(self, exc_type, exc, tb):
-            return 45
+            async def __aexit__(self, exc_type, exc, tb):
+                return 44
+
+            @exit()
+            async def my_exit(self, exc_type, exc, tb):
+                return 45
 
     obj = ClsWithDeprecatedAsyncMethods()
 

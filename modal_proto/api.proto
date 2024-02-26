@@ -1742,9 +1742,16 @@ message VolumeCommitResponse {
   bool skip_reload = 1;
 }
 
+message VolumeDeleteRequest {
+  string volume_id = 1;
+  string environment_name = 2;
+}
+
 message VolumeGetFileRequest {
   string volume_id = 1;
   bytes path = 2;
+  uint64 start = 3;
+  uint64 len = 4; // 0 is interpreted as 'read to end'
 }
 
 message VolumeGetFileResponse {
@@ -1752,7 +1759,9 @@ message VolumeGetFileResponse {
     bytes data = 1;
     string data_blob_id = 2;
   }
-  uint64 size = 3;
+  uint64 size = 3; // total file size
+  uint64 start = 4; // file position of first byte returned
+  uint64 len = 5; // number of bytes returned
 }
 
 message VolumeListFilesEntry {
@@ -2003,6 +2012,7 @@ service ModalClient {
   // Volumes
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);
+  rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);
