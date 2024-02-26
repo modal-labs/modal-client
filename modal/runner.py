@@ -18,7 +18,7 @@ from ._output import OutputManager, get_app_logs_loop, step_completed, step_prog
 from .app import _LocalApp, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
-from .exception import InvalidError, TimeoutError
+from .exception import InteractiveTimeoutError, InvalidError
 
 if TYPE_CHECKING:
     from .stub import _Stub
@@ -317,7 +317,7 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
             # else: sandbox hasn't been assigned a task yet
         else:
             loading_status.stop()
-            raise TimeoutError("Timed out while waiting for sandbox to start")
+            raise InteractiveTimeoutError("Timed out while waiting for sandbox to start")
 
         loading_status.stop()
         await container_exec(task_id, cmd, pty=True, client=client, terminate_container_on_exit=True)

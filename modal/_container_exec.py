@@ -16,7 +16,7 @@ from rich.console import Console
 
 from modal._pty import get_pty_info, raw_terminal, set_nonblocking
 from modal.client import _Client
-from modal.exception import ExecutionError, NotFoundError, TimeoutError as ModalTimeoutError
+from modal.exception import ExecutionError, InteractiveTimeoutError, NotFoundError
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, asyncify
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
@@ -84,7 +84,7 @@ async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Op
         except (asyncio.TimeoutError, TimeoutError):
             stop_connecting_status()
             exec_output_task.cancel()
-            raise ModalTimeoutError("Failed to establish connection to container.")
+            raise InteractiveTimeoutError("Failed to establish connection to container.")
 
 
 # note: this is very similar to code in _pty.py.
