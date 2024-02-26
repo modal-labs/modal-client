@@ -1,5 +1,7 @@
-# Copyright Modal Labs 2022
 # mypy: ignore-errors
+
+# Copyright (c) 2009, Jay Loden, Dave Daeschler, Giampaolo Rodola
+# All rights reserved.
 
 """This is a vendored copy of parts of the 'psutil' Python package.
 

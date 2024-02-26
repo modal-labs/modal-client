@@ -5,7 +5,6 @@ import shlex
 import sys
 import typing
 import warnings
-from datetime import date
 from inspect import isfunction
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -30,8 +29,6 @@ from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret
-
-_from_dockerhub_deprecation_msg = "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
 
 
 def _validate_python_version(version: str) -> None:
@@ -981,15 +978,14 @@ class _Image(_Object, type_prefix="im"):
         add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """Build a Modal image from a public image registry, such as Docker Hub.
+        """Build a Modal image from a public or private image registry, such as Docker Hub.
 
-        The image must be built for the `linux/amd64` platform and have Python 3.8 or above
-        installed and available on PATH as `python`. It should also have `pip`.
+        The image must be built for the `linux/amd64` platform.
 
         If your image does not come with Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
-        are statically-linked Python installations.
+        `3.10`, `3.11`, and `3.12`. Otherwise, the image is expected to have Python>3.8 available
+        on PATH as `python`, along with `pip`.
 
         You may also use `setup_dockerfile_commands` to run Dockerfile commands before the
         remaining commands run. This might be useful if you want a custom Python installation or to
@@ -1006,7 +1002,7 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_registry("python:3.11-slim-bookworm")
         modal.Image.from_registry("ubuntu:22.04", add_python="3.11")
-        modal.Image.from_registry("alpine:3.18.3", add_python="3.12-musl")
+        modal.Image.from_registry("nvcr.io/nvidia/pytorch:22.12-py3")
         ```
         """
         requirements_path = _get_client_requirements_path(add_python)
@@ -1038,8 +1034,8 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         **kwargs,
     ):
-        f"""{_from_dockerhub_deprecation_msg}"""
-        deprecation_error(date(2023, 8, 25), _from_dockerhub_deprecation_msg)
+        """`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."""
+        deprecation_error((2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead.")
 
     @staticmethod
     @typechecked
@@ -1144,8 +1140,7 @@ class _Image(_Object, type_prefix="im"):
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
-        are statically-linked Python installations.
+        `3.10`, `3.11`, and `3.12`.
 
         **Example**
 
@@ -1403,7 +1398,7 @@ class _Image(_Object, type_prefix="im"):
             import torch
         ```
         """
-        deprecation_warning(date(2023, 12, 15), Image.run_inside.__doc__)
+        deprecation_warning((2023, 12, 15), Image.run_inside.__doc__)
         return self.imports()
 
 

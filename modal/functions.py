@@ -7,7 +7,6 @@ import time
 import warnings
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import date
 from pathlib import PurePosixPath
 from typing import (
     TYPE_CHECKING,
@@ -15,16 +14,15 @@ from typing import (
     AsyncGenerator,
     AsyncIterable,
     AsyncIterator,
-    Awaitable,
     Callable,
     Collection,
     Dict,
-    Iterable,
     List,
     Literal,
     Optional,
     Sequence,
     Set,
+    Sized,
     Type,
     Union,
 )
@@ -79,10 +77,11 @@ from .proxy import _Proxy
 from .retries import Retries
 from .s3mount import _S3Mount, s3_mounts_to_proto
 from .schedule import Schedule
+from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
 
-OUTPUTS_TIMEOUT = 55  # seconds
+OUTPUTS_TIMEOUT = 55.0  # seconds
 ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
 
 
@@ -235,16 +234,20 @@ class _Invocation:
 
     @staticmethod
     async def create(function_id: str, args, kwargs, client: _Client):
+        item = await _create_input(args, kwargs, client)
+
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
             parent_input_id=current_input_id(),
             function_call_type=api_pb2.FUNCTION_CALL_TYPE_UNARY,
+            pipelined_inputs=[item],
         )
         response = await retry_transient_errors(client.stub.FunctionMap, request)
-
         function_call_id = response.function_call_id
 
-        item = await _create_input(args, kwargs, client)
+        if response.pipelined_inputs:
+            return _Invocation(client.stub, function_call_id, client)
+
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
         )
@@ -563,13 +566,13 @@ class _Function(_Object, type_prefix="fu"):
         stub,
         image=None,
         secret: Optional[_Secret] = None,
-        secrets: Collection[_Secret] = (),
+        secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
         gpu: GPU_T = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
@@ -584,6 +587,9 @@ class _Function(_Object, type_prefix="fu"):
         keep_warm: Optional[int] = None,
         interactive: bool = False,
         cloud: Optional[str] = None,
+        _experimental_boost: bool = False,
+        _experimental_scheduler: bool = False,
+        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         cls: Optional[type] = None,
         is_auto_snapshot: bool = False,
@@ -605,7 +611,7 @@ class _Function(_Object, type_prefix="fu"):
 
         if secret is not None:
             deprecation_warning(
-                date(2024, 1, 31),
+                (2024, 1, 31),
                 "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
             )
             secrets = [secret, *secrets]
@@ -662,6 +668,7 @@ class _Function(_Object, type_prefix="fu"):
                     cpu=cpu,
                     is_builder_function=True,
                     is_auto_snapshot=True,
+                    _experimental_scheduler_placement=_experimental_scheduler_placement,
                 )
                 image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
@@ -849,6 +856,11 @@ class _Function(_Object, type_prefix="fu"):
                 block_network=block_network,
                 max_inputs=max_inputs,
                 s3_mounts=s3_mounts_to_proto(s3_mounts),
+                _experimental_boost=_experimental_boost,
+                _experimental_scheduler=_experimental_scheduler,
+                _experimental_scheduler_placement=_experimental_scheduler_placement.proto
+                if _experimental_scheduler_placement
+                else None,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -924,7 +936,7 @@ class _Function(_Object, type_prefix="fu"):
         obj,
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
-        args: Iterable[Any],
+        args: Sized,
         kwargs: Dict[str, Any],
     ) -> "_Function":
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -945,7 +957,7 @@ class _Function(_Object, type_prefix="fu"):
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
 
         provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
-        if len(args) + len(kwargs) == 0 and not from_other_workspace and self.is_hydrated:
+        if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
             provider._hydrate_from_other(self)
         provider._is_remote_cls_method = True  # TODO(erikbern): deprecated
@@ -1015,6 +1027,7 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def tag(self):
         """mdmd:hidden"""
+        assert hasattr(self, "_tag")
         return self._tag
 
     @property
@@ -1031,6 +1044,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""
+        assert hasattr(self, "_raw_f") and hasattr(self, "_build_args")
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
     # Live handle methods
@@ -1260,15 +1274,13 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
 
-    def call(self, *args, **kwargs) -> Awaitable[Any]:
+    def call(self, *args, **kwargs) -> None:
         """Deprecated. Use `f.remote` or `f.remote_gen` instead."""
         # TODO: Generics/TypeVars
         if self._is_generator:
-            deprecation_error(
-                date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`"
-            )
+            deprecation_error((2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`")
         else:
-            deprecation_error(date(2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
+            deprecation_error((2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
 
     @synchronizer.no_io_translation
     @live_method
@@ -1334,13 +1346,13 @@ class _Function(_Object, type_prefix="fu"):
     def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
         if self._get_is_remote_cls_method():
             deprecation_error(
-                date(2023, 9, 1),
+                (2023, 9, 1),
                 "Calling remote class methods like `obj.f(...)` is deprecated. Use `obj.f.remote(...)` for remote calls"
                 " and `obj.f.local(...)` for local calls",
             )
         else:
             deprecation_error(
-                date(2023, 8, 16),
+                (2023, 8, 16),
                 "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
                 " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
                 " a Modal container in the cloud",
@@ -1460,8 +1472,8 @@ async def _gather(*function_calls: _FunctionCall):
 gather = synchronize_api(_gather)
 
 
-_current_input_id = ContextVar("_current_input_id")
-_current_function_call_id = ContextVar("_current_function_call_id")
+_current_input_id: ContextVar = ContextVar("_current_input_id")
+_current_function_call_id: ContextVar = ContextVar("_current_function_call_id")
 
 
 def current_input_id() -> Optional[str]:

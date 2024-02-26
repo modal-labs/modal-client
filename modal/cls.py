@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import os
 import pickle
-from datetime import date
 from typing import Any, Callable, Collection, Dict, List, Optional, Type, TypeVar, Union
 
 from google.protobuf.message import Message
@@ -37,7 +36,7 @@ T = TypeVar("T")
 
 class ClsMixin:
     def __init_subclass__(cls):
-        deprecation_error(date(2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
+        deprecation_error((2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
 
 
 def check_picklability(key, arg):
@@ -275,7 +274,6 @@ class _Cls(_Object, type_prefix="cs"):
         concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
-        keep_warm: Optional[int] = None,
         allow_background_volume_commits: bool = False,
     ) -> "_Cls":
         retry_policy = _parse_retries(retries)
@@ -305,7 +303,6 @@ class _Cls(_Object, type_prefix="cs"):
             concurrency_limit=concurrency_limit,
             timeout_secs=timeout,
             task_idle_timeout_secs=container_idle_timeout,
-            warm_pool_size=keep_warm,
             replace_volume_mounts=replace_volume_mounts,
             volume_mounts=volume_mounts,
             allow_concurrent_inputs=allow_concurrent_inputs,
@@ -342,9 +339,7 @@ class _Cls(_Object, type_prefix="cs"):
         )
 
     async def remote(self, *args, **kwargs):
-        deprecation_error(
-            date(2023, 9, 1), "`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`."
-        )
+        deprecation_error((2023, 9, 1), "`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`.")
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint

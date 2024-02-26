@@ -35,13 +35,18 @@ def protoc(ctx):
 
 
 @task
-def lint(ctx):
-    ctx.run("ruff .", pty=True)
+def lint(ctx, fix=False):
+    ctx.run(f"ruff . {'--fix' if fix else ''}", pty=True)
 
 
 @task
 def mypy(ctx):
+    mypy_allowlist = [
+        "modal/functions.py",
+    ]
+
     ctx.run("mypy .", pty=True)
+    ctx.run(f"mypy {' '.join(mypy_allowlist)} --follow-imports=skip", pty=True)
 
 
 @task

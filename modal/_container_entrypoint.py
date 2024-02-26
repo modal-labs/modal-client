@@ -18,9 +18,9 @@ import traceback
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Type
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Set, Type
 
-from google.protobuf.empty_pb2 import Empty
+from google.protobuf import empty_pb2
 from grpclib import Status
 
 from modal.stub import _Stub
@@ -36,16 +36,15 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._checkpoint_utils import get_open_connections
-from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function
+from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
-from ._tracing import extract_tracing_context, set_span_tag, trace, wrap
 from .app import _container_app, _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
-from .exception import InvalidError
+from .exception import InputCancellation, InvalidError
 from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 
@@ -62,20 +61,35 @@ class UserException(Exception):
     pass
 
 
-def run_with_signal_handler(coro):
-    """Execute coro in an event loop, with a signal handler that cancels
-    the task in the case of SIGINT or SIGTERM. Prevents stray cancellation errors
-    from propagating up."""
+INPUT_CANCELLATION_MESSAGE = "modal-external-cancellation"
+_ignore_cancellation = False  # used by Python 3.8 to know if a CancellationError is due to graceful input cancellation
 
-    loop = asyncio.new_event_loop()
-    task = asyncio.ensure_future(coro, loop=loop)
-    for s in [signal.SIGINT, signal.SIGTERM]:
-        loop.add_signal_handler(s, task.cancel)
-    try:
-        result = loop.run_until_complete(task)
-    finally:
-        loop.close()
-    return result
+
+class SignalHandlingEventLoop:
+    """Manage an event loop for executing coroutines while handling SIGINT/SIGTERM.
+
+    Prevents stray cancellation errors from propagating up.
+    """
+
+    def __enter__(self):
+        self.loop = asyncio.new_event_loop()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.loop.close()
+
+    def run(self, coro):
+        task = asyncio.ensure_future(coro, loop=self.loop)
+        for s in [signal.SIGINT, signal.SIGTERM]:
+            self.loop.add_signal_handler(s, task.cancel)
+        # before Python 3.9 there is no argument to Task.cancel, so we need to communicate the "type" of cancellation in an ugly way
+        if sys.version_info[:2] >= (3, 9):
+            self.loop.add_signal_handler(signal.SIGUSR1, task.cancel, INPUT_CANCELLATION_MESSAGE)
+        else:
+            global _ignore_cancellation
+            _ignore_cancellation = True
+            self.loop.add_signal_handler(signal.SIGUSR1, task.cancel)
+        return self.loop.run_until_complete(task)
 
 
 class _FunctionIOManager:
@@ -88,6 +102,7 @@ class _FunctionIOManager:
     _GENERATOR_STOP_SENTINEL = object()
 
     def __init__(self, container_args: api_pb2.ContainerArguments, client: _Client):
+        self.cancelled_input_ids: Set[str] = set()
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
@@ -101,39 +116,79 @@ class _FunctionIOManager:
 
         self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
+
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._environment_name = container_args.environment_name
         self._waiting_for_checkpoint = False
+        self._heartbeat_loop = None
 
         self._client = client
         assert isinstance(self._client, _Client)
 
-    @wrap()
     async def initialize_app(self) -> _ContainerApp:
         await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name)
         return _container_app
 
-    async def _heartbeat(self):
+    async def _run_heartbeat_loop(self):
+        while 1:
+            t0 = time.monotonic()
+            if await self._heartbeat():
+                # got a cancellation event, fine to start another heartbeat immediately
+                # since the cancellation queue should be empty on the worker server
+                # however, we wait at least 1s to prevent short-circuiting the heartbeat loop
+                # in case there is ever a bug. This means it will take at least 1s between
+                # two subsequent cancellations on the same task at the moment
+                time_until_next_hearbeat = 1.0
+            else:
+                heartbeat_duration = time.monotonic() - t0
+                time_until_next_hearbeat = max(0.0, HEARTBEAT_INTERVAL - heartbeat_duration)
+            await asyncio.sleep(time_until_next_hearbeat)
+
+    async def _heartbeat(self) -> bool:
+        # Return True if a cancellation event was received, in that case we shouldn't wait too long for another heartbeat
+
         # Don't send heartbeats for tasks waiting to be checkpointed.
         # Calling gRPC methods open new connections which block the
         # checkpointing process.
         if self._waiting_for_checkpoint:
-            return
+            return False
 
-        request = api_pb2.ContainerHeartbeatRequest()
+        request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
         if self.current_input_id is not None:
             request.current_input_id = self.current_input_id
         if self.current_input_started_at is not None:
             request.current_input_started_at = self.current_input_started_at
 
         # TODO(erikbern): capture exceptions?
-        await retry_transient_errors(self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
+        response = await retry_transient_errors(
+            self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
+        )
+
+        if response.HasField("cancel_input_event"):
+            # 1. Pause processing of *new* inputs by signalling self a SIGUSR1, which will raise an exception in the main thread if necessary
+            input_ids_to_cancel = response.cancel_input_event.input_ids
+            if input_ids_to_cancel:
+                if self._input_concurrency > 1:
+                    logger.info(
+                        "Shutting down task to stop some subset of inputs (concurrent functions don't support fine grained cancellation)"
+                    )
+                    os.kill(os.getpid(), signal.SIGTERM)
+
+                if self.current_input_id in input_ids_to_cancel:
+                    os.kill(os.getpid(), signal.SIGUSR1)  # raises an exception in the main thread (hopefully user code)
+            return True
+        return False
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):
         async with TaskContext(grace=1.0) as tc:
-            tc.infinite_loop(self._heartbeat, sleep=HEARTBEAT_INTERVAL)
+            self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
+            t.set_name("heartbeat loop")
             yield
+
+    def stop_heartbeat(self):
+        if self._heartbeat_loop:
+            self._heartbeat_loop.cancel()
 
     async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
@@ -199,6 +254,10 @@ class _FunctionIOManager:
             message = await message_rx.get()
             if message is self._GENERATOR_STOP_SENTINEL:
                 break
+            # ASGI 'http.response.start' and 'http.response.body' msgs are observed to be separated by 1ms.
+            # If we don't sleep here for 1ms we end up with an extra call to .put_data_out().
+            if index == 1:
+                await asyncio.sleep(0.001)
             messages_bytes = [serialize_data_format(message, data_format)]
             total_size = len(messages_bytes[0]) + 512
             while total_size < 16 * 1024 * 1024:  # 16 MiB, maximum size in a single message
@@ -223,7 +282,6 @@ class _FunctionIOManager:
         """Put a value onto a queue, using the synchronicity event loop."""
         await queue.put(value)
 
-    @wrap()
     async def populate_input_blobs(self, item: api_pb2.FunctionInput):
         args = await blob_download(item.args_blob_id, self._client.stub)
 
@@ -255,15 +313,13 @@ class _FunctionIOManager:
             request.input_concurrency = self._input_concurrency
 
             await self._semaphore.acquire()
+            yielded = False
             try:
                 # If number of active inputs is at max queue size, this will block.
-                yielded = False
-                with trace("get_inputs"):
-                    set_span_tag("iteration", str(iteration))  # force this to be a tag string
-                    iteration += 1
-                    response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
-                        self._client.stub.FunctionGetInputs, request
-                    )
+                iteration += 1
+                response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
+                    self._client.stub.FunctionGetInputs, request
+                )
 
                 if response.rate_limit_sleep_duration:
                     logger.info(
@@ -272,11 +328,16 @@ class _FunctionIOManager:
                     )
                     await asyncio.sleep(response.rate_limit_sleep_duration)
                 elif response.inputs:
+                    # for input cancellations we currently assume there is no input buffering in the container
+                    assert len(response.inputs) == 1
+
                     for item in response.inputs:
                         if item.kill_switch:
                             logger.debug(f"Task {self.task_id} input received kill signal.")
                             eof_received = True
                             break
+                        if item.input_id in self.cancelled_input_ids:
+                            continue
 
                         # If we got a pointer to a blob, download it from S3.
                         if item.input.WhichOneof("args_oneof") == "args_blob_id":
@@ -284,7 +345,7 @@ class _FunctionIOManager:
                         else:
                             input_pb = item.input
 
-                        # If yielded, allow semaphore to be released via push_outputs
+                        # If yielded, allow semaphore to be released via complete_call
                         yield (item.input_id, item.function_call_id, input_pb)
                         yielded = True
 
@@ -392,13 +453,28 @@ class _FunctionIOManager:
 
     @contextlib.asynccontextmanager
     async def handle_input_exception(self, input_id, started_at: float) -> AsyncGenerator[None, None]:
+        global _ignore_cancellation
         try:
-            with trace("input"):
-                set_span_tag("input_id", input_id)
-                yield
+            yield
         except KeyboardInterrupt:
             raise
+        except InputCancellation:
+            # just skip creating any output for this input and keep going with the next instead
+            # it should have been marked as cancelled already in the backend at this point so it
+            # won't be retried
+            logger.info(f"The current input ({input_id=}) was cancelled by a user request")
+            await self.complete_call(started_at)
+            return
         except BaseException as exc:
+            if isinstance(exc, asyncio.CancelledError) and (
+                str(exc) == INPUT_CANCELLATION_MESSAGE or _ignore_cancellation
+            ):
+                _ignore_cancellation = False  # reset for next cancellations
+                # for async functions, InputCancellation is represented by CancelledError with the INPUT_CANCELLATION_MESSAGE message
+                # or in the case of Python 3.8, we use a regular CancelledError with a global to indicate that it's to be ignored
+                logger.info(f"The current input ({input_id=}) was cancelled by a user request")
+                await self.complete_call(started_at)
+                return
             # print exception so it's logged
             traceback.print_exc()
             serialized_tb, tb_line_cache = self.serialize_traceback(exc)
@@ -525,7 +601,7 @@ class _FunctionIOManager:
 
     async def start_pty_shell(self) -> None:
         try:
-            await self._client.stub.FunctionStartPtyShell(Empty())
+            await self._client.stub.FunctionStartPtyShell(empty_pb2.Empty())
         except Exception as e:
             logger.error("Failed to start PTY shell.")
             raise e
@@ -538,6 +614,11 @@ def call_function_sync(
     function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
     imp_fun: ImportedFunction,
 ):
+    def cancel_input_signal_handler(signum, stackframe):
+        raise InputCancellation("input was cancelled by user")
+
+    signal.signal(signal.SIGUSR1, cancel_input_signal_handler)
+
     try:
 
         def run_inputs(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
@@ -591,14 +672,16 @@ def call_function_sync(
             ):
                 run_inputs(input_id, function_call_id, args, kwargs)
     finally:
-        if imp_fun.obj is not None:
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 with function_io_manager.handle_user_exception():
-                    exit_method(*sys.exc_info())
+                    # We are deprecating parameterized exit methods but want to gracefully handle old code.
+                    # We can remove this once the deprecation in the actual @exit decorator is enforced.
+                    args = (None, None, None) if method_has_params(exit_method) else ()
+                    exit_method(*args)
 
 
-@wrap()
 async def call_function_async(
     function_io_manager,  #: FunctionIOManager,  # TODO: this one too
     imp_fun: ImportedFunction,
@@ -661,12 +744,15 @@ async def call_function_async(
             ):
                 await run_input(input_id, function_call_id, args, kwargs)
     finally:
-        if imp_fun.obj is not None:
+        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 # Call a user-defined method
                 with function_io_manager.handle_user_exception():
-                    exit_res = exit_method(*sys.exc_info())
+                    # We are deprecating parameterized exit methods but want to gracefully handle old code.
+                    # We can remove this once the deprecation in the actual @exit decorator is enforced.
+                    args = (None, None, None) if method_has_params(exit_method) else ()
+                    exit_res = exit_method(*args)
                     if inspect.iscoroutine(exit_res):
                         await exit_res
 
@@ -696,7 +782,6 @@ class ImportedFunction:
     function: _Function
 
 
-@wrap()
 def import_function(
     function_def: api_pb2.Function,
     ser_cls,
@@ -842,7 +927,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # Define a global app (need to do this before imports)
     container_app = function_io_manager.initialize_app()
 
-    with function_io_manager.heartbeats():
+    with SignalHandlingEventLoop() as event_loop, function_io_manager.heartbeats():
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = function_io_manager.get_serialized_function()
@@ -864,7 +949,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify all "enter" methods that need to run before we checkpoint
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
-            run_with_signal_handler(call_functions_for_setup(function_io_manager, pre_checkpoint_methods.values()))
+            event_loop.run(call_functions_for_setup(function_io_manager, pre_checkpoint_methods.values()))
 
         # Checkpoint container after imports. Checkpointed containers start from this point
         # onwards. This assumes that everything up to this point has run successfully,
@@ -880,18 +965,19 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify the "enter" methods to run after we resume
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
-            run_with_signal_handler(call_functions_for_setup(function_io_manager, post_checkpoint_methods.values()))
+            event_loop.run(call_functions_for_setup(function_io_manager, post_checkpoint_methods.values()))
 
         if not imp_fun.is_async:
             call_function_sync(function_io_manager, imp_fun)
         else:
-            run_with_signal_handler(call_function_async(function_io_manager, imp_fun))
+            event_loop.run(call_function_async(function_io_manager, imp_fun))
 
         # Commit on exit to catch uncommitted volume changes and surface background
         # commit errors.
         function_io_manager.volume_commit(
             [v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits]
         )
+        function_io_manager.stop_heartbeat()  # avoid "Canceling remaining unfinished task" warnings etc.
 
 
 if __name__ == "__main__":
@@ -900,22 +986,18 @@ if __name__ == "__main__":
     container_args = api_pb2.ContainerArguments()
     container_args.ParseFromString(base64.b64decode(sys.argv[1]))
 
-    extract_tracing_context(dict(container_args.tracing_context.items()))
+    # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
+    # This is good because if the function is long running then we the client can still send heartbeats
+    # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
+    client = Client.from_env()
 
-    with trace("main"):
-        # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
-        # This is good because if the function is long running then we the client can still send heartbeats
-        # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
-        with trace("client_from_env"):
-            client = Client.from_env()
-
-        try:
-            with proxy_tunnel(container_args.proxy_info):
-                try:
-                    main(container_args, client)
-                except UserException:
-                    logger.info("User exception caught, exiting")
-        except KeyboardInterrupt:
-            logger.debug("Container: interrupted")
+    try:
+        with proxy_tunnel(container_args.proxy_info):
+            try:
+                main(container_args, client)
+            except UserException:
+                logger.info("User exception caught, exiting")
+    except KeyboardInterrupt:
+        logger.debug("Container: interrupted")
 
     logger.debug("Container: done")

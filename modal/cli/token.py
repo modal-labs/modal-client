@@ -20,6 +20,11 @@ activate_option = typer.Option(
     help="Activate the profile containing this token after creation.",
 )
 
+verify_option = typer.Option(
+    True,
+    help="Make a test request to verify the new credentials.",
+)
+
 
 @token_cli.command(
     name="set",
@@ -31,13 +36,13 @@ async def set(
     token_secret: Optional[str] = typer.Option(None, help="Account token secret."),
     profile: Optional[str] = profile_option,
     activate: bool = activate_option,
-    no_verify: bool = False,
+    verify: bool = verify_option,
 ):
     if token_id is None:
         token_id = getpass.getpass("Token ID:")
     if token_secret is None:
         token_secret = getpass.getpass("Token secret:")
-    await _set_token(token_id, token_secret, profile=profile, activate=activate, no_verify=no_verify)
+    await _set_token(token_id, token_secret, profile=profile, activate=activate, verify=verify)
 
 
 @token_cli.command(name="new", help="Create a new token by using an authenticated web session.")
@@ -45,7 +50,7 @@ async def set(
 async def new(
     profile: Optional[str] = profile_option,
     activate: bool = activate_option,
-    no_verify: bool = False,
+    verify: bool = verify_option,
     source: Optional[str] = None,
 ):
-    await _new_token(profile=profile, activate=activate, no_verify=no_verify, source=source)
+    await _new_token(profile=profile, activate=activate, verify=verify, source=source)

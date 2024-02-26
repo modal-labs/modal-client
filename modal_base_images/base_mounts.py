@@ -29,13 +29,14 @@ def publish_client_mount(client):
     print(f"✅ Deployed client mount {name} to global namespace.")
 
 
-def publish_python_standalone(client, version: str, libc: str) -> None:
+def publish_python_standalone(client, version: str) -> None:
     release, full_version = PYTHON_STANDALONE_VERSIONS[version]
 
+    libc = "gnu"
     arch = "x86_64" if version == "3.8" else "x86_64_v3"
     url = (
         "https://github.com/indygreg/python-build-standalone/releases/download"
-        + f"/{release}/cpython-{full_version}+{release}-{arch}-unknown-linux-{libc}-install_only.tar.gz"
+        + f"/{release}/cpython-{full_version}+{release}-{arch}-unknown-linux-gnu-install_only.tar.gz"
     )
 
     profile_environment = config.get("environment")
@@ -62,8 +63,7 @@ def publish_python_standalone(client, version: str, libc: str) -> None:
 def main(client=None):
     publish_client_mount(client)
     for version in PYTHON_STANDALONE_VERSIONS:
-        publish_python_standalone(client, version, "gnu")
-        publish_python_standalone(client, version, "musl")
+        publish_python_standalone(client, version)
 
 
 if __name__ == "__main__":

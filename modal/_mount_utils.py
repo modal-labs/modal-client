@@ -36,7 +36,7 @@ def validate_mount_points(
 
 
 def validate_volumes(
-    volumes: Mapping[Union[str, PurePosixPath], Union["_Volume", "_S3Mount"]]
+    volumes: Mapping[Union[str, PurePosixPath], Union["_Volume", "_S3Mount"]],
 ) -> List[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_S3Mount"]]]:
     if not isinstance(volumes, dict):
         raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")

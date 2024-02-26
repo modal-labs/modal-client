@@ -551,9 +551,18 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   optional string checkpoint_id = 14;
 }
 
+message CancelInputEvent {
+  repeated string input_ids = 1;
+}
+
+message ContainerHeartbeatResponse {
+  optional CancelInputEvent cancel_input_event = 1;
+}
+
 message ContainerHeartbeatRequest {
   string current_input_id = 1;
   double current_input_started_at = 2;
+  bool supports_graceful_input_cancellation = 3; // implicitly also means we support long polling. Can be removed once v0.57 is no longer supported
 }
 
 message ContainerCheckpointRequest {
@@ -564,6 +573,8 @@ message ContainerExecRequest {
   string task_id = 1;
   repeated string command = 2;
   PTYInfo pty_info = 3;
+  // Send SIGTERM to running container on exit of exec command.
+  bool terminate_container_on_exit = 4;
 }
 
 message ContainerExecGetOutputRequest {
@@ -828,8 +839,25 @@ message Function {
   bool block_network = 44;
 
   uint32 max_inputs = 46;
-  
+
   repeated S3Mount s3_mounts = 47;
+
+  bool _experimental_boost = 48;
+
+  // If set, tasks will be scheduled using the new scheduler, which also knows
+  // to look at fine-grained placement constraints.
+  bool _experimental_scheduler = 49;
+  optional SchedulerPlacement _experimental_scheduler_placement = 50;
+}
+
+message SchedulerPlacement {
+  // TODO(irfansharif):
+  // - Fold in cloud, resource needs here too.
+  // - Allow specifying list of regions, zones, cloud, fallback and alternative
+  //   GPU types.
+  optional string _region = 1;
+  optional string _zone = 2;
+  optional string _lifecycle = 3; // "on-demand" or "spot", else ignored
 }
 
 message FunctionHandleMetadata {
@@ -977,10 +1005,12 @@ message FunctionMapRequest {
   string parent_input_id = 2;
   bool return_exceptions = 3;
   FunctionCallType function_call_type = 4;
+  repeated FunctionPutInputsItem pipelined_inputs = 5;
 }
 
 message FunctionMapResponse {
   string function_call_id = 1;
+  repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
 }
 
 message FunctionPutInputsItem {
@@ -1106,12 +1136,12 @@ message GenericResult {  // Used for both tasks and function outputs
   }
 
   GenericStatus status = 1; // Status of the task or function output.
-  string exception = 2;  // Exception message for failures, if available. (?)
+  string exception = 2;  // Exception message for failures, if available.
   int32 exitcode = 3;  // Status code of the container entrypoint or builder process if it terminates unexpectedly.
 
-  string traceback = 4;  // String value of the Python traceback. (?)
-  bytes serialized_tb = 11; // Pickled traceback object. (?)
-  bytes tb_line_cache = 12; // Pickled line cache for traceback object. (?)
+  string traceback = 4;  // String value of the Python traceback.
+  bytes serialized_tb = 11; // Pickled traceback object.
+  bytes tb_line_cache = 12; // Pickled line cache for traceback object.
 
   oneof data_oneof {
     bytes data = 5; // Inline data of the result.
@@ -1382,6 +1412,8 @@ message Sandbox {
   bool block_network = 11;
 
   repeated S3Mount s3_mounts = 12;
+
+  repeated VolumeMount volume_mounts = 13;
 }
 
 message SandboxCreateRequest {
@@ -1710,6 +1742,11 @@ message VolumeCommitResponse {
   bool skip_reload = 1;
 }
 
+message VolumeDeleteRequest {
+  string volume_id = 1;
+  string environment_name = 2;
+}
+
 message VolumeGetFileRequest {
   string volume_id = 1;
   bytes path = 2;
@@ -1822,7 +1859,7 @@ message RuntimeOutputMessage {
 
 message RuntimeOutputBatch {
   repeated RuntimeOutputMessage items = 1;
-  uint64 batch_index = 2; 
+  uint64 batch_index = 2;
   // if an exit code is given, this is the final message that will be sent.
   optional int32 exit_code = 3;
 }
@@ -1862,7 +1899,7 @@ service ModalClient {
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Container
-  rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
+  rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
   rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputBatch);
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
@@ -1971,6 +2008,7 @@ service ModalClient {
   // Volumes
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);
+  rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);

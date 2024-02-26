@@ -10,11 +10,6 @@ check_untyped_defs = true
 no_strict_optional = true
 namespace_packages = true
 
-[[tool.mypy.overrides]]
-module = ["ddtrace.*"]
-check_untyped_defs = false
-follow_imports = "skip"
-
 [tool.pytest.ini_options]
 timeout = 300
 addopts = "--ignore=modal/cli/programs"

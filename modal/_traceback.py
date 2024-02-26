@@ -204,12 +204,14 @@ def setup_rich_traceback() -> None:
     Traceback._render_stack = _render_stack  # type: ignore
     Traceback.from_exception = _from_exception  # type: ignore
 
+    import click
     import grpclib
     import synchronicity
+    import typer
 
     import modal_utils
 
-    install(suppress=[synchronicity, modal_utils, grpclib], extra_lines=1)
+    install(suppress=[synchronicity, modal_utils, grpclib, click, typer], extra_lines=1)
 
 
 def highlight_modal_deprecation_warnings() -> None:

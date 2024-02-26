@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from datetime import date
 from typing import Optional, Union
 
 from modal_proto import api_pb2
@@ -25,9 +24,9 @@ class _GPUConfig:
 
 class T4(_GPUConfig):
     """
-    [NVIDIA T4](https://www.nvidia.com/en-us/data-center/tesla-t4/) GPU class.
+    [NVIDIA T4 Tensor Core](https://www.nvidia.com/en-us/data-center/tesla-t4/) GPU class.
 
-    Low-cost GPU option, providing 16GiB of GPU memory.
+    A low-cost data center GPU based on the Turing architecture, providing 16GiB of GPU memory.
     """
 
     def __init__(
@@ -42,9 +41,9 @@ class T4(_GPUConfig):
 
 class L4(_GPUConfig):
     """
-    [NVIDIA L4](https://www.nvidia.com/en-us/data-center/l4/) GPU class.
+    [NVIDIA L4 Tensor Core](https://www.nvidia.com/en-us/data-center/l4/) GPU class.
 
-    Mid-tier GPU option, providing 24GiB of GPU memory.
+    A mid-tier data center GPU based on the Ada Lovelace architecture, providing 24GiB of GPU memory. Includes RTX (ray tracing) support.
     """
 
     def __init__(
@@ -61,7 +60,7 @@ class A100(_GPUConfig):
     """
     [NVIDIA A100 Tensor Core](https://www.nvidia.com/en-us/data-center/a100/) GPU class.
 
-    The most powerful GPU available in the cloud. Available in 40GiB and 80GiB GPU memory configurations.
+    The flagship data center GPU of the Ampere architecture. Available in 40GiB and 80GiB GPU memory configurations.
     """
 
     def __init__(
@@ -107,7 +106,7 @@ class A10G(_GPUConfig):
     """
     [NVIDIA A10G Tensor Core](https://www.nvidia.com/en-us/data-center/products/a10-gpu/) GPU class.
 
-    A10G GPUs deliver up to 3.3x better ML training performance, 3x better ML inference performance,
+    A mid-tier data center GPU based on the Ampere architecture, providing 24 GiB of memory. A10G GPUs deliver up to 3.3x better ML training performance, 3x better ML inference performance,
     and 3x better graphics performance, in comparison to NVIDIA T4 GPUs.
     """
 
@@ -126,7 +125,7 @@ class H100(_GPUConfig):
     """
     [NVIDIA H100 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
 
-    H100 features fourth-generation Tensor Cores and a Transformer Engine with FP8 precision that provides up to 4X faster training over the prior generation for GPT-3 (175B) models.
+    The flagship data center GPU of the Hopper architecture. Enhanced support for FP8 precision and a Transformer Engine that provides up to 4X faster training over the prior generation for GPT-3 (175B) models.
     """
 
     def __init__(
@@ -138,16 +137,6 @@ class H100(_GPUConfig):
 
     def __repr__(self):
         return f"GPU(H100, count={self.count})"
-
-
-class Inferentia2(_GPUConfig):
-    """mdmd:hidden"""
-
-    def __init__(self, *, count: int = 1):
-        super().__init__(api_pb2.GPU_TYPE_INFERENTIA2, count)
-
-    def __repr__(self):
-        return f"GPU(INFERENTIA2, count={self.count})"
 
 
 class Any(_GPUConfig):
@@ -166,7 +155,6 @@ STRING_TO_GPU_CONFIG = {
     "a100": A100,
     "h100": H100,
     "a10g": A10G,
-    "inf2": Inferentia2,
     "any": Any,
 }
 display_string_to_config = "\n".join(
@@ -213,12 +201,12 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
     elif value is True:
         if raise_on_true:
             deprecation_error(
-                date(2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
+                (2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
             )
         else:
             # We didn't support targeting a GPU type for run_function until 2023-12-12
             deprecation_warning(
-                date(2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
+                (2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
             )
         return Any()
     elif value is None or value is False:

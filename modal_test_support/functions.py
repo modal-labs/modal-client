@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import socket
 import time
-from datetime import date
 
 from modal import (
     Image,
@@ -15,6 +14,7 @@ from modal import (
     current_function_call_id,
     current_input_id,
     enter,
+    exit,
     method,
     web_endpoint,
 )
@@ -38,6 +38,13 @@ def ident(x):
 @stub.function()
 def delay(t):
     time.sleep(t)
+    return t
+
+
+@stub.function()
+async def delay_async(t):
+    await asyncio.sleep(t)
+    return t
 
 
 @stub.function()
@@ -76,7 +83,7 @@ def gen_n_fail_on_m(n, m):
 
 
 def deprecated_function(x):
-    deprecation_warning(date(2000, 1, 1), "This function is deprecated")
+    deprecation_warning((2000, 1, 1), "This function is deprecated")
     return x**2
 
 
@@ -147,7 +154,8 @@ class Cls:
     def __init__(self):
         self._k = 11
 
-    def __enter__(self):
+    @enter()
+    def enter(self):
         self._k += 100
 
     @method()
@@ -211,7 +219,8 @@ def unassociated_function(x):
 
 
 class BaseCls:
-    def __enter__(self):
+    @enter()
+    def enter(self):
         self.x = 2
 
     @method()
@@ -259,7 +268,7 @@ class BuildCls:
         self._k = 1
 
     @enter()
-    def enter(self):
+    def enter1(self):
         self._k += 10
 
     @build()
@@ -271,6 +280,10 @@ class BuildCls:
     def build2(self):
         self._k += 1000
         return self._k
+
+    @exit()
+    def exit1(self):
+        raise Exception("exit called!")
 
     @method()
     def f(self, x):
@@ -307,3 +320,13 @@ class CheckpointingClsNetworkConnectionOpen:
     def open_connection(self):
         remote_ip = socket.gethostbyname("modal.com")
         self._socket.connect((remote_ip, 80))
+
+@stub.cls()
+class EventLoopCls:
+    @enter()
+    async def enter(self):
+        self.loop = asyncio.get_running_loop()
+
+    @method()
+    async def f(self):
+        return self.loop.is_running()

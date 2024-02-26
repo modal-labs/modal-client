@@ -11,8 +11,9 @@ class NetworkConnection:
 
 
 def get_open_connections() -> List[NetworkConnection]:
-    # Prevents import in non-Linux environments.
-    from vendor import psutil
+    # psutil is only supported in Linux. This function is only called inside
+    # containers (via _container_entrypoint.py).
+    from ._vendor import psutil
 
     open_connections:list[NetworkConnection] = []
     for kind in ["tcp", "udp"]:
