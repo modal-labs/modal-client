@@ -54,11 +54,12 @@ def check_copyright(ctx, fix=False):
     invalid_files = []
     d = str(Path(__file__).parent)
     for root, dirs, files in os.walk(d):
-        # jupytext notebook formatted .py files can't be detected as notebooks if we put a copyright comment at the top
+        # Jupytext notebook formatted .py files can't be detected as notebooks if we put a copyright comment at the top.
+        # Code inside modal/_vendor/ has different copyright.
         fns = [
             os.path.join(root, fn)
             for fn in files
-            if fn.endswith(".py") and not fn.endswith(".notebook.py") and "/site-packages/" not in root
+            if fn.endswith(".py") and not fn.endswith(".notebook.py") and "/site-packages/" not in root and "_vendor" not in root
         ]
         for fn in fns:
             first_line = open(fn).readline()

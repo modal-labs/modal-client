@@ -1,7 +1,7 @@
-# mypy: ignore-errors
-
 # Copyright (c) 2009, Jay Loden, Dave Daeschler, Giampaolo Rodola
 # All rights reserved.
+
+# mypy: ignore-errors
 
 """This is a vendored copy of parts of the 'psutil' Python package.
 
