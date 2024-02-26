@@ -390,9 +390,4 @@ def shell(
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
         start_shell = partial(interactive_shell, image=modal_image, cpu=cpu, memory=memory, gpu=gpu, cloud=cloud)
 
-    start_shell(
-        stub,
-        cmd=[cmd],
-        environment_name=env,
-        timeout=3600,
-    )
+    start_shell(stub, cmd=[cmd], environment_name=env, timeout=3600)
