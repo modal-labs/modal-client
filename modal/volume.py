@@ -255,6 +255,8 @@ class _Volume(_StatefulObject, type_prefix="vo"):
         if n != len(response.data):
             raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
         elif n == response.size:
+            if progress:
+                progress_bar.console.log(f"Wrote {n} bytes to '{path.decode()}'")
             return response.size
         elif n > response.size:
             raise RuntimeError(f"length of returned data exceeds reported filesize: {n} > {response.size}")
