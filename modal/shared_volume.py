@@ -7,17 +7,17 @@ from .exception import deprecation_error
 
 class _SharedVolume:
     def __init__(self, *args, **kwargs):
-        """`SharedVolume(...)` is deprecated. Please use `NetworkFileSystem.new(...)` instead."""
+        """`SharedVolume` is deprecated. We recommend `Volume` (https://modal.com/docs/guide/volumes) instead."""
         deprecation_error((2023, 7, 5), _SharedVolume.__init__.__doc__)
 
     @staticmethod
     def new(*args, **kwargs):
-        """`SharedVolume.new(...)` is deprecated. Please use `NetworkFileSystem.new(...)` instead."""
+        """`SharedVolume` is deprecated. We recommend `Volume` (https://modal.com/docs/guide/volumes) instead."""
         deprecation_error((2023, 7, 5), _SharedVolume.new.__doc__)
 
     @staticmethod
     def persisted(*args, **kwargs):
-        """`SharedVolume.persisted(...)` is deprecated. Please use `NetworkFileSystem.persisted(...)` instead."""
+        """`SharedVolume` is deprecated. We recommend `Volume` (https://modal.com/docs/guide/volumes) instead."""
         deprecation_error((2023, 7, 5), _SharedVolume.persisted.__doc__)
 
 
