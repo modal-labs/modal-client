@@ -739,30 +739,30 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.MountPutFileResponse(exists=False))
 
-    async def MountBuild(self, stream):
-        request: api_pb2.MountBuildRequest = await stream.recv_message()
-        mount_number = 123 + self.n_mounts
-        mount_id = f"mo-{mount_number}"
-
-        mount_content = self.mount_contents[mount_id] = {}
-
-        for file in request.files:
-            mount_content[file.filename] = self.files_name2sha[file.filename] = file.sha256_hex
-
-        self.n_mounts += 1
-        await stream.send_message(api_pb2.MountBuildResponse(mount_id=mount_id))
-
     async def MountGetOrCreate(self, stream):
         request: api_pb2.MountGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace)
-        if k in self.deployed_mounts:
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
+            if k not in self.deployed_mounts:
+                raise GRPCError(Status.NOT_FOUND, "Mount not found")
             mount_id = self.deployed_mounts[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             self.n_mounts += 1
             mount_id = f"qu-{self.n_mounts}"
             self.deployed_mounts[k] = mount_id
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
+            mount_number = 123 + self.n_mounts
+            mount_id = f"mo-{mount_number}"
+
+            mount_content = self.mount_contents[mount_id] = {}
+
+            for file in request.files:
+                mount_content[file.filename] = self.files_name2sha[file.filename] = file.sha256_hex
+
+            self.n_mounts += 1
+
         else:
-            raise GRPCError(Status.NOT_FOUND, "Mount not found")
+            raise Exception("unsupported creation type")
         await stream.send_message(
             api_pb2.MountGetOrCreateResponse(
                 mount_id=mount_id, handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef")
