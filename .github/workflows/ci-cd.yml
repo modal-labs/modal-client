@@ -130,8 +130,7 @@ jobs:
 
       - name: Get the current client version
         id: version
-        run: |
-          echo "client_version=`python -m modal_version`" >> "$GITHUB_OUTPUT"
+        run: echo "client_version=`python -m modal_version`" >> "$GITHUB_OUTPUT"
 
       - uses: EndBug/add-and-commit@v9
         with:
