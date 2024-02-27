@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.58.90 (2024-02-27)
+
+- Fixed a bug that could cause `cls`-based functions to to ignore timeout signals.
+
+
+
 ### 0.58.88 (2024-02-26)
 
 * `volume get` performance is improved for large (> 100MB) files
