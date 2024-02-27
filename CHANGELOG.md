@@ -34,6 +34,9 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 
 
+## 0.57
+
+
 ### 0.57.62 (2024-02-21)
 
 - An `InvalidError` is now raised when a lifecycle decorator (`@build`, `@enter`, or `@exit`) is used in conjunction with `@method`. Previously, this was undefined and could produce confusing failures.
