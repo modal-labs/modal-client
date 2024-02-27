@@ -4,15 +4,15 @@ r"""Modal intentionally keeps configurability to a minimum.
 The main configuration options are the API tokens: the token id and the token secret.
 These can be configured in two ways:
 
-1. By running the ``modal token set`` command.
-   This writes the tokens to ``.modal.toml`` file in your home directory.
-2. By setting the environment variables ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET``.
+1. By running the `modal token set` command.
+   This writes the tokens to `.modal.toml` file in your home directory.
+2. By setting the environment variables `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`.
    This takes precedence over the previous method.
 
 .modal.toml
 ---------------
 
-The ``.modal.toml`` file is generally stored in your home directory.
+The `.modal.toml` file is generally stored in your home directory.
 It should look like this::
 
 ```toml
@@ -21,7 +21,7 @@ token_id = "ak-12345..."
 token_secret = "as-12345..."
 ```
 
-You can create this file manually, or you can run the ``modal token set ...``
+You can create this file manually, or you can run the `modal token set ...`
 command (see below).
 
 Setting tokens using the CLI
@@ -35,9 +35,9 @@ modal token set \
   --token-secret <token secret>
 ```
 
-This will write the token id and secret to ``.modal.toml``.
+This will write the token id and secret to `.modal.toml`.
 
-If the token id or secret is provided as the string ``-`` (a single dash),
+If the token id or secret is provided as the string `-` (a single dash),
 then it will be read in a secret way from stdin instead.
 
 Other configuration options
@@ -45,29 +45,28 @@ Other configuration options
 
 Other possible configuration options are:
 
-* ``loglevel`` (in the .toml file) / ``MODAL_LOGLEVEL`` (as an env var).
-  Defaults to ``WARNING``.
-  Set this to ``DEBUG`` to see a bunch of internal output.
-* ``logs_timeout`` (in the .toml file) / ``MODAL_LOGS_TIMEOUT`` (as an env var).
+* `loglevel` (in the .toml file) / `MODAL_LOGLEVEL` (as an env var).
+  Defaults to `WARNING`. Set this to `DEBUG` to see internal messages.
+* `logs_timeout` (in the .toml file) / `MODAL_LOGS_TIMEOUT` (as an env var).
   Defaults to 10.
   Number of seconds to wait for logs to drain when closing the session,
   before giving up.
-* ``automount`` (in the .toml file) / ``MODAL_AUTOMOUNT`` (as an env var).
+* `automount` (in the .toml file) / `MODAL_AUTOMOUNT` (as an env var).
   Defaults to True.
   By default, Modal automatically mounts modules imported in the current scope, that
   are deemed to be "local". This can be turned off by setting this to False.
-* ``server_url`` (in the .toml file) / ``MODAL_SERVER_URL`` (as an env var).
-  Defaults to ``https://api.modal.com``.
-  Not typically meant to be used.
+* `traceback` (in the .toml file) / `MODAL_TRACEBACK` (as an env var).
+  Defaults to False. Enables printing full tracebacks on unexpected CLI
+  errors, which can be useful for debugging client issues.
 
 Meta-configuration
 ------------------
 
 Some "meta-options" are set using environment variables only:
 
-* ``MODAL_CONFIG_PATH`` lets you override the location of the .toml file,
-  by default ``~/.modal.toml``.
-* ``MODAL_PROFILE`` lets you use multiple sections in the .toml file
+* `MODAL_CONFIG_PATH` lets you override the location of the .toml file,
+  by default `~/.modal.toml`.
+* `MODAL_PROFILE` lets you use multiple sections in the .toml file
   and switch between them. It defaults to "default".
 """
 
@@ -194,6 +193,7 @@ _SETTINGS = {
     "worker_id": _Setting(),  # For internal debugging use.
     "restore_state_path": _Setting("/__modal/restore-state.json"),
     "force_build": _Setting(False, transform=lambda x: x not in ("", "0")),
+    "traceback": _Setting(False, transform=lambda x: x not in ("", "0")),
 }
 
 

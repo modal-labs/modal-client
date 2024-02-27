@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2023
-"""Utilities for CLI references to Modal entities
+"""Load or import Python modules from the CLI.
 
 For example, the function reference of `modal run some_file.py::stub.foo_func`
-or the stub lookup of `modal deploy some_file.py`
+or the stub lookup of `modal deploy some_file.py`.
+
+These functions are only called by the Modal CLI, not in tasks.
 """
 
 import dataclasses
@@ -42,6 +44,14 @@ class NoSuchObject(modal.exception.NotFoundError):
     pass
 
 
+class CliUserExecutionError(Exception):
+    """Private wrapper for exceptions during stub imports in the CLI.
+
+    This intentionally does not inherit from `modal.exception.Error`. Exceptions
+    raised in the CLI at this stage will have tracebacks printed.
+    """
+
+
 DEFAULT_STUB_NAME = "stub"
 
 
@@ -51,6 +61,7 @@ def import_file_or_module(file_or_module: str):
         # the current working directory isn't added to sys.path
         # so we add it in order to make module path specification possible
         sys.path.insert(0, "")  # "" means the current working directory
+
     if file_or_module.endswith(".py"):
         # when using a script path, that scripts directory should also be on the path as it is with `python some/script.py`
         sys.path.insert(0, str(Path(file_or_module).resolve().parent))
@@ -60,9 +71,15 @@ def import_file_or_module(file_or_module: str):
         spec = importlib.util.spec_from_file_location(module_name, file_or_module)
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except Exception as exc:
+            raise CliUserExecutionError() from exc
     else:
-        module = importlib.import_module(file_or_module)
+        try:
+            module = importlib.import_module(file_or_module)
+        except Exception as exc:
+            raise CliUserExecutionError() from exc
 
     return module
 
@@ -96,7 +113,7 @@ def get_by_object_path(obj: Any, obj_path: str):
     return obj
 
 
-def infer_function_or_help(
+def _infer_function_or_help(
     stub: Stub, module, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint]:
     function_choices = set(stub.registered_functions.keys())
@@ -222,7 +239,7 @@ def import_function(
     if isinstance(stub_or_function, Stub):
         # infer function or display help for how to select one
         stub = stub_or_function
-        function_handle = infer_function_or_help(stub, module, accept_local_entrypoint, accept_webhook)
+        function_handle = _infer_function_or_help(stub, module, accept_local_entrypoint, accept_webhook)
         return function_handle
     elif isinstance(stub_or_function, Function):
         return stub_or_function
