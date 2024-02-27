@@ -324,3 +324,15 @@ def get_referred_objects(f: Callable) -> List[Object]:
                     obj_queue.append(dep_obj)
 
     return ret
+
+
+def method_has_params(f: Callable) -> bool:
+    """Return True if a method (bound or unbound) has parameters other than self.
+
+    Used for deprecation of @exit() parameters.
+    """
+    num_params = len(inspect.signature(f).parameters)
+    if hasattr(f, "__self__"):
+        return num_params > 0
+    else:
+        return num_params > 1

@@ -2,7 +2,6 @@
 import queue  # The system library
 import time
 import warnings
-from datetime import date
 from typing import Any, List, Optional
 
 from grpclib import GRPCError, Status
@@ -58,7 +57,7 @@ class _Queue(_Object, type_prefix="qu"):
 
     def __init__(self):
         """mdmd:hidden"""
-        deprecation_error(date(2023, 6, 27), "`Queue()` is deprecated. Please use `Queue.new()` instead.")
+        deprecation_error((2023, 6, 27), "`Queue()` is deprecated. Please use `Queue.new()` instead.")
         obj = _Queue.new()
         self._init_from_other(obj)
 

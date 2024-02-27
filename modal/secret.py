@@ -190,14 +190,19 @@ class _Secret(_Object, type_prefix="st"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
+        overwrite: bool = False,
     ) -> str:
         if client is None:
             client = await _Client.from_env()
+        if overwrite:
+            object_creation_type = api_pb2.OBJECT_CREATION_TYPE_CREATE_OVERWRITE_IF_EXISTS
+        else:
+            object_creation_type = api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
         request = api_pb2.SecretGetOrCreateRequest(
             deployment_name=deployment_name,
             namespace=namespace,
             environment_name=_get_environment_name(environment_name),
-            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+            object_creation_type=object_creation_type,
             env_dict=env_dict,
         )
         resp = await retry_transient_errors(client.stub.SecretGetOrCreate, request)

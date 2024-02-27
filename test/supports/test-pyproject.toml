@@ -10,29 +10,13 @@ check_untyped_defs = true
 no_strict_optional = true
 namespace_packages = true
 
-[[tool.mypy.overrides]]
-module = [
-    "ddtrace.*",
-]
-check_untyped_defs = false
-follow_imports = "skip"
-
 [project]
 name = "foo"
 description = "bar"
 requires-python = ">=3.9"
-dependencies = [
-    "banana >=1.2.0",
-    "potato >=0.1.0",
-]
+dependencies = ["banana >=1.2.0", "potato >=0.1.0"]
 
 [project.optional-dependencies]
-dev = [
-    "linting-tool >=0.0.0",
-]
-test = [
-    "pytest >=1.2.0",
-]
-doc = [
-    "mkdocs >=1.4.2",
-]
+dev = ["linting-tool >=0.0.0"]
+test = ["pytest >=1.2.0"]
+doc = ["mkdocs >=1.4.2"]

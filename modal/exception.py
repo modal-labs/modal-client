@@ -4,6 +4,7 @@ import signal
 import sys
 import warnings
 from datetime import date
+from typing import Tuple
 
 
 class Error(Exception):
@@ -95,11 +96,13 @@ def _is_internal_frame(frame):
     return module in _INTERNAL_MODULES
 
 
-def deprecation_error(deprecated_on: date, msg: str):
-    raise DeprecationError(f"Deprecated on {deprecated_on}: {msg}")
+def deprecation_error(deprecated_on: Tuple[int, int, int], msg: str):
+    raise DeprecationError(f"Deprecated on {date(*deprecated_on)}: {msg}")
 
 
-def deprecation_warning(deprecated_on: date, msg: str, pending: bool = False, show_source: bool = True) -> None:
+def deprecation_warning(
+    deprecated_on: Tuple[int, int, int], msg: str, pending: bool = False, show_source: bool = True
+) -> None:
     """Utility for getting the proper stack entry.
 
     See the implementation of the built-in [warnings.warn](https://docs.python.org/3/library/warnings.html#available-functions).
@@ -120,7 +123,7 @@ def deprecation_warning(deprecated_on: date, msg: str, pending: bool = False, sh
     warning_cls: type = PendingDeprecationError if pending else DeprecationError
 
     # This is a lower-level function that warnings.warn uses
-    warnings.warn_explicit(f"{deprecated_on}: {msg}", warning_cls, filename, lineno)
+    warnings.warn_explicit(f"{date(*deprecated_on)}: {msg}", warning_cls, filename, lineno)
 
 
 def _simulate_preemption_interrupt(signum, frame):
@@ -156,6 +159,16 @@ def simulate_preemption(wait_seconds: int, jitter_seconds: int = 0):
     signal.signal(signal.SIGALRM, _simulate_preemption_interrupt)
     jitter = random.randrange(0, jitter_seconds) if jitter_seconds else 0
     signal.alarm(wait_seconds + jitter)
+
+
+class InputCancellation(BaseException):
+    """Raised when the current input is cancelled by the task
+
+    Intentionally a BaseException instead of an Exception, so it won't get
+    caught by unspecified user exception clauses that might be used for retries etc.
+    """
+
+    pass
 
 
 class ModuleNotMountable(Exception):

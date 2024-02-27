@@ -7,7 +7,7 @@ from tempfile import NamedTemporaryFile
 from typing import List
 from unittest import mock
 
-from modal import Image, Mount, NetworkFileSystem, Secret, Stub, gpu, method
+from modal import Image, Mount, NetworkFileSystem, Secret, Stub, build, gpu, method
 from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version, _get_client_requirements_path
 from modal_proto import api_pb2
@@ -475,7 +475,8 @@ VARIABLE_6 = 1
     secrets=[Secret.from_dict({"xyz": "123"})],
 )
 class Foo:
-    def __build__(self):
+    @build()
+    def build_func(self):
         global VARIABLE_5
 
         print("foo!", VARIABLE_5)
@@ -499,13 +500,13 @@ def test_image_build_snapshot(client, servicer):
         globals = layers[0].build_function_globals
         assert b"VARIABLE_5" in globals
 
-        # Globals and def for the main function should not affect __enter__.
+        # Globals and def for the main function should not affect build step.
         assert "bar!" not in layers[0].build_function_def
         assert b"VARIABLE_6" not in globals
 
     function_id = servicer.image_build_function_ids[image_id]
     assert function_id
-    assert servicer.app_functions[function_id].function_name == "Foo.__build__"
+    assert servicer.app_functions[function_id].function_name == "Foo.build_func"
     assert len(servicer.app_functions[function_id].secret_ids) == 1
 
 

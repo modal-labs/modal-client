@@ -303,7 +303,7 @@ class _Volume(_StatefulObject, type_prefix="vo"):
         ```python notest
         vol = modal.Volume.lookup("my-modal-volume")
 
-        with vol.put() as batch:
+        with vol.batch_upload() as batch:
             batch.put_file("local-path.txt", "/remote-path.txt")
             batch.put_directory("/local/directory/", "/remote/directory")
             batch.put_file(io.BytesIO(b"some data"), "/foobar")

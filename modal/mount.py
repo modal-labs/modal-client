@@ -7,9 +7,8 @@ import functools
 import os
 import time
 import typing
-from datetime import date
 from pathlib import Path, PurePosixPath
-from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Union
+from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Type, Union
 
 import aiostream
 from google.protobuf.message import Message
@@ -25,8 +24,9 @@ from modal_version import __version__
 from . import is_local
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._resolver import Resolver
+from .client import _Client
 from .config import config, logger
-from .object import _StatefulObject
+from .object import _get_environment_name, _StatefulObject
 
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
@@ -59,7 +59,7 @@ def python_standalone_mount_name(version: str) -> str:
         raise modal.exception.InvalidError(
             f"Unsupported standalone python version: {version}, supported values are {list(PYTHON_STANDALONE_VERSIONS.keys())}"
         )
-    if libc not in ("gnu", "musl"):
+    if libc != "gnu":
         raise modal.exception.InvalidError(f"Unsupported libc identifier: {libc}")
     release, full_version = PYTHON_STANDALONE_VERSIONS[version]
     return f"python-build-standalone.{release}.{full_version}-{libc}"
@@ -215,6 +215,8 @@ class NonLocalMountError(Exception):
     pass
 
 
+# TODO(erikbern): get rid of the _StatefulObject inheritance shortly
+# (we still depend on it for _deploy in modal_base_images)
 class _Mount(_StatefulObject, type_prefix="mo"):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
@@ -518,6 +520,38 @@ class _Mount(_StatefulObject, type_prefix="mo"):
             *[_MountedPythonModule(module_name, remote_dir, condition) for module_name in module_names]
         )
 
+    @staticmethod
+    def from_name(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+    ) -> "_Mount":
+        async def _load(provider: _Mount, resolver: Resolver, existing_object_id: Optional[str]):
+            req = api_pb2.MountGetOrCreateRequest(
+                deployment_name=label,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name, resolver),
+            )
+            response = await resolver.client.stub.MountGetOrCreate(req)
+            provider._hydrate(response.mount_id, resolver.client, response.handle_metadata)
+
+        return _Mount._from_loader(_load, "Mount()")
+
+    @classmethod
+    async def lookup(
+        cls: Type["_Mount"],
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> "_Mount":
+        obj = _Mount.from_name(label, namespace=namespace, environment_name=environment_name)
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
+
 
 Mount = synchronize_api(_Mount)
 
@@ -592,10 +626,10 @@ class _MountCache:
 
 @typechecked
 def _create_package_mounts(module_names: Sequence[str]):
-    f"""{_create_package_mounts_deprecation_msg}"""
+    """`modal.create_package_mounts()` is being deprecated, use `modal.Mount.from_local_python_packages()` instead"""
     modal.exception.deprecation_error(
-        date(2023, 7, 19),
-        _create_package_mounts_deprecation_msg,
+        (2023, 7, 19),
+        _create_package_mounts.__doc__,
     )
 
 

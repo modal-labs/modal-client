@@ -43,12 +43,13 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     display_table(column_names, rows, json, title=f"Secrets{env_part}")
 
 
-@secret_cli.command("create", help="Create a new secret")
+@secret_cli.command("create", help="Create a new secret. Use `--force` to overwrite an existing one.")
 @synchronizer.create_blocking
 async def create(
     secret_name,
     keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
     env: Optional[str] = ENV_OPTION,
+    force: bool = typer.Option(False, "--force", help="Overwrite the secret if it already exists."),
 ):
     env = ensure_env(env)
     env_dict = {}
@@ -72,7 +73,7 @@ modal secret create my-credentials username=john password=-
         raise click.UsageError("You need to specify at least one key for your secret")
 
     # Create secret
-    await _Secret.create_deployed(secret_name, env_dict)
+    await _Secret.create_deployed(secret_name, env_dict, overwrite=force)
 
     # Print code sample
     console = Console()

@@ -15,16 +15,18 @@ from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api, synchronizer
 
+from ._function_utils import method_has_params
 from .config import logger
-from .exception import InvalidError
+from .exception import InvalidError, deprecation_warning
 from .functions import _Function
 
 
 class _PartialFunctionFlags(enum.IntFlag):
     FUNCTION: int = 1
     BUILD: int = 2
-    ENTER: int = 4
-    EXIT: int = 8
+    ENTER_PRE_CHECKPOINT: int = 4
+    ENTER_POST_CHECKPOINT: int = 8
+    EXIT: int = 16
 
 
 class _PartialFunction:
@@ -61,7 +63,7 @@ class _PartialFunction:
         return function
 
     def __del__(self):
-        if self.wrapped is False:
+        if (self.flags & _PartialFunctionFlags.FUNCTION) and self.wrapped is False:
             logger.warning(
                 f"Method or web function {self.raw_f} was never turned into a function."
                 " Did you forget a @stub.function or @stub.cls decorator?"
@@ -76,6 +78,9 @@ class _PartialFunction:
             webhook_config=self.webhook_config,
             keep_warm=self.keep_warm,
         )
+
+
+PartialFunction = synchronize_api(_PartialFunction)
 
 
 def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
@@ -100,7 +105,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
     check_attrs: List[str] = []
     if flags & _PartialFunctionFlags.BUILD:
         check_attrs += ["__build__", "__abuild__"]
-    if flags & _PartialFunctionFlags.ENTER:
+    if flags & _PartialFunctionFlags.ENTER_POST_CHECKPOINT:
         check_attrs += ["__enter__", "__aenter__"]
     if flags & _PartialFunctionFlags.EXIT:
         check_attrs += ["__exit__", "__aexit__"]
@@ -108,6 +113,16 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
     # Grab legacy lifecycle methods
     for attr in check_attrs:
         if hasattr(user_cls, attr):
+            suggested = attr.strip("_")
+            if is_async := suggested.startswith("a"):
+                suggested = suggested[1:]
+            async_suggestion = " (on an async method)" if is_async else ""
+            message = (
+                f"Using `{attr}` methods for class lifecycle management is deprecated."
+                f" Please try using the `modal.{suggested}` decorator{async_suggestion} instead."
+                " See https://modal.com/docs/guide/lifecycle-functions for more information."
+            )
+            deprecation_warning((2024, 2, 21), message, show_source=True)
             functions[attr] = getattr(user_cls, attr)
 
     # Grab new decorator-based methods
@@ -121,9 +136,6 @@ def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: Type = type(user_obj)
     return {k: meth.__get__(user_obj) for k, meth in _find_callables_for_cls(user_cls, flags).items()}
-
-
-PartialFunction = synchronize_api(_PartialFunction)
 
 
 def _method(
@@ -348,6 +360,12 @@ def _wsgi_app(
     return wrapper
 
 
+def _disallow_wrapping_method(f: _PartialFunction, wrapper: str) -> None:
+    if f.flags & _PartialFunctionFlags.FUNCTION:
+        f.wrapped = True  # Hack to avoid warning about not using @stub.cls()
+        raise InvalidError(f"Cannot use `@{wrapper}` decorator with `@method`.")
+
+
 @typechecked
 def _build(
     _warn_parentheses_missing=None,
@@ -357,6 +375,7 @@ def _build(
 
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
+            _disallow_wrapping_method(f, "build")
             return f.add_flags(_PartialFunctionFlags.BUILD)
         else:
             return _PartialFunction(f, _PartialFunctionFlags.BUILD)
@@ -367,21 +386,33 @@ def _build(
 @typechecked
 def _enter(
     _warn_parentheses_missing=None,
+    *,
+    checkpoint: bool = False,
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
 
+    if checkpoint:
+        flag = _PartialFunctionFlags.ENTER_PRE_CHECKPOINT
+    else:
+        flag = _PartialFunctionFlags.ENTER_POST_CHECKPOINT
+
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
-            return f.add_flags(_PartialFunctionFlags.ENTER)
+            _disallow_wrapping_method(f, "enter")
+            return f.add_flags(flag)
         else:
-            return _PartialFunction(f, _PartialFunctionFlags.ENTER)
+            return _PartialFunction(f, flag)
 
     return wrapper
 
 
-# TODO(erikbern): last argument should be Optional[TracebackType]
-ExitHandlerType = Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None]
+ExitHandlerType = Union[
+    # Original, __exit__ style method signature (now deprecated)
+    Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None],
+    # Forward-looking unparameterized method
+    Callable[[Any], None],
+]
 
 
 @typechecked
@@ -390,6 +421,14 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
 
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
+        if isinstance(f, _PartialFunction):
+            _disallow_wrapping_method(f, "exit")
+        if method_has_params(f):
+            message = (
+                "Support for decorating parameterized methods with `@exit` has been deprecated."
+                " To avoid future errors, please update your code by removing the parameters."
+            )
+            deprecation_warning((2024, 2, 23), message)
         return _PartialFunction(f, _PartialFunctionFlags.EXIT)
 
     return wrapper
