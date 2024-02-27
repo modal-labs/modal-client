@@ -67,7 +67,7 @@ jobs:
         run: pip install -r container_requirements.txt
 
       - name: Compile protos
-        run: inv protoc
+        run: python -m grpc_tools.protoc --python_out=. --grpclib_python_out=. --grpc_python_out=. --mypy_out=. --mypy_grpc_out=.
 
       - name: Check entrypoint import
         run: python -c 'import modal._container_entrypoint'
