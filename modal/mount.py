@@ -21,7 +21,6 @@ from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info
 from modal_version import __version__
 
-from . import is_local
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._resolver import Resolver
 from .client import _Client
@@ -248,7 +247,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
     _content_checksum_sha256_hex: Optional[str]
 
     @staticmethod
-    def _from_entries(*entries: _MountEntry) -> "_Mount":
+    def _new(entries: List[_MountEntry] = []) -> "_Mount":
         rep = f"Mount({entries})"
         load = functools.partial(_Mount._load_mount, entries)
         obj = _Mount._from_loader(load, rep)
@@ -256,10 +255,8 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         obj._is_local = True
         return obj
 
-    @staticmethod
-    def new() -> "_Mount":
-        """mdmd:hidden"""
-        return _Mount._from_entries()
+    def _extend(self, entry: _MountEntry) -> "_Mount":
+        return _Mount._new(self._entries + [entry])
 
     @property
     def entries(self):
@@ -312,8 +309,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
 
             condition = include_all
 
-        return _Mount._from_entries(
-            *self._entries,
+        return self._extend(
             _MountDir(
                 local_dir=local_path,
                 condition=condition,
@@ -347,7 +343,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         )
         ```
         """
-        return _Mount._from_entries().add_local_dir(
+        return _Mount._new().add_local_dir(
             local_path, remote_path=remote_path, condition=condition, recursive=recursive
         )
 
@@ -362,8 +358,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         if remote_path is None:
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
-        return _Mount._from_entries(
-            *self._entries,
+        return self._extend(
             _MountFile(
                 local_file=local_path,
                 remote_path=PurePosixPath(remote_path),
@@ -386,7 +381,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         )
         ```
         """
-        return _Mount._from_entries().add_local_file(local_path, remote_path=remote_path)
+        return _Mount._new().add_local_file(local_path, remote_path=remote_path)
 
     @staticmethod
     def _description(entries: List[_MountEntry]) -> str:
@@ -519,11 +514,16 @@ class _Mount(_StatefulObject, type_prefix="mo"):
             my_local_module.do_stuff()
         ```
         """
+
+        # Don't re-run inside container.
+
+        mount = _Mount._new()
+        from modal import is_local
+
         if not is_local():
-            return _Mount._from_entries()  # empty/non-mountable mount in case it's used from within a container
-        return _Mount._from_entries(
-            *[_MountedPythonModule(module_name, remote_dir, condition) for module_name in module_names]
-        )
+            return mount  # empty/non-mountable mount in case it's used from within a container
+        for module_name in module_names:
+            mount._extend(_MountedPythonModule(module_name, remote_dir, condition))
 
     @staticmethod
     def from_name(

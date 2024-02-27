@@ -4,6 +4,8 @@ import contextlib
 from asyncio import Future
 from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
 
+from grpclib import GRPCError, Status
+
 from modal_proto import api_pb2
 
 if TYPE_CHECKING:
@@ -13,7 +15,7 @@ else:
     Spinner = TypeVar("Spinner")
     Tree = TypeVar("Tree")
 
-from modal.exception import ExecutionError
+from modal.exception import ExecutionError, NotFoundError
 
 
 class StatusRow:
@@ -98,7 +100,13 @@ class Resolver:
                 await asyncio.gather(*[self.load(dep) for dep in obj.deps()])
 
                 # Load the object itself
-                await obj._load(obj, self, existing_object_id)
+                try:
+                    await obj._load(obj, self, existing_object_id)
+                except GRPCError as exc:
+                    if exc.status == Status.NOT_FOUND:
+                        raise NotFoundError(exc.message)
+                    raise
+
                 if existing_object_id is not None and obj.object_id != existing_object_id:
                     # TODO(erikbern): ignoring images is an ugly fix to a problem that's on the server.
                     # Unlike every other object, images are not assigned random ids, but rather an

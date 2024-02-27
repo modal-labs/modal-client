@@ -213,6 +213,7 @@ class _Volume(_StatefulObject, type_prefix="vo"):
             response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
         except GRPCError as exc:
             raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
+        # TODO(Jonathon): use ranged requests.
         if response.WhichOneof("data_oneof") == "data":
             yield response.data
             return
@@ -240,33 +241,59 @@ class _Volume(_StatefulObject, type_prefix="vo"):
             progress_bar = nullcontext()
             task_id = None
 
-        req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
+        chunk_size_bytes = 8 * 1024 * 1024
+        start = 0
+        req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path, start=start, len=chunk_size_bytes)
         try:
             response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
         except GRPCError as exc:
             raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
-        if response.WhichOneof("data_oneof") == "data":
-            n = fileobj.write(response.data)
-            if n != len(response.data):
-                raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
-            return len(response.data)
+        if response.WhichOneof("data_oneof") != "data":
+            raise RuntimeError("expected to receive 'data' in response")
 
-        written = 0
+        n = fileobj.write(response.data)
+        if n != len(response.data):
+            raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
+        elif n == response.size:
+            if progress:
+                progress_bar.console.log(f"Wrote {n} bytes to '{path.decode()}'")
+            return response.size
+        elif n > response.size:
+            raise RuntimeError(f"length of returned data exceeds reported filesize: {n} > {response.size}")
+        # else: there's more data to read. continue reading with further ranged GET requests.
+        start = n
+        file_size = response.size
+        written = n
+
         if progress:
-            progress_bar.update(task_id, total=int(response.size))
+            progress_bar.update(task_id, total=int(file_size))
             progress_bar.start_task(task_id)
+
         with progress_bar:
-            async for data in blob_iter(response.data_blob_id, self._client.stub):
-                n = fileobj.write(data)
-                if n != len(data):
-                    raise IOError(f"failed to write {len(data)} bytes to output. Wrote {n}.")
+            while True:
+                req = api_pb2.VolumeGetFileRequest(
+                    volume_id=self.object_id, path=path, start=start, len=chunk_size_bytes
+                )
+                response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+                if response.WhichOneof("data_oneof") != "data":
+                    raise RuntimeError("expected to receive 'data' in response")
+                if len(response.data) > chunk_size_bytes:
+                    raise RuntimeError(f"received more data than requested: {len(response.data)} > {chunk_size_bytes}")
+                elif (written + len(response.data)) > file_size:
+                    raise RuntimeError(f"received data exceeds filesize of {chunk_size_bytes}")
+
+                n = fileobj.write(response.data)
+                if n != len(response.data):
+                    raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
+                start += n
                 written += n
                 if progress:
                     progress_bar.update(task_id, advance=n)
-            if written != response.size:
-                raise IOError(f"truncated read. expected to read {response.size} total but only read {written}")
-            if progress:
-                progress_bar.console.log(f"Wrote {written} bytes to '{path.decode()}'")
+                if written == file_size:
+                    break
+
+        if progress:
+            progress_bar.console.log(f"Wrote {written} bytes to '{path.decode()}'")
         return written
 
     @live_method

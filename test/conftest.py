@@ -864,16 +864,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Secret
 
-    async def SecretCreate(self, stream):
-        request: api_pb2.SecretCreateRequest = await stream.recv_message()
-        secret_id = "st-" + str(len(self.secrets))
-        self.secrets[secret_id] = request.env_dict
-        await stream.send_message(api_pb2.SecretCreateResponse(secret_id=secret_id))
-
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
-        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
+            secret_id = "st-" + str(len(self.secrets))
+            self.secrets[secret_id] = request.env_dict
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_secrets:
                 raise GRPCError(Status.ALREADY_EXISTS, "Already exists")
             secret_id = None
@@ -997,7 +994,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if vol_file.data_blob_id:
             await stream.send_message(api_pb2.VolumeGetFileResponse(data_blob_id=vol_file.data_blob_id))
         else:
-            await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data))
+            size = len(vol_file.data)
+            if req.start or req.len:
+                start = req.start
+                len_ = req.len or len(vol_file.data)
+                await stream.send_message(
+                    api_pb2.VolumeGetFileResponse(data=vol_file.data[start : start + len_], size=size)
+                )
+            else:
+                await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data, size=size))
 
     async def VolumeRemoveFile(self, stream):
         req = await stream.recv_message()

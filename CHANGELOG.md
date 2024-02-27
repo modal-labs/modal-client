@@ -10,6 +10,18 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.58.90 (2024-02-27)
+
+- Fixed a bug that could cause `cls`-based functions to to ignore timeout signals.
+
+
+
+### 0.58.88 (2024-02-26)
+
+* `volume get` performance is improved for large (> 100MB) files
+
+
+
 ### 0.58.79 (2024-02-23)
 
 * Support for function parameters in methods decorated with `@exit` has been deprecated. Previously, exit methods were required to accept three arguments containing exception information (akin to `__exit__` in the context manager protocol). However, due to a bug, these arguments were always null. Going forward, `@exit` methods are expected to have no parameters.

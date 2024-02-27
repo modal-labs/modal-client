@@ -35,12 +35,9 @@ volume_cli = Typer(
     name="volume",
     no_args_is_help=True,
     help="""
-    [Beta] Read and edit `modal.Volume` volumes.
+    Read and edit `modal.Volume` volumes.
 
-    This command is in preview and may change in the future.
-
-    Previous users of `modal.NetworkFileSystem` should replace their usage with
-    the `modal nfs` command instead.
+    Note: users of `modal.NetworkFileSystem` should use the `modal nfs` command instead.
     """,
 )
 
