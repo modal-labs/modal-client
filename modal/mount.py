@@ -161,7 +161,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
     _content_checksum_sha256_hex: Optional[str]
 
     @staticmethod
-    def _from_entries(*entries: _MountEntry) -> "_Mount":
+    def _new(entries: List[_MountEntry] = []) -> "_Mount":
         rep = f"Mount({entries})"
         load = functools.partial(_Mount._load_mount, entries)
         obj = _Mount._from_loader(load, rep)
@@ -169,10 +169,8 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         obj._is_local = True
         return obj
 
-    @staticmethod
-    def new() -> "_Mount":
-        """mdmd:hidden"""
-        return _Mount._from_entries()
+    def _extend(self, entry: _MountEntry) -> "_Mount":
+        return _Mount._new(self._entries + [entry])
 
     @property
     def entries(self):
@@ -215,8 +213,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
 
             condition = include_all
 
-        return _Mount._from_entries(
-            *self._entries,
+        return self._extend(
             _MountDir(
                 local_dir=local_path,
                 condition=condition,
@@ -250,7 +247,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         )
         ```
         """
-        return _Mount._from_entries().add_local_dir(
+        return _Mount._new().add_local_dir(
             local_path, remote_path=remote_path, condition=condition, recursive=recursive
         )
 
@@ -265,8 +262,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         if remote_path is None:
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
-        return _Mount._from_entries(
-            *self._entries,
+        return self._extend(
             _MountFile(
                 local_file=local_path,
                 remote_path=PurePosixPath(remote_path),
@@ -289,7 +285,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         )
         ```
         """
-        return _Mount._from_entries().add_local_file(local_path, remote_path=remote_path)
+        return _Mount._new().add_local_file(local_path, remote_path=remote_path)
 
     @staticmethod
     def _description(entries: List[_MountEntry]) -> str:
@@ -425,7 +421,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
 
         # Don't re-run inside container.
 
-        mount = _Mount.new()
+        mount = _Mount._new()
         if not is_local():
             return mount
 
