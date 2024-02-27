@@ -40,15 +40,12 @@ def parse_import_ref(object_ref: str) -> ImportRef:
     return ImportRef(file_or_module, object_path)
 
 
-class NoSuchObject(modal.exception.NotFoundError):
-    pass
-
-
 class CliUserExecutionError(Exception):
     """Private wrapper for exceptions during stub imports in the CLI.
 
-    This intentionally does not inherit from `modal.exception.Error`. Exceptions
-    raised in the CLI at this stage will have tracebacks printed.
+    This intentionally does not inherit from `modal.exception.Error` because it
+    is a private type that should never bubble up to users. Exceptions raised in
+    the CLI at this stage will have tracebacks printed.
     """
 
 
@@ -84,13 +81,12 @@ def import_file_or_module(file_or_module: str):
     return module
 
 
-def get_by_object_path(obj: Any, obj_path: str):
+def get_by_object_path(obj: Any, obj_path: str) -> Optional[Any]:
     # Try to evaluate a `.`-delimited object path in a Modal context
     # With the caveat that some object names can actually have `.` in their name (lifecycled methods' tags)
 
     # Note: this is eager, so no backtracking is performed in case an
     # earlier match fails at some later point in the path expansion
-    orig_obj = obj
     prefix = ""
     for segment in obj_path.split("."):
         attr = prefix + segment
@@ -108,7 +104,7 @@ def get_by_object_path(obj: Any, obj_path: str):
             prefix = ""
 
     if prefix:
-        raise NoSuchObject(f"No object {obj_path} could be found in module {orig_obj}")
+        return None
 
     return obj
 
@@ -182,11 +178,12 @@ def _show_no_auto_detectable_stub(stub_ref: ImportRef) -> None:
 
 def import_stub(stub_ref: str) -> Stub:
     import_ref = parse_import_ref(stub_ref)
-    try:
-        module = import_file_or_module(import_ref.file_or_module)
-        obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
-        stub = get_by_object_path(module, obj_path)
-    except NoSuchObject:
+
+    module = import_file_or_module(import_ref.file_or_module)
+    obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
+    stub = get_by_object_path(module, obj_path)
+
+    if stub is None:
         _show_no_auto_detectable_stub(import_ref)
         sys.exit(1)
 
@@ -228,11 +225,12 @@ def import_function(
     func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
 ) -> Union[Function, LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
-    try:
-        module = import_file_or_module(import_ref.file_or_module)
-        obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
-        stub_or_function = get_by_object_path(module, obj_path)
-    except NoSuchObject:
+
+    module = import_file_or_module(import_ref.file_or_module)
+    obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
+    stub_or_function = get_by_object_path(module, obj_path)
+
+    if stub_or_function is None:
         _show_function_ref_help(import_ref, base_cmd)
         sys.exit(1)
 

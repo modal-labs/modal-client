@@ -145,6 +145,7 @@ def test_get_by_object_path():
 
     # simple
     assert get_by_object_path(NS(foo="bar"), "foo") == "bar"
+    assert get_by_object_path(NS(foo="bar"), "bar") is None
 
     # nested simple
     assert get_by_object_path(NS(foo=NS(bar="baz")), "foo.bar") == "baz"
