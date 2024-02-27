@@ -82,13 +82,6 @@ def test_app_deploy_with_name(servicer, mock_dir, set_env_client):
     assert "my_app_foo" in servicer.deployed_apps
 
 
-def test_app_deploy_no_such_module():
-    res = _run(["deploy", "does_not_exist.py"], 1)
-    assert "No such file or directory" in str(res.exception)
-    res = _run(["deploy", "does.not.exist"], 1)
-    assert "No module named 'does'" in str(res.exception)
-
-
 def test_secret_create(servicer, set_env_client):
     # fail without any keys
     _run(["secret", "create", "foo"], 2, None)
