@@ -263,7 +263,7 @@ class FunctionInfo:
             top_level_modules.append((name, module))
 
         for module_name, module in top_level_modules:
-            if module_name.startswith("__") or module_name in config.get("automount_exclude"):
+            if module_name.startswith("__"):
                 # skip "built in" modules like __main__ and __mp_main__
                 # the running function's main file should be included anyway
                 continue
