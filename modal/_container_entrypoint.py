@@ -91,7 +91,7 @@ class SignalHandlingEventLoop:
 
         res = self.loop.run_until_complete(task)
 
-        # Remove the signal handlers so we can interrupt subsequent tasks
+        # Reset the signal handlers so we can interrupt the container
         for s in [signal.SIGINT, signal.SIGTERM, signal.SIGUSR1]:
             self.loop.remove_signal_handler(s)
 
