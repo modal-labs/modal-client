@@ -70,8 +70,11 @@ jobs:
 
       - name: Compile protos
         run: |
+          python -m venv venv
+          source venv/bin/activate
           pip install grpcio-tools
           python -m grpc_tools.protoc --python_out=. --grpclib_python_out=. --grpc_python_out=. -I . modal_proto/api.proto modal_proto/options.proto
+          deactivate
 
       - name: Check entrypoint import
         run: python -c 'import modal._container_entrypoint'
