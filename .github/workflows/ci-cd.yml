@@ -54,6 +54,21 @@ jobs:
       - name: Run docstring tests
         run: pytest -s --markdown-docs -m markdown-docs modal
 
+  container-dependencies:
+    name: Check minimal container dependencies for ${{ matrix.python-version }}
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: pip install -r container_requirements.txt
+
+      - name: Check entrypoint import
+        run: python -c 'import modal._container_entrypoint'
+
   publish-base-images:
     name: |
       Publish base images for ${{ matrix.image-name }} ${{ matrix.python-version }}
