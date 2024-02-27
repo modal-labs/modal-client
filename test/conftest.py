@@ -864,16 +864,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Secret
 
-    async def SecretCreate(self, stream):
-        request: api_pb2.SecretCreateRequest = await stream.recv_message()
-        secret_id = "st-" + str(len(self.secrets))
-        self.secrets[secret_id] = request.env_dict
-        await stream.send_message(api_pb2.SecretCreateResponse(secret_id=secret_id))
-
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
-        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
+            secret_id = "st-" + str(len(self.secrets))
+            self.secrets[secret_id] = request.env_dict
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_secrets:
                 raise GRPCError(Status.ALREADY_EXISTS, "Already exists")
             secret_id = None
