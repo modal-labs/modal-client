@@ -66,6 +66,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r container_requirements.txt
 
+      - name: Compile protos
+        run: inv protoc
+
       - name: Check entrypoint import
         run: python -c 'import modal._container_entrypoint'
 
