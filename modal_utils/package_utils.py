@@ -2,9 +2,8 @@
 import importlib
 import importlib.util
 import typing
+from importlib.metadata import PackageNotFoundError, files
 from pathlib import Path
-
-from importlib_metadata import PackageNotFoundError, files
 
 from modal.exception import ModuleNotMountable
 
@@ -24,7 +23,7 @@ def get_module_mount_info(module_name: str) -> typing.List[typing.Tuple[bool, Pa
     """Returns a list of tuples [(is_dir, path)] describing how to mount a given module."""
     file_formats = get_file_formats(module_name)
     if set(BINARY_FORMATS) & set(file_formats):
-        raise ModuleNotMountable(f"{module_name} can't be mounted because it contains a binary file.")
+        raise ModuleNotMountable(f"{module_name} can't be mounted because it contains binary file(s).")
     try:
         spec = importlib.util.find_spec(module_name)
     except Exception as exc:
