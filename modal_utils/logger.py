@@ -25,7 +25,7 @@ def configure_logger(logger: logging.Logger, log_level: str, log_format: str):
 
         ch.setFormatter(json_formatter)
     else:
-        ch.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z"))
+        ch.setFormatter(logging.Formatter("[%(threadName)s] %(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z"))
 
     logger.addHandler(ch)
 
