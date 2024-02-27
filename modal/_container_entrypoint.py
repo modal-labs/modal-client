@@ -88,7 +88,14 @@ class SignalHandlingEventLoop:
             global _ignore_cancellation
             _ignore_cancellation = True
             self.loop.add_signal_handler(signal.SIGUSR1, task.cancel)
-        return self.loop.run_until_complete(task)
+
+        res = self.loop.run_until_complete(task)
+
+        # Reset the signal handlers so we can interrupt the container
+        for s in [signal.SIGINT, signal.SIGTERM, signal.SIGUSR1]:
+            self.loop.remove_signal_handler(s)
+
+        return res
 
 
 class _FunctionIOManager:
