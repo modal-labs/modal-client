@@ -53,13 +53,13 @@ class _Secret(_Object, type_prefix="st"):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
         async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
-            req = api_pb2.SecretCreateRequest(
-                app_id=resolver.app_id,
+            req = api_pb2.SecretGetOrCreateRequest(
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 env_dict=env_dict_filtered,
-                existing_secret_id=existing_object_id,
+                app_id=resolver.app_id,
             )
             try:
-                resp = await resolver.client.stub.SecretCreate(req)
+                resp = await resolver.client.stub.SecretGetOrCreate(req)
             except GRPCError as exc:
                 if exc.status == Status.INVALID_ARGUMENT:
                     raise InvalidError(exc.message)
@@ -117,12 +117,12 @@ class _Secret(_Object, type_prefix="st"):
 
             env_dict = dotenv_values(dotenv_path)
 
-            req = api_pb2.SecretCreateRequest(
-                app_id=resolver.app_id,
+            req = api_pb2.SecretGetOrCreateRequest(
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 env_dict=env_dict,
-                existing_secret_id=existing_object_id,
+                app_id=resolver.app_id,
             )
-            resp = await resolver.client.stub.SecretCreate(req)
+            resp = await resolver.client.stub.SecretGetOrCreate(req)
 
             provider._hydrate(resp.secret_id, resolver.client, None)
 

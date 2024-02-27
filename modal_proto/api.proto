@@ -1498,14 +1498,14 @@ message Schedule {
   }
 }
 
-message SecretCreateRequest {
+message SecretCreateRequest {  // Not used by client anymore
   map<string, string> env_dict = 1;
   string app_id = 2 [ (modal.options.audit_target_attr) = true ];
   string template_type = 3;  // todo: not used?
   string existing_secret_id = 4;
 }
 
-message SecretCreateResponse {
+message SecretCreateResponse {  // Not used by client anymore
   string secret_id = 1;
 }
 
@@ -1984,7 +1984,7 @@ service ModalClient {
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
 
   // Secrets
-  rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
+  rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);  // Not used by client anymore
   rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
