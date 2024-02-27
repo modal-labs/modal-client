@@ -12,17 +12,14 @@ def main():
     setup_rich_traceback()
     highlight_modal_deprecation_warnings()
 
-    if config.get("traceback"):
-        try:
-            entrypoint_cli()
-        except CliUserExecutionError as exc:
-            raise exc.__cause__ from None
-    else:
-        try:
-            entrypoint_cli()
-        except CliUserExecutionError as exc:
-            raise exc.__cause__ from None
-        except Exception as exc:
+    try:
+        entrypoint_cli()
+    except CliUserExecutionError as exc:
+        raise exc.__cause__ from None
+    except Exception as exc:
+        if config.get("traceback"):
+            raise
+        else:
             from rich.console import Console
             from rich.panel import Panel
 
