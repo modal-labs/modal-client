@@ -523,7 +523,8 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         if not is_local():
             return mount  # empty/non-mountable mount in case it's used from within a container
         for module_name in module_names:
-            mount._extend(_MountedPythonModule(module_name, remote_dir, condition))
+            mount = mount._extend(_MountedPythonModule(module_name, remote_dir, condition))
+        return mount
 
     @staticmethod
     def from_name(
