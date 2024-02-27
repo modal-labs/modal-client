@@ -15,7 +15,7 @@ from modal_proto import api_pb2
 from ._serialization import serialize
 from .config import config, logger
 from .exception import InvalidError, ModuleNotMountable
-from .mount import ROOT_DIR, _Mount
+from .mount import ROOT_DIR, _Mount, module_mount_condition
 from .object import Object
 
 # Expand symlinks in paths (homebrew Python paths are all symlinks).
@@ -42,13 +42,6 @@ class FunctionInfoType(Enum):
 
 class LocalFunctionError(InvalidError):
     """Raised if a function declared in a non-global scope is used in an impermissible way"""
-
-
-def package_mount_condition(filename):
-    if filename.startswith(sys.prefix):
-        return False
-
-    return os.path.splitext(filename)[1] in [".py"]
 
 
 def entrypoint_only_package_mount_condition(entrypoint_file):
@@ -223,7 +216,7 @@ class FunctionInfo:
                         self.base_dir,
                         remote_path=self.remote_dir,
                         recursive=True,
-                        condition=package_mount_condition,
+                        condition=module_mount_condition,
                     )
                 ]
             elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:

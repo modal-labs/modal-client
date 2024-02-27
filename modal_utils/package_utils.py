@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import importlib
 import importlib.util
+import typing
 from pathlib import Path
 
 from importlib_metadata import PackageNotFoundError, files
@@ -19,7 +20,7 @@ def get_file_formats(module):
 BINARY_FORMATS = ["so", "S", "s", "asm"]  # TODO
 
 
-def get_module_mount_info(module_name: str):
+def get_module_mount_info(module_name: str) -> typing.List[typing.Tuple[bool, Path]]:
     """Returns a list of tuples [(is_dir, path)] describing how to mount a given module."""
     file_formats = get_file_formats(module_name)
     if set(BINARY_FORMATS) & set(file_formats):
@@ -33,12 +34,12 @@ def get_module_mount_info(module_name: str):
     if spec is None:
         raise ModuleNotMountable(f"{module_name} has no spec - might not be installed?")
     elif spec.submodule_search_locations:
-        entries = [(True, path) for path in spec.submodule_search_locations if Path(path).exists()]
+        entries = [(True, Path(path).resolve()) for path in spec.submodule_search_locations if Path(path).exists()]
     else:
         # Individual file
         filename = spec.origin
         if filename is not None and Path(filename).exists():
-            entries = [(False, filename)]
+            entries = [(False, Path(filename).resolve())]
     if not entries:
         raise ModuleNotMountable(f"{module_name} has no mountable paths")
     return entries

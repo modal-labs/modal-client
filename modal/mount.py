@@ -152,7 +152,12 @@ class _MountDir(_MountEntry):
 
 
 def module_mount_condition(f: str):
-    return not any([f.endswith(".pyc"), os.path.basename(f).startswith(".")])
+    path = Path(f)
+    if path.suffix == ".pyc":
+        return False
+    if any(p.name.startswith(".") or p.name == "__pycache__" for p in path.parents):
+        return False
+    return True
 
 
 @dataclasses.dataclass
@@ -269,7 +274,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
 
     def _top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
         # Returns [(local_absolute_path, remote_path), ...] for all top level entries in the Mount
-        # used to deduplicate mounts added to a function
+        # Used to determine if a package mount is installed in a sys directory or not
         res: List[Tuple[Path, PurePosixPath]] = []
         for entry in self.entries:
             res.extend(entry.top_level_paths())
