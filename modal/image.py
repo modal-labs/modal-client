@@ -9,7 +9,6 @@ from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
-import toml
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -602,6 +601,9 @@ class _Image(_Object, type_prefix="im"):
         # Don't re-run inside container.
         if not is_local():
             return self
+
+        # Defer toml import so we don't need it in the container runtime environment
+        import toml
 
         pyproject_toml = os.path.expanduser(pyproject_toml)
 

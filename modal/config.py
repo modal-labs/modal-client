@@ -77,13 +77,13 @@ import warnings
 from textwrap import dedent
 from typing import Any, Dict, Optional
 
-import toml
 from google.protobuf.empty_pb2 import Empty
 
 from modal_proto import api_pb2
 from modal_utils.logger import configure_logger
 
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .app import is_local
+from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
 
 # Locate config file and read it
 
@@ -91,7 +91,10 @@ user_config_path: str = os.environ.get("MODAL_CONFIG_PATH") or os.path.expanduse
 
 
 def _read_user_config():
-    if os.path.exists(user_config_path):
+    if is_local() and os.path.exists(user_config_path):
+        # Defer toml import so we don't need it in the container runtime environment
+        import toml
+
         with open(user_config_path) as f:
             return toml.load(f)
     else:
@@ -272,6 +275,12 @@ def _store_user_config(
 
 
 def _write_user_config(user_config):
+    if not is_local():
+        raise ExecutionError("Can't update config file in remote environment.")
+
+    # Defer toml import so we don't need it in the container runtime environment
+    import toml
+
     with open(user_config_path, "w") as f:
         toml.dump(user_config, f)
 
