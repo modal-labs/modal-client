@@ -53,6 +53,10 @@ class VolumeUploadTimeoutError(TimeoutError):
     """Raised when a Volume upload times out."""
 
 
+class InteractiveTimeoutError(TimeoutError):
+    """Raised when interactive frontends time out while trying to connect to a container."""
+
+
 class AuthError(Error):
     """Raised when a client has missing or invalid authentication."""
 

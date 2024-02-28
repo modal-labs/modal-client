@@ -88,7 +88,14 @@ class SignalHandlingEventLoop:
             global _ignore_cancellation
             _ignore_cancellation = True
             self.loop.add_signal_handler(signal.SIGUSR1, task.cancel)
-        return self.loop.run_until_complete(task)
+
+        res = self.loop.run_until_complete(task)
+
+        # Reset the signal handlers so we can interrupt the container
+        for s in [signal.SIGINT, signal.SIGTERM, signal.SIGUSR1]:
+            self.loop.remove_signal_handler(s)
+
+        return res
 
 
 class _FunctionIOManager:
@@ -332,7 +339,7 @@ class _FunctionIOManager:
 
                     for item in response.inputs:
                         if item.kill_switch:
-                            logger.debug(f"Task {self.task_id} input received kill signal.")
+                            logger.debug(f"Task {self.task_id} input kill signal input.")
                             eof_received = True
                             break
                         if item.input_id in self.cancelled_input_ids:
@@ -612,8 +619,9 @@ def call_function_sync(
             started_at = time.time()
             reset_context = _set_current_context_ids(input_id, function_call_id)
             with function_io_manager.handle_input_exception(input_id, started_at):
-                # TODO(gongy): run this in an executor
+                logger.debug(f"Starting input {input_id} (sync)")
                 res = imp_fun.fun(*args, **kwargs)
+                logger.debug(f"Finished input {input_id} (sync)")
 
                 # TODO(erikbern): any exception below shouldn't be considered a user exception
                 if imp_fun.is_generator:
@@ -653,6 +661,9 @@ def call_function_sync(
                     imp_fun.input_concurrency
                 ):
                     executor.submit(run_inputs, input_id, function_call_id, args, kwargs)
+
+                logger.debug("ThreadPoolExecutor is exiting")
+            logger.debug("ThreadPoolExecutor has exited")
         else:
             for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs(
                 imp_fun.input_concurrency
@@ -660,6 +671,7 @@ def call_function_sync(
                 run_inputs(input_id, function_call_id, args, kwargs)
     finally:
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
+            logger.debug("Running cls exit methods (sync)")
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 with function_io_manager.handle_user_exception():
@@ -679,7 +691,9 @@ async def call_function_async(
             started_at = time.time()
             reset_context = _set_current_context_ids(input_id, function_call_id)
             async with function_io_manager.handle_input_exception.aio(input_id, started_at):
+                logger.debug(f"Starting input {input_id} (async)")
                 res = imp_fun.fun(*args, **kwargs)
+                logger.debug(f"Finished input {input_id} (async)")
 
                 # TODO(erikbern): any exception below shouldn't be considered a user exception
                 if imp_fun.is_generator:
@@ -732,6 +746,7 @@ async def call_function_async(
                 await run_input(input_id, function_call_id, args, kwargs)
     finally:
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
+            logger.debug("Running cls exit methods (async)")
             exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
             for exit_method in exit_methods.values():
                 # Call a user-defined method
