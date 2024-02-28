@@ -204,12 +204,12 @@ class _Cls(_Object, type_prefix="cs"):
         def _deps() -> List[_Function]:
             return list(functions.values())
 
-        async def _load(provider: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
             for f_name, f in functions.items():
                 req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
             resp = await resolver.client.stub.ClassCreate(req)
-            provider._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
+            self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
         cls = _Cls._from_loader(_load, rep, deps=_deps)

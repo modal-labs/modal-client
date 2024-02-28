@@ -57,14 +57,14 @@ class _Dict(_Object, type_prefix="di"):
     def new(data: Optional[dict] = None) -> "_Dict":
         """Create a new Dict, optionally with initial data."""
 
-        async def _load(provider: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictCreateRequest(
                 app_id=resolver.app_id, data=serialized, existing_dict_id=existing_object_id
             )
             response = await resolver.client.stub.DictCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
-            provider._hydrate(response.dict_id, resolver.client, None)
+            self._hydrate(response.dict_id, resolver.client, None)
 
         return _Dict._from_loader(_load, "Dict()", is_another_app=True)
 
@@ -94,7 +94,7 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
 
-        async def _load(provider: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=label,
                 namespace=namespace,
@@ -103,7 +103,7 @@ class _Dict(_Object, type_prefix="di"):
             )
             response = await resolver.client.stub.DictGetOrCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
-            provider._hydrate(response.dict_id, resolver.client, None)
+            self._hydrate(response.dict_id, resolver.client, None)
 
         return _Dict._from_loader(_load, "Dict()")
 

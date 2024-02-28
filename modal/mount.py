@@ -3,7 +3,6 @@ import abc
 import asyncio
 import concurrent.futures
 import dataclasses
-import functools
 import os
 import time
 import typing
@@ -249,8 +248,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
     @staticmethod
     def _new(entries: List[_MountEntry] = []) -> "_Mount":
         rep = f"Mount({entries})"
-        load = functools.partial(_Mount._load_mount, entries)
-        obj = _Mount._from_loader(load, rep)
+        obj = _Mount._from_loader(_Mount._load_mount, rep)
         obj._entries = entries
         obj._is_local = True
         return obj
@@ -406,10 +404,8 @@ class _Mount(_StatefulObject, type_prefix="mo"):
                     # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
                     logger.info(f"Ignoring file not found: {exc}")
 
-    @staticmethod
     async def _load_mount(
-        entries: List[_MountEntry],
-        provider: "_Mount",
+        self: "_Mount",
         resolver: Resolver,
         existing_object_id: Optional[str],
     ):
@@ -420,7 +416,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         n_files = 0
         uploaded_hashes: set[str] = set()
         total_bytes = 0
-        message_label = _Mount._description(entries)
+        message_label = _Mount._description(self._entries)
         status_row = resolver.add_status_row()
 
         async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
@@ -472,7 +468,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
 
         # Create async generator
-        files_stream = aiostream.stream.iterate(_Mount._get_files(entries))
+        files_stream = aiostream.stream.iterate(_Mount._get_files(self._entries))
 
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
@@ -492,7 +488,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
-        provider._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
+        self._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
 
     @staticmethod
     def from_local_python_packages(

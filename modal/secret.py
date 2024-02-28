@@ -52,7 +52,7 @@ class _Secret(_Object, type_prefix="st"):
         if not all(isinstance(v, str) for v in env_dict_filtered.values()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 env_dict=env_dict_filtered,
@@ -66,7 +66,7 @@ class _Secret(_Object, type_prefix="st"):
                 if exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
                 raise
-            provider._hydrate(resp.secret_id, resolver.client, None)
+            self._hydrate(resp.secret_id, resolver.client, None)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep)
@@ -91,7 +91,7 @@ class _Secret(_Object, type_prefix="st"):
         starting point for finding the `.env` file.
         """
 
-        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             try:
                 from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
@@ -124,7 +124,7 @@ class _Secret(_Object, type_prefix="st"):
             )
             resp = await resolver.client.stub.SecretGetOrCreate(req)
 
-            provider._hydrate(resp.secret_id, resolver.client, None)
+            self._hydrate(resp.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()")
 
@@ -145,7 +145,7 @@ class _Secret(_Object, type_prefix="st"):
         ```
         """
 
-        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=label,
                 namespace=namespace,
@@ -158,7 +158,7 @@ class _Secret(_Object, type_prefix="st"):
                     raise NotFoundError(exc.message)
                 else:
                     raise
-            provider._hydrate(response.secret_id, resolver.client, None)
+            self._hydrate(response.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret()")
 
