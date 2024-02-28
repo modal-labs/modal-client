@@ -173,3 +173,7 @@ class InputCancellation(BaseException):
     """
 
     pass
+
+
+class ModuleNotMountable(Exception):
+    pass

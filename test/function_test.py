@@ -9,7 +9,7 @@ import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import Image, NetworkFileSystem, Proxy, Stub, web_endpoint
+from modal import Image, Mount, NetworkFileSystem, Proxy, Stub, web_endpoint
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub
@@ -682,3 +682,19 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
         foo.spawn(stub.some_modal_object)  # spawn on generator returns None, but starts the generator
 
     assert len(servicer.client_calls) == 2
+
+
+def test_mount_deps_have_ids(client, servicer, monkeypatch, test_dir):
+    # This test can possibly break if a function's deps diverge between
+    # local and remote environments
+    monkeypatch.syspath_prepend(test_dir / "supports")
+    stub = Stub()
+    stub.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
+
+    with servicer.intercept() as ctx:
+        with stub.run(client=client):
+            pass
+
+    function_create = ctx.pop_request("FunctionCreate")
+    for dep in function_create.function.object_dependencies:
+        assert dep.object_id

@@ -6,7 +6,7 @@ import io
 import os
 import platform
 from contextlib import contextmanager
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Union
 from urllib.parse import urlparse
 
@@ -329,7 +329,7 @@ class FileUploadSpec:
 
 
 def _get_file_upload_spec(
-    source: Callable[[], BinaryIO], source_description: Any, mount_filename: str, mode: int
+    source: Callable[[], BinaryIO], source_description: Any, mount_filename: PurePosixPath, mode: int
 ) -> FileUploadSpec:
     with source() as fp:
         # Current position is ignored - we always upload from position 0
@@ -349,7 +349,7 @@ def _get_file_upload_spec(
     return FileUploadSpec(
         source=source,
         source_description=source_description,
-        mount_filename=mount_filename,
+        mount_filename=mount_filename.as_posix(),
         use_blob=use_blob,
         content=content,
         sha256_hex=sha256_hex,
@@ -358,7 +358,9 @@ def _get_file_upload_spec(
     )
 
 
-def get_file_upload_spec_from_path(filename: Path, mount_filename: str, mode: Optional[int] = None) -> FileUploadSpec:
+def get_file_upload_spec_from_path(
+    filename: Path, mount_filename: PurePosixPath, mode: Optional[int] = None
+) -> FileUploadSpec:
     # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
     # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
     mode = mode or os.stat(filename).st_mode & (0o7777 if platform.system() != "Windows" else 0o7755)
@@ -370,7 +372,7 @@ def get_file_upload_spec_from_path(filename: Path, mount_filename: str, mode: Op
     )
 
 
-def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: str, mode: int) -> FileUploadSpec:
+def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPath, mode: int) -> FileUploadSpec:
     def source():
         # We ignore position in stream and always upload from position 0
         fp.seek(0)
