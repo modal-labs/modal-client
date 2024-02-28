@@ -10,6 +10,14 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.59.0 (2024-02-28)
+
+* Mounted packages are now deduplicated across functions in the same stub
+* Mounting of local Python packages are now marked as such in the mount creation output, e.g. `PythonPackage:my_package`
+* Automatic mounting now includes packages outside of the function file's own directory. Mounted packages are mounted in /root/<module path>
+
+
+
 ### 0.58.90 (2024-02-27)
 
 - Fixed a bug that could cause `cls`-based functions to to ignore timeout signals.
