@@ -974,6 +974,8 @@ class _Function(_Object, type_prefix="fu"):
         args: Sized,
         kwargs: Dict[str, Any],
     ) -> "_Function":
+        """mdmd:hidden"""
+
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if not self.is_hydrated:
                 raise ExecutionError(
@@ -1071,15 +1073,18 @@ class _Function(_Object, type_prefix="fu"):
 
     @property
     def stub(self) -> "modal.stub._Stub":
+        """mdmd:hidden"""
         return self._stub
 
     @property
     def info(self) -> FunctionInfo:
+        """mdmd:hidden"""
         assert self._info
         return self._info
 
     @property
     def env(self) -> FunctionEnv:
+        """mdmd:hidden"""
         return self._env
 
     def get_build_def(self) -> str:
@@ -1139,6 +1144,7 @@ class _Function(_Object, type_prefix="fu"):
 
     @property
     def is_generator(self) -> bool:
+        """mdmd:hidden"""
         assert self._is_generator is not None
         return self._is_generator
 
@@ -1484,6 +1490,7 @@ class _FunctionCall(_Object, type_prefix="fc"):
         return _reconstruct_call_graph(response)
 
     async def cancel(self):
+        """Cancels the function call, which will stop its execution and mark its inputs as [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus)."""
         request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
         assert self._client and self._client.stub
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)

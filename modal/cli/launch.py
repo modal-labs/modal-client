@@ -49,7 +49,7 @@ def jupyter(
     _launch_program("run_jupyter.py", args)
 
 
-@launch_cli.command(name="vscode", help="Start VS Code on Modal.")
+@launch_cli.command(name="vscode", help="Start Visual Studio Code on Modal.")
 def vscode(
     cpu: int = 8,
     memory: int = 32768,

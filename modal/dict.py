@@ -111,6 +111,8 @@ class _Dict(_Object, type_prefix="di"):
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Dict":
+        """Create a persisted modal.Dict which as a lifetime beyond the app it was created in.
+        The object will persist until it is deleted by the user."""
         return _Dict.from_name(label, namespace, environment_name, create_if_missing=True)
 
     @staticmethod
