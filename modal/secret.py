@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import os
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from grpclib import GRPCError, Status
 
@@ -75,7 +75,7 @@ class _Secret(_Object, type_prefix="st"):
     @typechecked
     @staticmethod
     def from_local_environ(
-        env_keys: list[str],  # list of local env vars to be included for remote execution
+        env_keys: List[str],  # list of local env vars to be included for remote execution
     ):
         """Create secrets from local environment variables automatically."""
 
@@ -84,7 +84,9 @@ class _Secret(_Object, type_prefix="st"):
                 return _Secret.from_dict({k: os.environ[k] for k in env_keys})
             except KeyError as exc:
                 missing_key = exc.args[0]
-                raise InvalidError(f"Could not find local environment variable '{missing_key}' for Secret.from_local_env_vars")
+                raise InvalidError(
+                    f"Could not find local environment variable '{missing_key}' for Secret.from_local_env_vars"
+                )
 
         return _Secret.from_dict({})
 
