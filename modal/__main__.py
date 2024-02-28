@@ -15,7 +15,18 @@ def main():
     try:
         entrypoint_cli()
     except CliUserExecutionError as exc:
-        raise exc.__cause__ from None
+        # Try to step forward in the traceback until we get to the user code that failed to import
+        tb = orig_tb = exc.__cause__.__traceback__
+        if exc.user_source.endswith(".py"):
+            while tb is not None and tb.tb_frame.f_code.co_filename != exc.user_source:
+                tb = tb.tb_next
+        else:
+            while tb is not None and tb.tb_frame.f_code.co_name != "<module>":
+                tb = tb.tb_next
+        if tb is None:
+            # In case we didn't find a frame that matched the user source, revert to the original traceback
+            tb = orig_tb
+        sys.excepthook(type(exc.__cause__), exc.__cause__, tb)
     except Exception as exc:
         if config.get("traceback"):
             raise

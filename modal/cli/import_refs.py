@@ -48,6 +48,9 @@ class CliUserExecutionError(Exception):
     the CLI at this stage will have tracebacks printed.
     """
 
+    def __init__(self, user_source: str):
+        self.user_source = user_source
+
 
 DEFAULT_STUB_NAME = "stub"
 
@@ -61,7 +64,8 @@ def import_file_or_module(file_or_module: str):
 
     if file_or_module.endswith(".py"):
         # when using a script path, that scripts directory should also be on the path as it is with `python some/script.py`
-        sys.path.insert(0, str(Path(file_or_module).resolve().parent))
+        full_path = Path(file_or_module).resolve()
+        sys.path.insert(0, str(full_path.parent))
 
         module_name = inspect.getmodulename(file_or_module)
         # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
@@ -71,12 +75,12 @@ def import_file_or_module(file_or_module: str):
         try:
             spec.loader.exec_module(module)
         except Exception as exc:
-            raise CliUserExecutionError() from exc
+            raise CliUserExecutionError(str(full_path)) from exc
     else:
         try:
             module = importlib.import_module(file_or_module)
         except Exception as exc:
-            raise CliUserExecutionError() from exc
+            raise CliUserExecutionError(file_or_module) from exc
 
     return module
 
