@@ -82,7 +82,7 @@ from google.protobuf.empty_pb2 import Empty
 from modal_proto import api_pb2
 from modal_utils.logger import configure_logger
 
-from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
+from .exception import InvalidError, deprecation_error, deprecation_warning
 
 # Locate config file and read it
 
@@ -279,7 +279,7 @@ def _write_user_config(user_config):
     from .app import is_local
 
     if not is_local():
-        raise ExecutionError("Can't update config file in remote environment.")
+        raise InvalidError("Can't update config file in remote environment.")
 
     # Defer toml import so we don't need it in the container runtime environment
     import toml
