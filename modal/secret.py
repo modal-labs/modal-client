@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import os
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from grpclib import GRPCError, Status
 
@@ -10,6 +10,7 @@ from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
+from .app import is_local
 from .client import _Client
 from .exception import InvalidError, NotFoundError
 from .object import _get_environment_name, _Object
@@ -70,6 +71,24 @@ class _Secret(_Object, type_prefix="st"):
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep)
+
+    @typechecked
+    @staticmethod
+    def from_local_environ(
+        env_keys: List[str],  # list of local env vars to be included for remote execution
+    ):
+        """Create secrets from local environment variables automatically."""
+
+        if is_local():
+            try:
+                return _Secret.from_dict({k: os.environ[k] for k in env_keys})
+            except KeyError as exc:
+                missing_key = exc.args[0]
+                raise InvalidError(
+                    f"Could not find local environment variable '{missing_key}' for Secret.from_local_env_vars"
+                )
+
+        return _Secret.from_dict({})
 
     @staticmethod
     def from_dotenv(path=None):
