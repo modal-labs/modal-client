@@ -21,7 +21,7 @@ class StubFilesFilter(DefaultFilter):
         # Watching specific files is discouraged on Linux, so to watch a file we watch its
         # containing directory and then filter that directory's changes for relevant files.
         # https://github.com/notify-rs/notify/issues/394
-        dir_filters: Dict[Path, Optional[Set[str]]],
+        dir_filters: Dict[Path, Optional[Set[Path]]],
     ) -> None:
         self.dir_filters = dir_filters
         super().__init__()
@@ -48,7 +48,7 @@ class StubFilesFilter(DefaultFilter):
                 else:
                     allowlists |= allowlist
 
-        if allowlists and path not in allowlists:
+        if allowlists and p not in allowlists:
             return False
 
         return super().__call__(change, path)
@@ -77,16 +77,17 @@ def _print_watched_paths(paths: Set[Path], output_mgr: OutputManager):
 
 def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], StubFilesFilter]:
     paths = set()
-    dir_filters: Dict[Path, Optional[Set[str]]] = defaultdict(set)
+    dir_filters: Dict[Path, Optional[Set[Path]]] = defaultdict(set)
     for mount in mounts:
         # TODO(elias): Make this part of the mount class instead, since it uses so much internals
         for entry in mount._entries:
             path, filter_file = entry.watch_entry()
+            path = path.absolute().resolve()
             paths.add(path)
             if filter_file is None:
                 dir_filters[path] = None
             elif dir_filters[path] is not None:
-                dir_filters[path].add(filter_file.as_posix())
+                dir_filters[path].add(filter_file.absolute().resolve())
 
     watch_filter = StubFilesFilter(dir_filters=dict(dir_filters))
     return paths, watch_filter
