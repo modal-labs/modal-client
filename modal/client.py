@@ -93,6 +93,7 @@ class _Client:
         *,
         no_verify=False,
     ):
+        """The Modal client object is not intended to be instantiated directly by users."""
         self.server_url = server_url
         self.client_type = client_type
         self.credentials = credentials

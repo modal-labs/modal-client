@@ -192,6 +192,7 @@ class _Secret(_Object, type_prefix="st"):
         environment_name: Optional[str] = None,
         overwrite: bool = False,
     ) -> str:
+        """mdmd:hidden"""
         if client is None:
             client = await _Client.from_env()
         if overwrite:
