@@ -10,13 +10,13 @@ from typing import List, Optional
 
 import rich
 import rich.status
-import typer
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console
 
 from modal._pty import get_pty_info, raw_terminal, set_nonblocking
 from modal.client import _Client
+from modal.exception import ExecutionError, InteractiveTimeoutError, NotFoundError
 from modal_proto import api_pb2
 from modal_utils.async_utils import TaskContext, asyncify
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
@@ -48,8 +48,7 @@ async def container_exec(
     except GRPCError as err:
         connecting_status.stop()
         if err.status == Status.NOT_FOUND:
-            rich.print(f"Container ID {task_id} not found", file=sys.stderr)
-            raise typer.Exit(code=1)
+            raise NotFoundError(f"Container ID {task_id} not found")
         raise
 
     await connect_to_exec(res.exec_id, pty, connecting_status)
@@ -80,14 +79,12 @@ async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Op
                 exit_status = await exec_output_task
 
             if exit_status != 0:
-                rich.print(f"Process exited with status code {exit_status}", file=sys.stderr)
-                raise typer.Exit(code=1)
+                raise ExecutionError(f"Process exited with status code {exit_status}")
 
         except (asyncio.TimeoutError, TimeoutError):
             stop_connecting_status()
-            rich.print("Failed to establish connection to process", file=sys.stderr)
             exec_output_task.cancel()
-            raise typer.Exit(code=1)
+            raise InteractiveTimeoutError("Failed to establish connection to container.")
 
 
 # note: this is very similar to code in _pty.py.
