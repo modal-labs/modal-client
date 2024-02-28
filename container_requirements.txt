@@ -1,15 +1,12 @@
 # Requirements file for testing the minimal client dependency set in the container environment
 # Not currently used in production; exists for CI usage until we remove modal/requirements.txt
-aiohttp==3.8.3;python_version<'3.12'
-aiohttp==3.9.1;python_version>='3.12'
+aiohttp==3.9.1
 aiostream==0.4.4
 asgiref==3.5.2
 certifi>=2022.12.07
-cloudpickle==2.0.0;python_version<'3.11'
-cloudpickle==2.2.0;python_version>='3.11'
+cloudpickle==2.2.0
 fastapi==0.88.0
-grpclib==0.4.3;python_version<'3.12'
-grpclib==0.4.7;python_version>='3.12'
+grpclib==0.4.7
 protobuf>=3.19.0
 rich==12.3.0
 tblib==1.7.0
