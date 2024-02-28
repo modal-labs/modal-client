@@ -14,7 +14,7 @@ def deploy_stub_externally(
     windows_support: dict[str, str] = {}
 
     if sys.platform == "win32":
-        windows_support = os.environ.copy()  # windows apparently needs a bunch of env vars to start python...
+        windows_support = {**os.environ.copy(), **{"PYTHONUTF8": "1"}}  # windows apparently needs a bunch of env vars to start python...
 
     env = {**windows_support, "MODAL_SERVER_URL": servicer.remote_addr, **env}
     if cwd is None:
