@@ -350,11 +350,18 @@ def get_referred_objects(f: Callable) -> List[Object]:
         elif isinstance(obj, Object):
             ret.append(obj)
         elif inspect.isfunction(obj):
-            for dep_obj in inspect.getclosurevars(obj).globals.values():
+            try:
+                closure_vars = inspect.getclosurevars(obj)
+            except ValueError:
+                logger.warning(
+                    f"Could not inspect closure vars of {f} - referenced global Modal objects may or may not work in that function"
+                )
+                continue
+
+            for dep_obj in closure_vars.globals.values():
                 if id(dep_obj) not in objs_seen:
                     objs_seen.add(id(dep_obj))
                     obj_queue.append(dep_obj)
-
     return ret
 
 
