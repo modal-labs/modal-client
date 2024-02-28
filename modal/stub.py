@@ -549,7 +549,6 @@ class _Stub:
                 keep_warm=keep_warm,
                 cloud=cloud,
                 webhook_config=webhook_config,
-                cls=_cls,
                 checkpointing_enabled=checkpointing_enabled,
                 allow_background_volume_commits=_allow_background_volume_commits,
                 block_network=block_network,

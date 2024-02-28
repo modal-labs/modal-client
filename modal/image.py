@@ -6,7 +6,7 @@ import sys
 import typing
 import warnings
 from inspect import isfunction
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import toml
@@ -1266,8 +1266,8 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        shared_volumes: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
