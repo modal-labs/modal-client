@@ -301,6 +301,12 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir):
         assert expected in res.stdout
 
 
+def test_run_user_script_exception(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "raises_error.py"
+    res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    assert res.exc_info[1].user_source == stub_file.as_posix()
+
+
 @pytest.fixture
 def fresh_main_thread_assertion_module(test_dir):
     modules_to_unload = [n for n in sys.modules.keys() if "main_thread_assertion" in n]
