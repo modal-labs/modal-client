@@ -33,7 +33,7 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
 
-from modal import _pty
+from modal import _pty, is_local
 from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import (
     queue_batch_iterator,
@@ -70,7 +70,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount
+from .mount import _get_client_mount, _Mount, _MountCache
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
@@ -629,15 +629,24 @@ class _Function(_Object, type_prefix="fu"):
             )
             secrets = [secret, *secrets]
 
-        all_mounts = [
-            _get_client_mount(),  # client
-            *mounts,  # explicit mounts
-        ]
-        # TODO (elias): Clean up mount logic, this is quite messy:
-        if stub:
-            all_mounts.extend(stub._get_deduplicated_function_mounts(info.get_mounts()))  # implicit mounts
+        explicit_mounts = mounts
+
+        if is_local():
+            entrypoint_mounts = info.get_entrypoint_mount()
+            all_mounts = [
+                _get_client_mount(),
+                *explicit_mounts,
+                *entrypoint_mounts,
+            ]
+
+            if config.get("automount"):
+                automounts = info.get_auto_mounts()
+                all_mounts += automounts
         else:
-            all_mounts.extend(info.get_mounts().values())  # this would typically only happen for builder functions
+            # skip any mount introspection/logic inside containers, since the function
+            # should already be hydrated
+            # TODO: maybe the entire constructor should be exited early if not local?
+            all_mounts = []
 
         retry_policy = _parse_retries(retries, raw_f)
 
@@ -729,10 +738,18 @@ class _Function(_Object, type_prefix="fu"):
             if only_explicit_mounts:
                 # TODO: this is a bit hacky, but all_mounts may differ in the container vs locally
                 # We don't want the function dependencies to change, so we have this way to force it to
-                # only include its declared dependencies
-                deps += list(mounts)
+                # only include its declared dependencies.
+                # Only objects that need interaction within a user's container actually need to be
+                # included when only_explicit_mounts=True, so omitting auto mounts here
+                # wouldn't be a problem as long as Mounts are "passive" and only loaded by the
+                # worker runtime
+                deps += list(explicit_mounts)
             else:
-                deps += list(all_mounts)
+                mount_cache = (
+                    stub._mount_cache if stub else _MountCache()
+                )  # builder functions don't have stubs at this point
+                optimized_mounts = mount_cache.get_many(all_mounts)
+                deps += list(optimized_mounts)
             if proxy:
                 deps.append(proxy)
             if image:
@@ -749,7 +766,6 @@ class _Function(_Object, type_prefix="fu"):
             objs: list[Object] = get_referred_objects(info.raw_f)
             _objs: list[_Object] = synchronizer._translate_in(objs)  # type: ignore
             deps += _objs
-
             return deps
 
         async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -829,12 +845,16 @@ class _Function(_Object, type_prefix="fu"):
                 )
                 for path, volume in validated_volumes
             ]
+            mount_cache = (
+                stub._mount_cache if stub else _MountCache()
+            )  # builder functions don't have stubs at this point
+            optimized_mounts = mount_cache.get_many(all_mounts)
 
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name or "",
                 function_name=info.function_name,
-                mount_ids=[mount.object_id for mount in all_mounts],
+                mount_ids=[mount.object_id for mount in optimized_mounts],
                 secret_ids=[secret.object_id for secret in secrets],
                 image_id=(image.object_id if image else ""),
                 definition_type=info.definition_type,

@@ -18,14 +18,13 @@ from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
-from modal_utils.package_utils import get_module_mount_info, module_mount_condition
+from modal_utils.package_utils import get_module_mount_info
 from modal_version import __version__
 
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._resolver import Resolver
 from .client import _Client
 from .config import config, logger
-from .exception import NotFoundError
 from .object import _get_environment_name, _StatefulObject
 
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
@@ -66,16 +65,28 @@ def python_standalone_mount_name(version: str) -> str:
 
 
 class _MountEntry(metaclass=abc.ABCMeta):
-    remote_path: PurePosixPath
-
+    @abc.abstractmethod
     def description(self) -> str:
         ...
 
+    @abc.abstractmethod
     def get_files_to_upload(self) -> typing.Iterator[Tuple[Path, str]]:
         ...
 
+    @abc.abstractmethod
     def watch_entry(self) -> Tuple[Path, Path]:
         ...
+
+    @abc.abstractmethod
+    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+        ...
+
+
+def _select_files(entries: List[_MountEntry]) -> List[Tuple[Path, PurePosixPath]]:
+    all_files: typing.Set[Tuple[Path, PurePosixPath]] = set()
+    for entry in entries:
+        all_files |= set(entry.get_files_to_upload())
+    return list(all_files)
 
 
 @dataclasses.dataclass
@@ -87,16 +98,19 @@ class _MountFile(_MountEntry):
         return str(self.local_file)
 
     def get_files_to_upload(self):
-        local_file = self.local_file.expanduser()
+        local_file = self.local_file.expanduser().absolute()
         if not local_file.exists():
             raise FileNotFoundError(local_file)
 
         rel_filename = self.remote_path
-        yield local_file, rel_filename.as_posix()
+        yield local_file, rel_filename
 
     def watch_entry(self):
-        parent = self.local_file.parent
-        return parent, self.local_file
+        parent = self.local_file.absolute().parent
+        return parent, self.local_file.absolute()
+
+    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+        return [(self.local_file.absolute(), self.remote_path)]
 
 
 @dataclasses.dataclass
@@ -110,7 +124,7 @@ class _MountDir(_MountEntry):
         return str(self.local_dir)
 
     def get_files_to_upload(self):
-        local_dir = self.local_dir.expanduser()
+        local_dir = self.local_dir.expanduser().absolute()
 
         if not local_dir.exists():
             raise FileNotFoundError(local_dir)
@@ -125,12 +139,84 @@ class _MountDir(_MountEntry):
 
         for local_filename in gen:
             if self.condition(local_filename):
-                local_relpath = Path(local_filename).relative_to(local_dir)
+                local_relpath = Path(local_filename).absolute().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
-                yield local_filename, mount_path.as_posix()
+                yield local_filename, mount_path
 
     def watch_entry(self):
-        return self.local_dir, None
+        return self.local_dir.absolute(), None
+
+    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+        return [(self.local_dir.absolute(), self.remote_path)]
+
+
+def module_mount_condition(f: str):
+    path = Path(f)
+    if path.suffix == ".pyc":
+        return False
+    if any(p.name.startswith(".") or p.name == "__pycache__" for p in path.parents):
+        return False
+    return True
+
+
+@dataclasses.dataclass
+class _MountedPythonModule(_MountEntry):
+    # the purpose of this is to keep printable information about which Python package
+    # was mounted. Functionality wise it's the same as mounting a dir or a file with
+    # the Module
+
+    module_name: str
+    remote_dir: Union[PurePosixPath, str] = ROOT_DIR.as_posix()  # cast needed here for type stub generation...
+    condition: typing.Optional[typing.Callable[[str], bool]] = None
+
+    def description(self) -> str:
+        return f"PythonPackage:{self.module_name}"
+
+    def _proxy_entries(self) -> List[_MountEntry]:
+        mount_infos = get_module_mount_info(self.module_name)
+        entries = []
+        for mount_info in mount_infos:
+            is_package, base_path = mount_info
+            if is_package:
+                remote_dir = PurePosixPath(self.remote_dir, *self.module_name.split("."))
+                entries.append(
+                    _MountDir(
+                        Path(base_path),
+                        remote_path=remote_dir,
+                        condition=self.condition or module_mount_condition,
+                        recursive=True,
+                    )
+                )
+            else:
+                path_segments = self.module_name.split(".")[:-1]
+                remote_path = PurePosixPath(self.remote_dir, *path_segments, Path(base_path).name)
+                entries.append(
+                    _MountFile(
+                        local_file=Path(base_path),
+                        remote_path=remote_path,
+                    )
+                )
+        return entries
+
+    def get_files_to_upload(self) -> typing.Iterator[Tuple[Path, str]]:
+        for entry in self._proxy_entries():
+            yield from entry.get_files_to_upload()
+
+    def watch_entry(self) -> Tuple[Path, Path]:
+        for entry in self._proxy_entries():
+            # TODO: fix watch for mounts of multi-path packages
+            return entry.watch_entry()
+
+    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+        paths = []
+        for sub in self._proxy_entries():
+            paths.extend(sub.top_level_paths())
+        return paths
+
+
+class NonLocalMountError(Exception):
+    # used internally to signal an error when trying to access entries on a non-local mount definition
+    pass
 
 
 # TODO(erikbern): get rid of the _StatefulObject inheritance shortly
@@ -156,7 +242,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
     the file's contents to skip uploading files that have been uploaded before.
     """
 
-    _entries: List[_MountEntry]
+    _entries: Optional[List[_MountEntry]] = None
 
     _content_checksum_sha256_hex: Optional[str]
 
@@ -175,11 +261,21 @@ class _Mount(_StatefulObject, type_prefix="mo"):
     @property
     def entries(self):
         """mdmd:hidden"""
+        if self._entries is None:
+            raise NonLocalMountError()
         return self._entries
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
         assert isinstance(handle_metadata, api_pb2.MountHandleMetadata)
         self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
+
+    def _top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+        # Returns [(local_absolute_path, remote_path), ...] for all top level entries in the Mount
+        # Used to determine if a package mount is installed in a sys directory or not
+        res: List[Tuple[Path, PurePosixPath]] = []
+        for entry in self.entries:
+            res.extend(entry.top_level_paths())
+        return res
 
     def is_local(self) -> bool:
         """mdmd:hidden"""
@@ -294,12 +390,10 @@ class _Mount(_StatefulObject, type_prefix="mo"):
 
     @staticmethod
     async def _get_files(entries: List[_MountEntry]) -> AsyncGenerator[FileUploadSpec, None]:
-        all_files: List[Tuple[Path, str]] = []
-        for entry in entries:
-            all_files += list(entry.get_files_to_upload())
-
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as exe:
+            all_files = await loop.run_in_executor(exe, _select_files, entries)
+
             futs = []
             for local_filename, remote_filename in all_files:
                 futs.append(loop.run_in_executor(exe, get_file_upload_spec_from_path, local_filename, remote_filename))
@@ -383,6 +477,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         # Upload files
         uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
         files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
+
         if not files:
             logger.warning(f"Mount of '{message_label}' is empty.")
 
@@ -391,7 +486,7 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         req = api_pb2.MountGetOrCreateRequest(
             files=files,
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
-            app_id=resolver.app_id
+            app_id=resolver.app_id,
         )
         resp = await retry_transient_errors(resolver.client.stub.MountGetOrCreate, req, base_delay=1)
         status_row.finish(f"Created mount {message_label}")
@@ -401,7 +496,9 @@ class _Mount(_StatefulObject, type_prefix="mo"):
 
     @staticmethod
     def from_local_python_packages(
-        *module_names: str, remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix()
+        *module_names: str,
+        remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
+        condition: Optional[Callable[[str], bool]] = None,
     ) -> "_Mount":
         """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
         This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
@@ -421,36 +518,16 @@ class _Mount(_StatefulObject, type_prefix="mo"):
             my_local_module.do_stuff()
         ```
         """
-        from modal.app import is_local
 
         # Don't re-run inside container.
 
         mount = _Mount._new()
+        from modal import is_local
+
         if not is_local():
-            return mount
-
-        remote_dir = PurePosixPath(remote_dir)
+            return mount  # empty/non-mountable mount in case it's used from within a container
         for module_name in module_names:
-            mount_infos = get_module_mount_info(module_name)
-
-            if mount_infos == []:
-                raise NotFoundError(f"Module {module_name} not found.")
-
-            for mount_info in mount_infos:
-                is_package, base_path, module_mount_condition = mount_info
-                if is_package:
-                    mount = mount.add_local_dir(
-                        base_path,
-                        remote_path=remote_dir / module_name,
-                        condition=module_mount_condition,
-                        recursive=True,
-                    )
-                else:
-                    remote_path = remote_dir / Path(base_path).name
-                    mount = mount.add_local_file(
-                        base_path,
-                        remote_path=remote_path,
-                    )
+            mount = mount._extend(_MountedPythonModule(module_name, remote_dir, condition))
         return mount
 
     @staticmethod
@@ -526,6 +603,35 @@ def _get_client_mount():
         return _create_client_mount()
     else:
         return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+
+
+_create_package_mounts_deprecation_msg = (
+    "modal.create_package_mounts() is being deprecated, use modal.Mount.from_local_python_packages() instead"
+)
+
+
+class _MountCache:
+    # used for deduplicating Mounts
+    cache: typing.Dict[typing.FrozenSet[Tuple[Path, PurePosixPath]], _Mount]
+
+    def __init__(self):
+        self.cache = {}
+
+    def _cache_key(self, mount: _Mount) -> typing.FrozenSet[Tuple[Path, PurePosixPath]]:
+        return frozenset(_select_files(mount.entries))
+
+    def get(self, mount: _Mount) -> _Mount:
+        # return the mount itself or an equivalent one that has already been added
+        try:
+            return self.cache.setdefault(self._cache_key(mount), mount)
+        except NonLocalMountError:
+            return mount
+
+    def get_many(self, mounts: typing.Collection[_Mount]) -> List[_Mount]:
+        result = []
+        for m in mounts:
+            result.append(self.get(m))
+        return result
 
 
 @typechecked
