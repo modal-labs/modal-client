@@ -147,7 +147,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     deps.append(s3_mount.secret)
             return deps
 
-        async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
+        async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
             gpu_config = parse_gpu_config(gpu)
 
             cloud_provider = parse_cloud_provider(cloud) if cloud else None
@@ -186,7 +186,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
 
             sandbox_id = create_resp.sandbox_id
-            provider._hydrate(sandbox_id, resolver.client, None)
+            self._hydrate(sandbox_id, resolver.client, None)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
 

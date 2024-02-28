@@ -573,6 +573,7 @@ class _Function(_Object, type_prefix="fu"):
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
+    _parent: "_Function"
 
     @staticmethod
     def from_args(
@@ -768,7 +769,7 @@ class _Function(_Object, type_prefix="fu"):
             deps += _objs
             return deps
 
-        async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -783,10 +784,9 @@ class _Function(_Object, type_prefix="fu"):
                 existing_function_id=existing_object_id or "",
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
-            # Update the precreated function handle (todo: hack until we merge providers/handles)
-            provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
@@ -939,7 +939,7 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 status_row.finish(f"Created {tag}.")
 
-            provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
@@ -976,37 +976,38 @@ class _Function(_Object, type_prefix="fu"):
     ) -> "_Function":
         """mdmd:hidden"""
 
-        async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            if not self.is_hydrated:
+        async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            if not self._parent.is_hydrated:
                 raise ExecutionError(
                     "Base function in class has not been hydrated. This might happen if an object is"
                     " defined on a different stub, or if it's on the same stub but it didn't get"
                     " created because it wasn't defined in global scope."
                 )
-            assert self._client.stub
+            assert self._parent._client.stub
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             environment_name = _get_environment_name(None, resolver)
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=self._object_id,
+                function_id=self._parent._object_id,
                 serialized_params=serialized_params,
                 function_options=options,
                 environment_name=environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
-            response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
-            provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
+            response = await retry_transient_errors(self._parent._client.stub.FunctionBindParams, req)
+            self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
 
-        provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        fun = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
         if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
-            provider._hydrate_from_other(self)
-        provider._is_remote_cls_method = True  # TODO(erikbern): deprecated
-        provider._info = self._info
-        provider._obj = obj
-        provider._is_generator = self._is_generator
-        provider._is_method = True
+            fun._hydrate_from_other(self)
+        fun._is_remote_cls_method = True  # TODO(erikbern): deprecated
+        fun._info = self._info
+        fun._obj = obj
+        fun._is_generator = self._is_generator
+        fun._is_method = True
+        fun._parent = self
 
-        return provider
+        return fun
 
     @classmethod
     def from_name(
@@ -1023,7 +1024,7 @@ class _Function(_Object, type_prefix="fu"):
         ```
         """
 
-        async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load_remote(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
@@ -1039,7 +1040,7 @@ class _Function(_Object, type_prefix="fu"):
                 else:
                     raise
 
-            obj._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True)
