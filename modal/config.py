@@ -89,10 +89,20 @@ from .exception import InvalidError, deprecation_error, deprecation_warning
 user_config_path: str = os.environ.get("MODAL_CONFIG_PATH") or os.path.expanduser("~/.modal.toml")
 
 
-def _read_user_config():
-    from .app import is_local
+def _is_remote() -> bool:
+    # We want to prevent read/write on a modal config file in the container
+    # environment, both because that doesn't make sense and might cause weird
+    # behavior, and because we want to keep the `toml` dependency out of the
+    # container runtime. Ideally we would use `modal.app.is_local` here, but
+    # we currently need to read the config before setting up the container app.
+    # So we're taking the somewhat hacky route of checking for env variables
+    # that we know will be set in the container environment and are unlikely
+    # to be set in the local environment.
+    return {"MODAL_TASK_ID", "MODAL_IMAGE_ID"} <= set(os.environ)
 
-    if is_local() and os.path.exists(user_config_path):
+
+def _read_user_config():
+    if not _is_remote() and os.path.exists(user_config_path):
         # Defer toml import so we don't need it in the container runtime environment
         import toml
 
@@ -276,9 +286,7 @@ def _store_user_config(
 
 
 def _write_user_config(user_config):
-    from .app import is_local
-
-    if not is_local():
+    if not _is_remote():
         raise InvalidError("Can't update config file in remote environment.")
 
     # Defer toml import so we don't need it in the container runtime environment
