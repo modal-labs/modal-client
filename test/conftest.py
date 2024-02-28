@@ -1288,3 +1288,8 @@ def modal_config():
             os.remove(t.name)
 
     return mock_modal_toml
+
+
+@pytest.fixture
+def supports_dir(test_dir):
+    return test_dir / Path("supports")

@@ -3,7 +3,6 @@ import os
 import pytest
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest_asyncio
 
@@ -26,11 +25,6 @@ def venv_path(tmp_path):
 
 
 script_path = "pkg_a/script.py"
-
-
-@pytest.fixture
-def supports_dir(test_dir):
-    return test_dir / Path("supports")
 
 
 def f():

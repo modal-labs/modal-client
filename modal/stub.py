@@ -718,5 +718,9 @@ class _Stub:
         await resolver.load(obj)
         return obj
 
+    def include(self, other_stub: "_Stub"):
+        for tag, object in other_stub._indexed_objects.items():
+            self._add_object(tag, object)
+
 
 Stub = synchronize_api(_Stub)
