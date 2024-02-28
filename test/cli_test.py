@@ -304,7 +304,7 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir):
 def test_run_user_script_exception(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "raises_error.py"
     res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
-    assert res.exc_info[1].user_source == stub_file.as_posix()
+    assert res.exc_info[1].user_source == str(stub_file.resolve())
 
 
 @pytest.fixture
