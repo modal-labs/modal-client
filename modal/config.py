@@ -282,7 +282,7 @@ def _store_user_config(
 
 
 def _write_user_config(user_config):
-    if not _is_remote():
+    if _is_remote():
         raise InvalidError("Can't update config file in remote environment.")
 
     # Defer toml import so we don't need it in the container runtime environment
