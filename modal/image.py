@@ -18,6 +18,7 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
+from ._blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from ._serialization import serialize
@@ -172,6 +173,7 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu_config: Optional[api_pb2.GPUConfig] = None,
         build_function: Optional["modal.functions._Function"] = None,
+        build_function_input: Optional[api_pb2.FunctionInput] = None,
         context_mount: Optional[_Mount] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         force_build: bool = False,
@@ -222,7 +224,6 @@ class _Image(_Object, type_prefix="im"):
                     context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
             if build_function:
-                build_function_def = build_function.get_build_def()
                 build_function_id = build_function.object_id
 
                 globals = build_function._get_info().get_globals()
@@ -243,10 +244,14 @@ class _Image(_Object, type_prefix="im"):
                 # Cloudpickle function serialization produces unstable values.
                 # TODO: better way to filter out types that don't have a stable hash?
                 build_function_globals = serialize(filtered_globals) if filtered_globals else None
+                _build_function = api_pb2.BuildFunction(
+                    definition=build_function.get_build_def(),
+                    globals=build_function_globals,
+                    input=build_function_input,
+                )
             else:
-                build_function_def = None
                 build_function_id = None
-                build_function_globals = None
+                _build_function = None
 
             dockerfile_commands_list: List[str]
             if callable(dockerfile_commands):
@@ -261,13 +266,12 @@ class _Image(_Object, type_prefix="im"):
                 context_files=context_file_pb2s,
                 secret_ids=[secret.object_id for secret in secrets],
                 gpu=bool(gpu_config.type),  # Note: as of 2023-01-27, server still uses this
-                build_function_def=build_function_def,
-                build_function_globals=build_function_globals,
                 context_mount_id=(context_mount.object_id if context_mount else None),
                 gpu_config=gpu_config,  # Note: as of 2023-01-27, server ignores this
                 image_registry_config=image_registry_config.get_proto(),
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
+                build_function=_build_function,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
@@ -1261,8 +1265,7 @@ class _Image(_Object, type_prefix="im"):
     @typechecked
     def run_function(
         self,
-        raw_f: Callable[[], Any],
-        *,
+        raw_f: Callable,
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),
@@ -1272,7 +1275,9 @@ class _Image(_Object, type_prefix="im"):
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
         force_build: bool = False,
-        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
+        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`.
+        args: Sequence[Any] = (),  # Positional arguments to the function.
+        kwargs: Dict[str, Any] = {},  # Keyword arguments to the function.
     ) -> "_Image":
         """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
         function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `NetworkFileSystem`s, and resource requests) can
@@ -1323,7 +1328,21 @@ class _Image(_Object, type_prefix="im"):
             cpu=cpu,
             is_builder_function=True,
         )
-        return self.extend(build_function=function, force_build=self.force_build or force_build)
+        if len(args) + len(kwargs) > 0:
+            args_serialized = serialize((args, kwargs))
+            if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
+                raise InvalidError(
+                    f"Arguments to `run_function` are too large ({len(args_serialized)} bytes). "
+                    f"Maximum size is {MAX_OBJECT_SIZE_BYTES} bytes."
+                )
+            build_function_input = api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE)
+        else:
+            build_function_input = None
+        return self.extend(
+            build_function=function,
+            build_function_input=build_function_input,
+            force_build=self.force_build or force_build,
+        )
 
     @typechecked
     def env(self, vars: Dict[str, str]) -> "_Image":
