@@ -370,6 +370,26 @@ def _disallow_wrapping_method(f: _PartialFunction, wrapper: str) -> None:
 def _build(
     _warn_parentheses_missing=None,
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
+    """
+    Decorator for methods that should execute at _build time_ to create a new layer
+    in a `modal.Image`.
+
+    See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#build) for more information.
+
+    **Usage**
+
+    ```python notest
+    @stub.cls(gpu="A10G")
+    class AlpacaLoRAModel:
+        @build()
+        def download_models(self):
+            model = LlamaForCausalLM.from_pretrained(
+                base_model,
+            )
+            PeftModel.from_pretrained(model, lora_weights)
+            LlamaTokenizer.from_pretrained(base_model)
+    ```
+    """
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
 
@@ -389,6 +409,9 @@ def _enter(
     *,
     checkpoint: bool = False,
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
+    """Decorator for methods which should be executed when a new container is started.
+
+    See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#enter) for more information."""
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
 
@@ -417,6 +440,9 @@ ExitHandlerType = Union[
 
 @typechecked
 def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _PartialFunction]:
+    """Decorator for methods which should be executed when a container is about to exit.
+
+    See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#exit) for more information."""
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
 

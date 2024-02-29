@@ -209,7 +209,7 @@ class _Image(_Object, type_prefix="im"):
                 deps.append(image_registry_config.secret)
             return deps
 
-        async def _load(provider: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
             base_images_pb2s = [
                 api_pb2.BaseImage(
                     docker_tag=docker_tag,
@@ -331,7 +331,7 @@ class _Image(_Object, type_prefix="im"):
             else:
                 raise RemoteError("Unknown status %s!" % result.status)
 
-            provider._hydrate(image_id, resolver.client, None)
+            self._hydrate(image_id, resolver.client, None)
 
         rep = f"Image({dockerfile_commands})"
         obj = _Image._from_loader(_load, rep, deps=_deps)

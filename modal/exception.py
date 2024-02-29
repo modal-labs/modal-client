@@ -9,7 +9,8 @@ from typing import Tuple
 
 class Error(Exception):
     """
-    Base error class for all Modal errors.
+    Base class for all Modal errors. See [`modal.exception`](/docs/reference/modal.exception) for the specialized
+    error classes.
 
     **Usage**
 
@@ -172,4 +173,8 @@ class InputCancellation(BaseException):
     caught by unspecified user exception clauses that might be used for retries etc.
     """
 
+    pass
+
+
+class ModuleNotMountable(Exception):
     pass

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from modal import Stub
 from modal._blob_utils import LARGE_FILE_LIMIT
-from modal.exception import NotFoundError
+from modal.exception import ModuleNotMountable
 from modal.mount import Mount
 
 
@@ -93,24 +93,17 @@ def test_from_local_python_packages(servicer, client, test_dir):
 
     with stub.run(client=client):
         files = set(servicer.files_name2sha.keys())
-        assert {
-            # files that should be added
+        expected_files = {
             "/root/pkg_a/a.py",
             "/root/pkg_a/b/c.py",
             "/root/pkg_b/f.py",
             "/root/pkg_b/g/h.py",
             "/root/standalone_file.py",
-        } - files == set()
+        }
+        assert expected_files.issubset(files)
 
-        assert (
-            files
-            & {
-                # files that should not be added
-                "/root/pkg_c/i.py",
-                "/root/pkg_c/j/k.py",
-            }
-            == set()
-        )
+        assert "/root/pkg_c/i.py" not in files
+        assert "/root/pkg_c/j/k.py" not in files
 
 
 def test_stub_mounts(servicer, client, test_dir):
@@ -122,21 +115,25 @@ def test_stub_mounts(servicer, client, test_dir):
 
     with stub.run(client=client):
         files = set(servicer.files_name2sha.keys())
-        assert {
+        expected_files = {
             "/root/pkg_a/a.py",
             "/root/pkg_a/b/c.py",
             "/root/pkg_b/f.py",
             "/root/pkg_b/g/h.py",
-        } - files == set()
+        }
+        assert expected_files.issubset(files)
 
-        assert {"/root/pkg_c/i.py", "/root/pkg_c/j/k.py"} & files == set()
+        assert "/root/pkg_c/i.py" not in files
+        assert "/root/pkg_c/j/k.py" not in files
 
 
-def test_from_local_python_packages_missing_module(servicer, client, test_dir):
+def test_from_local_python_packages_missing_module(servicer, client, test_dir, server_url_env):
     stub = Stub()
+    stub.function(mounts=[Mount.from_local_python_packages("nonexistent_package")])(dummy)
 
-    with pytest.raises(NotFoundError):
-        stub.function(mounts=[Mount.from_local_python_packages("nonexistent_package")])(dummy)
+    with pytest.raises(ModuleNotMountable):
+        with stub.run(client=client):
+            pass
 
 
 def test_chained_entries(test_dir):
