@@ -90,6 +90,7 @@ class Resolver:
             await obj._preload(obj, self, existing_object_id)
 
     async def load(self, obj, existing_object_id: Optional[str] = None):
+        print("LOADING", obj)
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
 
         if not cached_future:
@@ -97,7 +98,9 @@ class Resolver:
             async def loader():
                 # Wait for all its dependencies
                 # TODO(erikbern): do we need existing_object_id for those?
-                await asyncio.gather(*[self.load(dep) for dep in obj.deps()])
+                deps = obj.deps()
+                print(deps)
+                await asyncio.gather(*[self.load(dep) for dep in deps])
 
                 # Load the object itself
                 try:

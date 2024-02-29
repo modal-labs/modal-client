@@ -76,7 +76,7 @@ class _Obj:
 
         self._functions = {}
         for k, fun in base_functions.items():
-            self._functions[k] = fun.from_parametrized(self, from_other_workspace, options, args, kwargs)
+            self._functions[k] = fun.from_parametrized(self, from_other_workspace, options, args, kwargs, cls=user_cls)
             self._functions[k]._set_output_mgr(output_mgr)
 
         # Used for construction local object lazily

@@ -989,32 +989,30 @@ class _Function(_Object, type_prefix="fu"):
     ) -> "_Function":
         """mdmd:hidden"""
 
-        from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
-
-        print("HERE", obj)
+        deps = []
         if cls:
-            build_functions = list(_find_callables_for_cls(cls, _PartialFunctionFlags.BUILD).values())
-            print(build_functions)
+            IMAGE_ID = "im-L6R6Nxgau0mES2ikNRnLc3"
+            BUILD_FUNCTION_IDS = ["fu-AT7Jh55NhKjsbnazduWBTd"]
 
-            # for build_function in build_functions:
-            #     snapshot_info = FunctionInfo(build_function, cls=cls)
-            #     snapshot_function = _Function.from_args(
-            #         snapshot_info,
-            #         stub=None,
-            #         image=image,
-            #         secrets=secrets,
-            #         gpu=gpu,
-            #         mounts=mounts,
-            #         network_file_systems=network_file_systems,
-            #         volumes=volumes,
-            #         memory=memory,
-            #         timeout=86400,  # TODO: make this an argument to `@build()`
-            #         cpu=cpu,
-            #         is_builder_function=True,
-            #         is_auto_snapshot=True,
-            #         _experimental_scheduler_placement=_experimental_scheduler_placement,
-            #     )
-            #     image = image.extend(build_function=snapshot_function, force_build=image.force_build)
+            async def _image_load(provider: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+                provider._hydrate(IMAGE_ID, resolver.client, None)
+
+            image = _Image._from_loader(_image_load, f"Image_{IMAGE_ID}", hydrate_lazily=True)
+
+            for build_function_id in BUILD_FUNCTION_IDS:
+
+                async def _fn_load(provider: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+                    provider._hydrate(build_function_id, resolver.client, None)
+
+                build_function = _Function._from_loader(
+                    _fn_load, f"Function_{build_function_id}", deps=lambda: [image], hydrate_lazily=True
+                )
+                snapshot_function = build_function.from_parametrized(obj, from_other_workspace, options, args, kwargs)
+                image = image.extend(build_function=snapshot_function)
+                deps.append(image)
+
+        def _deps():
+            return deps
 
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if not self.is_hydrated:
@@ -1024,6 +1022,7 @@ class _Function(_Object, type_prefix="fu"):
                     " created because it wasn't defined in global scope."
                 )
             assert self._client.stub
+
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             environment_name = _get_environment_name(None, resolver)
             req = api_pb2.FunctionBindParamsRequest(
@@ -1036,7 +1035,7 @@ class _Function(_Object, type_prefix="fu"):
             response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
             provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
 
-        provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True, deps=_deps)
         if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
             provider._hydrate_from_other(self)
