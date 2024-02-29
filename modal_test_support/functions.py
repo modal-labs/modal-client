@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import socket
 import time
 
 from modal import (
@@ -310,6 +311,15 @@ class CheckpointingCls:
     def f(self, x):
         return "".join(self._vals) + x
 
+@stub.cls(checkpointing_enabled=True)
+class CheckpointingClsNetworkConnectionOpen:
+    def __init__(self):
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    @enter(checkpoint=True)
+    def open_connection(self):
+        remote_ip = socket.gethostbyname("modal.com")
+        self._socket.connect((remote_ip, 80))
 
 @stub.cls()
 class EventLoopCls:
