@@ -29,6 +29,8 @@ def main():
             # In case we didn't find a frame that matched the user source, revert to the original traceback
             tb = orig_tb
         sys.excepthook(type(exc.__cause__), exc.__cause__, tb)
+        sys.exit(1)
+
     except Exception as exc:
         if config.get("traceback"):
             raise
