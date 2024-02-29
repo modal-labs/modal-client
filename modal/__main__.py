@@ -14,9 +14,11 @@ def main():
 
     try:
         entrypoint_cli()
+
     except _CliUserExecutionError as exc:
         if config.get("traceback"):
             raise
+
         # Try to step forward in the traceback until we get to the user code that failed to import
         tb = orig_tb = exc.__cause__.__traceback__
         if exc.user_source.endswith(".py"):
@@ -34,14 +36,14 @@ def main():
     except Exception as exc:
         if config.get("traceback"):
             raise
-        else:
-            from rich.console import Console
-            from rich.panel import Panel
 
-            console = Console(stderr=True)
-            panel = Panel(str(exc), border_style="red", title="Error", title_align="left")
-            console.print(panel, highlight=False)
-            sys.exit(1)
+        from rich.console import Console
+        from rich.panel import Panel
+
+        console = Console(stderr=True)
+        panel = Panel(str(exc), border_style="red", title="Error", title_align="left")
+        console.print(panel, highlight=False)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
