@@ -1265,7 +1265,7 @@ class _Image(_Object, type_prefix="im"):
     @typechecked
     def run_function(
         self,
-        raw_f: Callable[[], Any],
+        raw_f: Callable,
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),
@@ -1276,7 +1276,7 @@ class _Image(_Object, type_prefix="im"):
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
         force_build: bool = False,
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`.
-        args: Tuple[Any] = (),  # Positional arguments to the function.
+        args: Sequence[Any] = (),  # Positional arguments to the function.
         kwargs: Dict[str, Any] = {},  # Keyword arguments to the function.
     ) -> "_Image":
         """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
