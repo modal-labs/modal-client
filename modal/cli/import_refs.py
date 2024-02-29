@@ -19,6 +19,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 
 import modal
+from modal.exception import _CliUserExecutionError
 from modal.functions import Function
 from modal.stub import LocalEntrypoint, Stub
 
@@ -38,18 +39,6 @@ def parse_import_ref(object_ref: str) -> ImportRef:
         file_or_module, object_path = object_ref, None
 
     return ImportRef(file_or_module, object_path)
-
-
-class CliUserExecutionError(Exception):
-    """Private wrapper for exceptions during stub imports in the CLI.
-
-    This intentionally does not inherit from `modal.exception.Error` because it
-    is a private type that should never bubble up to users. Exceptions raised in
-    the CLI at this stage will have tracebacks printed.
-    """
-
-    def __init__(self, user_source: str):
-        self.user_source = user_source
 
 
 DEFAULT_STUB_NAME = "stub"
@@ -75,12 +64,12 @@ def import_file_or_module(file_or_module: str):
         try:
             spec.loader.exec_module(module)
         except Exception as exc:
-            raise CliUserExecutionError(str(full_path)) from exc
+            raise _CliUserExecutionError(str(full_path)) from exc
     else:
         try:
             module = importlib.import_module(file_or_module)
         except Exception as exc:
-            raise CliUserExecutionError(file_or_module) from exc
+            raise _CliUserExecutionError(file_or_module) from exc
 
     return module
 
