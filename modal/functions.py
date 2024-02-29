@@ -673,33 +673,32 @@ class _Function(_Object, type_prefix="fu"):
             # Needed to avoid circular imports
             from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
 
-            if info.cls and hasattr(info.cls, "__init__"):
-                cls_constructor = FunctionInfo(info.cls.__init__, cls=info.cls)
-                cls_needs_params = not cls_constructor.is_nullary()
+            if info.cls_requires_params():
+                # If the class requires params, we can't run `@build` eagerly.
+                # The `@build` will run lazily for each parametrization.
+                build_functions = []
             else:
-                cls_needs_params = False
-
-            if not cls_needs_params:
                 build_functions = list(_find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD).values())
-                for build_function in build_functions:
-                    snapshot_info = FunctionInfo(build_function, cls=info.cls)
-                    snapshot_function = _Function.from_args(
-                        snapshot_info,
-                        stub=None,
-                        image=image,
-                        secrets=secrets,
-                        gpu=gpu,
-                        mounts=mounts,
-                        network_file_systems=network_file_systems,
-                        volumes=volumes,
-                        memory=memory,
-                        timeout=86400,  # TODO: make this an argument to `@build()`
-                        cpu=cpu,
-                        is_builder_function=True,
-                        is_auto_snapshot=True,
-                        _experimental_scheduler_placement=_experimental_scheduler_placement,
-                    )
-                    image = image.extend(build_function=snapshot_function, force_build=image.force_build)
+
+            for build_function in build_functions:
+                snapshot_info = FunctionInfo(build_function, cls=info.cls)
+                snapshot_function = _Function.from_args(
+                    snapshot_info,
+                    stub=None,
+                    image=image,
+                    secrets=secrets,
+                    gpu=gpu,
+                    mounts=mounts,
+                    network_file_systems=network_file_systems,
+                    volumes=volumes,
+                    memory=memory,
+                    timeout=86400,  # TODO: make this an argument to `@build()`
+                    cpu=cpu,
+                    is_builder_function=True,
+                    is_auto_snapshot=True,
+                    _experimental_scheduler_placement=_experimental_scheduler_placement,
+                )
+                image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
         if interactive and concurrency_limit and concurrency_limit > 1:
             warnings.warn(

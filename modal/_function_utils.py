@@ -290,6 +290,13 @@ class FunctionInfo:
                 return False
         return True
 
+    def cls_requires_params(self):
+        if self.cls and hasattr(self.cls, "__init__"):
+            cls_constructor = FunctionInfo(self.cls.__init__, cls=self.cls)
+            return not cls_constructor.is_nullary()
+        else:
+            return False
+
 
 def get_referred_objects(f: Callable) -> List[Object]:
     """Takes a function and returns any Modal Objects in global scope that it refers to.
