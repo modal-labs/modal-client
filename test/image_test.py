@@ -370,7 +370,7 @@ def run_f_with_args(arg, *, kwarg):
 
 def test_image_run_function_with_args(client, servicer):
     stub = Stub()
-    stub["image"] = Image.debian_slim().run_function(run_f_with_args, "foo", kwarg="bar")
+    stub["image"] = Image.debian_slim().run_function(run_f_with_args, args=("foo",), kwargs={"kwarg": "bar"})
 
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
