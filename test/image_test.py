@@ -8,6 +8,7 @@ from typing import List
 from unittest import mock
 
 from modal import Image, Mount, NetworkFileSystem, Secret, Stub, build, gpu, method
+from modal._serialization import serialize
 from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version, _get_client_requirements_path
 from modal_proto import api_pb2
@@ -361,6 +362,20 @@ def test_image_run_unserializable_function(client, servicer):
         layers = get_image_layers(stub["image"].object_id, servicer)
         old_globals = layers[0].build_function_globals
         assert b"VARIABLE_4" in old_globals
+
+
+def run_f_with_args(arg, *, kwarg):
+    print("building!", arg, kwarg)
+
+
+def test_image_run_function_with_args(client, servicer):
+    stub = Stub()
+    stub["image"] = Image.debian_slim().run_function(run_f_with_args, "foo", kwarg="bar")
+
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
+        input = layers[0].build_function.input
+        assert input.args == serialize((("foo",), {"kwarg": "bar"}))
 
 
 def test_poetry(client, servicer):
