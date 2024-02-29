@@ -18,7 +18,7 @@ from ._output import OutputManager, get_app_logs_loop, step_completed, step_prog
 from .app import _LocalApp, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
-from .exception import InteractiveTimeoutError, InvalidError
+from .exception import InteractiveTimeoutError, InvalidError, _CliUserExecutionError
 
 if TYPE_CHECKING:
     from .stub import _Stub
@@ -150,7 +150,12 @@ async def _run_stub(
             else:
                 reason = api_pb2.APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED
 
-            exc_str = repr(exc_info) if exc_info else ""
+            if isinstance(exc_info, _CliUserExecutionError):
+                exc_str = repr(exc_info.__cause__)
+            elif exc_info:
+                exc_str = repr(exc_info)
+            else:
+                exc_str = ""
 
             await app.disconnect(reason, exc_str)
             stub._uncreate_all_objects()

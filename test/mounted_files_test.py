@@ -44,7 +44,7 @@ async def env_mount_files():
     fn_info = FunctionInfo(f)
 
     filenames = []
-    for _, mount in fn_info.get_mounts().items():
+    for mount in fn_info.get_auto_mounts():
         async for file_info in mount._get_files(mount.entries):
             filenames.append(file_info.mount_filename)
 
@@ -75,15 +75,18 @@ def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, serve
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
-    assert files == {
-        "/root/b/c.py",
-        "/root/b/e.py",
-        "/root/pkg_a/a.py",
-        "/root/pkg_a/serialized_fn.py",
-        "/root/pkg_b/__init__.py",
-        "/root/pkg_b/f.py",
-        "/root/pkg_b/g/h.py",
-    }
+    assert (
+        files
+        == {
+            "/root/serialized_fn.py",  # should serialized_fn be included? It's not needed to run the function, but it's loaded into sys.modules at definition time...
+            "/root/b/c.py",  # this is mounted under root since it's imported as `import b` and not `import pkg_a.b` from serialized_fn.py
+            "/root/b/e.py",  # same as above
+            "/root/a.py",  # same as above
+            "/root/pkg_b/__init__.py",
+            "/root/pkg_b/f.py",
+            "/root/pkg_b/g/h.py",
+        }
+    )
 
 
 def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_url_env):
@@ -202,3 +205,49 @@ def test_mounts_are_not_traversed_on_declaration(test_dir, monkeypatch, client, 
             files.add(fn)
     # sanity check - this test file should be included since we mounted the test dir
     assert __file__ in files  # this test file should have been included
+
+
+def test_mount_dedupe(servicer, test_dir, server_url_env):
+    supports_dir = test_dir / "supports"
+    normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
+    normally_not_included_file.touch(exist_ok=True)
+    print(
+        helpers.deploy_stub_externally(
+            # no explicit mounts, rely on auto-mounting
+            servicer,
+            "mount_dedupe.py",
+            cwd=test_dir / "supports",
+            env={"USE_EXPLICIT": "0"},
+        )
+    )
+    assert servicer.n_mounts == 2
+    assert servicer.mount_contents["mo-1"].keys() == {"/root/mount_dedupe.py"}
+    pkg_a_mount = servicer.mount_contents["mo-2"]
+    for fn in pkg_a_mount.keys():
+        assert fn.startswith("/root/pkg_a")
+    assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount.keys()
+
+
+def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
+    supports_dir = test_dir / "supports"
+    normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
+    normally_not_included_file.touch(exist_ok=True)
+    print(
+        helpers.deploy_stub_externally(
+            # two explicit mounts of the same package
+            servicer,
+            "mount_dedupe.py",
+            cwd=supports_dir,
+            env={"USE_EXPLICIT": "1"},
+        )
+    )
+    assert servicer.n_mounts == 3
+    assert servicer.mount_contents["mo-1"].keys() == {"/root/mount_dedupe.py"}
+    pkg_a_mount = servicer.mount_contents["mo-2"]
+    for fn in pkg_a_mount.keys():
+        assert fn.startswith("/root/pkg_a")
+    assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount.keys()
+
+    custom_pkg_a_mount = servicer.mount_contents["mo-3"]
+    assert len(custom_pkg_a_mount) == len(pkg_a_mount) + 1
+    assert "/root/pkg_a/normally_not_included.pyc" in custom_pkg_a_mount.keys()

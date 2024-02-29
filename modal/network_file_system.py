@@ -88,11 +88,11 @@ class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
     def new(cloud: Optional[str] = None) -> "_NetworkFileSystem":
         """Construct a new network file system, which is empty by default."""
 
-        async def _load(provider: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
-                provider._hydrate(existing_object_id, resolver.client, None)
+                self._hydrate(existing_object_id, resolver.client, None)
                 return
 
             if cloud:
@@ -102,7 +102,7 @@ class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
             req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id)
             resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
             status_row.finish("Created network file system.")
-            provider._hydrate(resp.shared_volume_id, resolver.client, None)
+            self._hydrate(resp.shared_volume_id, resolver.client, None)
 
         return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
 
@@ -142,6 +142,7 @@ class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
         cloud: Optional[str] = None,
     ):
         """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.persisted("my-volume")` instead."""
+        deprecation_warning((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
         return self.persisted(label, namespace, environment_name, cloud)
 
     @live_method

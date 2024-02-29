@@ -83,18 +83,18 @@ class _Volume(_StatefulObject, type_prefix="vo"):
     def new() -> "_Volume":
         """Construct a new volume, which is empty by default."""
 
-        async def _load(provider: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
-                provider._hydrate(existing_object_id, resolver.client, None)
+                self._hydrate(existing_object_id, resolver.client, None)
                 return
 
             status_row.message("Creating volume...")
             req = api_pb2.VolumeCreateRequest(app_id=resolver.app_id)
             resp = await retry_transient_errors(resolver.client.stub.VolumeCreate, req)
             status_row.finish("Created volume.")
-            provider._hydrate(resp.volume_id, resolver.client, None)
+            self._hydrate(resp.volume_id, resolver.client, None)
 
         return _Volume._from_loader(_load, "Volume()")
 
@@ -407,9 +407,9 @@ class _VolumeUploadContextManager:
 
         def gen():
             if isinstance(local_file, str) or isinstance(local_file, Path):
-                yield lambda: get_file_upload_spec_from_path(local_file, remote_path, mode)
+                yield lambda: get_file_upload_spec_from_path(local_file, PurePosixPath(remote_path), mode)
             else:
-                yield lambda: get_file_upload_spec_from_fileobj(local_file, remote_path, mode or 0o644)
+                yield lambda: get_file_upload_spec_from_fileobj(local_file, PurePosixPath(remote_path), mode or 0o644)
 
         self._upload_generators.append(gen())
 
@@ -430,7 +430,7 @@ class _VolumeUploadContextManager:
 
         def create_file_spec_provider(subpath):
             relpath_str = subpath.relative_to(local_path)
-            return lambda: get_file_upload_spec_from_path(subpath, (remote_path / relpath_str).as_posix())
+            return lambda: get_file_upload_spec_from_path(subpath, remote_path / relpath_str)
 
         def gen():
             glob = local_path.rglob("*") if recursive else local_path.glob("*")

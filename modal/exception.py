@@ -9,7 +9,8 @@ from typing import Tuple
 
 class Error(Exception):
     """
-    Base error class for all Modal errors.
+    Base class for all Modal errors. See [`modal.exception`](/docs/reference/modal.exception) for the specialized
+    error classes.
 
     **Usage**
 
@@ -89,6 +90,21 @@ class DeprecationError(UserWarning):
 
 class PendingDeprecationError(UserWarning):
     """Soon to be deprecated feature. Only used intermittently because of multi-repo concerns."""
+
+
+class _CliUserExecutionError(Exception):
+    """mdmd:hidden
+    Private wrapper for exceptions during when importing or running stubs from the CLI.
+
+    This intentionally does not inherit from `modal.exception.Error` because it
+    is a private type that should never bubble up to users. Exceptions raised in
+    the CLI at this stage will have tracebacks printed.
+    """
+
+    def __init__(self, user_source: str):
+        # `user_source` should be the filepath for the user code that is the source of the exception.
+        # This is used by our exception handler to show the traceback starting from that point.
+        self.user_source = user_source
 
 
 # TODO(erikbern): we have something similready in _function_utils.py
@@ -172,4 +188,8 @@ class InputCancellation(BaseException):
     caught by unspecified user exception clauses that might be used for retries etc.
     """
 
+    pass
+
+
+class ModuleNotMountable(Exception):
     pass
