@@ -3,7 +3,7 @@ import pytest
 from unittest import mock
 
 import modal
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal.runner import deploy_stub
 
 
@@ -159,3 +159,15 @@ def test_write_file(client, tmp_path, servicer):
 
         # Make sure we can write through the provider too
         stub.vol.write_file("remote_path.txt", open(local_file_path, "rb"))
+
+
+def test_persisted(servicer, client):
+    # Lookup should fail since it doesn't exist
+    with pytest.raises(NotFoundError):
+        modal.NetworkFileSystem.lookup("xyz", client=client)
+
+    # Create it
+    modal.NetworkFileSystem.lookup("xyz", create_if_missing=True, client=client)
+
+    # Lookup should succeed now
+    modal.NetworkFileSystem.lookup("xyz", client=client)

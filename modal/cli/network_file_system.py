@@ -73,8 +73,7 @@ def create(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = modal.NetworkFileSystem.new()
-    volume._deploy(name, environment_name=env)
+    modal.NetworkFileSystem.create_deployed(name, environment_name=env)
     console = Console()
     console.print(f"Created volume '{name}'. \n\nCode example:\n")
     usage = Syntax(gen_usage_code(name), "python")
