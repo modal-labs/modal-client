@@ -22,6 +22,12 @@ class _Queue(_Object, type_prefix="qu"):
 
     The queue can contain any object serializable by `cloudpickle`, including Modal objects.
 
+    **Lifetime of a queue and its contents**
+
+    A `Queue`'s lifetime matches the lifetime of the app it's attached to, but the contents expire after 30 days.
+    Because of this, `Queues`s are best used for communication between active functions and not relied on for
+    persistent storage. On app completion or after stopping an app any associated `Queue` objects are cleaned up.
+
     **Usage**
 
     Create a new `Queue` with `Queue.new()`, then assign it to a stub or function.
