@@ -7,7 +7,7 @@ import sys
 import time
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar
+from typing import Any, AsyncGenerator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar, Union
 
 import synchronicity
 from typing_extensions import ParamSpec
@@ -327,7 +327,7 @@ def asyncify(f: Callable[P, T]) -> Callable[P, Awaitable[T]]:
     return wrapper
 
 
-async def iterate_blocking(iterator: Iterator[T]) -> AsyncIterator[T]:
+async def iterate_blocking(iterator: Iterator[T]) -> AsyncGenerator[Union[T, object], None]:
     """Iterate over a blocking iterator in an async context."""
 
     loop = asyncio.get_running_loop()
