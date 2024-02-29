@@ -16,7 +16,7 @@ def main():
         entrypoint_cli()
     except _CliUserExecutionError as exc:
         if config.get("traceback"):
-            raise exc
+            raise
         # Try to step forward in the traceback until we get to the user code that failed to import
         tb = orig_tb = exc.__cause__.__traceback__
         if exc.user_source.endswith(".py"):
