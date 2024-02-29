@@ -21,7 +21,6 @@ from typing import Dict, Iterator, Optional
 
 import aiohttp.web
 import aiohttp.web_runner
-import cloudpickle
 import grpclib.server
 import pkg_resources
 import pytest_asyncio
@@ -31,6 +30,7 @@ from grpclib import GRPCError, Status
 import modal._serialization
 from modal import __version__, config
 from modal._serialization import serialize_data_format
+from modal._vendor import cloudpickle
 from modal.app import _ContainerApp
 from modal.client import HEARTBEAT_INTERVAL, Client
 from modal.mount import client_mount_name

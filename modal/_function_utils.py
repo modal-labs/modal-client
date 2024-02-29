@@ -185,7 +185,7 @@ class FunctionInfo:
         return serialized_bytes
 
     def get_globals(self):
-        from cloudpickle.cloudpickle import _extract_code_globals
+        from ._vendor.cloudpickle import _extract_code_globals
 
         func = self.raw_f
         f_globals_ref = _extract_code_globals(func.__code__)
