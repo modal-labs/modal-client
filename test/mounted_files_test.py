@@ -221,8 +221,8 @@ def test_mount_dedupe(servicer, test_dir, server_url_env):
         )
     )
     assert servicer.n_mounts == 2
-    assert servicer.mount_contents["mo-123"].keys() == {"/root/mount_dedupe.py"}
-    pkg_a_mount = servicer.mount_contents["mo-124"]
+    assert servicer.mount_contents["mo-1"].keys() == {"/root/mount_dedupe.py"}
+    pkg_a_mount = servicer.mount_contents["mo-2"]
     for fn in pkg_a_mount.keys():
         assert fn.startswith("/root/pkg_a")
     assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount.keys()
@@ -242,12 +242,12 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
         )
     )
     assert servicer.n_mounts == 3
-    assert servicer.mount_contents["mo-123"].keys() == {"/root/mount_dedupe.py"}
-    pkg_a_mount = servicer.mount_contents["mo-124"]
+    assert servicer.mount_contents["mo-1"].keys() == {"/root/mount_dedupe.py"}
+    pkg_a_mount = servicer.mount_contents["mo-2"]
     for fn in pkg_a_mount.keys():
         assert fn.startswith("/root/pkg_a")
     assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount.keys()
 
-    custom_pkg_a_mount = servicer.mount_contents["mo-125"]
+    custom_pkg_a_mount = servicer.mount_contents["mo-3"]
     assert len(custom_pkg_a_mount) == len(pkg_a_mount) + 1
     assert "/root/pkg_a/normally_not_included.pyc" in custom_pkg_a_mount.keys()
