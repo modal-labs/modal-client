@@ -520,9 +520,9 @@ def test_environment_flag(test_dir, servicer, command):
             and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
-            "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="sv-123")),
-            request_filter=lambda req: req.app_name == "volume_app" and req.environment_name == "staging",
+            "SharedVolumeGetOrCreate",
+            api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id="sv-123"),
+            request_filter=lambda req: req.deployment_name == "volume_app" and req.environment_name == "staging",
         )
         _run(command + ["--env=staging", str(stub_file)])
 
@@ -554,9 +554,9 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
             and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
-            "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="sv-123")),
-            request_filter=lambda req: req.app_name == "volume_app"
+            "SharedVolumeGetOrCreate",
+            api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id="sv-123"),
+            request_filter=lambda req: req.deployment_name == "volume_app"
             and req.environment_name == "some_weird_default_env",
         )
         _run(command + [str(stub_file)])
