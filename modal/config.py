@@ -93,12 +93,8 @@ def _is_remote() -> bool:
     # We want to prevent read/write on a modal config file in the container
     # environment, both because that doesn't make sense and might cause weird
     # behavior, and because we want to keep the `toml` dependency out of the
-    # container runtime. Ideally we would use `modal.app.is_local` here, but
-    # we currently need to read the config before setting up the container app.
-    # So we're taking the somewhat hacky route of checking for env variables
-    # that we know will be set in the container environment and are unlikely
-    # to be set in the local environment.
-    return {"MODAL_TASK_ID", "MODAL_IMAGE_ID"} <= set(os.environ)
+    # container runtime.
+    return os.environ.get("MODAL_IS_REMOTE") == "1"
 
 
 def _read_user_config():
