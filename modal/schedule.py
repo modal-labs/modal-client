@@ -63,7 +63,7 @@ class Period(Schedule):
     Only `seconds` can be a float. All other arguments are integers.
 
     Note that `days=1` will trigger the function the same time every day.
-    This is not have the same behavior as `seconds=84000` since days have
+    This does not have the same behavior as `seconds=84000` since days have
     different lengths due to daylight savings and leap seconds. Similarly,
     using `months=1` will trigger the function on the same day each month.
 
