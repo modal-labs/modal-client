@@ -44,7 +44,7 @@ image = modal.Image.debian_slim().run_function(
 
 - Most errors raised through usage of the CLI will now print a simple error message rather than showing a traceback from inside the `modal` library.
 - Tracebacks originating from user code will include fewer frames from within `modal` itself.
-- The new `MODAL_TRACEBACK` environment variable (an `traceback` field in the Modal config file) can override these behaviors so that full tracebacks are always shown.
+- The new `MODAL_TRACEBACK` environment variable (and `traceback` field in the Modal config file) can override these behaviors so that full tracebacks are always shown.
 
 
 ### 0.58.90 (2024-02-27)
