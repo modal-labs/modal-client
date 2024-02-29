@@ -485,8 +485,9 @@ class _Stub:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.function()`.")
 
         if interactive:
-            # todo(nathan): should we add a migration message here?
-            raise InvalidError("interactive is now deprecated.")
+            deprecation_error(
+                (2024, 2, 29), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+            )
 
         if image is None:
             image = self._get_default_image()
