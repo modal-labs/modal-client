@@ -10,6 +10,22 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.59.0 (2024-02-29)
+
+- `Image.run_function` now allows you to pass args and kwargs to the function. Usage:
+
+```python
+def my_build_function(name, size, *, variant=None):
+    print(f"Building {name} {size} {variant}")
+
+
+image = modal.Image.debian_slim().run_function(
+    my_build_function, args=("foo", 10), kwargs={"variant": "bar"}
+)
+```
+
+
+
 ### 0.59.0 (2024-02-28)
 
 * Mounted packages are now deduplicated across functions in the same stub
