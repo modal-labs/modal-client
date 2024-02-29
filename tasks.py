@@ -51,8 +51,6 @@ def type_check(ctx):
         "modal_utils/http_utils.py",
         "modal_utils/logger.py",
         "modal_utils/package_utils.py",
-        "modal_version/__init__.py",
-        "modal_version/_version_generated.py",
     ]
 
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
