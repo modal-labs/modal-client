@@ -192,6 +192,15 @@ class _Stub:
         return self._name
 
     @property
+    def is_interactive(self) -> bool:
+        """Whether the current app for the stub is running in interactive mode."""
+        # return self._name
+        if self._local_app:
+            return self._local_app.is_interactive
+        else:
+            return False
+
+    @property
     def app(self):
         """`stub.app` is deprecated: use e.g. `stub.obj` instead of `stub.app.obj`
         if you need to access objects on the running app.

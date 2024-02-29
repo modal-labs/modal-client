@@ -29,6 +29,7 @@ class _LocalApp:
     _app_id: str
     _app_page_url: str
     _environment_name: str
+    _interactive: bool
 
     def __init__(
         self,
@@ -38,6 +39,7 @@ class _LocalApp:
         tag_to_object_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
+        interactive: bool = False,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
         self._app_id = app_id
@@ -46,6 +48,7 @@ class _LocalApp:
         self._tag_to_object_id = tag_to_object_id or {}
         self._stub_name = stub_name
         self._environment_name = environment_name
+        self._interactive = interactive
 
     @property
     def client(self) -> _Client:
@@ -56,6 +59,10 @@ class _LocalApp:
     def app_id(self) -> str:
         """A unique identifier for this running App."""
         return self._app_id
+
+    @property
+    def is_interactive(self) -> bool:
+        return self._interactive
 
     async def _create_all_objects(
         self,
@@ -166,6 +173,7 @@ class _LocalApp:
         description: str,
         app_state: int,
         environment_name: str = "",
+        interactive=False,
     ) -> "_LocalApp":
         app_req = api_pb2.AppCreateRequest(
             description=description,
@@ -175,7 +183,9 @@ class _LocalApp:
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _LocalApp(client, app_resp.app_id, app_page_url, environment_name=environment_name)
+        return _LocalApp(
+            client, app_resp.app_id, app_page_url, environment_name=environment_name, interactive=interactive
+        )
 
     @staticmethod
     async def _init_from_name(

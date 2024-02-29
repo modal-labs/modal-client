@@ -727,8 +727,6 @@ class _Function(_Object, type_prefix="fu"):
         if image is not None and not isinstance(image, _Image):
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
-        interactive = config.get("interactive_functions") and not is_builder_function
-
         def _deps(only_explicit_mounts=False) -> List[_Object]:
             deps: List[_Object] = list(secrets)
             if only_explicit_mounts:
@@ -796,8 +794,8 @@ class _Function(_Object, type_prefix="fu"):
             milli_cpu = int(1000 * cpu) if cpu is not None else 0
 
             timeout_secs = timeout
-            if interactive:
-                assert not is_builder_function, "builder functions do not support interactive usage"
+
+            if stub.is_interactive and not is_builder_function:
                 pty_info = _pty.get_pty_info(shell=False)
             else:
                 pty_info = None
