@@ -1165,6 +1165,12 @@ message GPUConfig {
   uint32 memory = 3;
 }
 
+message BuildFunction {
+  string definition = 1;
+  bytes globals = 2;
+  FunctionInput input = 3;
+}
+
 message Image {
   repeated BaseImage base_images = 5;
   repeated string dockerfile_commands = 6;
@@ -1180,13 +1186,15 @@ message Image {
   GPUConfig gpu_config = 16;
   ImageRegistryConfig image_registry_config = 17;
 
-  string build_function_def = 14;
-  bytes build_function_globals = 18;
+  string build_function_def = 14; // deprecated after 0.58.96
+  bytes build_function_globals = 18; // deprecated after 0.58.96
 
   // If set, overrides the runtime used by the function. Specify either "runc" or "gvisor".
   string runtime = 19;
   // Not included in image definition checksum as debug features do not affect built image.
   bool runtime_debug = 20;
+
+  BuildFunction build_function = 21;
 }
 
 message ImageContextFile {
