@@ -669,16 +669,13 @@ class _Function(_Object, type_prefix="fu"):
             memory=memory,
         )
 
+        base_build_functions = []
+
         if info.cls and not is_auto_snapshot:
             # Needed to avoid circular imports
             from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
 
-            if info.cls_requires_params():
-                # If the class requires params, we can't run `@build` eagerly.
-                # The `@build` will run lazily for each parametrization.
-                build_functions = []
-            else:
-                build_functions = list(_find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD).values())
+            build_functions = list(_find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD).values())
 
             for build_function in build_functions:
                 snapshot_info = FunctionInfo(build_function, cls=info.cls)
@@ -698,7 +695,14 @@ class _Function(_Object, type_prefix="fu"):
                     is_auto_snapshot=True,
                     _experimental_scheduler_placement=_experimental_scheduler_placement,
                 )
-                image = image.extend(build_function=snapshot_function, force_build=image.force_build)
+
+                if info.cls_requires_params():
+                    # If the class requires params, we can't run `@build` eagerly.
+                    # The `@build` will run lazily for each parametrization.
+                    base_build_functions.append(snapshot_function)
+                    assert len(base_build_functions) == 1, "Only one build function is supported for now"
+                else:
+                    image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
         if interactive and concurrency_limit and concurrency_limit > 1:
             warnings.warn(
@@ -767,6 +771,8 @@ class _Function(_Object, type_prefix="fu"):
             for _, s3_mount in s3_mounts:
                 if s3_mount.secret:
                     deps.append(s3_mount.secret)
+
+            deps.extend(base_build_functions)
 
             # Add implicit dependencies from the function's code
             objs: list[Object] = get_referred_objects(info.raw_f)
@@ -979,8 +985,36 @@ class _Function(_Object, type_prefix="fu"):
         options: Optional[api_pb2.FunctionOptions],
         args: Sized,
         kwargs: Dict[str, Any],
+        cls: Optional[type] = None,
     ) -> "_Function":
         """mdmd:hidden"""
+
+        from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
+
+        print("HERE", obj)
+        if cls:
+            build_functions = list(_find_callables_for_cls(cls, _PartialFunctionFlags.BUILD).values())
+            print(build_functions)
+
+            # for build_function in build_functions:
+            #     snapshot_info = FunctionInfo(build_function, cls=cls)
+            #     snapshot_function = _Function.from_args(
+            #         snapshot_info,
+            #         stub=None,
+            #         image=image,
+            #         secrets=secrets,
+            #         gpu=gpu,
+            #         mounts=mounts,
+            #         network_file_systems=network_file_systems,
+            #         volumes=volumes,
+            #         memory=memory,
+            #         timeout=86400,  # TODO: make this an argument to `@build()`
+            #         cpu=cpu,
+            #         is_builder_function=True,
+            #         is_auto_snapshot=True,
+            #         _experimental_scheduler_placement=_experimental_scheduler_placement,
+            #     )
+            #     image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
         async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if not self.is_hydrated:
