@@ -193,6 +193,25 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         await resolver.load(obj)
         return obj
 
+    @staticmethod
+    async def create_deployed(
+        deployment_name: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> str:
+        """mdmd:hidden"""
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.SharedVolumeGetOrCreateRequest(
+            deployment_name=deployment_name,
+            namespace=namespace,
+            environment_name=_get_environment_name(environment_name),
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+        )
+        resp = await retry_transient_errors(client.stub.SharedVolumeGetOrCreate, request)
+        return resp.shared_volume_id
+
     @live_method
     async def write_file(self, remote_path: str, fp: BinaryIO) -> int:
         """Write from a file object to a path on the network file system, atomically.
