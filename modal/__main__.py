@@ -3,7 +3,7 @@ import sys
 
 from ._traceback import highlight_modal_deprecation_warnings, setup_rich_traceback
 from .cli.entry_point import entrypoint_cli
-from .cli.import_refs import CliUserExecutionError
+from .cli.import_refs import _CliUserExecutionError
 from .config import config
 
 
@@ -14,7 +14,9 @@ def main():
 
     try:
         entrypoint_cli()
-    except CliUserExecutionError as exc:
+    except _CliUserExecutionError as exc:
+        if config.get("traceback"):
+            raise exc
         # Try to step forward in the traceback until we get to the user code that failed to import
         tb = orig_tb = exc.__cause__.__traceback__
         if exc.user_source.endswith(".py"):

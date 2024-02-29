@@ -15,7 +15,7 @@ from typing_extensions import TypedDict
 
 from ..config import config
 from ..environments import ensure_env
-from ..exception import ExecutionError, InvalidError
+from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
 from ..functions import Function, FunctionEnv
 from ..image import Image
 from ..runner import deploy_stub, interactive_shell, run_stub
@@ -182,10 +182,13 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
         ):
-            if isasync:
-                asyncio.run(func(*args, **kwargs))
-            else:
-                func(*args, **kwargs)
+            try:
+                if isasync:
+                    asyncio.run(func(*args, **kwargs))
+                else:
+                    func(*args, **kwargs)
+            except Exception as exc:
+                raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
 
     with_click_options = _add_click_options(f, _get_signature(func))
     return click.command(with_click_options)
