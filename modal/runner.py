@@ -96,6 +96,7 @@ async def _run_stub(
         # Start logs loop
         if not shell:
             logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
+            logs_loop.add_done_callback(lambda _: stub._set_terminating())
 
         exc_info: Optional[BaseException] = None
         try:
@@ -122,9 +123,7 @@ async def _run_stub(
                     yield stub
         except KeyboardInterrupt as e:
             exc_info = e
-            # mute cancellation errors on all function handles to prevent exception spam
-            for obj in stub.registered_functions.values():
-                obj._set_mute_cancellation(True)
+            stub._set_terminating()  # aborts *polling for results* from all ongoing function calls in the local context
 
             if detach:
                 output_mgr.print_if_visible(step_completed("Shutting down Modal client."))

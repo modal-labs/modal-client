@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import inspect
 import os
 import typing
@@ -119,6 +120,8 @@ class _Stub:
     _local_app: Optional[_LocalApp]
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
 
+    _terminating: asyncio.Event
+
     @typechecked
     def __init__(
         self,
@@ -174,6 +177,7 @@ class _Stub:
         self._web_endpoints = []
         self._local_app = None  # when this is the launcher process
         self._container_app = None  # when this is inside a container
+        self._terminating = asyncio.Event()
 
         string_name = self._name or ""
 
@@ -717,6 +721,12 @@ class _Stub:
         )
         await resolver.load(obj)
         return obj
+
+    def _termination_event(self) -> asyncio.Event:
+        return self._terminating
+
+    def _set_terminating(self):
+        self._terminating.set()
 
 
 Stub = synchronize_api(_Stub)

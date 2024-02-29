@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import asyncio
 import pytest
 import typing
 
@@ -67,3 +68,26 @@ def test_run_stub_custom_env_with_refs(servicer, client, monkeypatch):
 
     secret_get_or_create_2 = ctx.pop_request("SecretGetOrCreate")
     assert secret_get_or_create_2.environment_name == "third"
+
+
+def _foo():
+    pass
+
+
+def test_run_stub_exits_when_app_done(servicer, client):
+    dummy_stub = modal.Stub()
+
+    foo = dummy_stub.function()(_foo)
+
+    async def MockFunctionGetOutputs(servicer, stream):
+        await stream.recv_message()
+        servicer.done = True  # this triggers the mock log loop to return within 0.5s with app_done=True
+        await asyncio.sleep(3)  # should be aborted before
+        await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[]))
+
+    with servicer.intercept() as ctx:
+        ctx.override_default("FunctionGetOutputs", MockFunctionGetOutputs)
+        with dummy_stub.run(client=client):
+            foo.remote()  # Now we raise a KeyboardInterrupt here - that's kind of dumb?
+
+    # TODO: check that calling a function in *another* app doesn't abort when this app completes

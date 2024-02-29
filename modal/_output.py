@@ -31,6 +31,7 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 from modal_proto import api_pb2
+from modal_utils.async_utils import TaskContext
 from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
 from ._container_exec import handle_exec_input
@@ -387,7 +388,7 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
 
 
 async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputManager):
-    last_log_batch_entry_id = ""
+    last_log_batch_entry_id: Optional[str] = ""  # "" means stream from start, None means shut down
     pty_shell_finish_event: Optional[asyncio.Event] = None
 
     async def stop_pty_shell():
@@ -419,7 +420,7 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
         elif log.data:
             await output_mgr.put_log_content(log)
 
-    async def _get_logs():
+    async def _get_logs(task_context: TaskContext):
         nonlocal last_log_batch_entry_id, pty_shell_finish_event
 
         request = api_pb2.AppGetLogsRequest(
@@ -446,12 +447,14 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
                 pass
             elif log_batch.pty_exec_id:
                 if pty_shell_finish_event:
-                    print("ERROR: concurrent PTY shells are not supported.")
+                    logger.error("ERROR: concurrent PTY shells are not supported.")
                 else:
                     output_mgr.hide_status_spinner()
                     output_mgr._visible_progress = False
                     pty_shell_finish_event = asyncio.Event()
-                    asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
+                    task_context.create_task(
+                        stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event)
+                    )
             else:
                 for log in log_batch.items:
                     await _put_log(log_batch, log)
@@ -463,7 +466,8 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
 
     while True:
         try:
-            await _get_logs()
+            async with TaskContext(grace=0.1) as tc:
+                await _get_logs(tc)
         except asyncio.CancelledError:
             # TODO: this should come from the backend maybe
             app_logs_url = f"https://modal.com/logs/{app_id}"

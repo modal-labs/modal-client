@@ -1075,9 +1075,6 @@ class _Function(_Object, type_prefix="fu"):
         self._is_generator = None
         self._web_url = None
         self._output_mgr: Optional[OutputManager] = None
-        self._mute_cancellation = (
-            False  # set when a user terminates the app intentionally, to prevent useless traceback spam
-        )
         self._function_name = None
         self._info = None
 
@@ -1101,9 +1098,6 @@ class _Function(_Object, type_prefix="fu"):
             ),
             web_url=self._web_url or "",
         )
-
-    def _set_mute_cancellation(self, value: bool = True):
-        self._mute_cancellation = value
 
     def _set_output_mgr(self, output_mgr: OutputManager):
         self._output_mgr = output_mgr
@@ -1149,12 +1143,18 @@ class _Function(_Object, type_prefix="fu"):
 
     async def _call_function(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
-        try:
-            return await invocation.run_function()
-        except asyncio.CancelledError:
-            # this can happen if the user terminates a program, triggering a cancellation cascade
-            if not self._mute_cancellation:
-                raise
+        function_result = asyncio.ensure_future(invocation.run_function())
+        termination = asyncio.ensure_future(self.stub._termination_event().wait())
+
+        done, pending = await asyncio.wait([function_result, termination], return_when=asyncio.FIRST_COMPLETED)
+        for p in pending:
+            p.cancel()
+
+        if function_result in done:
+            return function_result.result()
+        else:
+            logger.debug(f"Aborting polling for outputs from {self._function_name} call")
+            raise KeyboardInterrupt()
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
