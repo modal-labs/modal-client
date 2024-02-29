@@ -746,23 +746,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if k not in self.deployed_mounts:
                 raise GRPCError(Status.NOT_FOUND, "Mount not found")
             mount_id = self.deployed_mounts[k]
-        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             self.n_mounts += 1
-            mount_id = f"qu-{self.n_mounts}"
+            mount_id = f"mo-{self.n_mounts}"
             self.deployed_mounts[k] = mount_id
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
-            mount_number = 123 + self.n_mounts
-            mount_id = f"mo-{mount_number}"
-
-            mount_content = self.mount_contents[mount_id] = {}
-
-            for file in request.files:
-                mount_content[file.filename] = self.files_name2sha[file.filename] = file.sha256_hex
-
             self.n_mounts += 1
+            mount_id = f"mo-{self.n_mounts}"
 
         else:
             raise Exception("unsupported creation type")
+
+        mount_content = self.mount_contents[mount_id] = {}
+        for file in request.files:
+            mount_content[file.filename] = self.files_name2sha[file.filename] = file.sha256_hex
+
         await stream.send_message(
             api_pb2.MountGetOrCreateResponse(
                 mount_id=mount_id, handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef")

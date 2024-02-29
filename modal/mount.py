@@ -24,7 +24,7 @@ from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_
 from ._resolver import Resolver
 from .client import _Client
 from .config import config, logger
-from .object import _get_environment_name, _StatefulObject
+from .object import _get_environment_name, _Object
 
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
@@ -218,9 +218,7 @@ class NonLocalMountError(Exception):
     pass
 
 
-# TODO(erikbern): get rid of the _StatefulObject inheritance shortly
-# (we still depend on it for _deploy in modal_base_images)
-class _Mount(_StatefulObject, type_prefix="mo"):
+class _Mount(_Object, type_prefix="mo"):
     """Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
@@ -242,8 +240,10 @@ class _Mount(_StatefulObject, type_prefix="mo"):
     """
 
     _entries: Optional[List[_MountEntry]] = None
-
-    _content_checksum_sha256_hex: Optional[str]
+    _deployment_name: Optional[str] = None
+    _namespace: Optional[int] = None
+    _environment_name: Optional[str] = None
+    _content_checksum_sha256_hex: Optional[str] = None
 
     @staticmethod
     def _new(entries: List[_MountEntry] = []) -> "_Mount":
@@ -479,11 +479,20 @@ class _Mount(_StatefulObject, type_prefix="mo"):
 
         # Build mounts
         status_row.message(f"Creating mount {message_label}: Building mount")
-        req = api_pb2.MountGetOrCreateRequest(
-            files=files,
-            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
-            app_id=resolver.app_id,
-        )
+        if self._deployment_name:
+            req = api_pb2.MountGetOrCreateRequest(
+                deployment_name=self._deployment_name,
+                namespace=self._namespace,
+                environment_name=self._environment_name,
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+                files=files,
+            )
+        else:
+            req = api_pb2.MountGetOrCreateRequest(
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
+                files=files,
+                app_id=resolver.app_id
+            )
         resp = await retry_transient_errors(resolver.client.stub.MountGetOrCreate, req, base_delay=1)
         status_row.finish(f"Created mount {message_label}")
 
@@ -557,6 +566,21 @@ class _Mount(_StatefulObject, type_prefix="mo"):
         resolver = Resolver(client=client)
         await resolver.load(obj)
         return obj
+
+    async def _deploy(
+        self: "_Mount",
+        deployment_name: Optional[str] = None,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+        client: Optional[_Client] = None,
+    ) -> "_Mount":
+        self._deployment_name = deployment_name
+        self._namespace = namespace
+        self._environment_name = environment_name
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(self)
 
 
 Mount = synchronize_api(_Mount)

@@ -60,7 +60,7 @@ def test_create_mount(servicer, client):
 
     m._deploy("my-mount", client=client)
 
-    assert m.object_id == "mo-123"
+    assert m.object_id == "mo-1"
     assert f"/foo/{cur_filename}" in servicer.files_name2sha
     sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
     assert sha256_hex in servicer.files_sha2data
