@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-from datetime import date
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
 from google.protobuf.empty_pb2 import Empty
@@ -142,17 +141,15 @@ class _LocalApp:
         return self._app_page_url
 
     def __getitem__(self, tag: str) -> _Object:
-        deprecation_error(date(2023, 8, 10), "`app[...]` is no longer supported. Use the stub to get objects instead.")
+        deprecation_error((2023, 8, 10), "`app[...]` is no longer supported. Use the stub to get objects instead.")
 
     def __contains__(self, tag: str) -> bool:
-        deprecation_error(
-            date(2023, 8, 10), "`obj in app` is no longer supported. Use the stub to get objects instead."
-        )
+        deprecation_error((2023, 8, 10), "`obj in app` is no longer supported. Use the stub to get objects instead.")
 
     def __getattr__(self, tag: str) -> _Object:
         if tag.startswith("__"):
             raise AttributeError(f"No such attribute `{tag}`")  # Dumb workaround for doc thing
-        deprecation_error(date(2023, 8, 10), "`app.obj` is no longer supported. Use the stub to get objects instead.")
+        deprecation_error((2023, 8, 10), "`app.obj` is no longer supported. Use the stub to get objects instead.")
 
     @staticmethod
     async def _init_existing(client: _Client, existing_app_id: str) -> "_LocalApp":
@@ -230,7 +227,7 @@ class _LocalApp:
         **kwargs,
     ):
         """Deprecated. Use `Stub.spawn_sandbox` instead."""
-        deprecation_error(date(2023, 9, 11), _LocalApp.spawn_sandbox.__doc__)
+        deprecation_error((2023, 9, 11), _LocalApp.spawn_sandbox.__doc__)
 
 
 class _ContainerApp:
@@ -286,17 +283,15 @@ class _ContainerApp:
                     obj._hydrate(object_id, self._client, handle_metadata)
 
     def __getitem__(self, tag: str) -> _Object:
-        deprecation_error(date(2023, 8, 10), "`app[...]` is no longer supported. Use the stub to get objects instead.")
+        deprecation_error((2023, 8, 10), "`app[...]` is no longer supported. Use the stub to get objects instead.")
 
     def __contains__(self, tag: str) -> bool:
-        deprecation_error(
-            date(2023, 8, 10), "`obj in app` is no longer supported. Use the stub to get objects instead."
-        )
+        deprecation_error((2023, 8, 10), "`obj in app` is no longer supported. Use the stub to get objects instead.")
 
     def __getattr__(self, tag: str) -> _Object:
         if tag.startswith("__"):
             raise AttributeError(f"No such attribute `{tag}`")  # Dumb workaround for doc thing
-        deprecation_error(date(2023, 8, 10), "`app.obj` is no longer supported. Use the stub to get objects instead.")
+        deprecation_error((2023, 8, 10), "`app.obj` is no longer supported. Use the stub to get objects instead.")
 
     def _has_object(self, tag: str) -> bool:
         return tag in self._tag_to_object_id
@@ -338,9 +333,11 @@ class _ContainerApp:
         self._object_handle_metadata = {}
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, include_unindexed=True)
         resp = await retry_transient_errors(client.stub.AppGetObjects, req)
+        logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {app_id}")
         for item in resp.items:
             handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
             self._object_handle_metadata[item.object.object_id] = handle_metadata
+            logger.debug(f"Setting metadata for {item.object.object_id} ({item.tag})")
             if item.tag:
                 self._tag_to_object_id[item.tag] = item.object.object_id
 
@@ -350,7 +347,7 @@ class _ContainerApp:
         **kwargs,
     ):
         """Deprecated. Use `Stub.spawn_sandbox` instead."""
-        deprecation_error(date(2023, 9, 11), _ContainerApp.spawn_sandbox.__doc__)
+        deprecation_error((2023, 9, 11), _ContainerApp.spawn_sandbox.__doc__)
 
     @staticmethod
     def _reset_container():

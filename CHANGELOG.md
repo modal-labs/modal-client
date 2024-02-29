@@ -10,6 +10,92 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.59.0 (2024-02-28)
+
+* Mounted packages are now deduplicated across functions in the same stub
+* Mounting of local Python packages are now marked as such in the mount creation output, e.g. `PythonPackage:my_package`
+* Automatic mounting now includes packages outside of the function file's own directory. Mounted packages are mounted in /root/<module path>
+
+
+
+### 0.58.90 (2024-02-27)
+
+- Fixed a bug that could cause `cls`-based functions to to ignore timeout signals.
+
+
+
+### 0.58.88 (2024-02-26)
+
+* `volume get` performance is improved for large (> 100MB) files
+
+
+
+### 0.58.79 (2024-02-23)
+
+* Support for function parameters in methods decorated with `@exit` has been deprecated. Previously, exit methods were required to accept three arguments containing exception information (akin to `__exit__` in the context manager protocol). However, due to a bug, these arguments were always null. Going forward, `@exit` methods are expected to have no parameters.
+
+
+
+### 0.58.75 (2024-02-23)
+
+* Function calls can now be cancelled without killing the container running the inputs. This allows new inputs by different function calls to the same function to be picked up immediately without having to cold-start new containers after cancelling calls.
+
+
+
+## 0.57
+
+
+### 0.57.62 (2024-02-21)
+
+- An `InvalidError` is now raised when a lifecycle decorator (`@build`, `@enter`, or `@exit`) is used in conjunction with `@method`. Previously, this was undefined and could produce confusing failures.
+
+
+
+### 0.57.61 (2024-02-21)
+
+- Reduced the amount of context for frames in modal's CLI framework when showing a traceback.
+
+
+
+### 0.57.60 (2024-02-21)
+
+- The "dunder method" approach for class lifecycle management (`__build__`, `__enter__`, `__exit__`, etc.) is now deprecated in favor of the modal `@build`, `@enter`, and `@exit` decorators.
+
+
+
+### 0.57.52 (2024-02-17)
+
+- In `modal token new` and `modal token set`, the `--no-no-verify` flag has been removed in favor of a `--verify` flag. This remains the default behavior.
+
+
+
+### 0.57.51 (2024-02-17)
+
+- Fixes a regression from 0.57.40 where `@enter` methods used a separate event loop.
+
+
+
+### 0.57.42 (2024-02-14)
+
+- Adds a new environment variable/config setting, `MODAL_FORCE_BUILD`/`force_build`, that coerces all images to be built from scratch, rather than loaded from cache.
+
+
+
+### 0.57.40 (2024-02-13)
+
+- The `@enter()` lifecycle method can now be used to run additional setup code prior to function checkpointing (when the class is decorated with `stub.cls(enable_checkpointing=True)`. Note that there are currently some limitations on function checkpointing:
+  - Checkpointing only works for CPU memory; any GPUs attached to the function will not available
+  - Networking is disabled while the checkpoint is being created
+- Please note that function checkpointing is still a beta feature.
+
+
+
+### 0.57.31 (2024-02-12)
+
+- Fixed an issue with displaying deprecation warnings on Windows systems.
+
+
+
 ### 0.57.22 (2024-02-09)
 
 - Modal client deprecation warnings are now highlighted in the CLI

@@ -5,9 +5,8 @@ import shlex
 import sys
 import typing
 import warnings
-from datetime import date
 from inspect import isfunction
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import toml
@@ -30,8 +29,6 @@ from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret
-
-_from_dockerhub_deprecation_msg = "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."
 
 
 def _validate_python_version(version: str) -> None:
@@ -210,7 +207,7 @@ class _Image(_Object, type_prefix="im"):
                 deps.append(image_registry_config.secret)
             return deps
 
-        async def _load(provider: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
             base_images_pb2s = [
                 api_pb2.BaseImage(
                     docker_tag=docker_tag,
@@ -278,7 +275,7 @@ class _Image(_Object, type_prefix="im"):
                 image=image_definition,
                 existing_image_id=existing_object_id,  # TODO: ignored
                 build_function_id=build_function_id,
-                force_build=force_build,
+                force_build=config.get("force_build") or force_build,
                 namespace=_namespace,
             )
             resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
@@ -330,7 +327,7 @@ class _Image(_Object, type_prefix="im"):
             else:
                 raise RemoteError("Unknown status %s!" % result.status)
 
-            provider._hydrate(image_id, resolver.client, None)
+            self._hydrate(image_id, resolver.client, None)
 
         rep = f"Image({dockerfile_commands})"
         obj = _Image._from_loader(_load, rep, deps=_deps)
@@ -981,15 +978,14 @@ class _Image(_Object, type_prefix="im"):
         add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """Build a Modal image from a public image registry, such as Docker Hub.
+        """Build a Modal image from a public or private image registry, such as Docker Hub.
 
-        The image must be built for the `linux/amd64` platform and have Python 3.8 or above
-        installed and available on PATH as `python`. It should also have `pip`.
+        The image must be built for the `linux/amd64` platform.
 
         If your image does not come with Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
-        are statically-linked Python installations.
+        `3.10`, `3.11`, and `3.12`. Otherwise, the image is expected to have Python>3.8 available
+        on PATH as `python`, along with `pip`.
 
         You may also use `setup_dockerfile_commands` to run Dockerfile commands before the
         remaining commands run. This might be useful if you want a custom Python installation or to
@@ -1006,7 +1002,7 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_registry("python:3.11-slim-bookworm")
         modal.Image.from_registry("ubuntu:22.04", add_python="3.11")
-        modal.Image.from_registry("alpine:3.18.3", add_python="3.12-musl")
+        modal.Image.from_registry("nvcr.io/nvidia/pytorch:22.12-py3")
         ```
         """
         requirements_path = _get_client_requirements_path(add_python)
@@ -1038,8 +1034,8 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         **kwargs,
     ):
-        f"""{_from_dockerhub_deprecation_msg}"""
-        deprecation_error(date(2023, 8, 25), _from_dockerhub_deprecation_msg)
+        """`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."""
+        deprecation_error((2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead.")
 
     @staticmethod
     @typechecked
@@ -1052,11 +1048,16 @@ class _Image(_Object, type_prefix="im"):
         add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """Build a Modal image from a private image in GCP Artifact Registry.
+        """Build a Modal image from a private image in Google Cloud Platform (GCP) Artifact Registry.
 
-        You will need to pass a `modal.Secret` containing your GCP service account key
-        as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page.
-        The service account needs to have at least an "Artifact Registry Reader" role.
+        You will need to pass a `modal.Secret` containing [your GCP service account key data](https://cloud.google.com/iam/docs/keys-create-delete#creating)
+        as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page. Your service account should be granted a specific
+        role depending on the GCP registry used:
+
+        - For Artifact Registry images (`pkg.dev` domains) use the ["Artifact Registry Reader"](https://cloud.google.com/artifact-registry/docs/access-control#roles) role
+        - For Contrainer Registry images (`gcr.io` domains) use the ["Storage Object Viewer"](https://cloud.google.com/artifact-registry/docs/transition/setup-gcr-repo#permissions) role
+
+        **Note:** This method does not use `GOOGLE_APPLICATION_CREDENTIALS` as that variable accepts a path to a JSON file, not the actual JSON string.
 
         See `Image.from_registry()` for information about the other parameters.
 
@@ -1142,8 +1143,7 @@ class _Image(_Object, type_prefix="im"):
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`. For Alpine-based images, use `3.8-musl` through `3.12-musl`, which
-        are statically-linked Python installations.
+        `3.10`, `3.11`, and `3.12`.
 
         **Example**
 
@@ -1266,8 +1266,8 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        shared_volumes: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
@@ -1365,6 +1365,18 @@ class _Image(_Object, type_prefix="im"):
 
     @contextlib.contextmanager
     def imports(self):
+        """
+        Used to import packages in global scope that are only available when running remotely.
+        By using this context manager you can avoid an `ImportError` due to not having certain
+        packages installed locally.
+
+        **Usage:**
+
+        ```python notest
+        with image.imports():
+            import torch
+        ```
+        """
         env_image_id = config.get("image_id")
         try:
             yield
@@ -1382,13 +1394,14 @@ class _Image(_Object, type_prefix="im"):
     def run_inside(self):
         """`Image.run_inside` is deprecated - use `Image.imports` instead.
 
-        Usage:
-        ```
+        **Usage:**
+
+        ```python notest
         with image.imports():
             import torch
         ```
         """
-        deprecation_warning(date(2023, 12, 15), Image.run_inside.__doc__)
+        deprecation_warning((2023, 12, 15), Image.run_inside.__doc__)
         return self.imports()
 
 

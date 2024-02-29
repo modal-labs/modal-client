@@ -18,7 +18,7 @@ from .exception import InvalidError, RemoteError
 class Tunnel:
     """A port forwarded from within a running Modal container. Created by `modal.forward()`.
 
-    This is an EXPERIMENTAL API and may change in the future.
+    **Important:** This is an experimental API which may change in the future.
     """
 
     host: str
@@ -57,7 +57,7 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
     number. This can be used to SSH into a container. Note that it is on the public Internet, so
     make sure you are using a secure protocol over TCP.
 
-    This is an EXPERIMENTAL API and may change in the future.
+    **Important:** This is an experimental API which may change in the future.
 
     **Usage:**
 
@@ -128,7 +128,9 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
             run_echo_server(8000)
     """
 
-    if not isinstance(port, int) or port < 1 or port > 65535:
+    if not isinstance(port, int):
+        raise InvalidError(f"The port argument should be an int, not {port!r}")
+    if port < 1 or port > 65535:
         raise InvalidError(f"Invalid port number {port}")
 
     if not client:

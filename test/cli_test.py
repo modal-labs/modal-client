@@ -82,19 +82,18 @@ def test_app_deploy_with_name(servicer, mock_dir, set_env_client):
     assert "my_app_foo" in servicer.deployed_apps
 
 
-def test_app_deploy_no_such_module():
-    res = _run(["deploy", "does_not_exist.py"], 1)
-    assert "No such file or directory" in str(res.exception)
-    res = _run(["deploy", "does.not.exist"], 1)
-    assert "No module named 'does'" in str(res.exception)
-
-
 def test_secret_create(servicer, set_env_client):
     # fail without any keys
     _run(["secret", "create", "foo"], 2, None)
 
     _run(["secret", "create", "foo", "bar=baz"])
     assert len(servicer.secrets) == 1
+
+    # Creating the same one again should fail
+    _run(["secret", "create", "foo", "bar=baz"], expected_exit_code=1)
+
+    # But it should succeed with --force
+    _run(["secret", "create", "foo", "bar=baz", "--force"])
 
 
 def test_secret_list(servicer, set_env_client):
@@ -302,6 +301,12 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir):
         assert expected in res.stdout
 
 
+def test_run_user_script_exception(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "raises_error.py"
+    res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    assert res.exc_info[1].user_source == str(stub_file.resolve())
+
+
 @pytest.fixture
 def fresh_main_thread_assertion_module(test_dir):
     modules_to_unload = [n for n in sys.modules.keys() if "main_thread_assertion" in n]
@@ -352,9 +357,7 @@ def mock_shell_pty():
         "modal._pty.get_pty_info", mock_get_pty_info
     ), mock.patch("modal._container_exec.get_pty_info", mock_get_pty_info), mock.patch(
         "modal._container_exec.handle_exec_input", asyncnullcontext
-    ), mock.patch(
-        "modal._container_exec._write_to_fd", write_to_fd
-    ):
+    ), mock.patch("modal._container_exec._write_to_fd", write_to_fd):
         yield captured_out
 
 
@@ -508,14 +511,12 @@ def test_environment_flag(test_dir, servicer, command):
     stub_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
     with servicer.intercept() as ctx:
         ctx.add_response(
-            "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(
-                object=api_pb2.Object(
-                    object_id="mo-123",
-                    mount_handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
-                )
+            "MountGetOrCreate",
+            api_pb2.MountGetOrCreateResponse(
+                mount_id="mo-123",
+                handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
             ),
-            request_filter=lambda req: req.app_name.startswith("modal-client-mount")
+            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount")
             and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
@@ -544,14 +545,12 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
 
     with servicer.intercept() as ctx:
         ctx.add_response(
-            "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(
-                object=api_pb2.Object(
-                    object_id="mo-123",
-                    mount_handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
-                )
+            "MountGetOrCreate",
+            api_pb2.MountGetOrCreateResponse(
+                mount_id="mo-123",
+                handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
             ),
-            request_filter=lambda req: req.app_name.startswith("modal-client-mount")
+            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount")
             and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(

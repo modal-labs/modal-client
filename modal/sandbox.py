@@ -119,8 +119,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         memory: Optional[int] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
-        # Note: Only _S3Mounts are supported right now.
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]] = {},
+        allow_background_volume_commits: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -136,19 +136,18 @@ class _Sandbox(_Object, type_prefix="sb"):
         s3_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
-        if len(validated_volumes) > 0:
-            raise InvalidError("sandboxes currently only support S3Mount volumes")
-
         def _deps() -> List[_Object]:
             deps: List[_Object] = [image] + list(mounts) + list(secrets)
             for _, vol in validated_network_file_systems:
+                deps.append(vol)
+            for _, vol in validated_volumes:
                 deps.append(vol)
             for _, s3_mount in s3_mounts:
                 if s3_mount.secret:
                     deps.append(s3_mount.secret)
             return deps
 
-        async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
+        async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
             gpu_config = parse_gpu_config(gpu)
 
             cloud_provider = parse_cloud_provider(cloud) if cloud else None
@@ -156,6 +155,16 @@ class _Sandbox(_Object, type_prefix="sb"):
             if cpu is not None and cpu < 0.25:
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
+
+            # Relies on dicts being ordered (true as of Python 3.6).
+            volume_mounts = [
+                api_pb2.VolumeMount(
+                    mount_path=path,
+                    volume_id=volume.object_id,
+                    allow_background_commits=allow_background_volume_commits,
+                )
+                for path, volume in validated_volumes
+            ]
 
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
@@ -170,13 +179,14 @@ class _Sandbox(_Object, type_prefix="sb"):
                 runtime_debug=config.get("function_runtime_debug"),
                 block_network=block_network,
                 s3_mounts=s3_mounts_to_proto(s3_mounts),
+                volume_mounts=volume_mounts,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
             create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
 
             sandbox_id = create_resp.sandbox_id
-            provider._hydrate(sandbox_id, resolver.client, None)
+            self._hydrate(sandbox_id, resolver.client, None)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
 

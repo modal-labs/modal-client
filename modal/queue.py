@@ -2,7 +2,6 @@
 import queue  # The system library
 import time
 import warnings
-from datetime import date
 from typing import Any, List, Optional
 
 from grpclib import GRPCError, Status
@@ -49,16 +48,16 @@ class _Queue(_Object, type_prefix="qu"):
     def new():
         """Create an empty Queue."""
 
-        async def _load(provider: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
             response = await resolver.client.stub.QueueCreate(request)
-            provider._hydrate(response.queue_id, resolver.client, None)
+            self._hydrate(response.queue_id, resolver.client, None)
 
         return _Queue._from_loader(_load, "Queue()")
 
     def __init__(self):
         """mdmd:hidden"""
-        deprecation_error(date(2023, 6, 27), "`Queue()` is deprecated. Please use `Queue.new()` instead.")
+        deprecation_error((2023, 6, 27), "`Queue()` is deprecated. Please use `Queue.new()` instead.")
         obj = _Queue.new()
         self._init_from_other(obj)
 
@@ -82,15 +81,15 @@ class _Queue(_Object, type_prefix="qu"):
         ```
         """
 
-        async def _load(provider: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.QueueGetOrCreateRequest(
                 deployment_name=label,
                 namespace=namespace,
-                environment_name=_get_environment_name(environment_name),
+                environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
             response = await resolver.client.stub.QueueGetOrCreate(req)
-            provider._hydrate(response.queue_id, resolver.client, None)
+            self._hydrate(response.queue_id, resolver.client, None)
 
         return _Queue._from_loader(_load, "Queue()", is_another_app=True)
 

@@ -237,7 +237,7 @@ class OutputManager:
                 self._current_render_group.renderables.append(self._function_queueing_progress)
         return self._function_queueing_progress
 
-    def function_progress_callback(self, tag: str, total: int) -> Callable[[int, int], None]:
+    def function_progress_callback(self, tag: str, total: Optional[int]) -> Callable[[int, int], None]:
         """Adds a task to the current function_progress instance, and returns a callback
         to update task progress with new completed and total counts."""
 

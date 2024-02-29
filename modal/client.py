@@ -15,12 +15,11 @@ from modal_utils.grpc_utils import create_channel, retry_transient_errors
 from modal_utils.http_utils import http_client_with_tls
 from modal_version import __version__
 
-from ._tracing import inject_tracing_context
 from .config import _check_config, config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
-HEARTBEAT_TIMEOUT: float = 10.1
+HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
 CLIENT_CREATE_ATTEMPT_TIMEOUT: float = 4.0
 CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 
@@ -94,6 +93,7 @@ class _Client:
         *,
         no_verify=False,
     ):
+        """The Modal client object is not intended to be instantiated directly by users."""
         self.server_url = server_url
         self.client_type = client_type
         self.credentials = credentials
@@ -114,7 +114,6 @@ class _Client:
         self._channel = create_channel(
             self.server_url,
             metadata=metadata,
-            inject_tracing_context=inject_tracing_context,
         )
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 

@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2023
-"""Utilities for CLI references to Modal entities
+"""Load or import Python modules from the CLI.
 
 For example, the function reference of `modal run some_file.py::stub.foo_func`
-or the stub lookup of `modal deploy some_file.py`
+or the stub lookup of `modal deploy some_file.py`.
+
+These functions are only called by the Modal CLI, not in tasks.
 """
 
 import dataclasses
@@ -38,8 +40,16 @@ def parse_import_ref(object_ref: str) -> ImportRef:
     return ImportRef(file_or_module, object_path)
 
 
-class NoSuchObject(modal.exception.NotFoundError):
-    pass
+class CliUserExecutionError(Exception):
+    """Private wrapper for exceptions during stub imports in the CLI.
+
+    This intentionally does not inherit from `modal.exception.Error` because it
+    is a private type that should never bubble up to users. Exceptions raised in
+    the CLI at this stage will have tracebacks printed.
+    """
+
+    def __init__(self, user_source: str):
+        self.user_source = user_source
 
 
 DEFAULT_STUB_NAME = "stub"
@@ -51,29 +61,36 @@ def import_file_or_module(file_or_module: str):
         # the current working directory isn't added to sys.path
         # so we add it in order to make module path specification possible
         sys.path.insert(0, "")  # "" means the current working directory
+
     if file_or_module.endswith(".py"):
         # when using a script path, that scripts directory should also be on the path as it is with `python some/script.py`
-        sys.path.insert(0, str(Path(file_or_module).resolve().parent))
+        full_path = Path(file_or_module).resolve()
+        sys.path.insert(0, str(full_path.parent))
 
         module_name = inspect.getmodulename(file_or_module)
         # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
         spec = importlib.util.spec_from_file_location(module_name, file_or_module)
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except Exception as exc:
+            raise CliUserExecutionError(str(full_path)) from exc
     else:
-        module = importlib.import_module(file_or_module)
+        try:
+            module = importlib.import_module(file_or_module)
+        except Exception as exc:
+            raise CliUserExecutionError(file_or_module) from exc
 
     return module
 
 
-def get_by_object_path(obj: Any, obj_path: str):
+def get_by_object_path(obj: Any, obj_path: str) -> Optional[Any]:
     # Try to evaluate a `.`-delimited object path in a Modal context
     # With the caveat that some object names can actually have `.` in their name (lifecycled methods' tags)
 
     # Note: this is eager, so no backtracking is performed in case an
     # earlier match fails at some later point in the path expansion
-    orig_obj = obj
     prefix = ""
     for segment in obj_path.split("."):
         attr = prefix + segment
@@ -91,12 +108,12 @@ def get_by_object_path(obj: Any, obj_path: str):
             prefix = ""
 
     if prefix:
-        raise NoSuchObject(f"No object {obj_path} could be found in module {orig_obj}")
+        return None
 
     return obj
 
 
-def infer_function_or_help(
+def _infer_function_or_help(
     stub: Stub, module, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint]:
     function_choices = set(stub.registered_functions.keys())
@@ -165,11 +182,12 @@ def _show_no_auto_detectable_stub(stub_ref: ImportRef) -> None:
 
 def import_stub(stub_ref: str) -> Stub:
     import_ref = parse_import_ref(stub_ref)
-    try:
-        module = import_file_or_module(import_ref.file_or_module)
-        obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
-        stub = get_by_object_path(module, obj_path)
-    except NoSuchObject:
+
+    module = import_file_or_module(import_ref.file_or_module)
+    obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
+    stub = get_by_object_path(module, obj_path)
+
+    if stub is None:
         _show_no_auto_detectable_stub(import_ref)
         sys.exit(1)
 
@@ -211,18 +229,19 @@ def import_function(
     func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
 ) -> Union[Function, LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
-    try:
-        module = import_file_or_module(import_ref.file_or_module)
-        obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
-        stub_or_function = get_by_object_path(module, obj_path)
-    except NoSuchObject:
+
+    module = import_file_or_module(import_ref.file_or_module)
+    obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
+    stub_or_function = get_by_object_path(module, obj_path)
+
+    if stub_or_function is None:
         _show_function_ref_help(import_ref, base_cmd)
         sys.exit(1)
 
     if isinstance(stub_or_function, Stub):
         # infer function or display help for how to select one
         stub = stub_or_function
-        function_handle = infer_function_or_help(stub, module, accept_local_entrypoint, accept_webhook)
+        function_handle = _infer_function_or_help(stub, module, accept_local_entrypoint, accept_webhook)
         return function_handle
     elif isinstance(stub_or_function, Function):
         return stub_or_function

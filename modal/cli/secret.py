@@ -10,10 +10,10 @@ import typer
 from rich.console import Console
 from rich.syntax import Syntax
 
-import modal
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
-from modal.client import Client, _Client
+from modal.client import _Client
 from modal.environments import ensure_env
+from modal.secret import _Secret
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronizer
 from modal_utils.grpc_utils import retry_transient_errors
@@ -43,11 +43,13 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     display_table(column_names, rows, json, title=f"Secrets{env_part}")
 
 
-@secret_cli.command("create", help="Create a new secret, or overwrite an existing one.")
-def create(
+@secret_cli.command("create", help="Create a new secret. Use `--force` to overwrite an existing one.")
+@synchronizer.create_blocking
+async def create(
     secret_name,
     keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
     env: Optional[str] = ENV_OPTION,
+    force: bool = typer.Option(False, "--force", help="Overwrite the secret if it already exists."),
 ):
     env = ensure_env(env)
     env_dict = {}
@@ -70,12 +72,12 @@ modal secret create my-credentials username=john password=-
     if not env_dict:
         raise click.UsageError("You need to specify at least one key for your secret")
 
-    secret = modal.Secret.from_dict(env_dict=env_dict)
-    secret._deploy(secret_name, client=Client.from_env(), environment_name=env)
+    # Create secret
+    await _Secret.create_deployed(secret_name, env_dict, overwrite=force)
+
+    # Print code sample
     console = Console()
-
     env_var_code = "\n    ".join(f'os.getenv("{name}")' for name in env_dict.keys()) if env_dict else "..."
-
     example_code = f"""
 @stub.function(secrets=[modal.Secret.from_name("{secret_name}")])
 def some_function():
@@ -85,7 +87,6 @@ def some_function():
     console.print(
         f"""Created a new secret '{secret_name}' with the key{plural_s} {', '.join(repr(k) for k in env_dict.keys())}"""
     )
-
     console.print("\nUse it in to your Modal app using:\n")
     console.print(Syntax(example_code, "python"))
 
