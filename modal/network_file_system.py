@@ -142,6 +142,7 @@ class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
         cloud: Optional[str] = None,
     ):
         """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.persisted("my-volume")` instead."""
+        deprecation_warning((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
         return self.persisted(label, namespace, environment_name, cloud)
 
     @live_method
