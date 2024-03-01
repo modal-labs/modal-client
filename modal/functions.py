@@ -795,7 +795,7 @@ class _Function(_Object, type_prefix="fu"):
 
             timeout_secs = timeout
 
-            if stub.is_interactive and not is_builder_function:
+            if stub and stub.is_interactive and not is_builder_function:
                 pty_info = _pty.get_pty_info(shell=False)
             else:
                 pty_info = None
