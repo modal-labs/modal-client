@@ -121,7 +121,7 @@ class _Stub:
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
     _mount_cache: _MountCache
 
-    _termination_exception: Optional[asyncio.Future[Exception]] = None
+    _termination_exception: Optional[asyncio.Future] = None
 
     @typechecked
     def __init__(
@@ -717,7 +717,7 @@ class _Stub:
         await resolver.load(obj)
         return obj
 
-    def _termination_error_future(self) -> asyncio.Future[Exception]:
+    def _termination_error_future(self) -> asyncio.Future:
         # can be awaited to in order to gracefully shut down tasks
         if self._termination_exception is None:
             self._termination_exception = asyncio.Future()  # lazily set, to get the right event loop
