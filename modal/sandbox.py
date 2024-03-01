@@ -2,6 +2,7 @@
 import os
 from typing import Dict, List, Optional, Sequence, Union
 
+from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
@@ -189,6 +190,11 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
 
+    def _hydrate_metadata(self, handle_metadata: Optional[Message]):
+        self._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, self._client)
+        self._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, self._client)
+        self._result = None
+
     @staticmethod
     async def from_id(sandbox_id: str, client: Optional[_Client] = None) -> "_Sandbox":
         """Construct a Sandbox from an id and look up the sandbox result."""
@@ -199,8 +205,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await retry_transient_errors(client.stub.SandboxWait, req)
 
         obj = _Sandbox._new_hydrated(sandbox_id, client, None)
-        obj._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, sandbox_id, client)
-        obj._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, sandbox_id, client)
         obj._result = resp.result
 
         return obj
