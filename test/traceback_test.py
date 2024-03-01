@@ -28,14 +28,14 @@ def test_extract_traceback():
     assert frame["f_code"]["co_filename"] == f"<{task_id}>:{test_path}"
     assert frame["f_code"]["co_name"] == "test_extract_traceback"
     assert frame["f_globals"]["__file__"] == str(test_path)
-    assert frame["f_globals"]["__name__"] == f"test.{test_path.name.removesuffix('.py')}"
+    assert frame["f_globals"]["__name__"] == f"test.{test_path.name[:-3]}"
     assert frame["f_locals"] == {}
 
     frame = tb_dict["tb_next"]["tb_frame"]
     assert frame["f_code"]["co_filename"] == f"<{task_id}>:{test_path}"
     assert frame["f_code"]["co_name"] == "call_raise_error"
     assert frame["f_globals"]["__file__"] == str(test_path)
-    assert frame["f_globals"]["__name__"] == f"test.{test_path.name.removesuffix('.py')}"
+    assert frame["f_globals"]["__name__"] == f"test.{test_path.name[:-3]}"
     assert frame["f_locals"] == {}
 
     frame = tb_dict["tb_next"]["tb_next"]["tb_frame"]
