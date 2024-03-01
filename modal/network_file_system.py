@@ -114,8 +114,17 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_NetworkFileSystem":
-        """Create a reference to a persisted network filesystem
+        """Create a reference to a persisted network filesystem, optionally creating it lazily.
 
+        **Examples**
+
+        ```python notest
+        volume = NetworkFileSystem.from_name("my-volume", create_if_missing=True)
+
+        @stub.function(network_file_systems={"/vol": volume})
+        def f():
+            pass
+        ```
         """
 
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
@@ -137,25 +146,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ) -> "_NetworkFileSystem":
-        """Deploy a Modal app containing this object.
-
-        The deployed object can then be imported from other apps, or by calling
-        `NetworkFileSystem.from_name(label)` from that same app.
-
-        **Examples**
-
-        ```python notest
-        # In one app:
-        volume = NetworkFileSystem.persisted("my-volume")
-
-        # Later, in another app or Python file:
-        volume = NetworkFileSystem.from_name("my-volume")
-
-        @stub.function(network_file_systems={"/vol": volume})
-        def f():
-            pass
-        ```
-        """
+        """Deprecated! Use `NetworkFileSystem.from_name(name, create_if_missing=True)`."""
+        deprecation_warning((2024, 3, 1), _NetworkFileSystem.persisted.__doc__)
         return _NetworkFileSystem.from_name(label, namespace, environment_name, create_if_missing=True)
 
     def persist(
@@ -165,7 +157,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ):
-        """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.persisted("my-volume")` instead."""
+        """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.from_name("my-volume", create_if_missing=True)` instead."""
         deprecation_warning((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
         return self.persisted(label, namespace, environment_name, cloud)
 
