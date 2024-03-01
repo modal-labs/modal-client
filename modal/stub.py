@@ -723,7 +723,7 @@ class _Stub:
             self._termination_exception = asyncio.Future()  # lazily set, to get the right event loop
         return self._termination_exception
 
-    def _set_terminating(self, exception: Exception):
+    def _set_terminating(self, exception: BaseException):
         # intentionally not using .set_exception since we want it as a result
         # so we can listen without having to deal with the exception and shut
         # down loops gracefully when it resolves to *anything*
