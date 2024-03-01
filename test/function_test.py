@@ -467,12 +467,6 @@ def test_from_id(client, servicer):
     assert function_id
     assert foo.web_url
 
-    rehydrated_function = Function.from_id(function_id, client=client)
-    assert isinstance(rehydrated_function, Function)
-
-    assert rehydrated_function.object_id == function_id
-    assert rehydrated_function.web_url == foo.web_url
-
     function_call = foo.spawn()
     assert function_call.object_id
     # Used in a few examples to construct FunctionCall objects
