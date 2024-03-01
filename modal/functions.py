@@ -1496,6 +1496,13 @@ class _FunctionCall(_Object, type_prefix="fc"):
         assert self._client and self._client.stub
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 
+    @staticmethod
+    async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall":
+        if client is None:
+            client = await _Client.from_env()
+
+        return _FunctionCall._new_hydrated(function_call_id, client, None)
+
 
 FunctionCall = synchronize_api(_FunctionCall)
 
