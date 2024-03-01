@@ -1,9 +1,11 @@
 # Copyright Modal Labs 2022
 # Copyright (c) Modal Labs 2022
 
+import ast
 import inspect
 import re
 import subprocess
+from datetime import date
 
 if not hasattr(inspect, "getargspec"):
     # Workaround until invoke supports Python 3.11
@@ -18,6 +20,8 @@ from typing import Optional
 
 import requests
 from invoke import task
+from rich.console import Console
+from rich.table import Table
 
 year = datetime.date.today().year
 copyright_header_start = "# Copyright Modal Labs"
@@ -230,3 +234,81 @@ def update_changelog(ctx):
     final_content = f"{header}\n\n{new_section}\n\n{previous_changelog}"
     with open("CHANGELOG.md", "w") as fid:
         fid.write(final_content)
+
+
+@task
+def show_deprecations(ctx):
+    def get_modal_source_files() -> list[str]:
+        source_files: list[str] = []
+        for root, _, files in os.walk("modal"):
+            for file in files:
+                if file.endswith(".py"):
+                    source_files.append(os.path.join(root, file))
+        return source_files
+
+    class FunctionCallVisitor(ast.NodeVisitor):
+        def __init__(self, fname):
+            self.fname = fname
+            self.deprecations = []
+            self.assignments = {}
+            self.current_class = None
+            self.current_function = None
+
+        def visit_ClassDef(self, node):
+            self.current_class = node.name
+            self.generic_visit(node)
+            self.current_class = None
+
+        def visit_FunctionDef(self, node):
+            self.current_function = node.name
+            self.assignments["__doc__"] = ast.get_docstring(node)
+            self.generic_visit(node)
+            self.current_function = None
+            self.assignments.pop("__doc__", None)
+
+        def visit_Assign(self, node):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.assignments[target.id] = node.value
+            self.generic_visit(node)
+
+        def visit_Attribute(self, node):
+            self.assignments[node.attr] = node.value
+            self.generic_visit(node)
+
+        def visit_Call(self, node):
+            if isinstance(node.func, ast.Name) and node.func.id == "deprecation_warning":
+                depr_date = date(*(elt.n for elt in node.args[0].elts))
+                function = (
+                    f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
+                )
+                message = node.args[1]
+                if isinstance(message, ast.Name):
+                    message = self.assignments.get(message.id, "")
+                if isinstance(message, ast.Attribute):
+                    message = self.assignments.get(message.attr, "")
+                if isinstance(message, ast.Constant):
+                    message = message.s
+                elif isinstance(message, ast.JoinedStr):
+                    message = "".join(v.s for v in message.values if isinstance(v, ast.Constant))
+                else:
+                    message = str(message)
+                message = message.replace("\n", " ")
+                if len(message) > (max_length := 80):
+                    message = message[:max_length] + "..."
+                self.deprecations.append((str(depr_date), f"{self.fname}:{node.lineno}", function, message))
+
+    files = get_modal_source_files()
+    deprecations = []
+    for fname in files:
+        with open(fname) as f:
+            tree = ast.parse(f.read())
+        visitor = FunctionCallVisitor(fname)
+        visitor.visit(tree)
+        deprecations.extend(visitor.deprecations)
+
+    console = Console()
+    table = Table("Date", "Location", "Function", "Message")
+    for row in sorted(deprecations, key=lambda r: r[0]):
+        table.add_row(*row)
+    console.print(table)
