@@ -107,16 +107,12 @@ class Resolver:
                         raise NotFoundError(exc.message)
                     raise
 
-                if existing_object_id is not None and obj.object_id != existing_object_id:
-                    # TODO(erikbern): ignoring images is an ugly fix to a problem that's on the server.
-                    # Unlike every other object, images are not assigned random ids, but rather an
-                    # id given by the hash of its contents. This means we can't _force_ an image to
-                    # have a particular id. The better solution is probably to separate "images"
-                    # from "image definitions" or something like that, but that's a big project.
-                    #
+                # Check that the id of functions and classes didn't change
+                # TODO(erikbern): revisit this once stub assignments have been disallowed
+                if not obj._is_another_app and (obj.object_id.startswith("fu-") or obj.object_id.startswith("cs-")):
                     # Persisted refs are ignored because their life cycle is managed independently.
                     # The same tag on an app can be pointed at different objects.
-                    if not obj._is_another_app and not existing_object_id.startswith("im-"):
+                    if existing_object_id is not None and obj.object_id != existing_object_id:
                         raise Exception(
                             f"Tried creating an object using existing id {existing_object_id}"
                             f" but it has id {obj.object_id}"
