@@ -1081,6 +1081,7 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def stub(self) -> "modal.stub._Stub":
         """mdmd:hidden"""
+        assert self._stub
         return self._stub
 
     @property
