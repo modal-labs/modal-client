@@ -283,29 +283,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppGetByDeploymentNameRequest = await stream.recv_message()
         await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name)))
 
-    async def AppLookupObject(self, stream):
-        # TODO(erikbern): remove soon
-        request: api_pb2.AppLookupObjectRequest = await stream.recv_message()
-        if not request.object_id:
-            app_id = self.deployed_apps.get(request.app_name)
-            if app_id is None:
-                raise GRPCError(Status.NOT_FOUND, f"can't find app {request.app_name}")
-            assert not request.object_tag
-            object_id = self.app_single_objects.get(app_id)
-            if object_id is None:
-                raise GRPCError(Status.NOT_FOUND, "can't find single object for app")
-        else:
-            app_id = None
-            object_id = request.object_id
-
-        if request.app_name:
-            assert request.object_entity
-            if object_id:
-                assert object_id.startswith(request.object_entity)
-
-        response = api_pb2.AppLookupObjectResponse(object=self.get_object_metadata(object_id), app_id=app_id)
-        await stream.send_message(response)
-
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
         self.requests.append(request)

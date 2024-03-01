@@ -4,16 +4,13 @@ from functools import wraps
 from typing import Awaitable, Callable, ClassVar, Dict, List, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 
-from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
 from ._resolver import Resolver
 from .client import _Client
 from .config import config
-from .exception import ExecutionError, InvalidError, NotFoundError
+from .exception import ExecutionError, InvalidError
 
 O = TypeVar("O", bound="_Object")
 
@@ -168,27 +165,6 @@ class _Object:
         obj._hydrate(object_id, client, handle_metadata)
 
         return obj
-
-    @classmethod
-    async def from_id(cls: Type[O], object_id: str, client: Optional[_Client] = None) -> O:
-        """Retrieve an object from its unique ID (accessed through `obj.object_id`)."""
-        # This is used in a few examples to construct FunctionCall objects
-        if client is None:
-            client = await _Client.from_env()
-        try:
-            response: api_pb2.AppLookupObjectResponse = await retry_transient_errors(
-                client.stub.AppLookupObject, api_pb2.AppLookupObjectRequest(object_id=object_id)
-            )
-        except GRPCError as exc:
-            if exc.status == Status.NOT_FOUND:
-                raise NotFoundError(exc.message)
-            elif exc.status == Status.INVALID_ARGUMENT:
-                raise InvalidError(exc.message)
-            else:
-                raise
-
-        handle_metadata = get_proto_oneof(response.object, "handle_metadata_oneof")
-        return cls._new_hydrated(object_id, client, handle_metadata)
 
     def _hydrate_from_other(self, other: O):
         self._hydrate(other._object_id, other._client, other._get_metadata())
