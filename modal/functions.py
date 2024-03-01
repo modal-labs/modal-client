@@ -883,7 +883,7 @@ class _Function(_Object, type_prefix="fu"):
                 worker_id=config.get("worker_id"),
                 is_auto_snapshot=is_auto_snapshot,
                 is_method=bool(info.cls),
-                enable_memory_snapshot=enable_memory_snapshot,
+                checkpointing_enabled=enable_memory_snapshot,
                 is_checkpointing_function=False,
                 object_dependencies=[
                     api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
