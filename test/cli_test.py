@@ -124,16 +124,16 @@ def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
 
 
 def test_run(servicer, set_env_client, test_dir):
-    # stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
-    # _run(["run", stub_file.as_posix()])
-    # _run(["run", stub_file.as_posix() + "::stub"])
-    # _run(["run", stub_file.as_posix() + "::stub.foo"])
-    # _run(["run", stub_file.as_posix() + "::foo"])
-    # _run(["run", stub_file.as_posix() + "::bar"], expected_exit_code=1, expected_stderr=None)
+    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _run(["run", stub_file.as_posix()])
+    _run(["run", stub_file.as_posix() + "::stub"])
+    _run(["run", stub_file.as_posix() + "::stub.foo"])
+    _run(["run", stub_file.as_posix() + "::foo"])
+    _run(["run", stub_file.as_posix() + "::bar"], expected_exit_code=1, expected_stderr=None)
     file_with_entrypoint = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     _run(["run", file_with_entrypoint.as_posix()])
-    # _run(["run", file_with_entrypoint.as_posix() + "::main"])
-    # _run(["run", file_with_entrypoint.as_posix() + "::stub.main"])
+    _run(["run", file_with_entrypoint.as_posix() + "::main"])
+    _run(["run", file_with_entrypoint.as_posix() + "::stub.main"])
 
 
 def test_run_async(servicer, set_env_client, test_dir):
