@@ -832,7 +832,7 @@ message Function {
 
   // Checkpoint and restore
 
-  bool enable_memory_snapshot = 41;
+  bool checkpointing_enabled = 41;
 
   CheckpointInfo checkpoint = 42;
   repeated ObjectDependency object_dependencies = 43;
