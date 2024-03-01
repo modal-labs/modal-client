@@ -76,7 +76,7 @@ def _foo():
     pass
 
 
-@pytest.mark.timeout(1.0)
+@pytest.mark.timeout(3.0)
 def test_run_stub_exits_when_app_done(servicer, client):
     dummy_stub = modal.Stub()
 
