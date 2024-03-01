@@ -1175,7 +1175,7 @@ class _Function(_Object, type_prefix="fu"):
 
         while 1:
             try:
-                yield await self._call_abort_on_stub_termination(anext(it))
+                yield await self._call_abort_on_stub_termination(it.__anext__())
             except StopAsyncIteration:
                 break
 
