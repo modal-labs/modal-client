@@ -288,10 +288,10 @@ async def _download_from_url(download_url) -> bytes:
             return await resp.read()
 
 
-async def blob_download(blob_id, stub) -> bytes:
+async def blob_download(blob_id, grpc_api) -> bytes:
     # convenience function reading all of the downloaded file into memory
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
-    resp = await retry_transient_errors(stub.BlobGet, req)
+    resp = await retry_transient_errors(grpc_api.BlobGet, req)
 
     return await _download_from_url(resp.download_url)
 

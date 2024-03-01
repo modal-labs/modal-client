@@ -57,6 +57,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     fc_data_out: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
 
     def __init__(self, blob_host, blobs):
+        self.log_sleep = 0.5
         self.put_outputs_barrier = threading.Barrier(
             1, timeout=10
         )  # set to non-1 to get lock-step of output pushing within a test
@@ -245,7 +246,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             last_entry_id = "1"
         else:
             last_entry_id = str(int(request.last_entry_id) + 1)
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(self.log_sleep)
         log = api_pb2.TaskLogs(data=f"hello, world ({last_entry_id})\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
         await stream.send_message(api_pb2.TaskLogsBatch(entry_id=last_entry_id, items=[log]))
         if self.done:

@@ -121,7 +121,7 @@ class _Stub:
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
     _mount_cache: _MountCache
 
-    _terminating: asyncio.Event
+    _termination_exception: Optional[asyncio.Future[Exception]] = None
 
     @typechecked
     def __init__(
@@ -179,7 +179,6 @@ class _Stub:
         self._web_endpoints = []
         self._local_app = None  # when this is the launcher process
         self._container_app = None  # when this is inside a container
-        self._terminating = asyncio.Event()
 
         string_name = self._name or ""
 
@@ -288,10 +287,12 @@ class _Stub:
     @asynccontextmanager
     async def _set_local_app(self, app: _LocalApp) -> AsyncGenerator[None, None]:
         self._local_app = app
+        self._termination_exception = asyncio.Future()
         try:
             yield
         finally:
             self._local_app = None
+            self._termination_exception = None
 
     @asynccontextmanager
     async def run(
@@ -716,11 +717,20 @@ class _Stub:
         await resolver.load(obj)
         return obj
 
-    def _termination_event(self) -> asyncio.Event:
-        return self._terminating
+    def _termination_error_future(self) -> asyncio.Future[Exception]:
+        # can be awaited to in order to gracefully shut down tasks
+        if self._termination_exception is None:
+            self._termination_exception = asyncio.Future()  # lazily set, to get the right event loop
+        return self._termination_exception
 
-    def _set_terminating(self):
-        self._terminating.set()
+    def _set_terminating(self, exception: Exception):
+        # intentionally not using .set_exception since we want it as a result
+        # so we can listen without having to deal with the exception and shut
+        # down loops gracefully when it resolves to *anything*
+        fut = self._termination_error_future()
+        if fut.done():
+            return
+        self._termination_error_future().set_result(exception)
 
 
 Stub = synchronize_api(_Stub)

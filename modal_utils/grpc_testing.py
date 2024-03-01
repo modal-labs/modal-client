@@ -114,7 +114,6 @@ class InterceptionContext:
 
     def next_custom_responder(self, method_name, request):
         method_responses = self.custom_responses[method_name]
-
         for i, (request_filter, response_messages) in enumerate(method_responses):
             try:
                 request_matches = request_filter(request)

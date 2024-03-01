@@ -4,6 +4,8 @@ import pytest
 import typing
 
 import modal
+import modal._serialization
+from modal.exception import AppStopped
 from modal.runner import run_stub
 from modal_proto import api_pb2
 
@@ -74,20 +76,50 @@ def _foo():
     pass
 
 
+@pytest.mark.timeout(1.0)
 def test_run_stub_exits_when_app_done(servicer, client):
     dummy_stub = modal.Stub()
 
     foo = dummy_stub.function()(_foo)
+    servicer.log_sleep = 0.05
 
     async def MockFunctionGetOutputs(servicer, stream):
         await stream.recv_message()
         servicer.done = True  # this triggers the mock log loop to return within 0.5s with app_done=True
-        await asyncio.sleep(3)  # should be aborted before
-        await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[]))
+        await asyncio.sleep(0.1)  # should be aborted before
+        await stream.send_message(
+            api_pb2.FunctionGetOutputsResponse(
+                outputs=[
+                    api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                            data=modal._serialization.serialize(123),
+                        )
+                    )
+                ]
+            )
+        )
 
+    # test .remote()
     with servicer.intercept() as ctx:
         ctx.override_default("FunctionGetOutputs", MockFunctionGetOutputs)
         with dummy_stub.run(client=client):
-            foo.remote()  # Now we raise a KeyboardInterrupt here - that's kind of dumb?
+            with pytest.raises(AppStopped):
+                foo.remote()
 
-    # TODO: check that calling a function in *another* app doesn't abort when this app completes
+    # test .map()
+    with servicer.intercept() as ctx:
+        ctx.override_default("FunctionGetOutputs", MockFunctionGetOutputs)
+        with dummy_stub.run(client=client):
+            with pytest.raises(AppStopped):
+                for _ in foo.map([1, 2, 3]):
+                    pass
+
+    # test .remote() on a foreign function (should not raise)
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-should-return"))
+        ctx.override_default("FunctionGetOutputs", MockFunctionGetOutputs)
+        func = modal.Function.lookup("some_app", "some_func", client=client)
+
+        with dummy_stub.run(client=client):
+            assert 123 == func.remote()  # should not be aborted
