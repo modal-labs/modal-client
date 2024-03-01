@@ -407,7 +407,7 @@ def _build(
 def _enter(
     _warn_parentheses_missing=None,
     *,
-    checkpoint: bool = False,
+    memory_snapshot: bool = False,
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
     """Decorator for methods which should be executed when a new container is started.
 
@@ -415,7 +415,7 @@ def _enter(
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
 
-    if checkpoint:
+    if memory_snapshot:
         flag = _PartialFunctionFlags.ENTER_PRE_CHECKPOINT
     else:
         flag = _PartialFunctionFlags.ENTER_POST_CHECKPOINT

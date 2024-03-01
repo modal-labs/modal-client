@@ -510,8 +510,8 @@ class ClsWithHandlers:
     def my_build(self):
         pass
 
-    @enter(checkpoint=True)
-    def my_checkpoint(self):
+    @enter(memory_snapshot=True)
+    def my_memory_snapshot(self):
         pass
 
     @enter()

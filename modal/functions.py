@@ -607,7 +607,7 @@ class _Function(_Object, type_prefix="fu"):
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
-        checkpointing_enabled: bool = False,
+        enable_memory_snapshot: bool = False,
         allow_background_volume_commits: bool = False,
         block_network: bool = False,
         max_inputs: Optional[int] = None,
@@ -883,7 +883,7 @@ class _Function(_Object, type_prefix="fu"):
                 worker_id=config.get("worker_id"),
                 is_auto_snapshot=is_auto_snapshot,
                 is_method=bool(info.cls),
-                checkpointing_enabled=checkpointing_enabled,
+                enable_memory_snapshot=enable_memory_snapshot,
                 is_checkpointing_function=False,
                 object_dependencies=[
                     api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
