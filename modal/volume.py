@@ -105,7 +105,7 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Volume":
-        """Create a reference to a persisted network filesystem
+        """Create a reference to a persisted volume
 
         """
 
@@ -158,10 +158,10 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Volume":
-        """Lookup a network file system with a given name and tag.
+        """Lookup a volume with a given name
 
         ```python
-        n = modal.Volume.lookup("my-nfs")
+        n = modal.Volume.lookup("my-volume")
         print(n.listdir("/"))
         ```
         """

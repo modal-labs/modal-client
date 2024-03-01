@@ -177,7 +177,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_NetworkFileSystem":
-        """Lookup a network file system with a given name and tag.
+        """Lookup a network file system with a given name
 
         ```python
         n = modal.NetworkFileSystem.lookup("my-nfs")
