@@ -15,8 +15,9 @@ from modal_utils.hash_utils import get_sha256_hex
 from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
 from ._types import typechecked
+from .client import _Client
 from .exception import deprecation_warning
-from .object import _StatefulObject, live_method, live_method_gen
+from .object import _get_environment_name, _Object, live_method, live_method_gen
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
@@ -40,7 +41,7 @@ def network_file_system_mount_protos(
     return network_file_system_mounts
 
 
-class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
+class _NetworkFileSystem(_Object, type_prefix="sv"):
     """A shared, writable file system accessible by one or more Modal functions.
 
     By attaching this file system as a mount to one or more functions, they can
@@ -107,6 +108,29 @@ class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
         return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
 
     @staticmethod
+    def from_name(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+        create_if_missing: bool = False,
+    ) -> "_NetworkFileSystem":
+        """Create a reference to a persisted network filesystem
+
+        """
+
+        async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
+            req = api_pb2.SharedVolumeGetOrCreateRequest(
+                deployment_name=label,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name, resolver),
+                object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+            )
+            response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
+            self._hydrate(response.shared_volume_id, resolver.client, None)
+
+        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
+
+    @staticmethod
     def persisted(
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -132,7 +156,7 @@ class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
             pass
         ```
         """
-        return _NetworkFileSystem.new(cloud)._persist(label, namespace, environment_name)
+        return _NetworkFileSystem.from_name(label, namespace, environment_name, create_if_missing=True)
 
     def persist(
         self,
@@ -144,6 +168,49 @@ class _NetworkFileSystem(_StatefulObject, type_prefix="sv"):
         """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.persisted("my-volume")` instead."""
         deprecation_warning((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
         return self.persisted(label, namespace, environment_name, cloud)
+
+    @staticmethod
+    async def lookup(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        create_if_missing: bool = False,
+    ) -> "_NetworkFileSystem":
+        """Lookup a network file system with a given name and tag.
+
+        ```python
+        n = modal.NetworkFileSystem.lookup("my-nfs")
+        print(n.listdir("/"))
+        ```
+        """
+        obj = _NetworkFileSystem.from_name(
+            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+        )
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
+
+    @staticmethod
+    async def create_deployed(
+        deployment_name: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> str:
+        """mdmd:hidden"""
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.SharedVolumeGetOrCreateRequest(
+            deployment_name=deployment_name,
+            namespace=namespace,
+            environment_name=_get_environment_name(environment_name),
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+        )
+        resp = await retry_transient_errors(client.stub.SharedVolumeGetOrCreate, request)
+        return resp.shared_volume_id
 
     @live_method
     async def write_file(self, remote_path: str, fp: BinaryIO) -> int:

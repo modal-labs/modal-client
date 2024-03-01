@@ -139,6 +139,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         }
         self.deployed_queues = {}
         self.deployed_secrets = {}
+        self.deployed_nfss = {}
 
         self.cleared_function_calls = set()
 
@@ -900,6 +901,30 @@ class MockClientServicer(api_grpc.ModalClientBase):
         nfs_id = f"sv-{len(self.nfs_files)}"
         self.nfs_files[nfs_id] = {}
         await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id=nfs_id))
+
+    async def SharedVolumeGetOrCreate(self, stream):
+        request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
+            if k not in self.deployed_nfss:
+                raise GRPCError(Status.NOT_FOUND, "NFS not found")
+            nfs_id = self.deployed_nfss[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+            if k not in self.deployed_nfss:
+                nfs_id = f"sv-{len(self.nfs_files)}"
+                self.nfs_files[nfs_id] = {}
+                self.deployed_nfss[k] = nfs_id
+            nfs_id = self.deployed_nfss[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+            if k in self.deployed_nfss:
+                raise GRPCError(Status.ALREADY_EXISTS, "NFS already exists")
+            nfs_id = f"sv-{len(self.nfs_files)}"
+            self.nfs_files[nfs_id] = {}
+            self.deployed_nfss[k] = nfs_id
+        else:
+            raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
+
+        await stream.send_message(api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id=nfs_id))
 
     async def SharedVolumePutFile(self, stream):
         req = await stream.recv_message()
