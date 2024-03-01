@@ -3,10 +3,9 @@ import io
 import pickle
 from typing import Any
 
-import cloudpickle
-
 from modal_proto import api_pb2
 
+from ._vendor import cloudpickle
 from .config import logger
 from .exception import InvalidError
 from .object import Object, _Object

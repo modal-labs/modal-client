@@ -4,7 +4,6 @@ aiohttp==3.9.1
 aiostream==0.4.4
 asgiref==3.5.2
 certifi>=2022.12.07
-cloudpickle==2.2.0
 fastapi==0.88.0
 grpclib==0.4.7
 protobuf>=3.19.0

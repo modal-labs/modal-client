@@ -5,11 +5,11 @@ import pytest
 import time
 import typing
 
-import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 import modal
 from modal import Image, Mount, NetworkFileSystem, Proxy, Stub, web_endpoint
+from modal._vendor import cloudpickle
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub
