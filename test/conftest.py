@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2022
+# Copyright Modal Labs 2024
 from __future__ import annotations
 
 import asyncio
@@ -133,9 +133,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_mounts = {
             (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): "mo-123",
         }
+        self.deployed_nfss = {}
         self.deployed_queues = {}
         self.deployed_secrets = {}
-        self.deployed_nfss = {}
+        self.deployed_volumes = {}
 
         self.cleared_function_calls = set()
 
@@ -997,6 +998,30 @@ class MockClientServicer(api_grpc.ModalClientBase):
         volume_id = f"vo-{self.volume_counter}"
         self.volume_files[volume_id] = {}
         await stream.send_message(api_pb2.VolumeCreateResponse(volume_id=volume_id))
+
+    async def VolumeGetOrCreate(self, stream):
+        request: api_pb2.VolumeGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
+            if k not in self.deployed_volumes:
+                raise GRPCError(Status.NOT_FOUND, "Volume not found")
+            volume_id = self.deployed_volumes[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+            if k not in self.deployed_volumes:
+                volume_id = f"vo-{len(self.volume_files)}"
+                self.volume_files[volume_id] = {}
+                self.deployed_volumes[k] = volume_id
+            volume_id = self.deployed_volumes[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+            if k in self.deployed_volumes:
+                raise GRPCError(Status.ALREADY_EXISTS, "Volume already exists")
+            volume_id = f"vo-{len(self.volume_files)}"
+            self.volume_files[volume_id] = {}
+            self.deployed_volumes[k] = volume_id
+        else:
+            raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
+
+        await stream.send_message(api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id))
 
     async def VolumeCommit(self, stream):
         req = await stream.recv_message()
