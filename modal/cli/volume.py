@@ -64,8 +64,7 @@ def create(
     env: Optional[str] = ENV_OPTION,
 ):
     env_name = ensure_env(env)
-    volume = modal.Volume.new()
-    volume._deploy(name, environment_name=env)
+    modal.Volume.create_deployed(name, environment_name=env)
     usage_code = f"""
 @stub.function(volumes={{"/my_vol": modal.Volume.from_name("{name}")}})
 def some_func():
