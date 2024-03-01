@@ -376,7 +376,7 @@ container_app = synchronize_api(_container_app)
 assert isinstance(container_app, ContainerApp)
 
 
-async def _enable_interactivity(client: Optional[_Client] = None) -> None:
+async def _connect_stdin(client: Optional[_Client] = None) -> None:
     if _container_app._is_interactivity_enabled:
         # Currently, interactivity is enabled forever
         return
@@ -408,7 +408,7 @@ async def _enable_interactivity(client: Optional[_Client] = None) -> None:
         raise e
 
 
-enable_interactivity = synchronize_api(_enable_interactivity)
+connect_stdin = synchronize_api(_connect_stdin)
 
 
 def is_local() -> bool:

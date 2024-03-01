@@ -8,7 +8,7 @@ from modal_version import __version__
 
 try:
     from ._tunnel import Tunnel, forward
-    from .app import container_app, enable_interactivity, is_local
+    from .app import connect_stdin, container_app, is_local
     from .client import Client
     from .cls import Cls
     from .dict import Dict
@@ -74,5 +74,5 @@ __all__ = [
     "method",
     "web_endpoint",
     "wsgi_app",
-    "enable_interactivity",
+    "connect_stdin",
 ]
