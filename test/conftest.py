@@ -82,12 +82,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.queue = []
         self.deployed_apps = {
             client_mount_name(): "ap-x",
-            "my-proxy": "ap-proxy",
         }
         self.app_objects = {}
-        self.app_single_objects = {
-            "ap-proxy": "pr-123",
-        }
+        self.app_single_objects = {}
         self.app_unindexed_objects = {
             "ap-1": ["im-1", "vo-1"],
         }
@@ -767,6 +764,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 mount_id=mount_id, handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef")
             )
         )
+
+    ### Proxy
+
+    async def ProxyGetOrCreate(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.ProxyGetOrCreateResponse(proxy_id="pr-123"))
 
     ### Queue
 
