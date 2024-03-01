@@ -154,8 +154,10 @@ def _simulate_preemption_interrupt(signum, frame):
 def simulate_preemption(wait_seconds: int, jitter_seconds: int = 0):
     """
     Utility for simulating a preemption interrupt after `wait_seconds` seconds.
-    The first interrupt is the SIGINT/SIGTERM signal. After 30 seconds a second
-    interrupt will trigger. This second interrupt simulates SIGKILL, and should not be caught.
+    The first interrupt is the SIGINT signal. After 30 seconds, a second
+    interrupt will trigger.
+
+    This second interrupt simulates SIGKILL, and should not be caught.
     Optionally add between zero and `jitter_seconds` seconds of additional waiting before first interrupt.
 
     **Usage:**

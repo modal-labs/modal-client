@@ -65,9 +65,14 @@ _ignore_cancellation = False  # used by Python 3.8 to know if a CancellationErro
 
 
 class SignalHandlingEventLoop:
-    """Manage an event loop for executing coroutines while handling SIGINT/SIGTERM.
+    """Run an async event loop that executes code and handles signals.
 
-    Prevents stray cancellation errors from propagating up.
+    The following signals are handled while a coroutine is running on the event loop until
+    completion (and then handlers are deregistered):
+
+    - `SIGUSR1`: converted to an `asyncio.CancelledError` exception with a specific message
+      given by `INPUT_CANCELLATION_MESSAGE`. Note that this only affects async functions on Modal,
+      and this signal handler does not run for sync functions.
     """
 
     def __enter__(self):
@@ -79,8 +84,7 @@ class SignalHandlingEventLoop:
 
     def run(self, coro):
         task = asyncio.ensure_future(coro, loop=self.loop)
-        for s in [signal.SIGINT, signal.SIGTERM]:
-            self.loop.add_signal_handler(s, task.cancel)
+
         # before Python 3.9 there is no argument to Task.cancel, so we need to communicate the "type" of cancellation in an ugly way
         if sys.version_info[:2] >= (3, 9):
             self.loop.add_signal_handler(signal.SIGUSR1, task.cancel, INPUT_CANCELLATION_MESSAGE)
@@ -89,13 +93,22 @@ class SignalHandlingEventLoop:
             _ignore_cancellation = True
             self.loop.add_signal_handler(signal.SIGUSR1, task.cancel)
 
-        res = self.loop.run_until_complete(task)
-
-        # Reset the signal handlers so we can interrupt the container
-        for s in [signal.SIGINT, signal.SIGTERM, signal.SIGUSR1]:
-            self.loop.remove_signal_handler(s)
+        try:
+            res = self.loop.run_until_complete(task)
+        finally:
+            # Reset the signal handlers so we can interrupt the container
+            self.loop.remove_signal_handler(signal.SIGUSR1)
 
         return res
+
+
+@contextlib.contextmanager
+def ignore_sigint():
+    original_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, original_handler)
 
 
 class _FunctionIOManager:
@@ -171,17 +184,21 @@ class _FunctionIOManager:
         )
 
         if response.HasField("cancel_input_event"):
-            # 1. Pause processing of *new* inputs by signalling self a SIGUSR1, which will raise an exception in the main thread if necessary
+            # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
                 if self._input_concurrency > 1:
                     logger.info(
-                        "Shutting down task to stop some subset of inputs (concurrent functions don't support fine grained cancellation)"
+                        "Shutting down task to stop some subset of inputs (concurrent functions don't support fine-grained cancellation)"
                     )
-                    os.kill(os.getpid(), signal.SIGTERM)
+                    # This is equivalent to a task cancellation or preemption from worker code,
+                    # except we do not send a SIGKILL to forcefully exit after 30 seconds.
+                    os.kill(os.getpid(), signal.SIGINT)
 
                 if self.current_input_id in input_ids_to_cancel:
-                    os.kill(os.getpid(), signal.SIGUSR1)  # raises an exception in the main thread (hopefully user code)
+                    # This goes to a registered signal handler for sync Modal functions, or to the
+                    # `SignalHandlingEventLoop` for async functions.
+                    os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
 
@@ -671,14 +688,16 @@ def call_function_sync(
                 run_inputs(input_id, function_call_id, args, kwargs)
     finally:
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-            logger.debug("Running cls exit methods (sync)")
-            exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
-            for exit_method in exit_methods.values():
-                with function_io_manager.handle_user_exception():
-                    # We are deprecating parameterized exit methods but want to gracefully handle old code.
-                    # We can remove this once the deprecation in the actual @exit decorator is enforced.
-                    args = (None, None, None) if method_has_params(exit_method) else ()
-                    exit_method(*args)
+            # Ignore termination signals from the worker while running container @exit() methods.
+            with ignore_sigint():
+                logger.debug("Running cls exit methods (sync)")
+                exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
+                for exit_method in exit_methods.values():
+                    with function_io_manager.handle_user_exception():
+                        # We are deprecating parameterized exit methods but want to gracefully handle old code.
+                        # We can remove this once the deprecation in the actual @exit decorator is enforced.
+                        args = (None, None, None) if method_has_params(exit_method) else ()
+                        exit_method(*args)
 
 
 async def call_function_async(
@@ -746,17 +765,19 @@ async def call_function_async(
                 await run_input(input_id, function_call_id, args, kwargs)
     finally:
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-            logger.debug("Running cls exit methods (async)")
-            exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
-            for exit_method in exit_methods.values():
-                # Call a user-defined method
-                with function_io_manager.handle_user_exception():
-                    # We are deprecating parameterized exit methods but want to gracefully handle old code.
-                    # We can remove this once the deprecation in the actual @exit decorator is enforced.
-                    args = (None, None, None) if method_has_params(exit_method) else ()
-                    exit_res = exit_method(*args)
-                    if inspect.iscoroutine(exit_res):
-                        await exit_res
+            # Ignore termination signals from the worker while running container @exit() methods.
+            with ignore_sigint():
+                logger.debug("Running cls exit methods (async)")
+                exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
+                for exit_method in exit_methods.values():
+                    # Call a user-defined method
+                    with function_io_manager.handle_user_exception():
+                        # We are deprecating parameterized exit methods but want to gracefully handle old code.
+                        # We can remove this once the deprecation in the actual @exit decorator is enforced.
+                        args = (None, None, None) if method_has_params(exit_method) else ()
+                        exit_res = exit_method(*args)
+                        if inspect.iscoroutine(exit_res):
+                            await exit_res
 
 
 async def call_functions_for_setup(
