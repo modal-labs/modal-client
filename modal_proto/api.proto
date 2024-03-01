@@ -1758,6 +1758,18 @@ message TunnelStopResponse {
   bool exists = 1;
 }
 
+message VolumeGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;
+  string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+}
+
+message VolumeGetOrCreateResponse {
+  string volume_id = 1;
+}
+
 message VolumeCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -2048,6 +2060,7 @@ service ModalClient {
   rpc TunnelStop(TunnelStopRequest) returns (TunnelStopResponse);
 
   // Volumes
+  rpc VolumeGetOrCreate(VolumeGetOrCreateRequest) returns (VolumeGetOrCreateResponse);
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);
   rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);
