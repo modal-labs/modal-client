@@ -117,22 +117,6 @@ async def test_webhook_decorator_in_wrong_order(servicer, client):
 
 
 @pytest.mark.asyncio
-async def test_webhook_decorator_with_interactivity(servicer, client):
-    stub = Stub()
-
-    # Debuggers can't work with Modal Functions triggered over HTTP.
-    for dec in [web_endpoint, asgi_app, wsgi_app]:
-        with pytest.raises(InvalidError) as excinfo:
-
-            @stub.function(serialized=True, interactive=True)
-            @dec()  # type: ignore
-            def web():
-                pass
-
-        assert "not supported" in str(excinfo.value).lower()
-
-
-@pytest.mark.asyncio
 async def test_asgi_wsgi(servicer, client):
     stub = Stub()
 

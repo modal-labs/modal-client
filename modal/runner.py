@@ -44,6 +44,7 @@ async def _run_stub(
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
     shell=False,
+    interactive=False,
 ) -> AsyncGenerator[_Stub, None]:
     """mdmd:hidden"""
     if environment_name is None:
@@ -83,6 +84,7 @@ async def _run_stub(
         stub.description,
         environment_name=environment_name,
         app_state=app_state,
+        interactive=interactive,
     )
     async with stub._set_local_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
