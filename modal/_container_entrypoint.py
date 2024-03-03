@@ -38,7 +38,7 @@ from ._function_utils import LocalFunctionError, is_async as get_is_async, is_gl
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
-from .app import _container_app, _ContainerApp, connect_stdin
+from .app import _container_app, _ContainerApp, interact
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
@@ -955,7 +955,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             # Interactive function
             def breakpoint_wrapper():
                 # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
-                connect_stdin()
+                interact()
                 import pdb
 
                 pdb.set_trace()
