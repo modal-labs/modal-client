@@ -11,7 +11,7 @@ no_strict_optional = true
 namespace_packages = true
 
 [[tool.mypy.overrides]]
-module = "modal/_vendor/cloudpickle"
+module = ["modal/_vendor/cloudpickle", "modal/_vendor/tblib"]
 ignore_errors = true
 
 
