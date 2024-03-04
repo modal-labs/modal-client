@@ -7,11 +7,11 @@ from modal.runner import deploy_stub
 
 
 def test_persistent_object(servicer, client):
-    Volume.new()._deploy("my-volume", client=client)
+    volume_id = Volume.create_deployed("my-volume", client=client)
 
     v: Volume = Volume.lookup("my-volume", client=client)
     assert isinstance(v, Volume)
-    assert v.object_id == "vo-1"
+    assert v.object_id == volume_id
 
     with pytest.raises(NotFoundError):
         Volume.lookup("bazbazbaz", client=client)
@@ -60,17 +60,15 @@ def test_webhook_lookup(servicer, client):
 
 
 def test_deploy_exists(servicer, client):
-    assert not Volume._exists("my-volume", client=client)
-    v1: Volume = Volume.new()
-    v1._deploy("my-volume", client=client)
-    assert Volume._exists("my-volume", client=client)
+    with pytest.raises(NotFoundError):
+        Volume.lookup("my-volume", client=client)
+    Volume.create_deployed("my-volume", client=client)
+    v1: Volume = Volume.lookup("my-volume", client=client)
     v2: Volume = Volume.lookup("my-volume", client=client)
     assert v1.object_id == v2.object_id
 
 
-def test_deploy_retain_id(servicer, client):
-    v1: Volume = Volume.new()
-    v2: Volume = Volume.new()
-    v1._deploy("my-volume", client=client)
-    v2._deploy("my-volume", client=client)
+def test_create_if_missing(servicer, client):
+    v1: Volume = Volume.lookup("my-volume", create_if_missing=True, client=client)
+    v2: Volume = Volume.lookup("my-volume", client=client)
     assert v1.object_id == v2.object_id

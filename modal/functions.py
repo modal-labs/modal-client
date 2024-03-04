@@ -600,7 +600,6 @@ class _Function(_Object, type_prefix="fu"):
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,
-        interactive: bool = False,
         cloud: Optional[str] = None,
         _experimental_boost: bool = False,
         _experimental_scheduler: bool = False,
@@ -694,12 +693,6 @@ class _Function(_Object, type_prefix="fu"):
                     _experimental_scheduler_placement=_experimental_scheduler_placement,
                 )
                 image = image.extend(build_function=snapshot_function, force_build=image.force_build)
-
-        if interactive and concurrency_limit and concurrency_limit > 1:
-            warnings.warn(
-                "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
-            )
-            concurrency_limit = 1
 
         if keep_warm is not None:
             assert isinstance(keep_warm, int)
@@ -801,8 +794,8 @@ class _Function(_Object, type_prefix="fu"):
             milli_cpu = int(1000 * cpu) if cpu is not None else 0
 
             timeout_secs = timeout
-            if interactive:
-                assert not is_builder_function, "builder functions do not support interactive usage"
+
+            if stub and stub.is_interactive and not is_builder_function:
                 pty_info = _pty.get_pty_info(shell=False)
             else:
                 pty_info = None
@@ -1495,6 +1488,13 @@ class _FunctionCall(_Object, type_prefix="fc"):
         request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
         assert self._client and self._client.stub
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
+
+    @staticmethod
+    async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall":
+        if client is None:
+            client = await _Client.from_env()
+
+        return _FunctionCall._new_hydrated(function_call_id, client, None)
 
 
 FunctionCall = synchronize_api(_FunctionCall)

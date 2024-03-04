@@ -150,6 +150,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
+            interactive=ctx.obj["interactive"],
         ):
             if function.info.cls is None:
                 function.remote(**kwargs)
@@ -181,6 +182,7 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
+            interactive=ctx.obj["interactive"],
         ):
             try:
                 if isasync:
@@ -220,9 +222,10 @@ class RunGroup(click.Group):
 )
 @click.option("-q", "--quiet", is_flag=True, help="Don't show Modal progress indicators.")
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
+@click.option("-i", "--interactive", is_flag=True, help="Run the app in interactive mode.")
 @click.option("-e", "--env", help=ENV_OPTION_HELP, default=None)
 @click.pass_context
-def run(ctx, detach, quiet, env):
+def run(ctx, detach, quiet, interactive, env):
     """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
@@ -255,6 +258,7 @@ def run(ctx, detach, quiet, env):
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
+    ctx.obj["interactive"] = interactive
 
 
 def deploy(

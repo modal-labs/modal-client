@@ -347,7 +347,11 @@ class ConcurrencyPool:
         async def blocking_wrapper(coro):
             # Not using async with on the semaphore is intentional here - if return_exceptions=False
             # manual release prevents starting extraneous tasks after exceptions.
-            await self.semaphore.acquire()
+            try:
+                await self.semaphore.acquire()
+            except asyncio.CancelledError:
+                coro.close()  # avoid "coroutine was never awaited" warnings
+
             try:
                 res = await coro
                 self.semaphore.release()

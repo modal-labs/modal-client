@@ -193,11 +193,21 @@ class _Sandbox(_Object, type_prefix="sb"):
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
         self._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, self._client)
         self._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, self._client)
-        if handle_metadata is not None:
-            assert isinstance(handle_metadata, api_pb2.SandboxHandleMetadata)
-            self._result = handle_metadata.result
-        else:
-            self._result = None
+        self._result = None
+
+    @staticmethod
+    async def from_id(sandbox_id: str, client: Optional[_Client] = None) -> "_Sandbox":
+        """Construct a Sandbox from an id and look up the sandbox result."""
+        if client is None:
+            client = await _Client.from_env()
+
+        req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=0)
+        resp = await retry_transient_errors(client.stub.SandboxWait, req)
+
+        obj = _Sandbox._new_hydrated(sandbox_id, client, None)
+        obj._result = resp.result
+
+        return obj
 
     # Live handle methods
 

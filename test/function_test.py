@@ -5,11 +5,11 @@ import pytest
 import time
 import typing
 
-import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 import modal
 from modal import Image, Mount, NetworkFileSystem, Proxy, Stub, web_endpoint
+from modal._vendor import cloudpickle
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub
@@ -467,12 +467,6 @@ def test_from_id(client, servicer):
     assert function_id
     assert foo.web_url
 
-    rehydrated_function = Function.from_id(function_id, client=client)
-    assert isinstance(rehydrated_function, Function)
-
-    assert rehydrated_function.object_id == function_id
-    assert rehydrated_function.web_url == foo.web_url
-
     function_call = foo.spawn()
     assert function_call.object_id
     # Used in a few examples to construct FunctionCall objects
@@ -626,16 +620,6 @@ def test_deps_closurevars(client, servicer):
         f = servicer.app_functions[modal_f.object_id]
 
     assert set(d.object_id for d in f.object_dependencies) == set([nfs.object_id, image.object_id])
-
-
-def interact_wit_me():
-    return 1
-
-
-def test_interactive_mode():
-    stub = Stub()
-
-    stub.function(image=Image.debian_slim(), interactive=True)(interact_wit_me)
 
 
 def assert_is_wrapped_dict(some_arg):
