@@ -274,7 +274,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
     async def AppStop(self, stream):
-        request: api_pb2.AppStopRequest() = await stream.recv_message()
+        request: api_pb2.AppStopRequest = await stream.recv_message()
         self.app_state_history[request.app_id].append(api_pb2.APP_STATE_STOPPED)
         await stream.send_message(Empty())
 

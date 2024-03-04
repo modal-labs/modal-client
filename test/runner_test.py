@@ -97,6 +97,7 @@ def test_run_stub_exits_when_app_done(servicer, client):
     async def MockFunctionGetOutputs(mock_servicer, stream):
         await stream.recv_message()
         stop_app.set()
+        stop_app.clear()
         await asyncio.sleep(0.1)  # should be aborted before this sleep finishes
         await stream.send_message(
             api_pb2.FunctionGetOutputsResponse(
