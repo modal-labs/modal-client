@@ -10,6 +10,40 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.61.1 (2024-03-03)
+
+`modal run --interactive` or `modal run -i` run the app in "interactive mode". This allows any remote code to connect to the user's local terminal by calling `modal.interact()`. 
+
+```python
+@stub.function()
+def my_fn(x):
+    modal.interact()
+
+    x = input()
+    print(f"Your number is {x}")
+```
+
+This means that you can dynamically start an IPython shell if desired for debugging:
+
+```python
+@stub.function()
+def my_fn(x):
+    modal.interact()
+
+    from IPython import embed
+    embed()
+```
+
+For convenience, breakpoints automatically call `interact()`:
+
+```python
+@stub.function()
+def my_fn(x):
+    breakpoint()
+```
+
+
+
 ### 0.60.0 (2024-02-29)
 
 - `Image.run_function` now allows you to pass args and kwargs to the function. Usage:
