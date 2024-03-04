@@ -12,7 +12,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.61.6 (2024-03-04)
 
-- For modal functions/classes with `concurrency_limit` < `keep_warm`, we'll raise an exception now. Previously we (silently) respected the `concurrency_limit` parameter.
+- For modal functions/classes with `concurrency_limit < keep_warm`, we'll raise an exception now. Previously we (silently) respected the `concurrency_limit` parameter.
 
 
 
