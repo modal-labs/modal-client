@@ -1316,3 +1316,10 @@ def modal_config():
             os.remove(t.name)
 
     return mock_modal_toml
+
+
+@pytest.fixture()
+def modal_test_support_dir(request):
+    # TODO: merge this with test/supports dir?
+    root_dir = Path(request.config.rootdir)
+    return root_dir / "modal_test_support"
