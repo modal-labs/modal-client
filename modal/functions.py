@@ -1027,7 +1027,7 @@ class _Function(_Object, type_prefix="fu"):
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(
             function_id=self._object_id, warm_pool_size_override=warm_pool_size
         )
-        await retry_transient_errors(self._client.stub.FunctionUpdateSchedulingParams, request)
+        await retry_transient_errors(self._parent._client.stub.FunctionUpdateSchedulingParams, request)
 
     @classmethod
     def from_name(
