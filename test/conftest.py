@@ -388,6 +388,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Client
 
     async def ClientHello(self, stream):
+        self.done = False  # in case we have multiple sessions per test
         request: Empty = await stream.recv_message()
         self.requests.append(request)
         self.client_create_metadata = stream.metadata
