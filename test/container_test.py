@@ -1135,15 +1135,10 @@ def test_cancellation_aborts_current_input_on_match(
 
 @skip_windows("signals not supported on windows and this only runs on containers")
 @pytest.mark.usefixtures("server_url_env")
-@pytest.mark.parametrize(
-    ["function_name"],
-    [("delay",), ("delay_async",)],
-)
-def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name):
-    # send three inputs in container: in-100, in-101, in-102
+def test_cancellation_stops_task_with_concurrent_inputs_blocking(servicer):
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
-            servicer, "modal_test_support.functions", function_name, inputs=[((20,), {})], allow_concurrent_inputs=2
+            servicer, "modal_test_support.functions", "delay", inputs=[((20,), {})], allow_concurrent_inputs=2
         )
         input_lock.wait()
 
@@ -1154,3 +1149,33 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     # container should exit soon!
     exit_code = container_process.wait(5)
     assert exit_code
+
+
+@skip_windows("signals not supported on windows and this only runs on containers")
+@pytest.mark.usefixtures("server_url_env")
+def test_cancellation_stops_task_with_concurrent_inputs_async(servicer):
+    with servicer.input_lockstep() as input_lock:
+        container_process = _run_container_process(
+            servicer,
+            "modal_test_support.functions",
+            "delay_async",
+            inputs=[((20,), {}), ((0.5,), {}), ((20,), {}), ((0.01,), {})],
+            allow_concurrent_inputs=3,
+        )
+        # wait for container to acquire 3 inputs
+        for i in range(3):
+            input_lock.wait()
+
+    time.sleep(0.05)  # give it some time to start tasks for each input
+
+    assert _flatten_outputs(servicer.container_outputs) == []  # no outputs so far
+    # cancel first and third inputs (the 20s ones)
+    servicer.container_heartbeat_return_now(
+        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000", "in-002"]))
+    )
+    # container should exit gracefully, finishing the final input
+    assert container_process.wait(5) == 0
+    items = _flatten_outputs(servicer.container_outputs)
+    assert len(items) == 2
+    data = [deserialize(i.result.data, client=None) for i in items]
+    assert data == [0.01, 0.5]
