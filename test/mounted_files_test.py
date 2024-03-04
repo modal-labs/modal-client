@@ -253,6 +253,7 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
     assert "/root/pkg_a/normally_not_included.pyc" in custom_pkg_a_mount.keys()
 
 
+@skip_windows("pip-installed pdm seems somewhat broken on windows")
 def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servicer, server_url_env):
     # check that `pdm`'s cached packages are not included in automounts
     project_dir = Path(__file__).parent.parent
