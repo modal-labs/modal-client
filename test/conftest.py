@@ -72,7 +72,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.blob_host = blob_host
         self.blobs = blobs  # shared dict
         self.requests = []
-        self.done = False
+
         self.rate_limit_sleep_duration = None
         self.fail_get_inputs = False
         self.slow_put_inputs = False
@@ -230,7 +230,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppClientDisconnect(self, stream):
         request: api_pb2.AppClientDisconnectRequest = await stream.recv_message()
         self.requests.append(request)
-        self.done = True
         self.app_client_disconnect_count += 1
         state_history = self.app_state_history[request.app_id]
         if state_history[-1] not in [api_pb2.APP_STATE_DETACHED, api_pb2.APP_STATE_DEPLOYED]:
@@ -248,7 +247,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await asyncio.sleep(self.log_sleep)
         log = api_pb2.TaskLogs(data=f"hello, world ({last_entry_id})\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
         await stream.send_message(api_pb2.TaskLogsBatch(entry_id=last_entry_id, items=[log]))
-        if self.done:
+        if self.app_state_history[request.app_id][-1] == api_pb2.APP_STATE_STOPPED:
             await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
 
     async def AppGetObjects(self, stream):
@@ -272,6 +271,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_set_objects_count += 1
         if request.new_app_state:
             self.app_state_history[request.app_id].append(request.new_app_state)
+        await stream.send_message(Empty())
+
+    async def AppStop(self, stream):
+        request: api_pb2.AppStopRequest() = await stream.recv_message()
+        self.app_state_history[request.app_id].append(api_pb2.APP_STATE_STOPPED)
         await stream.send_message(Empty())
 
     async def AppDeploy(self, stream):
@@ -363,7 +367,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Client
 
     async def ClientHello(self, stream):
-        self.done = False  # in case we have multiple sessions per test
         request: Empty = await stream.recv_message()
         self.requests.append(request)
         self.client_create_metadata = stream.metadata

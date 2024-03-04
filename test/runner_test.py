@@ -3,6 +3,8 @@ import asyncio
 import pytest
 import typing
 
+import grpclib.server
+
 import modal
 import modal._serialization
 from modal.exception import AppStopped
@@ -83,10 +85,19 @@ def test_run_stub_exits_when_app_done(servicer, client):
     foo = dummy_stub.function()(_foo)
     servicer.log_sleep = 0.05
 
-    async def MockFunctionGetOutputs(servicer, stream):
+    stop_app = asyncio.Event()
+
+    async def MockAppGetLogs(
+        mock_servicer, stream: grpclib.server.Stream[api_pb2.AppGetLogsRequest, api_pb2.TaskLogsBatch]
+    ):
         await stream.recv_message()
-        servicer.done = True  # this triggers the mock log loop to return within 0.5s with app_done=True
-        await asyncio.sleep(0.1)  # should be aborted before
+        await stop_app.wait()
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    async def MockFunctionGetOutputs(mock_servicer, stream):
+        await stream.recv_message()
+        stop_app.set()
+        await asyncio.sleep(0.1)  # should be aborted before this sleep finishes
         await stream.send_message(
             api_pb2.FunctionGetOutputsResponse(
                 outputs=[
@@ -103,13 +114,12 @@ def test_run_stub_exits_when_app_done(servicer, client):
     # test .remote()
     with servicer.intercept() as ctx:
         ctx.override_default("FunctionGetOutputs", MockFunctionGetOutputs)
+        ctx.override_default("AppGetLogs", MockAppGetLogs)
         with dummy_stub.run(client=client):
             with pytest.raises(AppStopped):
                 foo.remote()
 
-    # test .map()
-    with servicer.intercept() as ctx:
-        ctx.override_default("FunctionGetOutputs", MockFunctionGetOutputs)
+        # test .map()
         with dummy_stub.run(client=client):
             with pytest.raises(AppStopped):
                 for _ in foo.map([1, 2, 3]):
@@ -117,6 +127,7 @@ def test_run_stub_exits_when_app_done(servicer, client):
 
     # test .remote() on a foreign function (should not raise)
     with servicer.intercept() as ctx:
+        ctx.override_default("AppGetLogs", MockAppGetLogs)
         ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-should-return"))
         ctx.override_default("FunctionGetOutputs", MockFunctionGetOutputs)
         func = modal.Function.lookup("some_app", "some_func", client=client)
