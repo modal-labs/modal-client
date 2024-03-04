@@ -599,7 +599,7 @@ class _Function(_Object, type_prefix="fu"):
         allow_concurrent_inputs: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
-        keep_warm: Optional[int] = None,
+        keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
         cloud: Optional[str] = None,
         _experimental_boost: bool = False,
         _experimental_scheduler: bool = False,
@@ -694,8 +694,13 @@ class _Function(_Object, type_prefix="fu"):
                 )
                 image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
-        if keep_warm is not None:
-            assert isinstance(keep_warm, int)
+        if keep_warm is not None and not isinstance(keep_warm, int):
+            raise TypeError(f"`keep_warm` must be an int or bool, not {type(keep_warm).__name__}")
+
+        if (keep_warm is not None) and (concurrency_limit is not None) and concurrency_limit < keep_warm:
+            raise InvalidError(
+                f"Function `{info.function_name}` has `{concurrency_limit=}`, strictly less than its `{keep_warm=}` parameter."
+            )
 
         if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
