@@ -642,7 +642,7 @@ def call_function_sync(
         import threading
 
         spawned_workers = 0
-        inputs = queue.Queue()
+        inputs: queue.Queue[Any] = queue.Queue()
         finished = threading.Event()
 
         def worker_thread():
