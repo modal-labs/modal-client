@@ -75,7 +75,8 @@ class SignalHandlingEventLoop:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.loop.run_until_complete(self.loop.shutdown_asyncgens())
-        self.loop.run_until_complete(self.loop.shutdown_default_executor())
+        if sys.version_info[:2] >= (3, 9):
+            self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
         self.loop.close()
 
     def run(self, coro):
@@ -934,6 +935,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Install hooks for interactive functions.
         if container_args.function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
+
             def breakpoint_wrapper():
                 # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
                 interact()
