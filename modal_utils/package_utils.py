@@ -9,10 +9,11 @@ from modal.exception import ModuleNotMountable
 
 
 def get_file_formats(module):
-    module_files = files(module)
-    if not module_files:
-        return []
     try:
+        module_files = files(module)
+        if not module_files:
+            return []
+
         endings = [str(p).split(".")[-1] for p in module_files if "." in str(p)]
         return list(set(endings))
     except PackageNotFoundError:
