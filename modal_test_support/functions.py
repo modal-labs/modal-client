@@ -198,10 +198,6 @@ class LifecycleCls:
     # async def exit_async(self):
     #     self.events.append("exit_async")
 
-    @exit()
-    async def exit_finally_raise(self):
-        raise Exception(",".join(self.events))
-
     @method()
     def f_sync(self, x):
         self.events.append("f_sync")
