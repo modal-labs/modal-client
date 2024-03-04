@@ -1009,6 +1009,26 @@ class _Function(_Object, type_prefix="fu"):
 
         return fun
 
+    async def set_keep_warm(self, warm_pool_size: int) -> None:
+        """Set the warm pool size for the function (including parametrized functions).
+
+        Please exercise care when using this advanced feature! Setting and forgetting a warm pool on functions can lead to increased costs.
+
+        ```python
+        # Usage on a regular function.
+        f = modal.Function.lookup("my-app", "function")
+        f.set_keep_warm(2)
+
+        # Usage on a parametrized function.
+        Model = modal.Cls.lookup("my-app", "Model")
+        Model("fine-tuned-model").inference.set_keep_warm(2)
+        ```
+        """
+        request = api_pb2.FunctionUpdateSchedulingParamsRequest(
+            function_id=self._object_id, warm_pool_size_override=warm_pool_size
+        )
+        await retry_transient_errors(self._client.stub.FunctionUpdateSchedulingParams, request)
+
     @classmethod
     def from_name(
         cls: Type["_Function"],
