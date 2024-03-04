@@ -173,6 +173,46 @@ class Cls:
         return self._generator(x)
 
 
+@stub.cls()
+class LifecycleCls:
+    """Ensures that {sync,async} lifecycle hooks work with {sync,async} functions."""
+
+    def __init__(self):
+        self.events = []
+
+    @enter()
+    def enter_sync(self):
+        self.events.append("enter_sync")
+
+    @enter()
+    async def enter_async(self):
+        self.events.append("enter_async")
+
+    # TODO: We have no way of verifying @exit() handler output in container_test.py right now.
+
+    # @exit()
+    # def exit_sync(self):
+    #     self.events.append("exit_sync")
+    #
+    # @exit()
+    # async def exit_async(self):
+    #     self.events.append("exit_async")
+
+    @exit()
+    async def exit_finally_raise(self):
+        raise Exception(",".join(self.events))
+
+    @method()
+    def f_sync(self, x):
+        self.events.append("f_sync")
+        return self.events
+
+    @method()
+    async def f_async(self, x):
+        self.events.append("f_async")
+        return self.events
+
+
 @stub.function()
 def check_sibling_hydration(x):
     assert square.is_hydrated

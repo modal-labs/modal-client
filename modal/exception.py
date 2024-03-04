@@ -187,10 +187,9 @@ class InputCancellation(BaseException):
     """Raised when the current input is cancelled by the task
 
     Intentionally a BaseException instead of an Exception, so it won't get
-    caught by unspecified user exception clauses that might be used for retries etc.
+    caught by unspecified user exception clauses that might be used for retries and
+    other control flow.
     """
-
-    pass
 
 
 class ModuleNotMountable(Exception):

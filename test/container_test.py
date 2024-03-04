@@ -543,6 +543,19 @@ def test_cls_function(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
+def test_lifecycle_from_sync(unix_servicer, event_loop):
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "LifecycleCls.f_sync")
+    print(ret.items)
+    assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync"]
+
+
+@skip_windows_unix_socket
+def test_lifecycle_from_async(unix_servicer, event_loop):
+    ret = _run_container(unix_servicer, "modal_test_support.functions", "LifecycleCls.f_async")
+    assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async"]
+
+
+@skip_windows_unix_socket
 def test_param_cls_function(unix_servicer, event_loop):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
     ret = _run_container(
@@ -1153,4 +1166,4 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     )
     # container should exit soon!
     exit_code = container_process.wait(5)
-    assert exit_code
+    assert exit_code == 0  # container should exit gracefully
