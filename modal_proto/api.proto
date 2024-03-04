@@ -940,6 +940,14 @@ message FunctionGetResponse {
   FunctionHandleMetadata handle_metadata = 2;
 }
 
+ 
+message FunctionUpdateSchedulingParamsRequest {
+  string function_id = 1;
+  uint32 warm_pool_size_override = 2;
+}
+
+message FunctionUpdateSchedulingParamsResponse {}
+
 message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
@@ -1991,6 +1999,7 @@ service ModalClient {
   rpc FunctionPrecreate(FunctionPrecreateRequest) returns (FunctionPrecreateResponse);
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
+  rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
   // Function calls
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
