@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Set, Type
 
-from google.protobuf import empty_pb2
 from grpclib import Status
 
 from modal.stub import _Stub
@@ -39,7 +38,7 @@ from ._function_utils import LocalFunctionError, is_async as get_is_async, is_gl
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
-from .app import _container_app, _ContainerApp
+from .app import _container_app, _ContainerApp, interact
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
@@ -132,7 +131,7 @@ class _FunctionIOManager:
         assert isinstance(self._client, _Client)
 
     async def initialize_app(self) -> _ContainerApp:
-        await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name)
+        await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name, self.function_def)
         return _container_app
 
     async def _run_heartbeat_loop(self):
@@ -593,13 +592,6 @@ class _FunctionIOManager:
             else:
                 logger.debug(f"modal.Volume background commit success for {volume_id}.")
 
-    async def start_pty_shell(self) -> None:
-        try:
-            await self._client.stub.FunctionStartPtyShell(empty_pb2.Empty())
-        except Exception as e:
-            logger.error("Failed to start PTY shell.")
-            raise e
-
 
 FunctionIOManager = synchronize_api(_FunctionIOManager)
 
@@ -959,10 +951,16 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         if container_args.function_def.is_checkpointing_function:
             function_io_manager.checkpoint()
 
-        pty_info: api_pb2.PTYInfo = container_args.function_def.pty_info
-        if pty_info.pty_type or pty_info.enabled:
-            # This is an interactive function: Immediately start a PTY shell
-            function_io_manager.start_pty_shell()
+        if container_args.function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
+            # Interactive function
+            def breakpoint_wrapper():
+                # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
+                interact()
+                import pdb
+
+                pdb.set_trace()
+
+            sys.breakpointhook = breakpoint_wrapper
 
         # Identify the "enter" methods to run after we resume
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:

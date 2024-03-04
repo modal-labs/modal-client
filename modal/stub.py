@@ -195,6 +195,15 @@ class _Stub:
         return self._name
 
     @property
+    def is_interactive(self) -> bool:
+        """Whether the current app for the stub is running in interactive mode."""
+        # return self._name
+        if self._local_app:
+            return self._local_app.is_interactive
+        else:
+            return False
+
+    @property
     def app(self):
         """`stub.app` is deprecated: use e.g. `stub.obj` instead of `stub.app.obj`
         if you need to access objects on the running app.
@@ -460,7 +469,7 @@ class _Stub:
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        interactive: bool = False,  # Whether to run the function in interactive mode.
+        interactive: bool = False,  # Deprecated
         keep_warm: Optional[
             int
         ] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
@@ -488,6 +497,11 @@ class _Stub:
             raise InvalidError("`image` needs to be a keyword argument: `@stub.function(image=image)`.")
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@stub.function()`.")
+
+        if interactive:
+            deprecation_error(
+                (2024, 2, 29), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+            )
 
         if image is None:
             image = self._get_default_image()
@@ -552,7 +566,6 @@ class _Stub:
                 container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
                 cpu=cpu,
-                interactive=interactive,
                 keep_warm=keep_warm,
                 cloud=cloud,
                 webhook_config=webhook_config,

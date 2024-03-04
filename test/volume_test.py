@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 import modal
-from modal.exception import InvalidError, VolumeUploadTimeoutError
+from modal.exception import InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 
@@ -71,11 +71,7 @@ def test_volume_commit(client, servicer, skip_reload):
 
 @pytest.mark.asyncio
 async def test_volume_get(servicer, client, tmp_path):
-    stub = modal.Stub()
-    vol = modal.Volume.persisted("my-vol")
-    stub.vol = vol
-    await vol._deploy.aio("my-vol", client=client)
-    assert await modal.Volume._exists.aio("my-vol", client=client)  # type: ignore
+    await modal.Volume.create_deployed.aio("my-vol", client=client)
     vol = await modal.Volume.lookup.aio("my-vol", client=client)  # type: ignore
 
     file_contents = b"hello world"
@@ -331,3 +327,15 @@ async def test_volume_copy(client, tmp_path, servicer):
     }
     assert returned_file_data[Path("test_dir/file1.txt")].data == b"test copy"
     assert returned_file_data[Path("test_dir/file2.txt")].data == b"test copy"
+
+
+def test_persisted(servicer, client):
+    # Lookup should fail since it doesn't exist
+    with pytest.raises(NotFoundError):
+        modal.Volume.lookup("xyz", client=client)
+
+    # Create it
+    modal.Volume.lookup("xyz", create_if_missing=True, client=client)
+
+    # Lookup should succeed now
+    modal.Volume.lookup("xyz", client=client)
