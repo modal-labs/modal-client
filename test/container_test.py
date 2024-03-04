@@ -543,14 +543,10 @@ def test_cls_function(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_lifecycle_from_sync(unix_servicer, event_loop):
+def test_lifecycle_sync_async(unix_servicer, event_loop):
     ret = _run_container(unix_servicer, "modal_test_support.functions", "LifecycleCls.f_sync")
-    print(ret.items)
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync"]
 
-
-@skip_windows_unix_socket
-def test_lifecycle_from_async(unix_servicer, event_loop):
     ret = _run_container(unix_servicer, "modal_test_support.functions", "LifecycleCls.f_async")
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async"]
 
