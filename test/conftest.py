@@ -32,10 +32,10 @@ from modal import __version__, config
 from modal._serialization import serialize_data_format
 from modal._vendor import cloudpickle
 from modal.app import _ContainerApp
-from modal.client import HEARTBEAT_INTERVAL, Client
+from modal.client import Client
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
-from modal_utils.async_utils import synchronize_api
+from modal_utils.async_utils import asyncify, synchronize_api
 from modal_utils.grpc_testing import patch_mock_servicer
 from modal_utils.grpc_utils import find_free_port
 from modal_utils.http_utils import run_temporary_http_server
@@ -386,9 +386,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ContainerHeartbeat(self, stream):
         request: api_pb2.ContainerHeartbeatRequest = await stream.recv_message()
         self.requests.append(request)
-        await asyncio.get_event_loop().run_in_executor(
-            None, self.container_heartbeat_abort.wait, HEARTBEAT_INTERVAL - 1
-        )
+        # Return earlier than the usual 15-second heartbeat to avoid suspending tests.
+        await asyncify(self.container_heartbeat_abort.wait)(5)
         if self.container_heartbeat_response:
             await stream.send_message(self.container_heartbeat_response)
             self.container_heartbeat_response = None
@@ -1153,6 +1152,7 @@ async def servicer_factory(blob_server):
             await server.start(host=host, port=port, path=path)
 
         async def _stop_servicer():
+            servicer.container_heartbeat_abort.set()
             server.close()
             # This is the proper way to close down the asyncio server,
             # but it causes our tests to hang on 3.12+ because client connections

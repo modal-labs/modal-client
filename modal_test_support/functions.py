@@ -173,6 +173,49 @@ class Cls:
         return self._generator(x)
 
 
+@stub.cls()
+class LifecycleCls:
+    """Ensures that {sync,async} lifecycle hooks work with {sync,async} functions."""
+
+    def __init__(self):
+        self.events = []
+
+    def _print_at_exit(self):
+        import atexit
+
+        atexit.register(lambda: print("[events:" + ",".join(self.events) + "]"))
+
+    @enter()
+    def enter_sync(self):
+        self.events.append("enter_sync")
+
+    @enter()
+    async def enter_async(self):
+        self.events.append("enter_async")
+
+    @exit()
+    def exit_sync(self):
+        self.events.append("exit_sync")
+
+    @exit()
+    async def exit_async(self):
+        self.events.append("exit_async")
+
+    @method()
+    def f_sync(self, print_at_exit: bool):
+        if print_at_exit:
+            self._print_at_exit()
+        self.events.append("f_sync")
+        return self.events
+
+    @method()
+    async def f_async(self, print_at_exit: bool):
+        if print_at_exit:
+            self._print_at_exit()
+        self.events.append("f_async")
+        return self.events
+
+
 @stub.function()
 def check_sibling_hydration(x):
     assert square.is_hydrated
