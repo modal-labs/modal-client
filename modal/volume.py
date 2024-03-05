@@ -24,8 +24,11 @@ from ._blob_utils import (
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .mount import MOUNT_PUT_FILE_CLIENT_TIMEOUT
 from .object import _get_environment_name, _Object, live_method, live_method_gen
+
+# 15 min max for uploading to volumes files
+# As a guide, files >40GiB will take >10 minutes to upload.
+VOLUME_PUT_FILE_CLIENT_TIMEOUT = 15 * 60
 
 
 class _Volume(_Object, type_prefix="vo"):
@@ -105,9 +108,7 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Volume":
-        """Create a reference to a persisted volume
-
-        """
+        """Create a reference to a persisted volume"""
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.VolumeGetOrCreateRequest(
@@ -528,7 +529,7 @@ class _VolumeUploadContextManager:
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()
-            while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
+            while time.monotonic() - start_time < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
                 response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
                 if response.exists:
                     break
