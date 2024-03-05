@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.61.9 (2024-03-05)
+
+* Fix issue with pdm where all installed packages would be automounted when using package cache (MOD-2485)
+
+
+
 ### 0.61.6 (2024-03-04)
 
 - For modal functions/classes with `concurrency_limit < keep_warm`, we'll raise an exception now. Previously we (silently) respected the `concurrency_limit` parameter.
