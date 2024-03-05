@@ -23,7 +23,7 @@ from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 from .gpu import GPU_T
 from .image import _Image
-from .mount import _Mount, _MountCache
+from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .partial_function import PartialFunction, _PartialFunction
@@ -118,7 +118,6 @@ class _Stub:
     _container_app: Optional[_ContainerApp]
     _local_app: Optional[_LocalApp]
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
-    _mount_cache: _MountCache
 
     @typechecked
     def __init__(
@@ -167,7 +166,6 @@ class _Stub:
         if image is not None:
             self._indexed_objects["image"] = image  # backward compatibility since "image" used to be on the blueprint
 
-        self._mount_cache = _MountCache()  # used by the loader to deduplicate mounts in an app
         self._mounts = mounts
 
         self._secrets = secrets
@@ -727,6 +725,7 @@ class _Stub:
 
     def include(self, other_stub: "_Stub"):
         for tag, object in other_stub._indexed_objects.items():
+            # any classes or functions need to be
             self._add_object(tag, object)
 
 

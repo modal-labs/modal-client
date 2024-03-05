@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import os
 import pickle
+import typing
 from typing import Any, Callable, Collection, Dict, List, Optional, Type, TypeVar, Union
 
 from google.protobuf.message import Message
@@ -139,6 +140,9 @@ class _Obj:
 
 Obj = synchronize_api(_Obj)
 
+if typing.TYPE_CHECKING:
+    from modal.stub import _Stub
+
 
 class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
@@ -146,6 +150,7 @@ class _Cls(_Object, type_prefix="cs"):
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
+    _stub: Optional["_Stub"] = None  # not set for lookups
 
     def _initialize_from_empty(self):
         self._user_cls = None
