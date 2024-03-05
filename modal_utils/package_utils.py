@@ -10,7 +10,11 @@ from modal.exception import ModuleNotMountable
 
 def get_file_formats(module):
     try:
-        endings = [str(p).split(".")[-1] for p in files(module) if "." in str(p)]
+        module_files = files(module)
+        if not module_files:
+            return []
+
+        endings = [str(p).split(".")[-1] for p in module_files if "." in str(p)]
         return list(set(endings))
     except PackageNotFoundError:
         return []
@@ -33,12 +37,12 @@ def get_module_mount_info(module_name: str) -> typing.List[typing.Tuple[bool, Pa
     if spec is None:
         raise ModuleNotMountable(f"{module_name} has no spec - might not be installed?")
     elif spec.submodule_search_locations:
-        entries = [(True, Path(path).resolve()) for path in spec.submodule_search_locations if Path(path).exists()]
+        entries = [(True, Path(path)) for path in spec.submodule_search_locations if Path(path).exists()]
     else:
         # Individual file
         filename = spec.origin
         if filename is not None and Path(filename).exists():
-            entries = [(False, Path(filename).resolve())]
+            entries = [(False, Path(filename))]
     if not entries:
         raise ModuleNotMountable(f"{module_name} has no mountable paths")
     return entries
