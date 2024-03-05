@@ -251,3 +251,24 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
     custom_pkg_a_mount = servicer.mount_contents["mo-3"]
     assert len(custom_pkg_a_mount) == len(pkg_a_mount) + 1
     assert "/root/pkg_a/normally_not_included.pyc" in custom_pkg_a_mount.keys()
+
+
+@skip_windows("pip-installed pdm seems somewhat broken on windows")
+def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servicer, server_url_env):
+    # check that `pdm`'s cached packages are not included in automounts
+    project_dir = Path(__file__).parent.parent
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["pdm", "init", "-n"], check=True)
+    subprocess.run(
+        ["pdm", "add", "--dev", project_dir], check=True
+    )  # install workdir modal into venv, not using cache...
+    subprocess.run(["pdm", "config", "--local", "install.cache", "on"], check=True)
+    subprocess.run(["pdm", "add", "six"], check=True)  # single file module
+    subprocess.run(
+        ["pdm", "run", "modal", "deploy", supports_dir / "imports_six.py"], check=True
+    )  # deploy a basically empty function
+
+    files = set(servicer.files_name2sha.keys())
+    assert files == {
+        "/root/imports_six.py",
+    }
