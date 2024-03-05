@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.61.22 (2024-03-05)
+
+- Modal containers now display a warning message if lingering threads are present at container exit, which prevents runner shutdown.
+
+
+
 ### 0.61.17 (2024-03-05)
 
 - Bug fix: Stopping an app while a container's `@exit()` lifecycle methods are being run no longer interrupts the lifecycle methods.
