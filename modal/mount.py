@@ -97,7 +97,7 @@ class _MountFile(_MountEntry):
         return str(self.local_file)
 
     def get_files_to_upload(self):
-        local_file = self.local_file.expanduser().absolute()
+        local_file = self.local_file.resolve().expanduser()
         if not local_file.exists():
             raise FileNotFoundError(local_file)
 
@@ -105,11 +105,11 @@ class _MountFile(_MountEntry):
         yield local_file, rel_filename
 
     def watch_entry(self):
-        parent = self.local_file.absolute().parent
-        return parent, self.local_file.absolute()
+        safe_path = self.local_file.resolve().expanduser()
+        return safe_path.parent, safe_path
 
     def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
-        return [(self.local_file.absolute(), self.remote_path)]
+        return [(self.local_file, self.remote_path)]
 
 
 @dataclasses.dataclass
@@ -120,10 +120,10 @@ class _MountDir(_MountEntry):
     recursive: bool
 
     def description(self):
-        return str(self.local_dir)
+        return str(self.local_dir.resolve().expanduser())
 
     def get_files_to_upload(self):
-        local_dir = self.local_dir.expanduser().absolute()
+        local_dir = self.local_dir.resolve().expanduser()
 
         if not local_dir.exists():
             raise FileNotFoundError(local_dir)
@@ -138,15 +138,15 @@ class _MountDir(_MountEntry):
 
         for local_filename in gen:
             if self.condition(local_filename):
-                local_relpath = Path(local_filename).absolute().relative_to(local_dir)
+                local_relpath = Path(local_filename).resolve().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
                 yield local_filename, mount_path
 
     def watch_entry(self):
-        return self.local_dir.absolute(), None
+        return self.local_dir.resolve().expanduser(), None
 
     def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
-        return [(self.local_dir.absolute(), self.remote_path)]
+        return [(self.local_dir, self.remote_path)]
 
 
 def module_mount_condition(f: str):
@@ -491,7 +491,7 @@ class _Mount(_Object, type_prefix="mo"):
             req = api_pb2.MountGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 files=files,
-                app_id=resolver.app_id
+                app_id=resolver.app_id,
             )
         resp = await retry_transient_errors(resolver.client.stub.MountGetOrCreate, req, base_delay=1)
         status_row.finish(f"Created mount {message_label}")
