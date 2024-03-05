@@ -8,28 +8,12 @@ from modal.exception import NotFoundError
 from modal.mount import (
     PYTHON_STANDALONE_VERSIONS,
     Mount,
-    client_mount_name,
-    create_client_mount,
     python_standalone_mount_name,
 )
 from modal_proto import api_pb2
 
 
-def publish_client_mount(client):
-    mount = create_client_mount()
-    name = client_mount_name()
-    profile_environment = config.get("environment")
-    # TODO: change how namespaces work, so we don't have to use unrelated workspaces when deploying to global?.
-    mount._deploy(
-        client_mount_name(),
-        api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
-        client=client,
-        environment_name=profile_environment,
-    )
-    print(f"✅ Deployed client mount {name} to global namespace.")
-
-
-def publish_python_standalone(client, version: str) -> None:
+def publish_python_standalone_mount(client, version: str) -> None:
     release, full_version = PYTHON_STANDALONE_VERSIONS[version]
 
     libc = "gnu"
@@ -61,9 +45,8 @@ def publish_python_standalone(client, version: str) -> None:
 
 
 def main(client=None):
-    publish_client_mount(client)
     for version in PYTHON_STANDALONE_VERSIONS:
-        publish_python_standalone(client, version)
+        publish_python_standalone_mount(client, version)
 
 
 if __name__ == "__main__":
