@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
@@ -11,7 +11,11 @@ from .secret import _Secret
 
 class BucketType(Enum):
     S3 = "s3"
-
+    
+    @property
+    def proto(self):
+        if self.value == "s3":
+            return api_pb2.CloudBucketMount.BucketType.S3
 
 @dataclass
 class _CloudBucketMount:
@@ -50,22 +54,29 @@ class _CloudBucketMount:
     secret: Optional[_Secret] = None
 
     read_only: bool = False
-    bucket_type: BucketType = BucketType.S3  # S3 is the default bucket type until other cloud buckets are supported
+    bucket_type: Union[BucketType, str] = BucketType.S3.value  # S3 is the default bucket type until other cloud buckets are supported
 
 
 def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) -> List[api_pb2.CloudBucketMount]:
     """Helper function to convert `CloudBucketMount` to a list of protobufs that can be passed to the server.
     """
-    return [
-        api_pb2.CloudBucketMount(
+    cloud_bucket_mounts:List[api_pb2.CloudBucketMount] = []
+
+    for path, mount in mounts:
+
+        if isinstance(bucket_type, str):
+            bucket_type = BucketType(bucket_type)
+
+        cloud_bucket_mount = api_pb2.CloudBucketMount(
             bucket_name=mount.bucket_name,
             mount_path=path,
             credentials_secret_id=mount.secret.object_id if mount.secret else "",
             read_only=mount.read_only,
-            bucket_type=api_pb2.CloudBucketMount.BucketType.S3,
+            bucket_type=bucket_type.proto,
         )
-        for path, mount in mounts
-    ]
+        cloud_bucket_mounts.append(cloud_bucket_mount)
+
+    return cloud_bucket_mounts
 
 
 CloudBucketMount = synchronize_api(_CloudBucketMount)
