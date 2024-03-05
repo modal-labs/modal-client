@@ -95,6 +95,20 @@ def check_copyright(ctx, fix=False):
 
 
 @task
+def publish_base_mounts(ctx, no_confirm=False):
+    from urllib.parse import urlparse
+
+    from modal import config
+
+    server_url = config.config["server_url"]
+    if "localhost" not in urlparse(server_url).netloc and not no_confirm:
+        answer = input(f"Modal server URL is '{server_url}' not localhost. Continue operation? [y/N]: ")
+        if answer.upper() not in ["Y", "YES"]:
+            exit("Aborting task.")
+    ctx.run(f"{sys.executable} -m modal_base_images.base_mounts", pty=True)
+
+
+@task
 def update_build_number(ctx, new_build_number: Optional[int] = None):
     from modal_version import build_number as current_build_number
 
