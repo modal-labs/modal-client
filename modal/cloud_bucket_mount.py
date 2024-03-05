@@ -42,7 +42,7 @@ class _CloudBucketMount:
         }
     )
     def f():
-        subprocess.run("ls /my-mount")
+        subprocess.run(["ls", "/my-mount"])
     ```
     """
 
