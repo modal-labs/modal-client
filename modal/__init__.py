@@ -10,6 +10,7 @@ try:
     from ._tunnel import Tunnel, forward
     from .app import container_app, interact, is_local
     from .client import Client
+    from .cloud_bucket_mount import CloudBucketMount
     from .cls import Cls
     from .dict import Dict
     from .exception import Error
@@ -21,7 +22,6 @@ try:
     from .proxy import Proxy
     from .queue import Queue
     from .retries import Retries
-    from .s3mount import S3Mount
     from .sandbox import Sandbox
     from .schedule import Cron, Period
     from .scheduler_placement import SchedulerPlacement
@@ -53,7 +53,7 @@ __all__ = [
     "Proxy",
     "Queue",
     "Retries",
-    "S3Mount",
+    "CloudBucketMount",
     "Sandbox",
     "SchedulerPlacement",
     "Secret",

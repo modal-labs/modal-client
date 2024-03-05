@@ -5,8 +5,8 @@ from typing import Dict, List, Optional, Sequence, Union
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
+from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
-from modal.s3mount import _S3Mount, s3_mounts_to_proto
 from modal.volume import _Volume
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
@@ -119,7 +119,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         memory: Optional[int] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
-        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]] = {},
+        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         allow_background_volume_commits: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
@@ -133,7 +133,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
-        s3_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
+        cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         def _deps() -> List[_Object]:
@@ -142,9 +142,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 deps.append(vol)
             for _, vol in validated_volumes:
                 deps.append(vol)
-            for _, s3_mount in s3_mounts:
-                if s3_mount.secret:
-                    deps.append(s3_mount.secret)
+            for _, cloud_bucket_mount in cloud_bucket_mounts:
+                if cloud_bucket_mount.secret:
+                    deps.append(cloud_bucket_mount.secret)
             return deps
 
         async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
@@ -178,7 +178,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
                 block_network=block_network,
-                s3_mounts=s3_mounts_to_proto(s3_mounts),
+                cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
             )
 

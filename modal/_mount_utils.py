@@ -8,11 +8,11 @@ from .exception import InvalidError
 from .volume import _Volume
 
 if TYPE_CHECKING:
+    from .cloud_bucket_mount import _CloudBucketMount
     from .network_file_system import _NetworkFileSystem
-    from .s3mount import _S3Mount
 
 
-T = typing.TypeVar("T", bound=Union["_Volume", "_NetworkFileSystem", "_S3Mount"])
+T = typing.TypeVar("T", bound=Union["_Volume", "_NetworkFileSystem", "_CloudBucketMount"])
 
 
 def validate_mount_points(
@@ -39,8 +39,8 @@ def validate_mount_points(
 
 
 def validate_volumes(
-    volumes: Mapping[Union[str, PurePosixPath], Union["_Volume", "_S3Mount"]],
-) -> List[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_S3Mount"]]]:
+    volumes: Mapping[Union[str, PurePosixPath], Union["_Volume", "_CloudBucketMount"]],
+) -> List[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_CloudBucketMount"]]]:
     if not isinstance(volumes, dict):
         raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
 
