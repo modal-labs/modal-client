@@ -12,6 +12,7 @@ import os
 import pickle
 import signal
 import sys
+import threading
 import time
 import traceback
 from collections.abc import Iterable
@@ -198,7 +199,7 @@ class _FunctionIOManager:
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):
-        async with TaskContext(grace=1.0) as tc:
+        async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")
             yield
@@ -1021,5 +1022,18 @@ if __name__ == "__main__":
                 logger.info("User exception caught, exiting")
     except KeyboardInterrupt:
         logger.debug("Container: interrupted")
+
+    # Detect if any non-daemon threads are still running, which will prevent the Python interpreter
+    # from shutting down.
+    lingering_threads: List[threading.Thread] = []
+    for thread in threading.enumerate():
+        current_thread = threading.get_ident()
+        if thread.ident is not None and thread.ident != current_thread and not thread.daemon:
+            lingering_threads.append(thread)
+    if lingering_threads:
+        thread_names = ", ".join(t.name for t in lingering_threads)
+        logger.warning(
+            f"Detected {len(lingering_threads)} background thread(s) [{thread_names}] still running after container exit. This will prevent runner shutdown for up to 30 seconds."
+        )
 
     logger.debug("Container: done")

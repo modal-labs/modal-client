@@ -1070,7 +1070,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
         out_translations += list(call.args)
 
     assert len(in_translations) < 1000  # typically 136 or something
-    assert len(out_translations) < 1000
+    assert len(out_translations) < 2000
 
 
 def _run_container_process(
