@@ -34,7 +34,7 @@ from modal.stub import _Stub
 from modal_proto import api_pb2
 
 from .helpers import deploy_stub_externally
-from .supports.skip import skip_windows, skip_windows_unix_socket
+from .supports.skip import skip_windows_signals, skip_windows_unix_socket
 
 EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
 FUNCTION_CALL_ID = "fc-123"
@@ -543,14 +543,18 @@ def test_cls_function(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_lifecycle_sync(unix_servicer, event_loop):
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "LifecycleCls.f_sync")
+def test_lifecycle_enter_sync(unix_servicer, event_loop):
+    ret = _run_container(
+        unix_servicer, "modal_test_support.functions", "LifecycleCls.f_sync", inputs=_get_inputs(((False,), {}))
+    )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync"]
 
 
 @skip_windows_unix_socket
-def test_lifecycle_async(unix_servicer, event_loop):
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "LifecycleCls.f_async")
+def test_lifecycle_enter_async(unix_servicer, event_loop):
+    ret = _run_container(
+        unix_servicer, "modal_test_support.functions", "LifecycleCls.f_async", inputs=_get_inputs(((False,), {}))
+    )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async"]
 
 
@@ -1073,20 +1077,22 @@ def _run_container_process(
     servicer,
     module_name,
     function_name,
+    *,
     inputs: List[Tuple[Tuple[Any], Dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
-    *,
-    popen_kwargs={},
 ) -> subprocess.Popen:
     container_args = _container_args(module_name, function_name, allow_concurrent_inputs=allow_concurrent_inputs)
     encoded_container_args = base64.b64encode(container_args.SerializeToString())
     servicer.container_inputs = _get_multi_inputs(inputs)
     return subprocess.Popen(
-        [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args], env=os.environ, **popen_kwargs
+        [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args],
+        env=os.environ,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
 
 
-@skip_windows("signals not supported on windows and this only runs on containers")
+@skip_windows_signals
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize(
     ["function_name", "input_args", "cancelled_input_ids", "expected_container_output"],
@@ -1145,7 +1151,7 @@ def test_cancellation_aborts_current_input_on_match(
     assert duration < 10  # should typically be < 1s, but for some reason in gh actions, it takes a really long time!
 
 
-@skip_windows("signals not supported on windows and this only runs on containers")
+@skip_windows_signals
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize(
     ["function_name"],
@@ -1166,3 +1172,23 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     # container should exit soon!
     exit_code = container_process.wait(5)
     assert exit_code == 0  # container should exit gracefully
+
+
+@skip_windows_signals
+@pytest.mark.usefixtures("server_url_env")
+def test_lifecycle_full(servicer):
+    # Sync and async container lifecycle methods on a sync function.
+    container_process = _run_container_process(
+        servicer, "modal_test_support.functions", "LifecycleCls.f_sync", inputs=[((True,), {})]
+    )
+    stdout, _ = container_process.communicate(timeout=5)
+    assert container_process.returncode == 0
+    assert "[events:enter_sync,enter_async,f_sync,exit_sync,exit_async]" in stdout.decode()
+
+    # Sync and async container lifecycle methods on an async function.
+    container_process = _run_container_process(
+        servicer, "modal_test_support.functions", "LifecycleCls.f_async", inputs=[((True,), {})]
+    )
+    stdout, _ = container_process.communicate(timeout=5)
+    assert container_process.returncode == 0
+    assert "[events:enter_sync,enter_async,f_async,exit_sync,exit_async]" in stdout.decode()
