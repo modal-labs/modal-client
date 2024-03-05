@@ -224,10 +224,15 @@ def highlight_modal_deprecation_warnings() -> None:
             date = content[:10]
             message = content[11:].strip()
             try:
-                with open(filename) as f:
-                    source = f.readlines()[lineno - 1].strip()
+                try:
+                    with open(filename) as f:
+                        source = f.readlines()[lineno - 1].strip()
+                except UnicodeDecodeError:
+                    # mostly for convenience of Windows users w/ default encodings not using PYTHONUTF8=1
+                    with open(filename) as f:
+                        source = f.readlines()[lineno - 1].strip()
                 message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
-            except OSError:
+            except (OSError, UnicodeDecodeError):
                 # e.g., when filename is "<unknown>"; raises FileNotFoundError on posix but OSError on windows
                 pass
             panel = Panel(
