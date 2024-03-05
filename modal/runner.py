@@ -195,7 +195,7 @@ async def _serve_update(
         )
 
         # Communicate to the parent process
-        is_ready.put(app.app_id)
+        is_ready.put((app.app_id, app.log_url()))
     except asyncio.exceptions.CancelledError:
         # Stopped by parent process
         pass
