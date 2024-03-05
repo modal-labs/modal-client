@@ -83,6 +83,19 @@ enum ClientType {
   CLIENT_TYPE_WEB_SERVER = 5;
 }
 
+message CloudBucketMount {
+  string bucket_name = 1;
+  string mount_path = 2;
+  string credentials_secret_id = 3;
+  bool read_only = 4;
+
+  enum BucketType {
+    UNSPECIFIED = 0;
+    S3 = 1;
+  }
+  BucketType bucket_type = 5;
+}
+
 enum CloudProvider {
   CLOUD_PROVIDER_UNSPECIFIED = 0;
   CLOUD_PROVIDER_AWS = 1;
@@ -1419,19 +1432,6 @@ message S3Mount {
   string mount_path = 2;
   string credentials_secret_id = 3;
   bool read_only = 4;
-}
-
-message CloudBucketMount {
-  string bucket_name = 1;
-  string mount_path = 2;
-  string credentials_secret_id = 3;
-  bool read_only = 4;
-
-  enum BucketType {
-    UNSPECIFIED = 0;
-    S3 = 1;
-  }
-  BucketType bucket_type = 5;
 }
 
 message Sandbox {
