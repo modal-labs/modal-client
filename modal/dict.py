@@ -10,7 +10,7 @@ from ._serialization import deserialize, serialize
 from ._types import typechecked
 from .client import _Client
 from .config import logger
-from .exception import deprecation_error
+from .exception import deprecation_error, deprecation_warning
 from .object import _get_environment_name, _Object, live_method
 
 
@@ -111,8 +111,8 @@ class _Dict(_Object, type_prefix="di"):
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Dict":
-        """Create a persisted modal.Dict which as a lifetime beyond the app it was created in.
-        The object will persist until it is deleted by the user."""
+        """Deprecated! Use `Dict.from_name(name, create_if_missing=True)`."""
+        deprecation_warning((2024, 3, 1), _Dict.persisted.__doc__)
         return _Dict.from_name(label, namespace, environment_name, create_if_missing=True)
 
     @staticmethod
