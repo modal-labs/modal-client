@@ -567,7 +567,7 @@ class _Mount(_Object, type_prefix="mo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         client: Optional[_Client] = None,
-    ) -> "_Mount":
+    ) -> None:
         self._deployment_name = deployment_name
         self._namespace = namespace
         self._environment_name = environment_name
