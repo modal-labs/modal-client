@@ -7,7 +7,7 @@ from tempfile import NamedTemporaryFile
 from typing import List
 from unittest import mock
 
-from modal import Image, Mount, NetworkFileSystem, Secret, Stub, build, gpu, method
+from modal import Image, Mount, Secret, Stub, build, gpu, method
 from modal._serialization import serialize
 from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version, _get_client_requirements_path
@@ -278,7 +278,6 @@ def run_f():
 
 def test_image_run_function(client, servicer):
     stub = Stub()
-    NetworkFileSystem.persisted("test-vol")
     stub["image"] = (
         Image.debian_slim().pip_install("pandas").run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})])
     )
@@ -299,7 +298,6 @@ def test_image_run_function(client, servicer):
 
 def test_image_run_function_interactivity(client, servicer):
     stub = Stub()
-    NetworkFileSystem.persisted("test-vol")
     stub["image"] = Image.debian_slim().pip_install("pandas").run_function(run_f)
 
     from modal.runner import run_stub
