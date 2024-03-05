@@ -10,6 +10,17 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.61.17 (2024-03-05)
+
+- Bug fix: Stopping an app while a container's `@exit()` lifecycle methods are being run no longer interrupts the lifecycle methods.
+- Bug fix: Worker preemptions no longer interrupt a container's `@exit()` lifecycle method (until 30 seconds later).
+- Bug fix: Async `@exit()` lifecycle methods are no longer skipped for sync functions.
+- Bug fix: Stopping a sync function with `allow_concurrent_inputs>1` now actually stops the container. Previously, it would not propagate the signal to worker threads, so they would continue running.
+- Bug fix: Input-level cancellation no longer skips the `@exit()` lifecycle method.
+- Improve stability of container entrypoint against race conditions in task cancellation.
+
+
+
 ### 0.61.9 (2024-03-05)
 
 * Fix issue with pdm where all installed packages would be automounted when using package cache (MOD-2485)
