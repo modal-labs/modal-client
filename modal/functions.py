@@ -53,6 +53,7 @@ from ._function_utils import FunctionInfo, get_referred_objects, is_async
 from ._location import parse_cloud_provider
 from ._mount_utils import validate_mount_points, validate_volumes
 from ._output import OutputManager
+from ._packaging import _get_client_mount
 from ._resolver import Resolver
 from ._serialization import deserialize, deserialize_data_format, serialize
 from ._traceback import append_modal_tb
@@ -71,7 +72,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount, _MountCache
+from .mount import _Mount, _MountCache
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy

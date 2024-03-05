@@ -18,12 +18,11 @@ from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 from modal_utils.package_utils import get_module_mount_info
-from modal_version import __version__
 
 from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._resolver import Resolver
 from .client import _Client
-from .config import config, logger
+from .config import logger
 from .object import _get_environment_name, _Object
 
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
@@ -40,11 +39,6 @@ PYTHON_STANDALONE_VERSIONS: typing.Dict[str, typing.Tuple[str, str]] = {
     "3.11": ("20230826", "3.11.5"),
     "3.12": ("20240107", "3.12.1"),
 }
-
-
-def client_mount_name() -> str:
-    """Get the deployed name of the client package mount."""
-    return f"modal-client-mount-{__version__}"
 
 
 def python_standalone_mount_name(version: str) -> str:
@@ -584,50 +578,6 @@ class _Mount(_Object, type_prefix="mo"):
 
 
 Mount = synchronize_api(_Mount)
-
-
-def _create_client_mount():
-    # TODO(erikbern): make this a static method on the Mount class
-    import synchronicity
-
-    import modal
-
-    # Get the base_path because it also contains `modal_utils` and `modal_proto`.
-    base_path, _ = os.path.split(modal.__path__[0])
-
-    # TODO(erikbern): this is incredibly dumb, but we only want to include packages that start with "modal"
-    # TODO(erikbern): merge functionality with _function_utils._is_modal_path
-    prefix = os.path.join(base_path, "modal")
-
-    def condition(arg):
-        return module_mount_condition(arg) and arg.startswith(prefix)
-
-    return (
-        _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True)
-        # Mount synchronicity, so version changes don't trigger image rebuilds for users.
-        .add_local_dir(
-            synchronicity.__path__[0],
-            remote_path="/pkg/synchronicity",
-            condition=module_mount_condition,
-            recursive=True,
-        )
-    )
-
-
-create_client_mount = synchronize_api(_create_client_mount)
-
-
-def _get_client_mount():
-    # TODO(erikbern): make this a static method on the Mount class
-    if config["sync_entrypoint"]:
-        return _create_client_mount()
-    else:
-        return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-
-
-_create_package_mounts_deprecation_msg = (
-    "modal.create_package_mounts() is being deprecated, use modal.Mount.from_local_python_packages() instead"
-)
 
 
 class _MountCache:

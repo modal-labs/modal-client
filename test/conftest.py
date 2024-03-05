@@ -29,11 +29,11 @@ from grpclib import GRPCError, Status
 
 import modal._serialization
 from modal import __version__, config
+from modal._packaging import client_mount_name
 from modal._serialization import serialize_data_format
 from modal._vendor import cloudpickle
 from modal.app import _ContainerApp
 from modal.client import Client
-from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import asyncify, synchronize_api
 from modal_utils.grpc_testing import patch_mock_servicer
