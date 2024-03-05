@@ -4,21 +4,21 @@ import io
 import multiprocessing
 import platform
 import sys
+from multiprocessing import Queue
 from multiprocessing.context import SpawnProcess
-from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, TypeVar
+from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, Tuple, TypeVar
 
 from synchronicity import Interface
 
 from modal_utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from modal_utils.logger import logger
 
-from ._output import OutputManager
+from ._output import OutputManager, get_app_logs_loop
 from ._watcher import watch
 from .cli.import_refs import import_stub
-from .client import _Client
+from .client import HEARTBEAT_INTERVAL, _Client
 from .config import config
-from .runner import _run_stub, serve_update
+from .runner import _heartbeat, serve_update
 
 if TYPE_CHECKING:
     from .stub import _Stub
@@ -26,7 +26,7 @@ else:
     _Stub = TypeVar("_Stub")
 
 
-def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event, environment_name: str):
+def _run_serve(stub_ref: str, existing_app_id: Optional[str], is_ready: Queue, environment_name: str):
     # subprocess entrypoint
     _stub = import_stub(stub_ref)
     blocking_stub = synchronizer._translate_out(_stub, Interface.BLOCKING)
@@ -35,15 +35,15 @@ def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event, environment
 
 async def _restart_serve(
     stub_ref: str, existing_app_id: str, environment_name: str, timeout: float = 5.0
-) -> SpawnProcess:
+) -> Tuple[str, SpawnProcess]:
     ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
-    is_ready = ctx.Event()
+    is_ready = ctx.Queue()
     p = ctx.Process(target=_run_serve, args=(stub_ref, existing_app_id, is_ready, environment_name))
     p.start()
-    await asyncify(is_ready.wait)(timeout)
+    app_id = is_ready.get(timeout)
     # TODO(erikbern): we don't fail if the above times out, but that's somewhat intentional, since
     # the child process might build a huge image or similar
-    return p
+    return app_id, p
 
 
 async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, timeout: float = 5.0):
@@ -61,32 +61,6 @@ async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, ti
             proc.kill()
     except ProcessLookupError:
         pass  # Child process already finished
-
-
-async def _run_watch_loop(
-    stub_ref: str,
-    app_id: str,
-    output_mgr: OutputManager,
-    watcher: AsyncGenerator[Set[str], None],
-    environment_name: str,
-):
-    unsupported_msg = None
-    if platform.system() == "Windows":
-        unsupported_msg = "Live-reload skipped. This feature is currently unsupported on Windows"
-        " This can hopefully be fixed in a future version of Modal."
-
-    if unsupported_msg:
-        async for _ in watcher:
-            output_mgr.print_if_visible(unsupported_msg)
-    else:
-        curr_proc = None
-        try:
-            async for trigger_files in watcher:
-                logger.debug(f"The following files triggered an app update: {', '.join(trigger_files)}")
-                await _terminate(curr_proc, output_mgr)
-                curr_proc = await _restart_serve(stub_ref, existing_app_id=app_id, environment_name=environment_name)
-        finally:
-            await _terminate(curr_proc, output_mgr)
 
 
 def _get_clean_stub_description(stub_ref: str) -> str:
@@ -112,19 +86,40 @@ async def _serve_stub(
         environment_name = config.get("environment")
 
     client = await _Client.from_env()
-
     output_mgr = OutputManager(stdout, show_progress, "Running app...")
+
     if _watcher is not None:
         watcher = _watcher  # Only used by tests
     else:
         mounts_to_watch = stub._get_watch_mounts()
         watcher = watch(mounts_to_watch, output_mgr)
 
-    async with _run_stub(stub, client=client, output_mgr=output_mgr, environment_name=environment_name):
-        client.set_pre_stop(stub._local_app.disconnect)
-        async with TaskContext(grace=0.1) as tc:
-            tc.create_task(_run_watch_loop(stub_ref, stub.app_id, output_mgr, watcher, environment_name))
-            yield stub
+    async with TaskContext(grace=config["logs_timeout"]) as tc:
+        app_id, curr_proc = await _restart_serve(stub_ref, existing_app_id=None, environment_name=environment_name)
+        # Start heartbeats loop to keep the client alive
+        tc.infinite_loop(lambda: _heartbeat(client, app_id), sleep=HEARTBEAT_INTERVAL)
+
+        # Start logs loop
+        tc.create_task(get_app_logs_loop(app_id, client, output_mgr))
+
+        with output_mgr.show_status_spinner():
+            if platform.system() == "Windows":
+                async for _ in watcher:
+                    output_mgr.print_if_visible(
+                        "Live-reload skipped. This feature is currently unsupported on Windows."
+                    )
+            else:
+                try:
+                    async for trigger_files in watcher:
+                        logger.debug(f"The following files triggered an app update: {', '.join(trigger_files)}")
+                        await _terminate(curr_proc, output_mgr)
+                        _, curr_proc = await _restart_serve(
+                            stub_ref, existing_app_id=app_id, environment_name=environment_name
+                        )
+                finally:
+                    await _terminate(curr_proc, output_mgr)
+
+            yield app_id
 
 
 serve_stub = synchronize_api(_serve_stub)

@@ -3,7 +3,7 @@ import asyncio
 import contextlib
 import dataclasses
 import os
-from multiprocessing.synchronize import Event
+from multiprocessing import Queue
 from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, TypeVar
 
 from rich.console import Console
@@ -170,15 +170,23 @@ async def _run_stub(
 
 async def _serve_update(
     stub,
-    existing_app_id: str,
-    is_ready: Event,
+    existing_app_id: Optional[str],
+    is_ready: Queue,
     environment_name: str,
 ) -> None:
     """mdmd:hidden"""
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        app = await _LocalApp._init_existing(client, existing_app_id)
+        if existing_app_id is not None:
+            app = await _LocalApp._init_existing(client, existing_app_id)
+        else:
+            app = await _LocalApp._init_new(
+                client,
+                stub.description,
+                environment_name=environment_name,
+                app_state=api_pb2.APP_STATE_EPHEMERAL,
+            )
 
         # Create objects
         output_mgr = OutputManager(None, True)
@@ -187,7 +195,7 @@ async def _serve_update(
         )
 
         # Communicate to the parent process
-        is_ready.set()
+        is_ready.put(app.app_id)
     except asyncio.exceptions.CancelledError:
         # Stopped by parent process
         pass
