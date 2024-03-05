@@ -3,7 +3,7 @@ import contextlib
 import inspect
 import logging
 from collections import Counter, defaultdict
-from typing import Any, Awaitable, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 from grpclib import GRPCError, Status
 
@@ -100,7 +100,7 @@ class InterceptionContext:
         # adds one response to a queue of responses for requests of the specified type
         self.custom_responses[method_name].append((request_filter, [first_payload]))
 
-    def override_default(self, method_name: str, responder: Callable[[Any], Awaitable[Any]]):
+    def override_default(self, method_name: str, responder: Callable[[Any], Any]):
         """Replace the default handler for a method. E.g.
 
         ```python notest
@@ -130,7 +130,7 @@ class InterceptionContext:
             custom_default = self.custom_defaults.get(method_name)
             if not custom_default:
                 return None
-            return custom_default
+            next_response_messages = [custom_default(request)]
 
         async def responder(servicer_self, stream):
             try:
