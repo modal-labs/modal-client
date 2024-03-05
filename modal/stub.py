@@ -474,6 +474,7 @@ class _Stub:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
+        checkpointing_enabled: Optional[bool] = None,   # Deprecated
         block_network: bool = False,  # Whether to block network access
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         _allow_background_volume_commits: bool = False,
@@ -565,6 +566,7 @@ class _Stub:
                 cloud=cloud,
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
+                checkpointing_enabled=checkpointing_enabled,
                 allow_background_volume_commits=_allow_background_volume_commits,
                 block_network=block_network,
                 max_inputs=max_inputs,
@@ -605,6 +607,7 @@ class _Stub:
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
+        checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         _allow_background_volume_commits: bool = False,
@@ -643,6 +646,7 @@ class _Stub:
             keep_warm=keep_warm,
             cloud=cloud,
             enable_memory_snapshot=enable_memory_snapshot,
+            checkpointing_enabled=checkpointing_enabled,
             block_network=block_network,
             _allow_background_volume_commits=_allow_background_volume_commits,
             max_inputs=max_inputs,

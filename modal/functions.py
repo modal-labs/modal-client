@@ -607,6 +607,7 @@ class _Function(_Object, type_prefix="fu"):
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
+        checkpointing_enabled: Optional[bool] = None,
         allow_background_volume_commits: bool = False,
         block_network: bool = False,
         max_inputs: Optional[int] = None,
@@ -628,6 +629,13 @@ class _Function(_Object, type_prefix="fu"):
                 "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
             )
             secrets = [secret, *secrets]
+
+        if checkpointing_enabled is not None:
+            deprecation_warning(
+                (2024, 4, 4),
+                "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
+            )
+            enable_memory_snapshot = checkpointing_enabled
 
         explicit_mounts = mounts
 
