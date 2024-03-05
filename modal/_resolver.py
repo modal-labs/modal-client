@@ -53,7 +53,7 @@ class Resolver:
     _local_uuid_to_future: Dict[str, Future]
     _environment_name: Optional[str]
     _app_id: Optional[str]
-    _deduplication_cache: Dict[Hashable, "_Object"]
+    _deduplication_cache: Dict[Hashable, Future]
 
     def __init__(
         self,

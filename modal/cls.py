@@ -35,6 +35,10 @@ from .volume import _Volume
 T = TypeVar("T")
 
 
+if typing.TYPE_CHECKING:
+    import modal.stub
+
+
 class ClsMixin:
     def __init_subclass__(cls):
         deprecation_error((2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
@@ -140,9 +144,6 @@ class _Obj:
 
 Obj = synchronize_api(_Obj)
 
-if typing.TYPE_CHECKING:
-    from modal.stub import _Stub
-
 
 class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
@@ -150,7 +151,7 @@ class _Cls(_Object, type_prefix="cs"):
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
-    _stub: Optional["_Stub"] = None  # not set for lookups
+    _stub: Optional["modal.stub._Stub"] = None  # not set for lookups
 
     def _initialize_from_empty(self):
         self._user_cls = None
