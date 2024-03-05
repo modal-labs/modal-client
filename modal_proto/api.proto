@@ -855,6 +855,7 @@ message Function {
   uint32 max_inputs = 46;
 
   repeated S3Mount s3_mounts = 47;
+  repeated CloudBucketMount cloud_bucket_mounts = 51;
 
   bool _experimental_boost = 48;
 
@@ -1454,6 +1455,7 @@ message Sandbox {
   bool block_network = 11;
 
   repeated S3Mount s3_mounts = 12;
+  repeated CloudBucketMount cloud_bucket_mounts = 14;
 
   repeated VolumeMount volume_mounts = 13;
 }
