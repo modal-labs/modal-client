@@ -52,22 +52,17 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     ```python
     import modal
 
-    volume = modal.NetworkFileSystem.new()
+    nfs = modal.NetworkFileSystem.from_name("my-nfs", create_if_missing=True)
     stub = modal.Stub()
 
-    @stub.function(network_file_systems={"/root/foo": volume})
+    @stub.function(network_file_systems={"/root/foo": nfs})
     def f():
         pass
 
-    @stub.function(network_file_systems={"/root/goo": volume})
+    @stub.function(network_file_systems={"/root/goo": nfs})
     def g():
         pass
     ```
-
-    It is often the case that you would want to persist a network file system object
-    separately from the currently attached app. Refer to the persistence
-    [guide section](/docs/guide/network-file-systems#persisting-volumes) to see how to
-    persist this object across app runs.
 
     Also see the CLI methods for accessing network file systems:
 
@@ -78,8 +73,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     A `NetworkFileSystem` can also be useful for some local scripting scenarios, e.g.:
 
     ```python notest
-    vol = modal.NetworkFileSystem.lookup("my-network-file-system")
-    for chunk in vol.read_file("my_db_dump.csv"):
+    nfs = modal.NetworkFileSystem.lookup("my-network-file-system")
+    for chunk in nfs.read_file("my_db_dump.csv"):
         ...
     ```
     """
