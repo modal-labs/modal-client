@@ -175,11 +175,23 @@ class _FunctionIOManager:
                     )
                     # This is equivalent to a task cancellation or preemption from worker code,
                     # except we do not send a SIGKILL to forcefully exit after 30 seconds.
+                    #
+                    # SIGINT always interrupts the main thread, but not any auxiliary threads. On a
+                    # sync function without concurrent inputs, this raises a KeyboardInterrupt. When
+                    # there are concurrent inputs, we cannot interrupt the thread pool, but the
+                    # interpreter stops waiting for daemon threads and exits. On async functions,
+                    # this signal lands outside the event loop, stopping `run_until_complete()`.
                     os.kill(os.getpid(), signal.SIGINT)
 
-                if self.current_input_id in input_ids_to_cancel:
+                elif self.current_input_id in input_ids_to_cancel:
                     # This goes to a registered signal handler for sync Modal functions, or to the
                     # `SignalHandlingEventLoop` for async functions.
+                    #
+                    # We only send this signal on functions that do not have concurrent inputs enabled.
+                    # This allows us to do fine-grained input cancellation. On sync functions, the
+                    # SIGUSR1 signal should interrupt the main thread where user code is running,
+                    # raising an InputCancellation() exception. On async functions, the signal should
+                    # reach a handler in SignalHandlingEventLoop, which cancels the task.
                     os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
@@ -984,7 +996,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_io_manager.stop_heartbeat()
 
             finally:
-                # Restore the original signal handler, needed for container_test hygiene.
+                # Restore the original signal handler, needed for container_test hygiene since the
+                # test runs `main()` multiple times in the same process.
                 signal.signal(signal.SIGINT, int_handler)
                 signal.signal(signal.SIGUSR1, usr1_handler)
 
