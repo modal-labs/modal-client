@@ -741,7 +741,7 @@ class _Stub:
 
         stub_a.include(stub_b)
 
-        @stub_a.local_entrypoint():
+        @stub_a.local_entrypoint()
         def main():
             # use function declared on the included stub
             bar.remote()
