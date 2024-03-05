@@ -184,7 +184,7 @@ jobs:
           MODAL_LOGLEVEL: DEBUG
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: python -m modal_global_objects.mounts.client
+        run: python -m modal_global_objects.mounts.modal_client_package
 
       - name: Upload to PyPI
         env:
