@@ -77,7 +77,6 @@ import warnings
 from textwrap import dedent
 from typing import Any, Dict, Optional
 
-import toml
 from google.protobuf.empty_pb2 import Empty
 
 from modal_proto import api_pb2
@@ -90,8 +89,19 @@ from .exception import InvalidError, deprecation_error, deprecation_warning
 user_config_path: str = os.environ.get("MODAL_CONFIG_PATH") or os.path.expanduser("~/.modal.toml")
 
 
+def _is_remote() -> bool:
+    # We want to prevent read/write on a modal config file in the container
+    # environment, both because that doesn't make sense and might cause weird
+    # behavior, and because we want to keep the `toml` dependency out of the
+    # container runtime.
+    return os.environ.get("MODAL_IS_REMOTE") == "1"
+
+
 def _read_user_config():
-    if os.path.exists(user_config_path):
+    if not _is_remote() and os.path.exists(user_config_path):
+        # Defer toml import so we don't need it in the container runtime environment
+        import toml
+
         with open(user_config_path) as f:
             return toml.load(f)
     else:
@@ -272,6 +282,12 @@ def _store_user_config(
 
 
 def _write_user_config(user_config):
+    if _is_remote():
+        raise InvalidError("Can't update config file in remote environment.")
+
+    # Defer toml import so we don't need it in the container runtime environment
+    import toml
+
     with open(user_config_path, "w") as f:
         toml.dump(user_config, f)
 

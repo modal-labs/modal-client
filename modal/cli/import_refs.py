@@ -19,6 +19,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 
 import modal
+from modal.exception import _CliUserExecutionError
 from modal.functions import Function
 from modal.stub import LocalEntrypoint, Stub
 
@@ -40,15 +41,6 @@ def parse_import_ref(object_ref: str) -> ImportRef:
     return ImportRef(file_or_module, object_path)
 
 
-class CliUserExecutionError(Exception):
-    """Private wrapper for exceptions during stub imports in the CLI.
-
-    This intentionally does not inherit from `modal.exception.Error` because it
-    is a private type that should never bubble up to users. Exceptions raised in
-    the CLI at this stage will have tracebacks printed.
-    """
-
-
 DEFAULT_STUB_NAME = "stub"
 
 
@@ -61,7 +53,8 @@ def import_file_or_module(file_or_module: str):
 
     if file_or_module.endswith(".py"):
         # when using a script path, that scripts directory should also be on the path as it is with `python some/script.py`
-        sys.path.insert(0, str(Path(file_or_module).resolve().parent))
+        full_path = Path(file_or_module).resolve()
+        sys.path.insert(0, str(full_path.parent))
 
         module_name = inspect.getmodulename(file_or_module)
         # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
@@ -71,12 +64,12 @@ def import_file_or_module(file_or_module: str):
         try:
             spec.loader.exec_module(module)
         except Exception as exc:
-            raise CliUserExecutionError() from exc
+            raise _CliUserExecutionError(str(full_path)) from exc
     else:
         try:
             module = importlib.import_module(file_or_module)
         except Exception as exc:
-            raise CliUserExecutionError() from exc
+            raise _CliUserExecutionError(file_or_module) from exc
 
     return module
 

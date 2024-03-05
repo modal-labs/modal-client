@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2022
+# Copyright Modal Labs 2024
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +21,6 @@ from typing import Dict, Iterator, Optional
 
 import aiohttp.web
 import aiohttp.web_runner
-import cloudpickle
 import grpclib.server
 import pkg_resources
 import pytest_asyncio
@@ -31,6 +30,7 @@ from grpclib import GRPCError, Status
 import modal._serialization
 from modal import __version__, config
 from modal._serialization import serialize_data_format
+from modal._vendor import cloudpickle
 from modal.app import _ContainerApp
 from modal.client import HEARTBEAT_INTERVAL, Client
 from modal.mount import client_mount_name
@@ -82,12 +82,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.queue = []
         self.deployed_apps = {
             client_mount_name(): "ap-x",
-            "my-proxy": "ap-proxy",
         }
         self.app_objects = {}
-        self.app_single_objects = {
-            "ap-proxy": "pr-123",
-        }
+        self.app_single_objects = {}
         self.app_unindexed_objects = {
             "ap-1": ["im-1", "vo-1"],
         }
@@ -136,8 +133,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_mounts = {
             (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): "mo-123",
         }
+        self.deployed_nfss = {}
         self.deployed_queues = {}
         self.deployed_secrets = {}
+        self.deployed_volumes = {}
 
         self.cleared_function_calls = set()
 
@@ -283,29 +282,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppGetByDeploymentName(self, stream):
         request: api_pb2.AppGetByDeploymentNameRequest = await stream.recv_message()
         await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name)))
-
-    async def AppLookupObject(self, stream):
-        # TODO(erikbern): remove soon
-        request: api_pb2.AppLookupObjectRequest = await stream.recv_message()
-        if not request.object_id:
-            app_id = self.deployed_apps.get(request.app_name)
-            if app_id is None:
-                raise GRPCError(Status.NOT_FOUND, f"can't find app {request.app_name}")
-            assert not request.object_tag
-            object_id = self.app_single_objects.get(app_id)
-            if object_id is None:
-                raise GRPCError(Status.NOT_FOUND, "can't find single object for app")
-        else:
-            app_id = None
-            object_id = request.object_id
-
-        if request.app_name:
-            assert request.object_entity
-            if object_id:
-                assert object_id.startswith(request.object_entity)
-
-        response = api_pb2.AppLookupObjectResponse(object=self.get_object_metadata(object_id), app_id=app_id)
-        await stream.send_message(response)
 
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
@@ -746,28 +722,32 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if k not in self.deployed_mounts:
                 raise GRPCError(Status.NOT_FOUND, "Mount not found")
             mount_id = self.deployed_mounts[k]
-        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             self.n_mounts += 1
-            mount_id = f"qu-{self.n_mounts}"
+            mount_id = f"mo-{self.n_mounts}"
             self.deployed_mounts[k] = mount_id
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
-            mount_number = 123 + self.n_mounts
-            mount_id = f"mo-{mount_number}"
-
-            mount_content = self.mount_contents[mount_id] = {}
-
-            for file in request.files:
-                mount_content[file.filename] = self.files_name2sha[file.filename] = file.sha256_hex
-
             self.n_mounts += 1
+            mount_id = f"mo-{self.n_mounts}"
 
         else:
             raise Exception("unsupported creation type")
+
+        mount_content = self.mount_contents[mount_id] = {}
+        for file in request.files:
+            mount_content[file.filename] = self.files_name2sha[file.filename] = file.sha256_hex
+
         await stream.send_message(
             api_pb2.MountGetOrCreateResponse(
                 mount_id=mount_id, handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef")
             )
         )
+
+    ### Proxy
+
+    async def ProxyGetOrCreate(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.ProxyGetOrCreateResponse(proxy_id="pr-123"))
 
     ### Queue
 
@@ -902,6 +882,30 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.nfs_files[nfs_id] = {}
         await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id=nfs_id))
 
+    async def SharedVolumeGetOrCreate(self, stream):
+        request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
+            if k not in self.deployed_nfss:
+                raise GRPCError(Status.NOT_FOUND, "NFS not found")
+            nfs_id = self.deployed_nfss[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+            if k not in self.deployed_nfss:
+                nfs_id = f"sv-{len(self.nfs_files)}"
+                self.nfs_files[nfs_id] = {}
+                self.deployed_nfss[k] = nfs_id
+            nfs_id = self.deployed_nfss[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+            if k in self.deployed_nfss:
+                raise GRPCError(Status.ALREADY_EXISTS, "NFS already exists")
+            nfs_id = f"sv-{len(self.nfs_files)}"
+            self.nfs_files[nfs_id] = {}
+            self.deployed_nfss[k] = nfs_id
+        else:
+            raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
+
+        await stream.send_message(api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id=nfs_id))
+
     async def SharedVolumePutFile(self, stream):
         req = await stream.recv_message()
         self.nfs_files[req.shared_volume_id][req.path] = req
@@ -971,6 +975,30 @@ class MockClientServicer(api_grpc.ModalClientBase):
         volume_id = f"vo-{self.volume_counter}"
         self.volume_files[volume_id] = {}
         await stream.send_message(api_pb2.VolumeCreateResponse(volume_id=volume_id))
+
+    async def VolumeGetOrCreate(self, stream):
+        request: api_pb2.VolumeGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
+            if k not in self.deployed_volumes:
+                raise GRPCError(Status.NOT_FOUND, "Volume not found")
+            volume_id = self.deployed_volumes[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+            if k not in self.deployed_volumes:
+                volume_id = f"vo-{len(self.volume_files)}"
+                self.volume_files[volume_id] = {}
+                self.deployed_volumes[k] = volume_id
+            volume_id = self.deployed_volumes[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+            if k in self.deployed_volumes:
+                raise GRPCError(Status.ALREADY_EXISTS, "Volume already exists")
+            volume_id = f"vo-{len(self.volume_files)}"
+            self.volume_files[volume_id] = {}
+            self.deployed_volumes[k] = volume_id
+        else:
+            raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
+
+        await stream.send_message(api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id))
 
     async def VolumeCommit(self, stream):
         req = await stream.recv_message()

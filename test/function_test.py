@@ -5,11 +5,11 @@ import pytest
 import time
 import typing
 
-import cloudpickle
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import Image, NetworkFileSystem, Proxy, Stub, web_endpoint
+from modal import Image, Mount, NetworkFileSystem, Proxy, Stub, web_endpoint
+from modal._vendor import cloudpickle
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub
@@ -467,12 +467,6 @@ def test_from_id(client, servicer):
     assert function_id
     assert foo.web_url
 
-    rehydrated_function = Function.from_id(function_id, client=client)
-    assert isinstance(rehydrated_function, Function)
-
-    assert rehydrated_function.object_id == function_id
-    assert rehydrated_function.web_url == foo.web_url
-
     function_call = foo.spawn()
     assert function_call.object_id
     # Used in a few examples to construct FunctionCall objects
@@ -628,16 +622,6 @@ def test_deps_closurevars(client, servicer):
     assert set(d.object_id for d in f.object_dependencies) == set([nfs.object_id, image.object_id])
 
 
-def interact_wit_me():
-    return 1
-
-
-def test_interactive_mode():
-    stub = Stub()
-
-    stub.function(image=Image.debian_slim(), interactive=True)(interact_wit_me)
-
-
 def assert_is_wrapped_dict(some_arg):
     assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
     return some_arg
@@ -682,3 +666,19 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
         foo.spawn(stub.some_modal_object)  # spawn on generator returns None, but starts the generator
 
     assert len(servicer.client_calls) == 2
+
+
+def test_mount_deps_have_ids(client, servicer, monkeypatch, test_dir):
+    # This test can possibly break if a function's deps diverge between
+    # local and remote environments
+    monkeypatch.syspath_prepend(test_dir / "supports")
+    stub = Stub()
+    stub.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
+
+    with servicer.intercept() as ctx:
+        with stub.run(client=client):
+            pass
+
+    function_create = ctx.pop_request("FunctionCreate")
+    for dep in function_create.function.object_dependencies:
+        assert dep.object_id

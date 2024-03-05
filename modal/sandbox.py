@@ -147,7 +147,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     deps.append(s3_mount.secret)
             return deps
 
-        async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
+        async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
             gpu_config = parse_gpu_config(gpu)
 
             cloud_provider = parse_cloud_provider(cloud) if cloud else None
@@ -186,18 +186,28 @@ class _Sandbox(_Object, type_prefix="sb"):
             create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
 
             sandbox_id = create_resp.sandbox_id
-            provider._hydrate(sandbox_id, resolver.client, None)
+            self._hydrate(sandbox_id, resolver.client, None)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
         self._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, self._client)
         self._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, self._client)
-        if handle_metadata is not None:
-            assert isinstance(handle_metadata, api_pb2.SandboxHandleMetadata)
-            self._result = handle_metadata.result
-        else:
-            self._result = None
+        self._result = None
+
+    @staticmethod
+    async def from_id(sandbox_id: str, client: Optional[_Client] = None) -> "_Sandbox":
+        """Construct a Sandbox from an id and look up the sandbox result."""
+        if client is None:
+            client = await _Client.from_env()
+
+        req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=0)
+        resp = await retry_transient_errors(client.stub.SandboxWait, req)
+
+        obj = _Sandbox._new_hydrated(sandbox_id, client, None)
+        obj._result = resp.result
+
+        return obj
 
     # Live handle methods
 

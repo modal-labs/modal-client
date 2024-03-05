@@ -189,6 +189,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     @staticmethod
     def from_local(user_cls, stub, decorator: Callable[[PartialFunction, type], _Function]) -> "_Cls":
+        """mdmd:hidden"""
         functions: Dict[str, _Function] = {}
         for k, partial_function in _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.FUNCTION).items():
             functions[k] = decorator(partial_function, user_cls)
@@ -203,12 +204,12 @@ class _Cls(_Object, type_prefix="cs"):
         def _deps() -> List[_Function]:
             return list(functions.values())
 
-        async def _load(provider: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
             for f_name, f in functions.items():
                 req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
             resp = await resolver.client.stub.ClassCreate(req)
-            provider._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
+            self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
         cls = _Cls._from_loader(_load, rep, deps=_deps)
@@ -276,6 +277,24 @@ class _Cls(_Object, type_prefix="cs"):
         container_idle_timeout: Optional[int] = None,
         allow_background_volume_commits: bool = False,
     ) -> "_Cls":
+        """
+        Allows for the runtime modification of a modal.Cls's configuration.
+        Designed for usage in the [MK1 Flywheel](/docs/guide/mk1).
+
+        **Usage:**
+
+        ```python notest
+        import modal
+        Model = modal.Cls.lookup(
+            "flywheel-generic", "Model", workspace="mk-1"
+        )
+        Model2 = Model.with_options(
+            gpu=modal.gpu.A100(memory=40),
+            volumes={"/models": models_vol}
+        )
+        Model2().generate.remote(42)
+        ```
+        """
         retry_policy = _parse_retries(retries)
         if gpu or cpu or memory:
             milli_cpu = int(1000 * cpu) if cpu is not None else None
@@ -339,6 +358,7 @@ class _Cls(_Object, type_prefix="cs"):
         )
 
     async def remote(self, *args, **kwargs):
+        """`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`."""
         deprecation_error((2023, 9, 1), "`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`.")
 
     def __getattr__(self, k):

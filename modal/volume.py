@@ -9,7 +9,7 @@ from typing import IO, AsyncGenerator, AsyncIterator, BinaryIO, Callable, Genera
 import aiostream
 from grpclib import GRPCError, Status
 
-import modal.exception
+from modal.exception import VolumeUploadTimeoutError
 from modal_proto import api_pb2
 from modal_utils.async_utils import asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
@@ -25,10 +25,10 @@ from ._resolver import Resolver
 from .client import _Client
 from .config import logger
 from .mount import MOUNT_PUT_FILE_CLIENT_TIMEOUT
-from .object import _StatefulObject, live_method, live_method_gen
+from .object import _get_environment_name, _Object, live_method, live_method_gen
 
 
-class _Volume(_StatefulObject, type_prefix="vo"):
+class _Volume(_Object, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
 
     The contents of a volume is exposed as a filesystem. You can use it to share data between different functions, or
@@ -83,18 +83,41 @@ class _Volume(_StatefulObject, type_prefix="vo"):
     def new() -> "_Volume":
         """Construct a new volume, which is empty by default."""
 
-        async def _load(provider: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
             if existing_object_id:
                 # Volume already exists; do nothing.
-                provider._hydrate(existing_object_id, resolver.client, None)
+                self._hydrate(existing_object_id, resolver.client, None)
                 return
 
             status_row.message("Creating volume...")
             req = api_pb2.VolumeCreateRequest(app_id=resolver.app_id)
             resp = await retry_transient_errors(resolver.client.stub.VolumeCreate, req)
             status_row.finish("Created volume.")
-            provider._hydrate(resp.volume_id, resolver.client, None)
+            self._hydrate(resp.volume_id, resolver.client, None)
+
+        return _Volume._from_loader(_load, "Volume()")
+
+    @staticmethod
+    def from_name(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+        create_if_missing: bool = False,
+    ) -> "_Volume":
+        """Create a reference to a persisted volume
+
+        """
+
+        async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
+            req = api_pb2.VolumeGetOrCreateRequest(
+                deployment_name=label,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name, resolver),
+                object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+            )
+            response = await resolver.client.stub.VolumeGetOrCreate(req)
+            self._hydrate(response.volume_id, resolver.client, None)
 
         return _Volume._from_loader(_load, "Volume()")
 
@@ -103,6 +126,7 @@ class _Volume(_StatefulObject, type_prefix="vo"):
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
+        cloud: Optional[str] = None,
     ) -> "_Volume":
         """Deploy a Modal app containing this object. This object can then be imported from other apps using
         the returned reference, or by calling `modal.Volume.from_name(label)` (or the equivalent method
@@ -124,7 +148,50 @@ class _Volume(_StatefulObject, type_prefix="vo"):
         ```
 
         """
-        return _Volume.new()._persist(label, namespace, environment_name)
+        return _Volume.from_name(label, namespace, environment_name, create_if_missing=True)
+
+    @staticmethod
+    async def lookup(
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        create_if_missing: bool = False,
+    ) -> "_Volume":
+        """Lookup a volume with a given name
+
+        ```python
+        n = modal.Volume.lookup("my-volume")
+        print(n.listdir("/"))
+        ```
+        """
+        obj = _Volume.from_name(
+            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+        )
+        if client is None:
+            client = await _Client.from_env()
+        resolver = Resolver(client=client)
+        await resolver.load(obj)
+        return obj
+
+    @staticmethod
+    async def create_deployed(
+        deployment_name: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ) -> str:
+        """mdmd:hidden"""
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.VolumeGetOrCreateRequest(
+            deployment_name=deployment_name,
+            namespace=namespace,
+            environment_name=_get_environment_name(environment_name),
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+        )
+        resp = await retry_transient_errors(client.stub.VolumeGetOrCreate, request)
+        return resp.volume_id
 
     @live_method
     async def _do_reload(self, lock=True):
@@ -407,9 +474,9 @@ class _VolumeUploadContextManager:
 
         def gen():
             if isinstance(local_file, str) or isinstance(local_file, Path):
-                yield lambda: get_file_upload_spec_from_path(local_file, remote_path, mode)
+                yield lambda: get_file_upload_spec_from_path(local_file, PurePosixPath(remote_path), mode)
             else:
-                yield lambda: get_file_upload_spec_from_fileobj(local_file, remote_path, mode or 0o644)
+                yield lambda: get_file_upload_spec_from_fileobj(local_file, PurePosixPath(remote_path), mode or 0o644)
 
         self._upload_generators.append(gen())
 
@@ -430,7 +497,7 @@ class _VolumeUploadContextManager:
 
         def create_file_spec_provider(subpath):
             relpath_str = subpath.relative_to(local_path)
-            return lambda: get_file_upload_spec_from_path(subpath, (remote_path / relpath_str).as_posix())
+            return lambda: get_file_upload_spec_from_path(subpath, remote_path / relpath_str)
 
         def gen():
             glob = local_path.rglob("*") if recursive else local_path.glob("*")
@@ -467,7 +534,7 @@ class _VolumeUploadContextManager:
                     break
 
             if not response.exists:
-                raise modal.exception.VolumeUploadTimeoutError(f"Uploading of {file_spec.source_description} timed out")
+                raise VolumeUploadTimeoutError(f"Uploading of {file_spec.source_description} timed out")
 
         return api_pb2.MountFile(
             filename=remote_filename,

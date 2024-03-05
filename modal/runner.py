@@ -18,7 +18,7 @@ from ._output import OutputManager, get_app_logs_loop, step_completed, step_prog
 from .app import _LocalApp, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
-from .exception import InteractiveTimeoutError, InvalidError
+from .exception import InteractiveTimeoutError, InvalidError, _CliUserExecutionError
 
 if TYPE_CHECKING:
     from .stub import _Stub
@@ -44,6 +44,7 @@ async def _run_stub(
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
     shell=False,
+    interactive=False,
 ) -> AsyncGenerator[_Stub, None]:
     """mdmd:hidden"""
     if environment_name is None:
@@ -83,6 +84,7 @@ async def _run_stub(
         stub.description,
         environment_name=environment_name,
         app_state=app_state,
+        interactive=interactive,
     )
     async with stub._set_local_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
@@ -151,7 +153,12 @@ async def _run_stub(
             else:
                 reason = api_pb2.APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED
 
-            exc_str = repr(exc_info) if exc_info else ""
+            if isinstance(exc_info, _CliUserExecutionError):
+                exc_str = repr(exc_info.__cause__)
+            elif exc_info:
+                exc_str = repr(exc_info)
+            else:
+                exc_str = ""
 
             await app.disconnect(reason, exc_str)
             stub._uncreate_all_objects()

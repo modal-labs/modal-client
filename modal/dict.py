@@ -26,7 +26,7 @@ class _Dict(_Object, type_prefix="di"):
 
     **Lifetime of a Dict and its items**
 
-    but an individual entry will expire 30 days after it was last added to its ​​Dict object.
+    A `Dict` matches the lifetime of the app it is attached to, but an individual entry will expire 30 days after it was last added to its Dict object.
     Because of this, `Dict`s are best not used for
     long-term storage. All data is deleted when the app is stopped.
 
@@ -57,14 +57,14 @@ class _Dict(_Object, type_prefix="di"):
     def new(data: Optional[dict] = None) -> "_Dict":
         """Create a new Dict, optionally with initial data."""
 
-        async def _load(provider: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictCreateRequest(
                 app_id=resolver.app_id, data=serialized, existing_dict_id=existing_object_id
             )
             response = await resolver.client.stub.DictCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
-            provider._hydrate(response.dict_id, resolver.client, None)
+            self._hydrate(response.dict_id, resolver.client, None)
 
         return _Dict._from_loader(_load, "Dict()", is_another_app=True)
 
@@ -94,7 +94,7 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
 
-        async def _load(provider: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=label,
                 namespace=namespace,
@@ -103,7 +103,7 @@ class _Dict(_Object, type_prefix="di"):
             )
             response = await resolver.client.stub.DictGetOrCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
-            provider._hydrate(response.dict_id, resolver.client, None)
+            self._hydrate(response.dict_id, resolver.client, None)
 
         return _Dict._from_loader(_load, "Dict()")
 
@@ -111,6 +111,8 @@ class _Dict(_Object, type_prefix="di"):
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Dict":
+        """Create a persisted modal.Dict which as a lifetime beyond the app it was created in.
+        The object will persist until it is deleted by the user."""
         return _Dict.from_name(label, namespace, environment_name, create_if_missing=True)
 
     @staticmethod

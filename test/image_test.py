@@ -8,6 +8,7 @@ from typing import List
 from unittest import mock
 
 from modal import Image, Mount, NetworkFileSystem, Secret, Stub, build, gpu, method
+from modal._serialization import serialize
 from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal.image import _dockerhub_python_version, _get_client_requirements_path
 from modal_proto import api_pb2
@@ -285,10 +286,10 @@ def test_image_run_function(client, servicer):
     with stub.run(client=client):
         image_id = stub["image"].object_id
         layers = get_image_layers(image_id, servicer)
-        assert "foo!" in layers[0].build_function_def
-        assert "Secret.from_dict([xyz])" in layers[0].build_function_def
+        assert "foo!" in layers[0].build_function.definition
+        assert "Secret.from_dict([xyz])" in layers[0].build_function.definition
         # globals is none when no globals are referenced
-        assert layers[0].build_function_globals == b""
+        assert layers[0].build_function.globals == b""
 
     function_id = servicer.image_build_function_ids[image_id]
     assert function_id
@@ -306,7 +307,7 @@ def test_image_run_function_interactivity(client, servicer):
     with run_stub(stub, client=client, shell=True):
         image_id = stub["image"].object_id
         layers = get_image_layers(image_id, servicer)
-        assert "foo!" in layers[0].build_function_def
+        assert "foo!" in layers[0].build_function.definition
 
     function_id = servicer.image_build_function_ids[image_id]
     assert function_id
@@ -330,19 +331,19 @@ def test_image_run_function_globals(client, servicer):
 
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
-        old_globals = layers[0].build_function_globals
+        old_globals = layers[0].build_function.globals
         assert b"VARIABLE_1" in old_globals
         assert b"VARIABLE_2" not in old_globals
 
     VARIABLE_1 = 3
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
-        assert layers[0].build_function_globals != old_globals
+        assert layers[0].build_function.globals != old_globals
 
     VARIABLE_1 = 1
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
-        assert layers[0].build_function_globals == old_globals
+        assert layers[0].build_function.globals == old_globals
 
 
 VARIABLE_3 = threading.Lock()
@@ -359,8 +360,22 @@ def test_image_run_unserializable_function(client, servicer):
 
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
-        old_globals = layers[0].build_function_globals
+        old_globals = layers[0].build_function.globals
         assert b"VARIABLE_4" in old_globals
+
+
+def run_f_with_args(arg, *, kwarg):
+    print("building!", arg, kwarg)
+
+
+def test_image_run_function_with_args(client, servicer):
+    stub = Stub()
+    stub["image"] = Image.debian_slim().run_function(run_f_with_args, args=("foo",), kwargs={"kwarg": "bar"})
+
+    with stub.run(client=client):
+        layers = get_image_layers(stub["image"].object_id, servicer)
+        input = layers[0].build_function.input
+        assert input.args == serialize((("foo",), {"kwarg": "bar"}))
 
 
 def test_poetry(client, servicer):
@@ -493,15 +508,15 @@ def test_image_build_snapshot(client, servicer):
         image_id = list(servicer.images.keys())[-1]
         layers = get_image_layers(image_id, servicer)
 
-        assert "foo!" in layers[0].build_function_def
-        assert "Secret.from_dict([xyz])" in layers[0].build_function_def
+        assert "foo!" in layers[0].build_function.definition
+        assert "Secret.from_dict([xyz])" in layers[0].build_function.definition
         assert any("pip install pandas" in cmd for cmd in layers[1].dockerfile_commands)
 
-        globals = layers[0].build_function_globals
+        globals = layers[0].build_function.globals
         assert b"VARIABLE_5" in globals
 
         # Globals and def for the main function should not affect build step.
-        assert "bar!" not in layers[0].build_function_def
+        assert "bar!" not in layers[0].build_function.definition
         assert b"VARIABLE_6" not in globals
 
     function_id = servicer.image_build_function_ids[image_id]

@@ -230,7 +230,7 @@ def test_run_local_entrypoint_invalid_with_stub_run(servicer, set_env_client, te
     stub_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint_invalid.py"
 
     res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
-    assert "app is already running" in str(res.exception).lower()
+    assert "app is already running" in str(res.exception.__cause__).lower()
     assert "unreachable" not in res.stdout
     assert len(servicer.client_calls) == 0
 
@@ -299,6 +299,12 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir):
     for args, expected in valid_call_args:
         res = _run(args)
         assert expected in res.stdout
+
+
+def test_run_user_script_exception(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "raises_error.py"
+    res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    assert res.exc_info[1].user_source == str(stub_file.resolve())
 
 
 @pytest.fixture
@@ -514,9 +520,9 @@ def test_environment_flag(test_dir, servicer, command):
             and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
-            "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="sv-123")),
-            request_filter=lambda req: req.app_name == "volume_app" and req.environment_name == "staging",
+            "SharedVolumeGetOrCreate",
+            api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id="sv-123"),
+            request_filter=lambda req: req.deployment_name == "volume_app" and req.environment_name == "staging",
         )
         _run(command + ["--env=staging", str(stub_file)])
 
@@ -548,9 +554,9 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
             and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
-            "AppLookupObject",
-            api_pb2.AppLookupObjectResponse(object=api_pb2.Object(object_id="sv-123")),
-            request_filter=lambda req: req.app_name == "volume_app"
+            "SharedVolumeGetOrCreate",
+            api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id="sv-123"),
+            request_filter=lambda req: req.deployment_name == "volume_app"
             and req.environment_name == "some_weird_default_env",
         )
         _run(command + [str(stub_file)])

@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
 
+from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
@@ -16,12 +17,9 @@ from .exception import ExecutionError, InvalidError, deprecation_error
 from .object import _Object
 
 if TYPE_CHECKING:
-    from rich.tree import Tree
-
     from .functions import _Function
 
 else:
-    Tree = TypeVar("Tree")
     _Function = TypeVar("_Function")
 
 
@@ -31,6 +29,7 @@ class _LocalApp:
     _app_id: str
     _app_page_url: str
     _environment_name: str
+    _interactive: bool
 
     def __init__(
         self,
@@ -40,6 +39,7 @@ class _LocalApp:
         tag_to_object_id: Optional[Dict[str, str]] = None,
         stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
+        interactive: bool = False,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
         self._app_id = app_id
@@ -48,6 +48,7 @@ class _LocalApp:
         self._tag_to_object_id = tag_to_object_id or {}
         self._stub_name = stub_name
         self._environment_name = environment_name
+        self._interactive = interactive
 
     @property
     def client(self) -> _Client:
@@ -58,6 +59,10 @@ class _LocalApp:
     def app_id(self) -> str:
         """A unique identifier for this running App."""
         return self._app_id
+
+    @property
+    def is_interactive(self) -> bool:
+        return self._interactive
 
     async def _create_all_objects(
         self,
@@ -168,6 +173,7 @@ class _LocalApp:
         description: str,
         app_state: int,
         environment_name: str = "",
+        interactive=False,
     ) -> "_LocalApp":
         app_req = api_pb2.AppCreateRequest(
             description=description,
@@ -177,7 +183,9 @@ class _LocalApp:
         app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
         app_page_url = app_resp.app_logs_url
         logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _LocalApp(client, app_resp.app_id, app_page_url, environment_name=environment_name)
+        return _LocalApp(
+            client, app_resp.app_id, app_page_url, environment_name=environment_name, interactive=interactive
+        )
 
     @staticmethod
     async def _init_from_name(
@@ -240,6 +248,9 @@ class _ContainerApp:
     _tag_to_object_id: Dict[str, str]
     _object_handle_metadata: Dict[str, Optional[Message]]
     _stub_name: Optional[str]
+    # if true, there's an active PTY shell session connected to this process.
+    _is_interactivity_enabled: bool
+    _function_def: Optional[api_pb2.Function]
 
     def __init__(self):
         self._client = None
@@ -249,6 +260,7 @@ class _ContainerApp:
         self._environment_name = None
         self._tag_to_object_id = {}
         self._object_handle_metadata = {}
+        self._is_interactivity_enabled = False
 
     @property
     def client(self) -> Optional[_Client]:
@@ -310,7 +322,14 @@ class _ContainerApp:
             metadata: Message = self._object_handle_metadata[object_id]
             obj._hydrate(object_id, self._client, metadata)
 
-    async def init(self, client: _Client, app_id: str, stub_name: str = "", environment_name: str = ""):
+    async def init(
+        self,
+        client: _Client,
+        app_id: str,
+        stub_name: str = "",
+        environment_name: str = "",
+        function_def: Optional[api_pb2.Function] = None,
+    ):
         """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
         global _is_container_app
         _is_container_app = True
@@ -319,6 +338,7 @@ class _ContainerApp:
         self._app_id = app_id
         self._stub_name = stub_name
         self._environment_name = environment_name
+        self._function_def = function_def
         self._tag_to_object_id = {}
         self._object_handle_metadata = {}
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, include_unindexed=True)
@@ -354,6 +374,41 @@ _is_container_app = False
 _container_app = _ContainerApp()
 container_app = synchronize_api(_container_app)
 assert isinstance(container_app, ContainerApp)
+
+
+async def _interact(client: Optional[_Client] = None) -> None:
+    if _container_app._is_interactivity_enabled:
+        # Currently, interactivity is enabled forever
+        return
+    _container_app._is_interactivity_enabled = True
+
+    if not client:
+        client = await _Client.from_env()
+
+    if client.client_type != api_pb2.CLIENT_TYPE_CONTAINER:
+        raise InvalidError("Interactivity only works inside a Modal Container.")
+
+    if _container_app._function_def is not None:
+        if not _container_app._function_def.pty_info:
+            raise InvalidError(
+                "Interactivity is not enabled in this function. Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
+            )
+
+        if _container_app._function_def.concurrency_limit > 1:
+            print(
+                "Warning: Interactivity is not supported on functions with concurrency > 1. You may experience unexpected behavior."
+            )
+
+    # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here
+    # todo(nathan): check if function interactivity is enabled
+    try:
+        await client.stub.FunctionStartPtyShell(Empty())
+    except Exception as e:
+        print("Error: Failed to start PTY shell.")
+        raise e
+
+
+interact = synchronize_api(_interact)
 
 
 def is_local() -> bool:

@@ -20,7 +20,7 @@ async def test__watch_args_from_mounts(monkeypatch, test_dir):
         ]
     )
 
-    assert paths == {Path("/x"), Path("/one/two/bucklemyshoe"), Path("/x/z")}
+    assert paths == {Path("/x").absolute(), Path("/one/two/bucklemyshoe").absolute(), Path("/x/z").absolute()}
     assert watch_filter(Change.modified, "/x/foo.py")
     assert not watch_filter(Change.modified, "/x/notwatched.py")
     assert not watch_filter(Change.modified, "/x/y/foo.py")

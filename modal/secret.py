@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import os
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from grpclib import GRPCError, Status
 
@@ -10,6 +10,7 @@ from modal_utils.async_utils import synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
+from .app import is_local
 from .client import _Client
 from .exception import InvalidError, NotFoundError
 from .object import _get_environment_name, _Object
@@ -52,7 +53,7 @@ class _Secret(_Object, type_prefix="st"):
         if not all(isinstance(v, str) for v in env_dict_filtered.values()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 env_dict=env_dict_filtered,
@@ -66,10 +67,28 @@ class _Secret(_Object, type_prefix="st"):
                 if exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
                 raise
-            provider._hydrate(resp.secret_id, resolver.client, None)
+            self._hydrate(resp.secret_id, resolver.client, None)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep)
+
+    @typechecked
+    @staticmethod
+    def from_local_environ(
+        env_keys: List[str],  # list of local env vars to be included for remote execution
+    ):
+        """Create secrets from local environment variables automatically."""
+
+        if is_local():
+            try:
+                return _Secret.from_dict({k: os.environ[k] for k in env_keys})
+            except KeyError as exc:
+                missing_key = exc.args[0]
+                raise InvalidError(
+                    f"Could not find local environment variable '{missing_key}' for Secret.from_local_env_vars"
+                )
+
+        return _Secret.from_dict({})
 
     @staticmethod
     def from_dotenv(path=None):
@@ -91,7 +110,7 @@ class _Secret(_Object, type_prefix="st"):
         starting point for finding the `.env` file.
         """
 
-        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             try:
                 from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
@@ -124,7 +143,7 @@ class _Secret(_Object, type_prefix="st"):
             )
             resp = await resolver.client.stub.SecretGetOrCreate(req)
 
-            provider._hydrate(resp.secret_id, resolver.client, None)
+            self._hydrate(resp.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()")
 
@@ -145,7 +164,7 @@ class _Secret(_Object, type_prefix="st"):
         ```
         """
 
-        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=label,
                 namespace=namespace,
@@ -158,7 +177,7 @@ class _Secret(_Object, type_prefix="st"):
                     raise NotFoundError(exc.message)
                 else:
                     raise
-            provider._hydrate(response.secret_id, resolver.client, None)
+            self._hydrate(response.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret()")
 
@@ -192,6 +211,7 @@ class _Secret(_Object, type_prefix="st"):
         environment_name: Optional[str] = None,
         overwrite: bool = False,
     ) -> str:
+        """mdmd:hidden"""
         if client is None:
             client = await _Client.from_env()
         if overwrite:

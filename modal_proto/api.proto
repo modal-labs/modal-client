@@ -940,6 +940,14 @@ message FunctionGetResponse {
   FunctionHandleMetadata handle_metadata = 2;
 }
 
+ 
+message FunctionUpdateSchedulingParamsRequest {
+  string function_id = 1;
+  uint32 warm_pool_size_override = 2;
+}
+
+message FunctionUpdateSchedulingParamsResponse {}
+
 message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
@@ -1165,6 +1173,12 @@ message GPUConfig {
   uint32 memory = 3;
 }
 
+message BuildFunction {
+  string definition = 1;
+  bytes globals = 2;
+  FunctionInput input = 3;
+}
+
 message Image {
   repeated BaseImage base_images = 5;
   repeated string dockerfile_commands = 6;
@@ -1180,13 +1194,15 @@ message Image {
   GPUConfig gpu_config = 16;
   ImageRegistryConfig image_registry_config = 17;
 
-  string build_function_def = 14;
-  bytes build_function_globals = 18;
+  string build_function_def = 14; // deprecated after 0.58.96
+  bytes build_function_globals = 18; // deprecated after 0.58.96
 
   // If set, overrides the runtime used by the function. Specify either "runc" or "gvisor".
   string runtime = 19;
   // Not included in image definition checksum as debug features do not affect built image.
   bool runtime_debug = 20;
+
+  BuildFunction build_function = 21;
 }
 
 message ImageContextFile {
@@ -1308,6 +1324,17 @@ message Object {
 
 message ObjectDependency {
   string object_id = 1;
+}
+
+message ProxyGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
+}
+
+message ProxyGetOrCreateResponse {
+  string proxy_id = 1;
 }
 
 message ProxyInfo {
@@ -1538,6 +1565,18 @@ message SecretListResponse {
   string environment_name = 2; // the environment that was listed (useful when relying on "default" logic)
 }
 
+message SharedVolumeGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;
+  string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+}
+
+message SharedVolumeGetOrCreateResponse {
+  string shared_volume_id = 1;
+}
+
 message SharedVolumeCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   CloudProvider cloud_provider = 2;
@@ -1725,6 +1764,18 @@ message TunnelStopRequest {
 
 message TunnelStopResponse {
   bool exists = 1;
+}
+
+message VolumeGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;
+  string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+}
+
+message VolumeGetOrCreateResponse {
+  string volume_id = 1;
 }
 
 message VolumeCreateRequest {
@@ -1948,6 +1999,7 @@ service ModalClient {
   rpc FunctionPrecreate(FunctionPrecreateRequest) returns (FunctionPrecreateResponse);
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
+  rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
   // Function calls
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
@@ -1967,6 +2019,9 @@ service ModalClient {
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
   rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
+
+  // Proxies
+  rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
@@ -1989,6 +2044,7 @@ service ModalClient {
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
   // SharedVolumes
+  rpc SharedVolumeGetOrCreate(SharedVolumeGetOrCreateRequest) returns (SharedVolumeGetOrCreateResponse);
   rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
   rpc SharedVolumeList(SharedVolumeListRequest) returns (SharedVolumeListResponse);
   rpc SharedVolumeListFiles(SharedVolumeListFilesRequest) returns (SharedVolumeListFilesResponse);
@@ -2013,6 +2069,7 @@ service ModalClient {
   rpc TunnelStop(TunnelStopRequest) returns (TunnelStopResponse);
 
   // Volumes
+  rpc VolumeGetOrCreate(VolumeGetOrCreateRequest) returns (VolumeGetOrCreateResponse);
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);
   rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);

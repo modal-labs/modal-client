@@ -10,6 +10,83 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.61.6 (2024-03-04)
+
+- For modal functions/classes with `concurrency_limit < keep_warm`, we'll raise an exception now. Previously we (silently) respected the `concurrency_limit` parameter.
+
+
+
+### 0.61.1 (2024-03-03)
+
+`modal run --interactive` or `modal run -i` run the app in "interactive mode". This allows any remote code to connect to the user's local terminal by calling `modal.interact()`. 
+
+```python
+@stub.function()
+def my_fn(x):
+    modal.interact()
+
+    x = input()
+    print(f"Your number is {x}")
+```
+
+This means that you can dynamically start an IPython shell if desired for debugging:
+
+```python
+@stub.function()
+def my_fn(x):
+    modal.interact()
+
+    from IPython import embed
+    embed()
+```
+
+For convenience, breakpoints automatically call `interact()`:
+
+```python
+@stub.function()
+def my_fn(x):
+    breakpoint()
+```
+
+
+
+### 0.60.0 (2024-02-29)
+
+- `Image.run_function` now allows you to pass args and kwargs to the function. Usage:
+
+```python
+def my_build_function(name, size, *, variant=None):
+    print(f"Building {name} {size} {variant}")
+
+
+image = modal.Image.debian_slim().run_function(
+    my_build_function, args=("foo", 10), kwargs={"variant": "bar"}
+)
+```
+
+
+
+## 0.59
+
+
+### 0.59.0 (2024-02-28)
+
+* Mounted packages are now deduplicated across functions in the same stub
+* Mounting of local Python packages are now marked as such in the mount creation output, e.g. `PythonPackage:my_package`
+* Automatic mounting now includes packages outside of the function file's own directory. Mounted packages are mounted in /root/<module path>
+
+
+
+## 0.58
+
+
+### 0.58.92 (2024-02-27)
+
+- Most errors raised through usage of the CLI will now print a simple error message rather than showing a traceback from inside the `modal` library.
+- Tracebacks originating from user code will include fewer frames from within `modal` itself.
+- The new `MODAL_TRACEBACK` environment variable (and `traceback` field in the Modal config file) can override these behaviors so that full tracebacks are always shown.
+
+
 ### 0.58.90 (2024-02-27)
 
 - Fixed a bug that could cause `cls`-based functions to to ignore timeout signals.

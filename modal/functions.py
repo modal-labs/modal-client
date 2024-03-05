@@ -33,7 +33,7 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
 
-from modal import _pty
+from modal import _pty, is_local
 from modal_proto import api_grpc, api_pb2
 from modal_utils.async_utils import (
     queue_batch_iterator,
@@ -70,7 +70,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount
+from .mount import _get_client_mount, _Mount, _MountCache
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
@@ -573,6 +573,7 @@ class _Function(_Object, type_prefix="fu"):
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
+    _parent: "_Function"
 
     @staticmethod
     def from_args(
@@ -598,8 +599,7 @@ class _Function(_Object, type_prefix="fu"):
         allow_concurrent_inputs: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
-        keep_warm: Optional[int] = None,
-        interactive: bool = False,
+        keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
         cloud: Optional[str] = None,
         _experimental_boost: bool = False,
         _experimental_scheduler: bool = False,
@@ -629,15 +629,24 @@ class _Function(_Object, type_prefix="fu"):
             )
             secrets = [secret, *secrets]
 
-        all_mounts = [
-            _get_client_mount(),  # client
-            *mounts,  # explicit mounts
-        ]
-        # TODO (elias): Clean up mount logic, this is quite messy:
-        if stub:
-            all_mounts.extend(stub._get_deduplicated_function_mounts(info.get_mounts()))  # implicit mounts
+        explicit_mounts = mounts
+
+        if is_local():
+            entrypoint_mounts = info.get_entrypoint_mount()
+            all_mounts = [
+                _get_client_mount(),
+                *explicit_mounts,
+                *entrypoint_mounts,
+            ]
+
+            if config.get("automount"):
+                automounts = info.get_auto_mounts()
+                all_mounts += automounts
         else:
-            all_mounts.extend(info.get_mounts().values())  # this would typically only happen for builder functions
+            # skip any mount introspection/logic inside containers, since the function
+            # should already be hydrated
+            # TODO: maybe the entire constructor should be exited early if not local?
+            all_mounts = []
 
         retry_policy = _parse_retries(retries, raw_f)
 
@@ -685,14 +694,13 @@ class _Function(_Object, type_prefix="fu"):
                 )
                 image = image.extend(build_function=snapshot_function, force_build=image.force_build)
 
-        if interactive and concurrency_limit and concurrency_limit > 1:
-            warnings.warn(
-                "Interactive functions require `concurrency_limit=1`. The concurrency limit will be overridden."
-            )
-            concurrency_limit = 1
+        if keep_warm is not None and not isinstance(keep_warm, int):
+            raise TypeError(f"`keep_warm` must be an int or bool, not {type(keep_warm).__name__}")
 
-        if keep_warm is not None:
-            assert isinstance(keep_warm, int)
+        if (keep_warm is not None) and (concurrency_limit is not None) and concurrency_limit < keep_warm:
+            raise InvalidError(
+                f"Function `{info.function_name}` has `{concurrency_limit=}`, strictly less than its `{keep_warm=}` parameter."
+            )
 
         if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
@@ -729,10 +737,18 @@ class _Function(_Object, type_prefix="fu"):
             if only_explicit_mounts:
                 # TODO: this is a bit hacky, but all_mounts may differ in the container vs locally
                 # We don't want the function dependencies to change, so we have this way to force it to
-                # only include its declared dependencies
-                deps += list(mounts)
+                # only include its declared dependencies.
+                # Only objects that need interaction within a user's container actually need to be
+                # included when only_explicit_mounts=True, so omitting auto mounts here
+                # wouldn't be a problem as long as Mounts are "passive" and only loaded by the
+                # worker runtime
+                deps += list(explicit_mounts)
             else:
-                deps += list(all_mounts)
+                mount_cache = (
+                    stub._mount_cache if stub else _MountCache()
+                )  # builder functions don't have stubs at this point
+                optimized_mounts = mount_cache.get_many(all_mounts)
+                deps += list(optimized_mounts)
             if proxy:
                 deps.append(proxy)
             if image:
@@ -749,10 +765,9 @@ class _Function(_Object, type_prefix="fu"):
             objs: list[Object] = get_referred_objects(info.raw_f)
             _objs: list[_Object] = synchronizer._translate_in(objs)  # type: ignore
             deps += _objs
-
             return deps
 
-        async def _preload(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             if is_generator:
                 function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -767,10 +782,9 @@ class _Function(_Object, type_prefix="fu"):
                 existing_function_id=existing_object_id or "",
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
-            # Update the precreated function handle (todo: hack until we merge providers/handles)
-            provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             status_row = resolver.add_status_row()
             status_row.message(f"Creating {tag}...")
@@ -785,8 +799,8 @@ class _Function(_Object, type_prefix="fu"):
             milli_cpu = int(1000 * cpu) if cpu is not None else 0
 
             timeout_secs = timeout
-            if interactive:
-                assert not is_builder_function, "builder functions do not support interactive usage"
+
+            if stub and stub.is_interactive and not is_builder_function:
                 pty_info = _pty.get_pty_info(shell=False)
             else:
                 pty_info = None
@@ -829,12 +843,16 @@ class _Function(_Object, type_prefix="fu"):
                 )
                 for path, volume in validated_volumes
             ]
+            mount_cache = (
+                stub._mount_cache if stub else _MountCache()
+            )  # builder functions don't have stubs at this point
+            optimized_mounts = mount_cache.get_many(all_mounts)
 
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name or "",
                 function_name=info.function_name,
-                mount_ids=[mount.object_id for mount in all_mounts],
+                mount_ids=[mount.object_id for mount in optimized_mounts],
                 secret_ids=[secret.object_id for secret in secrets],
                 image_id=(image.object_id if image else ""),
                 definition_type=info.definition_type,
@@ -919,7 +937,7 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 status_row.finish(f"Created {tag}.")
 
-            provider._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
@@ -954,37 +972,40 @@ class _Function(_Object, type_prefix="fu"):
         args: Sized,
         kwargs: Dict[str, Any],
     ) -> "_Function":
-        async def _load(provider: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            if not self.is_hydrated:
+        """mdmd:hidden"""
+
+        async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            if not self._parent.is_hydrated:
                 raise ExecutionError(
                     "Base function in class has not been hydrated. This might happen if an object is"
                     " defined on a different stub, or if it's on the same stub but it didn't get"
                     " created because it wasn't defined in global scope."
                 )
-            assert self._client.stub
+            assert self._parent._client.stub
             serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
             environment_name = _get_environment_name(None, resolver)
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=self._object_id,
+                function_id=self._parent._object_id,
                 serialized_params=serialized_params,
                 function_options=options,
                 environment_name=environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
-            response = await retry_transient_errors(self._client.stub.FunctionBindParams, req)
-            provider._hydrate(response.bound_function_id, self._client, response.handle_metadata)
+            response = await retry_transient_errors(self._parent._client.stub.FunctionBindParams, req)
+            self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
 
-        provider = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        fun = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
         if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
-            provider._hydrate_from_other(self)
-        provider._is_remote_cls_method = True  # TODO(erikbern): deprecated
-        provider._info = self._info
-        provider._obj = obj
-        provider._is_generator = self._is_generator
-        provider._is_method = True
+            fun._hydrate_from_other(self)
+        fun._is_remote_cls_method = True  # TODO(erikbern): deprecated
+        fun._info = self._info
+        fun._obj = obj
+        fun._is_generator = self._is_generator
+        fun._is_method = True
+        fun._parent = self
 
-        return provider
+        return fun
 
     @classmethod
     def from_name(
@@ -1001,7 +1022,7 @@ class _Function(_Object, type_prefix="fu"):
         ```
         """
 
-        async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load_remote(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
@@ -1017,7 +1038,7 @@ class _Function(_Object, type_prefix="fu"):
                 else:
                     raise
 
-            obj._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True)
@@ -1051,15 +1072,18 @@ class _Function(_Object, type_prefix="fu"):
 
     @property
     def stub(self) -> "modal.stub._Stub":
+        """mdmd:hidden"""
         return self._stub
 
     @property
     def info(self) -> FunctionInfo:
+        """mdmd:hidden"""
         assert self._info
         return self._info
 
     @property
     def env(self) -> FunctionEnv:
+        """mdmd:hidden"""
         return self._env
 
     def get_build_def(self) -> str:
@@ -1119,6 +1143,7 @@ class _Function(_Object, type_prefix="fu"):
 
     @property
     def is_generator(self) -> bool:
+        """mdmd:hidden"""
         assert self._is_generator is not None
         return self._is_generator
 
@@ -1464,9 +1489,17 @@ class _FunctionCall(_Object, type_prefix="fc"):
         return _reconstruct_call_graph(response)
 
     async def cancel(self):
+        """Cancels the function call, which will stop its execution and mark its inputs as [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus)."""
         request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
         assert self._client and self._client.stub
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
+
+    @staticmethod
+    async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall":
+        if client is None:
+            client = await _Client.from_env()
+
+        return _FunctionCall._new_hydrated(function_call_id, client, None)
 
 
 FunctionCall = synchronize_api(_FunctionCall)

@@ -9,8 +9,8 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
 from rich.traceback import PathHighlighter, Stack, Traceback, install
-from tblib import Traceback as TBLibTraceback
 
+from ._vendor.tblib import Traceback as TBLibTraceback
 from .exception import DeprecationError
 
 TBDictType = Dict[str, Any]
