@@ -1,8 +1,7 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
-
 from enum import Enum
+from typing import List, Optional, Tuple
 
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api
@@ -45,7 +44,7 @@ class _CloudBucketMount:
 
     bucket_name: str
 
-    # Credentials used to access a cloud bucket. When 
+    # Credentials used to access a cloud bucket. When
     # The given secret can contain AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
     # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY can be omitted if the bucket is publicly accessible.
     secret: Optional[_Secret] = None

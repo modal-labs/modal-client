@@ -58,6 +58,7 @@ from ._serialization import deserialize, deserialize_data_format, serialize
 from ._traceback import append_modal_tb
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
+from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config, logger
 from .exception import (
     ExecutionError,
@@ -75,7 +76,6 @@ from .network_file_system import _NetworkFileSystem, network_file_system_mount_p
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
-from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret

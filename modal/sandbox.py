@@ -5,8 +5,8 @@ from typing import Dict, List, Optional, Sequence, Union
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
-from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
+from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from modal.volume import _Volume
 from modal_proto import api_pb2
 from modal_utils.async_utils import synchronize_api

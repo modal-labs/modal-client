@@ -8,8 +8,8 @@ from .exception import InvalidError
 from .volume import _Volume
 
 if TYPE_CHECKING:
-    from .network_file_system import _NetworkFileSystem
     from .cloud_bucket_mount import _CloudBucketMount
+    from .network_file_system import _NetworkFileSystem
 
 
 T = typing.TypeVar("T", bound=Union["_Volume", "_NetworkFileSystem", "_CloudBucketMount"])
