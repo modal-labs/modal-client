@@ -1024,6 +1024,8 @@ class _Function(_Object, type_prefix="fu"):
         Model("fine-tuned-model").inference.set_keep_warm(2)
         ```
         """
+
+        assert self._parent._client and self._parent._client.stub
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(
             function_id=self._object_id, warm_pool_size_override=warm_pool_size
         )
