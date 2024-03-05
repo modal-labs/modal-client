@@ -64,9 +64,8 @@ class SignalHandlingEventLoop:
     The following signals are handled while a coroutine is running on the event loop until
     completion (and then handlers are deregistered):
 
-    - `SIGUSR1`: converted to an `asyncio.CancelledError` exception with a specific message
-      given by `INPUT_CANCELLATION_MESSAGE`. Note that this only affects async functions on Modal,
-      and the signal handler defined here does not run for sync functions.
+    - `SIGUSR1`: converted to an async task cancellation. Note that this only affects the event
+      loop, and the signal handler defined here doesn't run for sync functions.
     """
 
     def __enter__(self):
