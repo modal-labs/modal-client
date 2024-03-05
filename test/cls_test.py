@@ -535,7 +535,7 @@ def test_handlers():
     assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]
 
     pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
-    assert list(pfs.keys()) == ["my_checkpoint"]
+    assert list(pfs.keys()) == ["my_memory_snapshot"]
 
     pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
     assert list(pfs.keys()) == ["my_enter", "my_build_and_enter"]
