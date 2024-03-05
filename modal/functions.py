@@ -1007,6 +1007,7 @@ class _Function(_Object, type_prefix="fu"):
 
         return fun
 
+    @live_method
     async def keep_warm(self, warm_pool_size: int) -> None:
         """Set the warm pool size for the function (including parametrized functions).
 
