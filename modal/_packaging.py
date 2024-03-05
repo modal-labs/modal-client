@@ -1,8 +1,7 @@
 # Copyright Modal Labs 2024
 """Utilities related to packaging dependencies for the container runtime."""
-from importlib.util import find_spec
 from pathlib import Path
-from typing import Union
+from typing import Literal, Tuple
 
 from modal_proto import api_pb2
 from modal_version import __version__
@@ -11,31 +10,24 @@ from .config import config
 from .mount import _Mount, module_mount_condition
 
 
-def client_mount_name(qualifier: str = "") -> str:
+def client_mount_name(package_set: Literal["internal", "external"]) -> str:
     """Get the deployed name of the client package mount."""
-    return f"modal-client{qualifier}-mount-{__version__}"
+    return f"modal-client-{package_set}-mount-{__version__}"
 
 
-def mount_client_dependencies(install_dir: Union[str, Path]) -> _Mount:
-    mount = _Mount.from_local_dir(Path(install_dir).resolve(), remote_path="/pkg", condition=module_mount_condition)
-    return mount
+def create_external_client_mount(source_dir: Path) -> _Mount:
+    return _Mount.from_local_dir(source_dir.resolve(), remote_path="/pkg/external", condition=module_mount_condition)
 
 
-def mount_client_package(base_mount: _Mount) -> _Mount:
-    mount = base_mount
-    internal_packages = ["modal", "modal_proto", "modal_utils", "modal_version", "synchronicity"]
-    for pkg in internal_packages:
-        spec = find_spec(pkg)
-        pkg_dir = Path(spec.origin).parent
-        mount = mount.add_local_dir(pkg_dir, remote_path=f"/pkg/{pkg}", condition=module_mount_condition)
-    return mount
+def create_internal_client_mount() -> _Mount:
+    packages = ["modal", "modal_proto", "modal_utils", "modal_version", "synchronicity"]
+    return _Mount.from_local_python_packages(*packages, remote_dir="/pkg/internal", condition=module_mount_condition)
 
 
-def _get_client_mount() -> _Mount:  # TODO rethink name
+def get_client_mounts() -> Tuple[_Mount, _Mount]:
     if config["sync_entrypoint"]:
-        base_name = client_mount_name(qualifier="-dependencies")
-        base_mount = _Mount.from_name(base_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
-        full_mount = mount_client_package(base_mount)
-        return full_mount
+        internal_mount = create_internal_client_mount()
     else:
-        return _Mount.from_name(client_mount_name(), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+        internal_mount = _Mount.from_name(client_mount_name("internal"), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    external_mount = _Mount.from_name(client_mount_name("external"), namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)
+    return internal_mount, external_mount
