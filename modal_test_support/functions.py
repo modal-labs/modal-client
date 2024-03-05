@@ -294,11 +294,11 @@ class CheckpointingCls:
     def __init__(self):
         self._vals = []
 
-    @enter(memory_snapshot=True)
+    @enter(snap=True)
     def enter1(self):
         self._vals.append("A")
 
-    @enter(memory_snapshot=True)
+    @enter(snap=True)
     def enter2(self):
         self._vals.append("B")
 

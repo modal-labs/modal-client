@@ -510,7 +510,7 @@ class ClsWithHandlers:
     def my_build(self):
         pass
 
-    @enter(memory_snapshot=True)
+    @enter(snap=True)
     def my_memory_snapshot(self):
         pass
 
