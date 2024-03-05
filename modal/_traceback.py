@@ -224,8 +224,8 @@ def highlight_modal_deprecation_warnings() -> None:
             date = content[:10]
             message = content[11:].strip()
             try:
-                with open(filename) as f:
-                    source = f.readlines()[lineno - 1].strip()
+                with open(filename, "rt", encoding="utf-8", errors="replace") as code_file:
+                    source = code_file.readlines()[lineno - 1].strip()
                 message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
             except OSError:
                 # e.g., when filename is "<unknown>"; raises FileNotFoundError on posix but OSError on windows
