@@ -177,7 +177,7 @@ def type_stubs(ctx):
         "modal.partial_function",
         "modal.proxy",
         "modal.queue",
-        "modal.s3mount",
+        "modal.cloud_bucket_mount",
         "modal.sandbox",
         "modal.secret",
         "modal.stub",

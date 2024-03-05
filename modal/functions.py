@@ -75,7 +75,7 @@ from .network_file_system import _NetworkFileSystem, network_file_system_mount_p
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
-from .s3mount import _S3Mount, s3_mounts_to_proto
+from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -546,7 +546,7 @@ class FunctionEnv:
     mounts: Sequence[_Mount]
     secrets: Sequence[_Secret]
     network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
-    volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _S3Mount]]
+    volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
     gpu: GPU_T
     cloud: Optional[str]
     cpu: Optional[float]
@@ -589,7 +589,7 @@ class _Function(_Object, type_prefix="fu"):
         mounts: Collection[_Mount] = (),
         network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
-        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _S3Mount]] = {},
+        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[_Proxy] = None,
@@ -720,7 +720,7 @@ class _Function(_Object, type_prefix="fu"):
 
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
-        s3_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
+        cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         # Validate NFS
@@ -757,9 +757,9 @@ class _Function(_Object, type_prefix="fu"):
                 deps.append(nfs)
             for _, vol in validated_volumes:
                 deps.append(vol)
-            for _, s3_mount in s3_mounts:
-                if s3_mount.secret:
-                    deps.append(s3_mount.secret)
+            for _, cloud_bucket_mount in cloud_bucket_mounts:
+                if cloud_bucket_mount.secret:
+                    deps.append(cloud_bucket_mount.secret)
 
             # Add implicit dependencies from the function's code
             objs: list[Object] = get_referred_objects(info.raw_f)
@@ -888,7 +888,7 @@ class _Function(_Object, type_prefix="fu"):
                 ],
                 block_network=block_network,
                 max_inputs=max_inputs or 0,
-                s3_mounts=s3_mounts_to_proto(s3_mounts),
+                cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 _experimental_boost=_experimental_boost,
                 _experimental_scheduler=_experimental_scheduler,
                 _experimental_scheduler_placement=_experimental_scheduler_placement.proto
