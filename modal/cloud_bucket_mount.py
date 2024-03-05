@@ -11,7 +11,7 @@ from .secret import _Secret
 
 class BucketType(Enum):
     S3 = "s3"
-    
+
     @property
     def proto(self):
         if self.value == "s3":
@@ -64,8 +64,10 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
 
     for path, mount in mounts:
 
-        if isinstance(bucket_type, str):
-            bucket_type = BucketType(bucket_type)
+        if isinstance(mount.bucket_type, str):
+            bucket_type = BucketType(mount.bucket_type)
+        else:
+            bucket_type = mount.bucket_type
 
         cloud_bucket_mount = api_pb2.CloudBucketMount(
             bucket_name=mount.bucket_name,
