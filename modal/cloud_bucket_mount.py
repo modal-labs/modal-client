@@ -19,7 +19,7 @@ class BucketType(Enum):
 
 @dataclass
 class _CloudBucketMount:
-    """Mounts a cloud bucket to your container with support to AWS' S3.
+    """Mounts a cloud bucket to your container. Currently supports AWS S3 buckets.
 
     S3 buckets are mounted using [AWS' S3 Mountpoint](https://github.com/awslabs/mountpoint-s3).
     S3 mounts are optimized for reading large files sequentially. It does not support every file operation; consult
