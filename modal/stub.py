@@ -723,9 +723,37 @@ class _Stub:
         await resolver.load(obj)
         return obj
 
-    def include(self, other_stub: "_Stub"):
+    def include(self, /, other_stub: "_Stub"):
+        """Include another stub's objects in this one.
+
+        Useful splitting up Modal apps across different self-contained files
+
+        ```python
+        stub_a = modal.Stub("a")
+        @stub.function()
+        def foo():
+            ...
+
+        stub_b = modal.Stub("b")
+        @stub.function()
+        def bar():
+            ...
+
+        stub_a.include(stub_b)
+
+        @stub_a.local_entrypoint():
+        def main():
+            # use function declared on the included stub
+            bar.remote()
+        ```
+        """
         for tag, object in other_stub._indexed_objects.items():
-            # any classes or functions need to be
+            existing_object = self._indexed_objects.get(tag)
+            if existing_object and existing_object != object:
+                logger.warning(
+                    f"Named app object {tag} with existing value {existing_object} is being overwritten by a different object {object}"
+                )
+
             self._add_object(tag, object)
 
 
