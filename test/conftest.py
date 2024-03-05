@@ -35,7 +35,7 @@ from modal.app import _ContainerApp
 from modal.client import Client
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
-from modal_utils.async_utils import synchronize_api
+from modal_utils.async_utils import asyncify, synchronize_api
 from modal_utils.grpc_testing import patch_mock_servicer
 from modal_utils.grpc_utils import find_free_port
 from modal_utils.http_utils import run_temporary_http_server
@@ -387,7 +387,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ContainerHeartbeatRequest = await stream.recv_message()
         self.requests.append(request)
         # Return earlier than the usual 15-second heartbeat to avoid suspending tests.
-        await asyncio.to_thread(self.container_heartbeat_abort.wait, 5)
+        await asyncify(self.container_heartbeat_abort.wait)(5)
         if self.container_heartbeat_response:
             await stream.send_message(self.container_heartbeat_response)
             self.container_heartbeat_response = None
