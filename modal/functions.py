@@ -606,7 +606,8 @@ class _Function(_Object, type_prefix="fu"):
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
-        checkpointing_enabled: bool = False,
+        enable_memory_snapshot: bool = False,
+        checkpointing_enabled: Optional[bool] = None,
         allow_background_volume_commits: bool = False,
         block_network: bool = False,
         max_inputs: Optional[int] = None,
@@ -628,6 +629,13 @@ class _Function(_Object, type_prefix="fu"):
                 "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
             )
             secrets = [secret, *secrets]
+
+        if checkpointing_enabled is not None:
+            deprecation_warning(
+                (2024, 4, 4),
+                "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
+            )
+            enable_memory_snapshot = checkpointing_enabled
 
         explicit_mounts = mounts
 
@@ -881,7 +889,7 @@ class _Function(_Object, type_prefix="fu"):
                 worker_id=config.get("worker_id"),
                 is_auto_snapshot=is_auto_snapshot,
                 is_method=bool(info.cls),
-                checkpointing_enabled=checkpointing_enabled,
+                checkpointing_enabled=enable_memory_snapshot,
                 is_checkpointing_function=False,
                 object_dependencies=[
                     api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
