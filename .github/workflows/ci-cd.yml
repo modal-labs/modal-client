@@ -65,7 +65,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r container_requirements.txt
+          pip install -r container-requirements.txt -r container-requirements.ci.txt
           pip install synchronicity
 
       - name: Compile protos

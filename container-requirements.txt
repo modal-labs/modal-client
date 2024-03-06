@@ -1,10 +1,8 @@
-# Requirements file for testing the minimal client dependency set in the container environment
-# Not currently used in production; exists for CI usage until we remove modal/requirements.txt
+# Requiments file for external client dependencies used by the container runtime.
+# These are a subset of the client package dependencies (some are only used locally)
+# and are pinned to more specific versions than what the full client package declares.
 aiohttp==3.9.1
-aiostream==0.4.4
 asgiref==3.5.2
 certifi>=2022.12.07
-fastapi==0.88.0
 grpclib==0.4.7
 protobuf>=3.19.0
-rich==12.3.0

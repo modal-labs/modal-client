@@ -1,0 +1,5 @@
+# Requirements file for testing the minimal client dependency set in the container environment
+# Not currently used in production; exists for CI usage until we remove modal/requirements.txt
+aiostream==0.4.4
+fastapi==0.88.0
+rich==12.3.0
