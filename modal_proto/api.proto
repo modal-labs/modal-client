@@ -157,6 +157,7 @@ enum ObjectCreationType {
   OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS = 2;
   OBJECT_CREATION_TYPE_CREATE_OVERWRITE_IF_EXISTS = 3;
   OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP = 4;  // deprecate at some point
+  OBJECT_CREATION_TYPE_EPHEMERAL = 5;
 }
 
 enum ProgressType {
@@ -672,6 +673,10 @@ message DictGetRequest {
 message DictGetResponse {
   bool found = 1;
   optional bytes value = 2;
+}
+
+message DictHeartbeatRequest {
+  string dict_id = 1;
 }
 
 message DictLenRequest {
@@ -1373,7 +1378,6 @@ message PTYInfo {
   PTYType pty_type = 7;
 }
 
-
 message QueueCreateRequest {
   string app_id = 1;
   string existing_queue_id = 2;
@@ -1402,6 +1406,10 @@ message QueueGetRequest {
 
 message QueueGetResponse {
   repeated bytes values = 2;
+}
+
+message QueueHeartbeatRequest {
+  string queue_id = 1;
 }
 
 message QueuePutRequest {
@@ -1984,6 +1992,7 @@ service ModalClient {
   rpc DictClear(DictClearRequest) returns (google.protobuf.Empty);
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
   rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
+  rpc DictHeartbeat(DictHeartbeatRequest) returns (google.protobuf.Empty);
   rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
   rpc DictGet(DictGetRequest) returns (DictGetResponse);
   rpc DictPop(DictPopRequest) returns (DictPopResponse);
@@ -2042,6 +2051,7 @@ service ModalClient {
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
   rpc QueueGetOrCreate(QueueGetOrCreateRequest) returns (QueueGetOrCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
+  rpc QueueHeartbeat(QueueHeartbeatRequest) returns (google.protobuf.Empty);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
   rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
 
