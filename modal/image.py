@@ -353,11 +353,13 @@ class _Image(_Object, type_prefix="im"):
                 'RUN echo "hello world" > hello.txt',
             ],
             secrets=[secret1, secret2],
+            gpu="T4",
         )
         ```
         """
-            gpu_config = parse_gpu_config(gpu)
-            return _Image._from_args(base_images={"base": self}, gpu_config=gpu_config, **kwargs)
+        
+        gpu_config = parse_gpu_config(gpu)
+        return _Image._from_args(base_images={"base": self}, gpu_config=gpu_config, **kwargs)
 
     @typechecked
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
