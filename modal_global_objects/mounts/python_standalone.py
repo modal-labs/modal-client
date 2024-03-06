@@ -3,10 +3,10 @@ import shutil
 import tempfile
 import urllib.request
 
-from modal._packaging import python_standalone_mount_name
+from modal._packaging import PYTHON_STANDALONE_VERSIONS, python_standalone_mount_name
 from modal.config import config
 from modal.exception import NotFoundError
-from modal.mount import PYTHON_STANDALONE_VERSIONS, Mount
+from modal.mount import Mount
 from modal_proto import api_pb2
 
 
