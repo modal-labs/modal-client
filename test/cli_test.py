@@ -516,7 +516,7 @@ def test_environment_flag(test_dir, servicer, command):
                 mount_id="mo-123",
                 handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
             ),
-            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount")
+            request_filter=lambda req: req.deployment_name.startswith("modal-client-internal-mount")
             and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
@@ -550,7 +550,7 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
                 mount_id="mo-123",
                 handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
             ),
-            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount")
+            request_filter=lambda req: req.deployment_name.startswith("modal-client-internal-mount")
             and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
