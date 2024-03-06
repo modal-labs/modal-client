@@ -28,35 +28,6 @@ from .object import _get_environment_name, _Object
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
-# TODO move to _packaging
-# Supported releases and versions for python-build-standalone.
-#
-# These can be updated safely, but changes will trigger a rebuild for all images
-# that rely on `add_python()` in their constructor.
-PYTHON_STANDALONE_VERSIONS: typing.Dict[str, typing.Tuple[str, str]] = {
-    "3.8": ("20230826", "3.8.17"),
-    "3.9": ("20230826", "3.9.18"),
-    "3.10": ("20230826", "3.10.13"),
-    "3.11": ("20230826", "3.11.5"),
-    "3.12": ("20240107", "3.12.1"),
-}
-
-
-def python_standalone_mount_name(version: str) -> str:
-    """Get the deployed name of the python-build-standalone mount."""
-    if "-" in version:  # default to glibc
-        version, libc = version.split("-")
-    else:
-        libc = "gnu"
-    if version not in PYTHON_STANDALONE_VERSIONS:
-        raise modal.exception.InvalidError(
-            f"Unsupported standalone python version: {version}, supported values are {list(PYTHON_STANDALONE_VERSIONS.keys())}"
-        )
-    if libc != "gnu":
-        raise modal.exception.InvalidError(f"Unsupported libc identifier: {libc}")
-    release, full_version = PYTHON_STANDALONE_VERSIONS[version]
-    return f"python-build-standalone.{release}.{full_version}-{libc}"
-
 
 class _MountEntry(metaclass=abc.ABCMeta):
     @abc.abstractmethod
