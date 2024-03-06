@@ -19,13 +19,14 @@ from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._function_utils import FunctionInfo
+from ._packaging import python_standalone_mount_name
 from ._resolver import Resolver
 from ._serialization import serialize
 from .app import is_local
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
-from .mount import _Mount, python_standalone_mount_name
+from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret

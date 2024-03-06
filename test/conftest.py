@@ -81,7 +81,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.fc_data_out = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.queue = []
         self.deployed_apps = {
-            client_mount_name(): "ap-x",
+            client_mount_name("internal"): "ap-x",
         }
         self.app_objects = {}
         self.app_single_objects = {}
@@ -131,7 +131,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.deployed_dicts = {}
         self.deployed_mounts = {
-            (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): "mo-123",
+            (client_mount_name("internal"), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): "mo-123",
         }
         self.deployed_nfss = {}
         self.deployed_queues = {}
