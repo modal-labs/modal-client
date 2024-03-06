@@ -9,7 +9,7 @@ from typing import IO, AsyncGenerator, AsyncIterator, BinaryIO, Callable, Genera
 import aiostream
 from grpclib import GRPCError, Status
 
-from modal.exception import VolumeUploadTimeoutError
+from modal.exception import VolumeUploadTimeoutError, deprecation_warning
 from modal_proto import api_pb2
 from modal_utils.async_utils import asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
@@ -108,7 +108,23 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Volume":
-        """Create a reference to a persisted volume"""
+        """Create a reference to a persisted volume. Optionally create it lazily.
+
+        **Example Usage**
+
+        ```python
+        import modal
+
+        volume = modal.Volume.from_name("my-volume", create_if_missing=True)
+
+        stub = modal.Stub()
+
+        # Volume refers to the same object, even across instances of `stub`.
+        @stub.function(volumes={"/vol": volume})
+        def f():
+            pass
+        ```
+        """
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.VolumeGetOrCreateRequest(
@@ -129,26 +145,8 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ) -> "_Volume":
-        """Deploy a Modal app containing this object. This object can then be imported from other apps using
-        the returned reference, or by calling `modal.Volume.from_name(label)` (or the equivalent method
-        on respective class).
-
-        **Example Usage**
-
-        ```python
-        import modal
-
-        volume = modal.Volume.persisted("my-volume")
-
-        stub = modal.Stub()
-
-        # Volume refers to the same object, even across instances of `stub`.
-        @stub.function(volumes={"/vol": volume})
-        def f():
-            pass
-        ```
-
-        """
+        """Deprecated! Use `Volume.from_name(name, create_if_missing=True)`."""
+        deprecation_warning((2024, 3, 1), _Volume.persisted.__doc__)
         return _Volume.from_name(label, namespace, environment_name, create_if_missing=True)
 
     @staticmethod

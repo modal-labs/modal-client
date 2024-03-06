@@ -447,13 +447,12 @@ class _Stub:
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[
+        mounts: Sequence[_Mount] = (),  # Modal Mounts added to the container
+        network_file_systems: Dict[
             Union[str, PurePosixPath], _NetworkFileSystem
-        ] = {},  # Deprecated, use `network_file_systems` instead
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
+        ] = {},  # Mountpoints for Modal NetworkFileSystems
+        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Mountpoints for Modal Volumes
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -464,7 +463,6 @@ class _Stub:
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        interactive: bool = False,  # Deprecated
         keep_warm: Optional[
             int
         ] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
@@ -473,13 +471,20 @@ class _Stub:
             bool
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+        enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
+        checkpointing_enabled: Optional[bool] = None,   # Deprecated
         block_network: bool = False,  # Whether to block network access
-        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
-        _allow_background_volume_commits: bool = False,
         max_inputs: Optional[
             int
-        ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
+        ] = None,  # Maximum number of inputs a container should handle before shutting down. With `max_inputs = 1`, containers will be single-use.
+        # The next group of parameters are deprecated; do not use in any new code
+        interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
+        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
+        shared_volumes: Dict[
+            Union[str, PurePosixPath], _NetworkFileSystem
+        ] = {},  # Deprecated, use `network_file_systems` instead
+        # Parameters below here are experimental. Use with caution!
+        _allow_background_volume_commits: bool = False,  # Experimental flag
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
         _experimental_scheduler_placement: Optional[
@@ -564,6 +569,7 @@ class _Stub:
                 keep_warm=keep_warm,
                 cloud=cloud,
                 webhook_config=webhook_config,
+                enable_memory_snapshot=enable_memory_snapshot,
                 checkpointing_enabled=checkpointing_enabled,
                 allow_background_volume_commits=_allow_background_volume_commits,
                 block_network=block_network,
@@ -587,12 +593,11 @@ class _Stub:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[
+        network_file_systems: Dict[
             Union[str, PurePosixPath], _NetworkFileSystem
-        ] = {},  # Deprecated, use `network_file_systems` instead
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
+        ] = {},  # Mountpoints for Modal NetworkFileSystems
+        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Mountpoints for Modal Volumes
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Experimental. Do not use!
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
@@ -601,16 +606,22 @@ class _Stub:
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        interactive: bool = False,  # Whether to run the function in interactive mode.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+        enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
+        checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
-        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         _allow_background_volume_commits: bool = False,
         max_inputs: Optional[
             int
         ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
+        # The next group of parameters are deprecated; do not use in any new code
+        interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
+        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
+        shared_volumes: Dict[
+            Union[str, PurePosixPath], _NetworkFileSystem
+        ] = {},  # Deprecated, use `network_file_systems` instead
+        # Parameters below here are experimental. Use with caution!
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
         _experimental_scheduler_placement: Optional[
@@ -642,6 +653,7 @@ class _Stub:
             interactive=interactive,
             keep_warm=keep_warm,
             cloud=cloud,
+            enable_memory_snapshot=enable_memory_snapshot,
             checkpointing_enabled=checkpointing_enabled,
             block_network=block_network,
             _allow_background_volume_commits=_allow_background_volume_commits,

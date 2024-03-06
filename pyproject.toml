@@ -42,7 +42,7 @@ lint.select = ['E', 'F', 'W', 'I']
 combine-as-imports = true
 known-first-party = [
     "modal",
-    "modal_base_images",
+    "modal_global_objects",
     "modal_proto",
     "modal_utils",
     "modal_version",
