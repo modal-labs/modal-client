@@ -53,7 +53,7 @@ from ._function_utils import FunctionInfo, get_referred_objects, is_async
 from ._location import parse_cloud_provider
 from ._mount_utils import validate_mount_points, validate_volumes
 from ._output import OutputManager
-from ._packaging import get_client_mounts
+from ._packaging import get_client_package_mounts
 from ._resolver import Resolver
 from ._serialization import deserialize, deserialize_data_format, serialize
 from ._traceback import append_modal_tb
@@ -642,8 +642,10 @@ class _Function(_Object, type_prefix="fu"):
 
         if is_local():
             entrypoint_mounts = info.get_entrypoint_mount()
+            # TODO(michael) Not mounting external client dependencies immediately
+            client_mount, *_ = get_client_package_mounts()
             all_mounts = [
-                *get_client_mounts(),
+                client_mount,
                 *explicit_mounts,
                 *entrypoint_mounts,
             ]

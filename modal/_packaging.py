@@ -24,7 +24,7 @@ def create_internal_client_mount() -> _Mount:
     return _Mount.from_local_python_packages(*packages, remote_dir="/pkg/internal", condition=module_mount_condition)
 
 
-def get_client_mounts() -> Tuple[_Mount, _Mount]:
+def get_client_package_mounts() -> Tuple[_Mount, _Mount]:
     if config["sync_entrypoint"]:
         internal_mount = create_internal_client_mount()
     else:

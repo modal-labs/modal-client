@@ -28,6 +28,7 @@ from .object import _get_environment_name, _Object
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
+# TODO move to _packaging
 # Supported releases and versions for python-build-standalone.
 #
 # These can be updated safely, but changes will trigger a rebuild for all images
