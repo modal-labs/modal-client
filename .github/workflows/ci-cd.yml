@@ -54,7 +54,7 @@ jobs:
       - name: Run docstring tests
         run: pytest -s --markdown-docs -m markdown-docs modal
 
-  container-dependencies:
+  check-container-dependencies:
     name: Check minimal container dependencies for ${{ matrix.python-version }}
     runs-on: ubuntu-20.04
     strategy:
@@ -113,6 +113,30 @@ jobs:
       - name: Publish base images
         run: |
           python -m modal_global_objects.images.${{ matrix.image-name }} ${{ matrix.python-version }}
+
+  build-client-dependencies:
+    name: Build external client dependencies
+    if: github.ref == 'refs/heads/main'
+    needs: [client-test]
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          mkdir -p external/${{ matrix.python-version }}
+          pip install -r container-requirements.txt --target external/${{ matrix.python-version }}
+
+      - name: Upload external dependencies
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-client-dependencies-${{ matrix.python-version }}
+          path: external
+          retention-days: 1
 
   publish-client:
     name: Publish client package
@@ -176,6 +200,13 @@ jobs:
         working-directory: alias-package
         run: python setup.py bdist_wheel
 
+      - name: Download external dependencies
+        uses: actions/download-artifact@v4
+        with:
+          path: external
+          pattern: external-client-dependencies-*
+          merge-multiple: true
+
       - name: Set the Modal environment
         run: modal config set-environment main
 
@@ -184,7 +215,7 @@ jobs:
           MODAL_LOGLEVEL: DEBUG
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: python -m modal_global_objects.mounts.modal_client_package
+        run: python -m modal_global_objects.mounts.modal_client_package ./external
 
       - name: Upload to PyPI
         env:
