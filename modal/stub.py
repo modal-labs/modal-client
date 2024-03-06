@@ -471,7 +471,8 @@ class _Stub:
             bool
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+        enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
+        checkpointing_enabled: Optional[bool] = None,   # Deprecated
         block_network: bool = False,  # Whether to block network access
         max_inputs: Optional[
             int
@@ -568,6 +569,7 @@ class _Stub:
                 keep_warm=keep_warm,
                 cloud=cloud,
                 webhook_config=webhook_config,
+                enable_memory_snapshot=enable_memory_snapshot,
                 checkpointing_enabled=checkpointing_enabled,
                 allow_background_volume_commits=_allow_background_volume_commits,
                 block_network=block_network,
@@ -606,7 +608,8 @@ class _Stub:
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        checkpointing_enabled: bool = False,  # Enable memory checkpointing for faster cold starts.
+        enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
+        checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
         _allow_background_volume_commits: bool = False,
         max_inputs: Optional[
@@ -650,6 +653,7 @@ class _Stub:
             interactive=interactive,
             keep_warm=keep_warm,
             cloud=cloud,
+            enable_memory_snapshot=enable_memory_snapshot,
             checkpointing_enabled=checkpointing_enabled,
             block_network=block_network,
             _allow_background_volume_commits=_allow_background_volume_commits,

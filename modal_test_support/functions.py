@@ -332,16 +332,16 @@ class BuildCls:
         return self._k * x
 
 
-@stub.cls(checkpointing_enabled=True)
+@stub.cls(enable_memory_snapshot=True)
 class CheckpointingCls:
     def __init__(self):
         self._vals = []
 
-    @enter(checkpoint=True)
+    @enter(snap=True)
     def enter1(self):
         self._vals.append("A")
 
-    @enter(checkpoint=True)
+    @enter(snap=True)
     def enter2(self):
         self._vals.append("B")
 
