@@ -337,7 +337,7 @@ class _Image(_Object, type_prefix="im"):
         obj.force_build = force_build
         return obj
 
-    def extend(self, **kwargs) -> "_Image":
+    def extend(self, gpu: GPU_T = None, **kwargs) -> "_Image":
         """Extend an image (named "base") with additional options or commands.
 
         This is a low-level command. Generally, you should prefer using functions
@@ -356,8 +356,8 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-
-        return _Image._from_args(base_images={"base": self}, **kwargs)
+            gpu_config = parse_gpu_config(gpu)
+            return _Image._from_args(base_images={"base": self}, gpu_config=gpu_config, **kwargs)
 
     @typechecked
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
