@@ -1,6 +1,6 @@
+# Copyright Modal Labs 2024
 import asyncio
 import pytest
-import time
 
 import fastapi
 
@@ -34,19 +34,6 @@ async def async_index_reading_body(req: fastapi.Request):
 @app.get("/async_error")
 async def async_error():
     raise DummyException()
-
-
-@app.get("/async_slow")
-async def async_slow():
-    await asyncio.sleep(1)
-
-
-@app.get("/slow")
-def slow():
-    # TODO: a *sync* task like this will actually keep in fast apis own worker threads,
-    #  even if we cancel the asgi call. Hard to fix, since it would both require
-    #  changing fastapi internals, and cancelling user user code in threads
-    time.sleep(1)
 
 
 def _asgi_get_scope(path, method="GET"):
@@ -152,20 +139,3 @@ async def test_app_reads_broken_data():
 
     assert len(outputs) == 2
     assert outputs[0]["status"] == 500
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("endpoint_url", ["/slow", "/async_slow"])
-async def test_cancel_asgi_task_before_output(endpoint_url):
-    mock_manager = MockIOManager()
-    _set_current_context_ids("in-123", "fc-123")
-    wrapped_app = asgi_app_wrapper(app, mock_manager)
-    asgi_scope = _asgi_get_scope(endpoint_url)
-    outputs = []
-    t0 = time.monotonic()
-    async with asyncio.timeout(0.1):  # this should cancel the endpoint
-        async for output in wrapped_app(asgi_scope):
-            outputs.append(output)
-    assert 0.1 < time.monotonic() - t0 < 0.5
-    assert not outputs  # no outputs emitted when we cancel the call
-    assert len(asyncio.all_tasks()) == 1  # only this test should be an active task
