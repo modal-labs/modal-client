@@ -32,6 +32,7 @@ from modal.exception import InvalidError
 from modal.partial_function import enter
 from modal.stub import _Stub
 from modal_proto import api_pb2
+from modal_utils.async_utils import synchronize_api
 
 from .helpers import deploy_stub_externally
 from .supports.skip import skip_windows_signals, skip_windows_unix_socket
@@ -391,7 +392,8 @@ def _get_web_inputs(path="/"):
     return _get_inputs(((scope,), {}))
 
 
-def _put_web_body(servicer, body: bytes):
+@synchronize_api  # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
+async def _put_web_body(servicer, body: bytes):
     asgi = {"type": "http.request", "body": body, "more_body": False}
     data = serialize_data_format(asgi, api_pb2.DATA_FORMAT_ASGI)
 
@@ -512,7 +514,6 @@ def test_webhook_streaming_sync(unix_servicer, event_loop):
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
-
     data = _unwrap_asgi(ret)
     bodies = [d["body"].decode() for d in data if d.get("body")]
     assert bodies == [f"{i}..." for i in range(10)]
