@@ -848,14 +848,6 @@ class _Function(_Object, type_prefix="fu"):
                 for path, volume in validated_volumes
             ]
             loaded_mount_ids = {m.object_id for m in all_mounts}
-
-            # Get object dependencies
-            object_dependencies = []
-            for dep in _deps(only_explicit_mounts=True):
-                if not dep.object_id:
-                    raise Exception(f"Dependency {dep} isn't hydrated")
-                object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
-
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name or "",
@@ -891,7 +883,9 @@ class _Function(_Object, type_prefix="fu"):
                 is_method=bool(info.cls),
                 checkpointing_enabled=enable_memory_snapshot,
                 is_checkpointing_function=False,
-                object_dependencies=object_dependencies,
+                object_dependencies=[
+                    api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
+                ],
                 block_network=block_network,
                 max_inputs=max_inputs or 0,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
