@@ -839,10 +839,7 @@ class _Function(_Object, type_prefix="fu"):
                 )
                 for path, volume in validated_volumes
             ]
-            loaded_mount_ids = [
-                m.object_id for m in _deps(only_explicit_mounts=False) if m.object_id.startswith("mo-")
-            ]  # uuuugly
-
+            loaded_mount_ids = {m.object_id for m in all_mounts}
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name or "",
