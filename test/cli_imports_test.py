@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2023
 import pytest
-from pathlib import Path
 
 from modal.cli.import_refs import (
     DEFAULT_STUB_NAME,
@@ -113,7 +112,7 @@ def test_import_object(dir_structure, ref, expected_object_type, mock_dir):
         assert isinstance(_translated_obj, expected_object_type)
 
 
-def test_import_package_and_module_names(monkeypatch):
+def test_import_package_and_module_names(monkeypatch, modal_test_support_dir):
     # We try to reproduce the package/module naming standard that the `python` command line tool uses,
     # i.e. when loading using a module path (-m flag w/ python) you get a fully qualified package/module name
     # but when loading using a filename, some/mod.py it will not have a __package__
@@ -121,8 +120,6 @@ def test_import_package_and_module_names(monkeypatch):
     # The biggest difference is that __name__ of the imported "entrypoint" script
     # is __main__ when using `python` but in the Modal runtime it's the name of the
     # file minus the ".py", since Modal has its own __main__
-
-    modal_test_support_dir = Path(__file__).parent.parent / "modal_test_support"
     monkeypatch.chdir(modal_test_support_dir)
     mod1 = import_file_or_module("assert_package")
     assert mod1.__package__ == ""

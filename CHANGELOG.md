@@ -10,6 +10,35 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.61.24 (2024-03-06)
+
+- Fixes `modal volume put` to support uploading larger files, beyond 40 GiB.
+
+
+
+### 0.61.22 (2024-03-05)
+
+- Modal containers now display a warning message if lingering threads are present at container exit, which prevents runner shutdown.
+
+
+
+### 0.61.17 (2024-03-05)
+
+- Bug fix: Stopping an app while a container's `@exit()` lifecycle methods are being run no longer interrupts the lifecycle methods.
+- Bug fix: Worker preemptions no longer interrupt a container's `@exit()` lifecycle method (until 30 seconds later).
+- Bug fix: Async `@exit()` lifecycle methods are no longer skipped for sync functions.
+- Bug fix: Stopping a sync function with `allow_concurrent_inputs>1` now actually stops the container. Previously, it would not propagate the signal to worker threads, so they would continue running.
+- Bug fix: Input-level cancellation no longer skips the `@exit()` lifecycle method.
+- Improve stability of container entrypoint against race conditions in task cancellation.
+
+
+
+### 0.61.9 (2024-03-05)
+
+* Fix issue with pdm where all installed packages would be automounted when using package cache (MOD-2485)
+
+
+
 ### 0.61.6 (2024-03-04)
 
 - For modal functions/classes with `concurrency_limit < keep_warm`, we'll raise an exception now. Previously we (silently) respected the `concurrency_limit` parameter.

@@ -9,7 +9,7 @@ from typing import IO, AsyncGenerator, AsyncIterator, BinaryIO, Callable, Genera
 import aiostream
 from grpclib import GRPCError, Status
 
-from modal.exception import VolumeUploadTimeoutError
+from modal.exception import VolumeUploadTimeoutError, deprecation_warning
 from modal_proto import api_pb2
 from modal_utils.async_utils import asyncnullcontext, synchronize_api
 from modal_utils.grpc_utils import retry_transient_errors, unary_stream
@@ -24,8 +24,11 @@ from ._blob_utils import (
 from ._resolver import Resolver
 from .client import _Client
 from .config import logger
-from .mount import MOUNT_PUT_FILE_CLIENT_TIMEOUT
 from .object import _get_environment_name, _Object, live_method, live_method_gen
+
+# 15 min max for uploading to volumes files
+# As a guide, files >40GiB will take >10 minutes to upload.
+VOLUME_PUT_FILE_CLIENT_TIMEOUT = 15 * 60
 
 
 class _Volume(_Object, type_prefix="vo"):
@@ -105,8 +108,22 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Volume":
-        """Create a reference to a persisted volume
+        """Create a reference to a persisted volume. Optionally create it lazily.
 
+        **Example Usage**
+
+        ```python
+        import modal
+
+        volume = modal.Volume.from_name("my-volume", create_if_missing=True)
+
+        stub = modal.Stub()
+
+        # Volume refers to the same object, even across instances of `stub`.
+        @stub.function(volumes={"/vol": volume})
+        def f():
+            pass
+        ```
         """
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
@@ -128,26 +145,8 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ) -> "_Volume":
-        """Deploy a Modal app containing this object. This object can then be imported from other apps using
-        the returned reference, or by calling `modal.Volume.from_name(label)` (or the equivalent method
-        on respective class).
-
-        **Example Usage**
-
-        ```python
-        import modal
-
-        volume = modal.Volume.persisted("my-volume")
-
-        stub = modal.Stub()
-
-        # Volume refers to the same object, even across instances of `stub`.
-        @stub.function(volumes={"/vol": volume})
-        def f():
-            pass
-        ```
-
-        """
+        """Deprecated! Use `Volume.from_name(name, create_if_missing=True)`."""
+        deprecation_warning((2024, 3, 1), _Volume.persisted.__doc__)
         return _Volume.from_name(label, namespace, environment_name, create_if_missing=True)
 
     @staticmethod
@@ -528,7 +527,7 @@ class _VolumeUploadContextManager:
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()
-            while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
+            while time.monotonic() - start_time < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
                 response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
                 if response.exists:
                     break

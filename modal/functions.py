@@ -58,6 +58,7 @@ from ._serialization import deserialize, deserialize_data_format, serialize
 from ._traceback import append_modal_tb
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
+from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config, logger
 from .exception import (
     ExecutionError,
@@ -75,7 +76,6 @@ from .network_file_system import _NetworkFileSystem, network_file_system_mount_p
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
 from .retries import Retries
-from .s3mount import _S3Mount, s3_mounts_to_proto
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -546,7 +546,7 @@ class FunctionEnv:
     mounts: Sequence[_Mount]
     secrets: Sequence[_Secret]
     network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
-    volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _S3Mount]]
+    volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
     gpu: GPU_T
     cloud: Optional[str]
     cpu: Optional[float]
@@ -589,7 +589,7 @@ class _Function(_Object, type_prefix="fu"):
         mounts: Collection[_Mount] = (),
         network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
-        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _S3Mount]] = {},
+        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         memory: Optional[int] = None,
         proxy: Optional[_Proxy] = None,
@@ -606,7 +606,8 @@ class _Function(_Object, type_prefix="fu"):
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
-        checkpointing_enabled: bool = False,
+        enable_memory_snapshot: bool = False,
+        checkpointing_enabled: Optional[bool] = None,
         allow_background_volume_commits: bool = False,
         block_network: bool = False,
         max_inputs: Optional[int] = None,
@@ -628,6 +629,13 @@ class _Function(_Object, type_prefix="fu"):
                 "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
             )
             secrets = [secret, *secrets]
+
+        if checkpointing_enabled is not None:
+            deprecation_warning(
+                (2024, 4, 4),
+                "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
+            )
+            enable_memory_snapshot = checkpointing_enabled
 
         explicit_mounts = mounts
 
@@ -720,7 +728,7 @@ class _Function(_Object, type_prefix="fu"):
 
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
-        s3_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
+        cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         # Validate NFS
@@ -753,9 +761,9 @@ class _Function(_Object, type_prefix="fu"):
                 deps.append(nfs)
             for _, vol in validated_volumes:
                 deps.append(vol)
-            for _, s3_mount in s3_mounts:
-                if s3_mount.secret:
-                    deps.append(s3_mount.secret)
+            for _, cloud_bucket_mount in cloud_bucket_mounts:
+                if cloud_bucket_mount.secret:
+                    deps.append(cloud_bucket_mount.secret)
 
             # Add implicit dependencies from the function's code
             objs: list[Object] = get_referred_objects(info.raw_f)
@@ -873,14 +881,14 @@ class _Function(_Object, type_prefix="fu"):
                 worker_id=config.get("worker_id"),
                 is_auto_snapshot=is_auto_snapshot,
                 is_method=bool(info.cls),
-                checkpointing_enabled=checkpointing_enabled,
+                checkpointing_enabled=enable_memory_snapshot,
                 is_checkpointing_function=False,
                 object_dependencies=[
                     api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
                 ],
                 block_network=block_network,
                 max_inputs=max_inputs or 0,
-                s3_mounts=s3_mounts_to_proto(s3_mounts),
+                cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 _experimental_boost=_experimental_boost,
                 _experimental_scheduler=_experimental_scheduler,
                 _experimental_scheduler_placement=_experimental_scheduler_placement.proto
@@ -998,6 +1006,29 @@ class _Function(_Object, type_prefix="fu"):
         fun._parent = self
 
         return fun
+
+    @live_method
+    async def keep_warm(self, warm_pool_size: int) -> None:
+        """Set the warm pool size for the function (including parametrized functions).
+
+        Please exercise care when using this advanced feature! Setting and forgetting a warm pool on functions can lead to increased costs.
+
+        ```python
+        # Usage on a regular function.
+        f = modal.Function.lookup("my-app", "function")
+        f.keep_warm(2)
+
+        # Usage on a parametrized function.
+        Model = modal.Cls.lookup("my-app", "Model")
+        Model("fine-tuned-model").inference.keep_warm(2)
+        ```
+        """
+
+        assert self._client and self._client.stub
+        request = api_pb2.FunctionUpdateSchedulingParamsRequest(
+            function_id=self._object_id, warm_pool_size_override=warm_pool_size
+        )
+        await retry_transient_errors(self._client.stub.FunctionUpdateSchedulingParams, request)
 
     @classmethod
     def from_name(
