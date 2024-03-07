@@ -2,7 +2,7 @@
 import asyncio
 import contextlib
 from asyncio import Future
-from typing import TYPE_CHECKING, Dict, Hashable, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 
@@ -11,8 +11,6 @@ from modal_proto import api_pb2
 if TYPE_CHECKING:
     from rich.spinner import Spinner
     from rich.tree import Tree
-
-    from modal.object import _Object
 else:
     Spinner = TypeVar("Spinner")
     Tree = TypeVar("Tree")
@@ -53,7 +51,6 @@ class Resolver:
     _local_uuid_to_future: Dict[str, Future]
     _environment_name: Optional[str]
     _app_id: Optional[str]
-    _deduplication_cache: Dict[Hashable, Future]
 
     def __init__(
         self,
@@ -73,7 +70,6 @@ class Resolver:
         self._client = client
         self._app_id = app_id
         self._environment_name = environment_name
-        self._deduplication_cache = {}
 
     @property
     def app_id(self) -> str:
@@ -93,14 +89,8 @@ class Resolver:
         if obj._preload is not None:
             await obj._preload(obj, self, existing_object_id)
 
-    async def load(self, obj: "_Object", existing_object_id: Optional[str] = None):
-        deduplication_key = await obj._deduplication_key()
-        cached_future = None
-        if deduplication_key is not None:
-            cached_future = self._deduplication_cache.get(deduplication_key)
-
-        if not cached_future:
-            cached_future = self._local_uuid_to_future.get(obj.local_uuid)
+    async def load(self, obj, existing_object_id: Optional[str] = None):
+        cached_future = self._local_uuid_to_future.get(obj.local_uuid)
 
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
@@ -132,18 +122,6 @@ class Resolver:
 
             cached_future = asyncio.create_task(loader())
             self._local_uuid_to_future[obj.local_uuid] = cached_future
-            if deduplication_key:
-                self._deduplication_cache[deduplication_key] = cached_future
-
-        def hydrate_original(fut):
-            # in case an object is omitted due to content duplication, make sure the original reference
-            # is still hydrated
-            if obj.object_id:
-                return  # already hydrated, probably the original object
-            hydrated_object = fut.result()
-            obj._hydrate(hydrated_object.object_id, self._client, hydrated_object._get_metadata())
-
-        cached_future.add_done_callback(hydrate_original)
 
         if cached_future.done():
             return cached_future.result()
