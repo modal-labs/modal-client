@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import uuid
 from functools import wraps
-from typing import Awaitable, Callable, ClassVar, Dict, Hashable, List, Optional, Type, TypeVar
+from typing import Awaitable, Callable, ClassVar, Dict, List, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 
@@ -206,9 +206,6 @@ class _Object:
         else:
             resolver = Resolver()
             await resolver.load(self)
-
-    async def _deduplication_key(self) -> Optional[Hashable]:
-        return None
 
 
 Object = synchronize_api(_Object, target_module=__name__)

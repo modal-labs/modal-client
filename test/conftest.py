@@ -1318,11 +1318,6 @@ def modal_config():
     return mock_modal_toml
 
 
-@pytest.fixture
-def supports_dir(test_dir):
-    return test_dir / Path("supports")
-
-
 @pytest.fixture()
 def modal_test_support_dir(request):
     # TODO: merge this with test/supports dir?
