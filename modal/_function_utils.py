@@ -15,7 +15,7 @@ from modal_proto import api_pb2
 from ._serialization import serialize
 from .config import config, logger
 from .exception import InvalidError, ModuleNotMountable
-from .mount import ROOT_DIR, _Mount, module_mount_condition
+from .mount import ROOT_DIR, _Mount
 from .object import Object
 
 # Expand symlinks in paths (homebrew Python paths are all symlinks).
@@ -211,16 +211,10 @@ class FunctionInfo:
         # make sure the function's own entrypoint is included:
         if self.type == FunctionInfoType.PACKAGE:
             if config.get("automount"):
-                return [
-                    _Mount.from_local_dir(
-                        self.base_dir,
-                        remote_path=self.remote_dir,
-                        recursive=True,
-                        condition=module_mount_condition,
-                    )
-                ]
+                return [_Mount.from_local_python_packages(self.module_name)]
             elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
                 # mount only relevant file and __init__.py:s
+                # TODO: This might lead to an "extra" in case another mount has both this file and others and is loaded *after* this one
                 return [
                     _Mount.from_local_dir(
                         self.base_dir,
