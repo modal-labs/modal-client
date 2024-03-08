@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2022
 import sys
 
+if sys.version_info[:2] < (3, 8):
+    raise RuntimeError("This version of Modal requires at least Python 3.8")
 if sys.version_info[:2] >= (3, 13):
-    raise RuntimeError("This version of modal does not support Python 3.13+")
+    raise RuntimeError("This version of Modal does not support Python 3.13+")
 
 from modal_version import __version__
 
