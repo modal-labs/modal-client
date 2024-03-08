@@ -214,7 +214,6 @@ class FunctionInfo:
                 return [_Mount.from_local_python_packages(self.module_name)]
             elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
                 # mount only relevant file and __init__.py:s
-                # TODO: This might lead to an "extra" in case another mount has both this file and others and is loaded *after* this one
                 return [
                     _Mount.from_local_dir(
                         self.base_dir,
