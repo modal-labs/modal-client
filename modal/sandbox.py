@@ -262,6 +262,11 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return self._stderr
 
+    async def stdin(self):
+        res = await retry_transient_errors(
+            self._client.stub.SandboxStdin, api_pb2.SandboxStdinRequest(sandbox_id=self.object_id, input=b"HAKUNA MATATA")
+        )
+
     @property
     def returncode(self) -> Optional[int]:
         """Return code of the sandbox process if it has finished running, else `None`."""
