@@ -47,8 +47,6 @@ class StatusRow:
 
 
 class Resolver:
-    # Unfortunately we can't use type annotations much in this file,
-    # since that leads to circular dependencies
     _tree: Tree
     _local_uuid_to_future: Dict[str, Future]
     _environment_name: Optional[str]
@@ -132,13 +130,13 @@ class Resolver:
 
             cached_future = asyncio.create_task(loader())
             self._local_uuid_to_future[obj.local_uuid] = cached_future
-            if deduplication_key:
+            if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
 
         def hydrate_original(fut):
             # in case an object is omitted due to content duplication, make sure the original reference
             # is still hydrated
-            if obj.object_id:
+            if obj.is_hydrated:
                 return  # already hydrated, probably the original object
             hydrated_object = fut.result()
             obj._hydrate(hydrated_object.object_id, self._client, hydrated_object._get_metadata())
@@ -150,14 +148,17 @@ class Resolver:
 
         return await cached_future
 
-    def objects(self) -> List:
+    def objects(self) -> List["_Object"]:
+        unique_objects = {}
         for fut in self._local_uuid_to_future.values():
             if not fut.done():
                 # this will raise an exception if not all loads have been awaited, but that *should* never happen
                 raise RuntimeError(
                     "All loaded objects have not been resolved yet, can't get all objects for the resolver!"
                 )
-        return [fut.result() for fut in self._local_uuid_to_future.values()]
+            obj = fut.result()
+            unique_objects.setdefault(obj.object_id, obj)
+        return list(unique_objects.values())
 
     @contextlib.contextmanager
     def display(self):
