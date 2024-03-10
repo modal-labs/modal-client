@@ -92,13 +92,16 @@ class Resolver:
             await obj._preload(obj, self, existing_object_id)
 
     async def load(self, obj: "_Object", existing_object_id: Optional[str] = None):
+        breakpoint()
+        print("LOADING", obj, existing_object_id, "DEDUP", self._deduplication_cache)
         deduplication_key = await obj._deduplication_key()
-        cached_future = None
-        if deduplication_key is not None:
-            cached_future = self._deduplication_cache.get(deduplication_key)
+        cached_future = self._local_uuid_to_future.get(obj.local_uuid)
 
-        if not cached_future:
-            cached_future = self._local_uuid_to_future.get(obj.local_uuid)
+        if not cached_future and deduplication_key is not None:
+            # deduplication cache makes sure duplicate mounts are resolved only
+            # once, even if they are different instances - as long as they have
+            # the same content
+            cached_future = self._deduplication_cache.get(deduplication_key)
 
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
