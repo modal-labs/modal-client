@@ -72,7 +72,7 @@ async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Op
         exec_output_task = tc.create_task(handle_exec_output(client, exec_id, on_connect=on_connect))
         try:
             # time out if we can't connect to the server fast enough
-            await asyncio.wait_for(on_connect.wait(), timeout=15)
+            await asyncio.wait_for(on_connect.wait(), timeout=60)
             stop_connecting_status()
 
             async with handle_exec_input(client, exec_id, use_raw_terminal=pty):
