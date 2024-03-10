@@ -1495,6 +1495,7 @@ message SandboxGetLogsRequest {
 message SandboxStdinRequest {
   string sandbox_id = 1;
   bytes input = 2;
+  uint32 index = 3;
 }
 
 message SandboxStdinResponse {

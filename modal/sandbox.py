@@ -105,6 +105,10 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stdout: _LogsReader
     _stderr: _LogsReader
 
+    # TODO: Is the Sandbox thread-safe? Can I run different clones of the sandbox
+    # in different threads and perform stdin? In that case we ay need something like 
+    # Mutex<int>
+    _stdin_index: int = 1
     @staticmethod
     def _new(
         entrypoint_args: Sequence[str],
@@ -263,9 +267,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self._stderr
 
     async def stdin(self, input: str):
+        stdin_index = self._stdin_index
+        self._stdin_index += 1
         res = await retry_transient_errors(
             self._client.stub.SandboxStdin,
-            api_pb2.SandboxStdinRequest(sandbox_id=self.object_id, input=input.encode("utf-8")),
+            api_pb2.SandboxStdinRequest(
+                sandbox_id=self.object_id, 
+                input=input.encode("utf-8"), 
+                index=stdin_index
+                ),
         )
 
     @property
