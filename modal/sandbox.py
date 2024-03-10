@@ -90,8 +90,37 @@ class _LogsReader:
 
         return data
 
+class _StreamWriter:
+    # TODO: Is the Sandbox thread-safe? Can I run different clones of the sandbox
+    # in different threads and perform stdin? In that case we ay need something like 
+    # Mutex<int>
+    def __init__(self, sandbox_id: str, client: _Client):
+        self.index = 1
+        self._sandbox_id = sandbox_id
+        self._client = client
+
+    async def write(self, input: str):
+        index = self.index
+        self.index += 1
+        res = await retry_transient_errors(
+            self._client.stub.SandboxStdinWrite,
+            api_pb2.SandboxStdinWriteRequest(
+                sandbox_id=self._sandbox_id, 
+                input=input.encode("utf-8"), 
+                index=index
+            ),
+        )
+
+    async def write_eof(self):
+        return await retry_transient_errors(
+            self._client.stub.SandboxStdinEof,
+            api_pb2.SandboxStdinEofRequest(
+                sandbox_id=self.object_id,
+            ),
+        )
 
 LogsReader = synchronize_api(_LogsReader)
+StreamWriter = synchronize_api(_StreamWriter)
 
 
 class _Sandbox(_Object, type_prefix="sb"):
@@ -104,11 +133,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     _result: Optional[api_pb2.GenericResult]
     _stdout: _LogsReader
     _stderr: _LogsReader
+    _stdin: _StreamWriter
 
-    # TODO: Is the Sandbox thread-safe? Can I run different clones of the sandbox
-    # in different threads and perform stdin? In that case we ay need something like 
-    # Mutex<int>
-    _stdin_index: int = 1
     @staticmethod
     def _new(
         entrypoint_args: Sequence[str],
@@ -197,6 +223,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
         self._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, self._client)
         self._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, self._client)
+        self._stdin = StreamWriter(self.object_id, self._client)
         self._result = None
 
     @staticmethod
@@ -265,18 +292,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         """`LogsReader` for the sandbox's stderr stream."""
 
         return self._stderr
+    
+    @property
+    def stdin(self) -> _StreamWriter:
+        """`StreamWriter` for the sandbox's stdin stream."""
 
-    async def stdin(self, input: str):
-        stdin_index = self._stdin_index
-        self._stdin_index += 1
-        res = await retry_transient_errors(
-            self._client.stub.SandboxStdin,
-            api_pb2.SandboxStdinRequest(
-                sandbox_id=self.object_id, 
-                input=input.encode("utf-8"), 
-                index=stdin_index
-                ),
-        )
+        return self._stdin
 
     @property
     def returncode(self) -> Optional[int]:

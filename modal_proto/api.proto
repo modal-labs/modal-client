@@ -1492,13 +1492,21 @@ message SandboxGetLogsRequest {
   string last_entry_id = 4;
 }
 
-message SandboxStdinRequest {
+message SandboxStdinWriteRequest {
   string sandbox_id = 1;
   bytes input = 2;
   uint32 index = 3;
 }
 
-message SandboxStdinResponse {
+message SandboxStdinWriteResponse {
+  GenericResult result = 1;
+}
+
+message SandboxStdinEofRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxStdinEofResponse {
   GenericResult result = 1;
 }
 
@@ -2070,7 +2078,8 @@ service ModalClient {
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
-  rpc SandboxStdin(SandboxStdinRequest) returns (SandboxStdinResponse);
+  rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
+  rpc SandboxStdinEof(SandboxStdinEofRequest) returns (SandboxStdinEofResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
 
