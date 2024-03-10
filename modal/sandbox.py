@@ -262,10 +262,10 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return self._stderr
 
-    async def stdin(self):
+    async def stdin(self, input: str):
         res = await retry_transient_errors(
             self._client.stub.SandboxStdin,
-            api_pb2.SandboxStdinRequest(sandbox_id=self.object_id, input=b"HAKUNA MATATA"),
+            api_pb2.SandboxStdinRequest(sandbox_id=self.object_id, input=input.encode("utf-8")),
         )
 
     @property

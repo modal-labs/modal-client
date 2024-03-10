@@ -1498,6 +1498,7 @@ message SandboxStdinRequest {
 }
 
 message SandboxStdinResponse {
+  GenericResult result = 1;
 }
 
 message SandboxHandleMetadata {
