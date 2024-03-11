@@ -148,7 +148,7 @@ class Resolver:
         return await cached_future
 
     def objects(self) -> List["_Object"]:
-        unique_objects = {}
+        unique_objects: Dict[str, "_Object"] = {}
         for fut in self._local_uuid_to_future.values():
             if not fut.done():
                 # this will raise an exception if not all loads have been awaited, but that *should* never happen
