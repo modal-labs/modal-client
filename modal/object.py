@@ -204,7 +204,7 @@ class _Object:
                 " wasn't defined in global scope."
             )
         else:
-            resolver = Resolver()
+            resolver = Resolver()  # TODO: this resolver has no attached Client!
             await resolver.load(self)
 
     async def _deduplication_key(self) -> Optional[Hashable]:

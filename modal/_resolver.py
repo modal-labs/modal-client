@@ -100,6 +100,15 @@ class Resolver:
             # once, even if they are different instances - as long as they have
             # the same content
             cached_future = self._deduplication_cache.get(deduplication_key)
+            if cached_future:
+
+                def hydrate_copy(fut):
+                    # in case an object is omitted due to content duplication, make sure the copy is
+                    # is still hydrated using hydration data from the original
+                    hydrated_object = fut.result()
+                    obj._hydrate(hydrated_object.object_id, self._client, hydrated_object._get_metadata())
+
+                cached_future.add_done_callback(hydrate_copy)
 
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
@@ -133,14 +142,6 @@ class Resolver:
             self._local_uuid_to_future[obj.local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
-
-        def hydrate_original(fut):
-            # in case an object is omitted due to content duplication, make sure the original reference
-            # is still hydrated
-            hydrated_object = fut.result()
-            obj._hydrate(hydrated_object.object_id, self._client, hydrated_object._get_metadata())
-
-        cached_future.add_done_callback(hydrate_original)
 
         if cached_future.done():
             return cached_future.result()
