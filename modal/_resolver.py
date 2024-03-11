@@ -92,8 +92,6 @@ class Resolver:
             await obj._preload(obj, self, existing_object_id)
 
     async def load(self, obj: "_Object", existing_object_id: Optional[str] = None):
-        breakpoint()
-        print("LOADING", obj, existing_object_id, "DEDUP", self._deduplication_cache)
         deduplication_key = await obj._deduplication_key()
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
 
@@ -139,8 +137,6 @@ class Resolver:
         def hydrate_original(fut):
             # in case an object is omitted due to content duplication, make sure the original reference
             # is still hydrated
-            if obj.is_hydrated:
-                return  # already hydrated, probably the original object
             hydrated_object = fut.result()
             obj._hydrate(hydrated_object.object_id, self._client, hydrated_object._get_metadata())
 
