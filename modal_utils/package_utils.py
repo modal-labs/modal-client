@@ -23,7 +23,7 @@ def get_file_formats(module):
 BINARY_FORMATS = ["so", "S", "s", "asm"]  # TODO
 
 
-def get_module_mount_info(module_name: str) -> typing.List[typing.Tuple[bool, Path]]:
+def get_module_mount_info(module_name: str) -> typing.Sequence[typing.Tuple[bool, Path]]:
     """Returns a list of tuples [(is_dir, path)] describing how to mount a given module."""
     file_formats = get_file_formats(module_name)
     if set(BINARY_FORMATS) & set(file_formats):

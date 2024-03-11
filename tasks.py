@@ -44,6 +44,13 @@ def type_check(ctx):
     # use pyright for checking implementation of those files
     pyright_allowlist = [
         "modal/functions.py",
+        "modal_utils/__init__.py",
+        "modal_utils/app_utils.py",
+        "modal_utils/async_utils.py",
+        "modal_utils/grpc_testing.py",
+        "modal_utils/http_utils.py",
+        "modal_utils/logger.py",
+        "modal_utils/package_utils.py",
     ]
 
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
