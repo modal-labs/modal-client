@@ -42,8 +42,10 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
                                 "type": "http.response.body",
                                 "body": b"Missing request, possibly due to cancellation or crash",
                             },
-                            {"type": "http.disconnect"},
                         ]
+                    )
+                    await messages_to_app.put(
+                        {"type": "http.disconnect"},
                     )
                 elif scope["type"] == "websocket":
                     await messages_from_app.put(
@@ -52,9 +54,11 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
                                 "type": "websocket.close",
                                 "code": 1011,
                                 "reason": "Missing request, possibly due to cancellation or crash",
-                            },
-                            {"type": "websocket.disconnect"},
+                            }
                         ]
+                    )
+                    await messages_to_app.put(
+                        {"type": "websocket.disconnect"},
                     )
                 else:
                     logger.error(f"scope is neither http nor websocket {scope['type']})")
