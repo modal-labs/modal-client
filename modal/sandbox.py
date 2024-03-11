@@ -90,34 +90,38 @@ class _LogsReader:
 
         return data
 
+
 class _StreamWriter:
     # TODO: Is the Sandbox thread-safe? Can I run different clones of the sandbox
-    # in different threads and perform stdin? In that case we ay need something like 
+    # in different threads and perform stdin? In that case we ay need something like
     # Mutex<int>
     def __init__(self, sandbox_id: str, client: _Client):
-        self.index = 1
+        self._index = 1
         self._sandbox_id = sandbox_id
         self._client = client
+    
+    def get_next_index(self):
+        index = self._index
+        self._index += 1
+        return index
 
     async def write(self, input: str):
-        index = self.index
-        self.index += 1
+        index = self.get_next_index()
         res = await retry_transient_errors(
             self._client.stub.SandboxStdinWrite,
-            api_pb2.SandboxStdinWriteRequest(
-                sandbox_id=self._sandbox_id, 
-                input=input.encode("utf-8"), 
+            api_pb2.SandboxStdinWriteRequest(sandbox_id=self._sandbox_id, input=input.encode("utf-8"), index=index),
+        )
+
+    async def write_eof(self):
+        index = self.get_next_index()
+        return await retry_transient_errors(
+            self._client.stub.SandboxStdinEof,
+            api_pb2.SandboxStdinEofRequest(
+                sandbox_id=self._sandbox_id,
                 index=index
             ),
         )
 
-    async def write_eof(self):
-        return await retry_transient_errors(
-            self._client.stub.SandboxStdinEof,
-            api_pb2.SandboxStdinEofRequest(
-                sandbox_id=self.object_id,
-            ),
-        )
 
 LogsReader = synchronize_api(_LogsReader)
 StreamWriter = synchronize_api(_StreamWriter)
@@ -292,7 +296,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         """`LogsReader` for the sandbox's stderr stream."""
 
         return self._stderr
-    
+
     @property
     def stdin(self) -> _StreamWriter:
         """`StreamWriter` for the sandbox's stdin stream."""

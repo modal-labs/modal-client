@@ -1504,6 +1504,7 @@ message SandboxStdinWriteResponse {
 
 message SandboxStdinEofRequest {
   string sandbox_id = 1;
+  uint32 index = 2;
 }
 
 message SandboxStdinEofResponse {
@@ -1966,6 +1967,7 @@ message RuntimeOutputBatch {
 message RuntimeInputMessage {
   bytes message = 1;
   uint64 message_index = 2;
+  bool is_eof = 3;
 }
 
 
