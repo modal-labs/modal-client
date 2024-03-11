@@ -7,7 +7,7 @@ import sys
 import time
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar, Union, cast
+from typing import Any, AsyncGenerator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar, cast
 
 import synchronicity
 from typing_extensions import ParamSpec
