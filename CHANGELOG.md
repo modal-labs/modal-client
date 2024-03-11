@@ -16,7 +16,6 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 
 
-
 ### 0.61.24 (2024-03-06)
 
 - Fixes `modal volume put` to support uploading larger files, beyond 40 GiB.
