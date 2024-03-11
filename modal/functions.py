@@ -700,7 +700,11 @@ class _Function(_Object, type_prefix="fu"):
                     is_auto_snapshot=True,
                     _experimental_scheduler_placement=_experimental_scheduler_placement,
                 )
-                image = image.extend(build_function=snapshot_function, force_build=image.force_build)
+                image = _Image._from_args(
+                    base_images={"base": image},
+                    build_function=snapshot_function,
+                    force_build=image.force_build,
+                )
 
         if keep_warm is not None and not isinstance(keep_warm, int):
             raise TypeError(f"`keep_warm` must be an int or bool, not {type(keep_warm).__name__}")
