@@ -623,6 +623,7 @@ message DataChunk {
     string data_blob_id = 3;
   }
   uint64 index = 4; // Index of this data chunk in the stream.
+  optional bool is_eof = 5; // Used for sandbox stdin 
 }
 
 message DictClearRequest {
