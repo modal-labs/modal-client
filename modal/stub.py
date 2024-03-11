@@ -23,7 +23,7 @@ from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 from .gpu import GPU_T
 from .image import _Image
-from .mount import _Mount, _MountCache
+from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .partial_function import PartialFunction, _PartialFunction
@@ -118,7 +118,6 @@ class _Stub:
     _container_app: Optional[_ContainerApp]
     _local_app: Optional[_LocalApp]
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
-    _mount_cache: _MountCache
 
     @typechecked
     def __init__(
@@ -167,7 +166,6 @@ class _Stub:
         if image is not None:
             self._indexed_objects["image"] = image  # backward compatibility since "image" used to be on the blueprint
 
-        self._mount_cache = _MountCache()  # used by the loader to deduplicate mounts in an app
         self._mounts = mounts
 
         self._secrets = secrets
@@ -472,7 +470,7 @@ class _Stub:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
-        checkpointing_enabled: Optional[bool] = None,   # Deprecated
+        checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
         max_inputs: Optional[
             int
@@ -736,6 +734,39 @@ class _Stub:
         )
         await resolver.load(obj)
         return obj
+
+    def include(self, /, other_stub: "_Stub"):
+        """Include another stub's objects in this one.
+
+        Useful splitting up Modal apps across different self-contained files
+
+        ```python
+        stub_a = modal.Stub("a")
+        @stub.function()
+        def foo():
+            ...
+
+        stub_b = modal.Stub("b")
+        @stub.function()
+        def bar():
+            ...
+
+        stub_a.include(stub_b)
+
+        @stub_a.local_entrypoint()
+        def main():
+            # use function declared on the included stub
+            bar.remote()
+        ```
+        """
+        for tag, object in other_stub._indexed_objects.items():
+            existing_object = self._indexed_objects.get(tag)
+            if existing_object and existing_object != object:
+                logger.warning(
+                    f"Named app object {tag} with existing value {existing_object} is being overwritten by a different object {object}"
+                )
+
+            self._add_object(tag, object)
 
 
 Stub = synchronize_api(_Stub)

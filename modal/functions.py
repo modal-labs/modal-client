@@ -71,7 +71,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount, _MountCache
+from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
@@ -756,11 +756,7 @@ class _Function(_Object, type_prefix="fu"):
                 # worker runtime
                 deps += list(explicit_mounts)
             else:
-                mount_cache = (
-                    stub._mount_cache if stub else _MountCache()
-                )  # builder functions don't have stubs at this point
-                optimized_mounts = mount_cache.get_many(all_mounts)
-                deps += list(optimized_mounts)
+                deps += list(all_mounts)
             if proxy:
                 deps.append(proxy)
             if image:
@@ -855,16 +851,20 @@ class _Function(_Object, type_prefix="fu"):
                 )
                 for path, volume in validated_volumes
             ]
-            mount_cache = (
-                stub._mount_cache if stub else _MountCache()
-            )  # builder functions don't have stubs at this point
-            optimized_mounts = mount_cache.get_many(all_mounts)
+            loaded_mount_ids = {m.object_id for m in all_mounts}
+
+            # Get object dependencies
+            object_dependencies = []
+            for dep in _deps(only_explicit_mounts=True):
+                if not dep.object_id:
+                    raise Exception(f"Dependency {dep} isn't hydrated")
+                object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
 
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name or "",
                 function_name=info.function_name,
-                mount_ids=[mount.object_id for mount in optimized_mounts],
+                mount_ids=loaded_mount_ids,
                 secret_ids=[secret.object_id for secret in secrets],
                 image_id=(image.object_id if image else ""),
                 definition_type=info.definition_type,
@@ -895,9 +895,7 @@ class _Function(_Object, type_prefix="fu"):
                 is_method=bool(info.cls),
                 checkpointing_enabled=enable_memory_snapshot,
                 is_checkpointing_function=False,
-                object_dependencies=[
-                    api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
-                ],
+                object_dependencies=object_dependencies,
                 block_network=block_network,
                 max_inputs=max_inputs or 0,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),

@@ -682,3 +682,21 @@ def test_mount_deps_have_ids(client, servicer, monkeypatch, test_dir):
     function_create = ctx.pop_request("FunctionCreate")
     for dep in function_create.function.object_dependencies:
         assert dep.object_id
+
+
+def test_no_state_reuse(client, servicer, supports_dir):
+    # two separate instances of the same mount content - triggers deduplication logic
+    mount_instance_1 = Mount.from_local_file(supports_dir / "pyproject.toml")
+    mount_instance_2 = Mount.from_local_file(supports_dir / "pyproject.toml")
+
+    stub = Stub("reuse-mount-stub")
+    stub.function(mounts=[mount_instance_1, mount_instance_2])(dummy)
+
+    deploy_stub(stub, client=client, show_progress=False)
+    first_deploy = {mount_instance_1.object_id, mount_instance_2.object_id}
+
+    deploy_stub(stub, client=client, show_progress=False)
+    second_deploy = {mount_instance_1.object_id, mount_instance_2.object_id}
+
+    # mount ids should not overlap between first and second deploy
+    assert not (first_deploy & second_deploy)
