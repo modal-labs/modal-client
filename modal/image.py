@@ -338,25 +338,11 @@ class _Image(_Object, type_prefix="im"):
         return obj
 
     def extend(self, **kwargs) -> "_Image":
-        """Extend an image (named "base") with additional options or commands.
-
-        This is a low-level command. Generally, you should prefer using functions
-        like `Image.pip_install` or `Image.apt_install` if possible.
-
-        **Example**
-
-        ```python notest
-        image = modal.Image.debian_slim().extend(
-            dockerfile_commands=[
-                "FROM base",
-                "WORKDIR /pkg",
-                'RUN echo "hello world" > hello.txt',
-            ],
-            secrets=[secret1, secret2],
+        """Deprecated! This is a low-level method not intended to be part of the public API."""
+        deprecation_warning(
+            (2024, 3, 7),
+            "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
         )
-        ```
-        """
-
         return _Image._from_args(base_images={"base": self}, **kwargs)
 
     @typechecked
@@ -377,7 +363,8 @@ class _Image(_Object, type_prefix="im"):
         """
         if not isinstance(mount, _Mount):
             raise InvalidError("The mount argument to copy has to be a Modal Mount object")
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=["FROM base", f"COPY . {remote_path}"],  # copy everything from the supplied mount
             context_mount=mount,
         )
@@ -389,7 +376,8 @@ class _Image(_Object, type_prefix="im"):
         """
         basename = str(Path(local_path).name)
         mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=["FROM base", f"COPY {basename} {remote_path}"],
             context_mount=mount,
         )
@@ -400,7 +388,8 @@ class _Image(_Object, type_prefix="im"):
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) in a `Dockerfile`.
         """
         mount = _Mount.from_local_dir(local_path, remote_path="/")
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=["FROM base", f"COPY . {remote_path}"],
             context_mount=mount,
         )
@@ -440,7 +429,8 @@ class _Image(_Object, type_prefix="im"):
             # Maybe let's remove it later when/if client requirements change.
         ]
         gpu_config = parse_gpu_config(gpu)
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=dockerfile_commands,
             force_build=self.force_build or force_build,
             gpu_config=gpu_config,
@@ -533,7 +523,8 @@ class _Image(_Object, type_prefix="im"):
 
         gpu_config = parse_gpu_config(gpu)
 
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
             gpu_config=gpu_config,
@@ -568,7 +559,8 @@ class _Image(_Object, type_prefix="im"):
             f"RUN python -m pip install -r /.requirements.txt {find_links_arg} {extra_args}",
         ]
 
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
             force_build=self.force_build or force_build,
@@ -712,7 +704,8 @@ class _Image(_Object, type_prefix="im"):
             install_cmd,
         ]
 
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
             force_build=self.force_build or force_build,
@@ -738,7 +731,8 @@ class _Image(_Object, type_prefix="im"):
 
         _dockerfile_commands = ["FROM base", *cmds]
 
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=_dockerfile_commands,
             context_files=context_files,
             secrets=secrets,
@@ -762,7 +756,8 @@ class _Image(_Object, type_prefix="im"):
 
         dockerfile_commands = ["FROM base"] + [f"RUN {cmd}" for cmd in cmds]
 
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=dockerfile_commands,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu, raise_on_true=False),
@@ -857,7 +852,8 @@ class _Image(_Object, type_prefix="im"):
         ]
 
         gpu_config = parse_gpu_config(gpu)
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=dockerfile_commands,
             force_build=self.force_build or force_build,
             secrets=secrets,
@@ -886,7 +882,8 @@ class _Image(_Object, type_prefix="im"):
             "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
         ]
 
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=dockerfile_commands,
             context_files=context_files,
             force_build=self.force_build or force_build,
@@ -942,7 +939,8 @@ class _Image(_Object, type_prefix="im"):
             f"RUN micromamba install {package_args}{channel_args} --yes",
         ]
 
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=dockerfile_commands,
             force_build=self.force_build or force_build,
             secrets=secrets,
@@ -1196,7 +1194,8 @@ class _Image(_Object, type_prefix="im"):
             "RUN python -m pip install -r /modal_requirements.txt",
         ]
 
-        return base_image.extend(
+        return _Image._from_args(
+            base_images={"base": base_image},
             dockerfile_commands=dockerfile_commands,
             context_files={"/modal_requirements.txt": requirements_path},
             context_mount=context_mount,
@@ -1257,7 +1256,8 @@ class _Image(_Object, type_prefix="im"):
             f"RUN apt-get install -y {package_args}",
         ]
 
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_commands=dockerfile_commands,
             force_build=self.force_build or force_build,
             gpu_config=parse_gpu_config(gpu),
@@ -1340,7 +1340,8 @@ class _Image(_Object, type_prefix="im"):
             build_function_input = api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE)
         else:
             build_function_input = None
-        return self.extend(
+        return _Image._from_args(
+            base_images={"base": self},
             build_function=function,
             build_function_input=build_function_input,
             force_build=self.force_build or force_build,
@@ -1361,8 +1362,9 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        return self.extend(
-            dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()],
         )
 
     @typechecked
@@ -1380,7 +1382,10 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        return self.extend(dockerfile_commands=["FROM base"] + [f"WORKDIR {shlex.quote(path)}"])
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_commands=["FROM base"] + [f"WORKDIR {shlex.quote(path)}"],
+        )
 
     # Live handle methods
 

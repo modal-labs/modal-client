@@ -13,7 +13,7 @@ from modal_utils.grpc_utils import retry_transient_errors
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from .client import _Client
-from .exception import deprecation_error
+from .exception import deprecation_error, deprecation_warning
 from .object import _get_environment_name, _Object, live_method
 
 
@@ -21,6 +21,12 @@ class _Queue(_Object, type_prefix="qu"):
     """Distributed, FIFO queue for data flow in Modal apps.
 
     The queue can contain any object serializable by `cloudpickle`, including Modal objects.
+
+    **Lifetime of a queue and its contents**
+
+    A `Queue`'s lifetime matches the lifetime of the app it's attached to, but the contents expire after 30 days.
+    Because of this, `Queues`s are best used for communication between active functions and not relied on for
+    persistent storage. On app completion or after stopping an app any associated `Queue` objects are cleaned up.
 
     **Usage**
 
@@ -97,6 +103,8 @@ class _Queue(_Object, type_prefix="qu"):
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
     ) -> "_Queue":
+        """Deprecated! Use `Queue.from_name(name, create_if_missing=True)`."""
+        deprecation_warning((2024, 3, 1), _Queue.persisted.__doc__)
         return _Queue.from_name(label, namespace, environment_name, create_if_missing=True)
 
     @staticmethod

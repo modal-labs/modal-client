@@ -2,7 +2,7 @@
 import asyncio
 import contextlib
 from asyncio import Future
-from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Dict, Hashable, List, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 
@@ -11,6 +11,8 @@ from modal_proto import api_pb2
 if TYPE_CHECKING:
     from rich.spinner import Spinner
     from rich.tree import Tree
+
+    from modal.object import _Object
 else:
     Spinner = TypeVar("Spinner")
     Tree = TypeVar("Tree")
@@ -45,12 +47,11 @@ class StatusRow:
 
 
 class Resolver:
-    # Unfortunately we can't use type annotations much in this file,
-    # since that leads to circular dependencies
     _tree: Tree
     _local_uuid_to_future: Dict[str, Future]
     _environment_name: Optional[str]
     _app_id: Optional[str]
+    _deduplication_cache: Dict[Hashable, Future]
 
     def __init__(
         self,
@@ -70,6 +71,7 @@ class Resolver:
         self._client = client
         self._app_id = app_id
         self._environment_name = environment_name
+        self._deduplication_cache = {}
 
     @property
     def app_id(self) -> str:
@@ -89,8 +91,24 @@ class Resolver:
         if obj._preload is not None:
             await obj._preload(obj, self, existing_object_id)
 
-    async def load(self, obj, existing_object_id: Optional[str] = None):
+    async def load(self, obj: "_Object", existing_object_id: Optional[str] = None):
+        deduplication_key = await obj._deduplication_key()
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
+
+        if not cached_future and deduplication_key is not None:
+            # deduplication cache makes sure duplicate mounts are resolved only
+            # once, even if they are different instances - as long as they have
+            # the same content
+            cached_future = self._deduplication_cache.get(deduplication_key)
+            if cached_future:
+
+                def hydrate_copy(fut):
+                    # in case an object is omitted due to content duplication, make sure the copy is
+                    # is still hydrated using hydration data from the original
+                    hydrated_object = fut.result()
+                    obj._hydrate(hydrated_object.object_id, self._client, hydrated_object._get_metadata())
+
+                cached_future.add_done_callback(hydrate_copy)
 
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
@@ -122,20 +140,25 @@ class Resolver:
 
             cached_future = asyncio.create_task(loader())
             self._local_uuid_to_future[obj.local_uuid] = cached_future
+            if deduplication_key is not None:
+                self._deduplication_cache[deduplication_key] = cached_future
 
         if cached_future.done():
             return cached_future.result()
 
         return await cached_future
 
-    def objects(self) -> List:
+    def objects(self) -> List["_Object"]:
+        unique_objects: Dict[str, "_Object"] = {}
         for fut in self._local_uuid_to_future.values():
             if not fut.done():
                 # this will raise an exception if not all loads have been awaited, but that *should* never happen
                 raise RuntimeError(
                     "All loaded objects have not been resolved yet, can't get all objects for the resolver!"
                 )
-        return [fut.result() for fut in self._local_uuid_to_future.values()]
+            obj = fut.result()
+            unique_objects.setdefault(obj.object_id, obj)
+        return list(unique_objects.values())
 
     @contextlib.contextmanager
     def display(self):

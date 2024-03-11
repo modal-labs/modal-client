@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import concurrent.futures
 import contextlib
 import importlib
 import inspect
@@ -13,12 +12,13 @@ import os
 import pickle
 import signal
 import sys
+import threading
 import time
 import traceback
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional, Set, Type
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Set, Type
 
 from grpclib import Status
 
@@ -59,14 +59,14 @@ class UserException(Exception):
     pass
 
 
-INPUT_CANCELLATION_MESSAGE = "modal-external-cancellation"
-_ignore_cancellation = False  # used by Python 3.8 to know if a CancellationError is due to graceful input cancellation
-
-
 class SignalHandlingEventLoop:
-    """Manage an event loop for executing coroutines while handling SIGINT/SIGTERM.
+    """Run an async event loop as a context manager and handle signals.
 
-    Prevents stray cancellation errors from propagating up.
+    The following signals are handled while a coroutine is running on the event loop until
+    completion (and then handlers are deregistered):
+
+    - `SIGUSR1`: converted to an async task cancellation. Note that this only affects the event
+      loop, and the signal handler defined here doesn't run for sync functions.
     """
 
     def __enter__(self):
@@ -74,31 +74,28 @@ class SignalHandlingEventLoop:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        self.loop.run_until_complete(self.loop.shutdown_asyncgens())
+        if sys.version_info[:2] >= (3, 9):
+            self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
         self.loop.close()
 
     def run(self, coro):
         task = asyncio.ensure_future(coro, loop=self.loop)
-        for s in [signal.SIGINT, signal.SIGTERM]:
-            self.loop.add_signal_handler(s, task.cancel)
-        # before Python 3.9 there is no argument to Task.cancel, so we need to communicate the "type" of cancellation in an ugly way
+
+        # Before Python 3.9 there is no argument to Task.cancel
         if sys.version_info[:2] >= (3, 9):
-            self.loop.add_signal_handler(signal.SIGUSR1, task.cancel, INPUT_CANCELLATION_MESSAGE)
+            self.loop.add_signal_handler(signal.SIGUSR1, task.cancel, "Input was cancelled by user")
         else:
-            global _ignore_cancellation
-            _ignore_cancellation = True
             self.loop.add_signal_handler(signal.SIGUSR1, task.cancel)
 
-        res = self.loop.run_until_complete(task)
-
-        # Reset the signal handlers so we can interrupt the container
-        for s in [signal.SIGINT, signal.SIGTERM, signal.SIGUSR1]:
-            self.loop.remove_signal_handler(s)
-
-        return res
+        try:
+            return self.loop.run_until_complete(task)
+        finally:
+            self.loop.remove_signal_handler(signal.SIGUSR1)
 
 
 class _FunctionIOManager:
-    """This class isn't much more than a helper method for some gRPC calls.
+    """Synchronizes all RPC calls and network operations for a running container.
 
     TODO: maybe we shouldn't synchronize the whole class.
     Then we could potentially move a bunch of the global functions onto it.
@@ -170,23 +167,39 @@ class _FunctionIOManager:
         )
 
         if response.HasField("cancel_input_event"):
-            # 1. Pause processing of *new* inputs by signalling self a SIGUSR1, which will raise an exception in the main thread if necessary
+            # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
                 if self._input_concurrency > 1:
                     logger.info(
-                        "Shutting down task to stop some subset of inputs (concurrent functions don't support fine grained cancellation)"
+                        "Shutting down task to stop some subset of inputs (concurrent functions don't support fine-grained cancellation)"
                     )
-                    os.kill(os.getpid(), signal.SIGTERM)
+                    # This is equivalent to a task cancellation or preemption from worker code,
+                    # except we do not send a SIGKILL to forcefully exit after 30 seconds.
+                    #
+                    # SIGINT always interrupts the main thread, but not any auxiliary threads. On a
+                    # sync function without concurrent inputs, this raises a KeyboardInterrupt. When
+                    # there are concurrent inputs, we cannot interrupt the thread pool, but the
+                    # interpreter stops waiting for daemon threads and exits. On async functions,
+                    # this signal lands outside the event loop, stopping `run_until_complete()`.
+                    os.kill(os.getpid(), signal.SIGINT)
 
-                if self.current_input_id in input_ids_to_cancel:
-                    os.kill(os.getpid(), signal.SIGUSR1)  # raises an exception in the main thread (hopefully user code)
+                elif self.current_input_id in input_ids_to_cancel:
+                    # This goes to a registered signal handler for sync Modal functions, or to the
+                    # `SignalHandlingEventLoop` for async functions.
+                    #
+                    # We only send this signal on functions that do not have concurrent inputs enabled.
+                    # This allows us to do fine-grained input cancellation. On sync functions, the
+                    # SIGUSR1 signal should interrupt the main thread where user code is running,
+                    # raising an InputCancellation() exception. On async functions, the signal should
+                    # reach a handler in SignalHandlingEventLoop, which cancels the task.
+                    os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
 
     @contextlib.asynccontextmanager
     async def heartbeats(self):
-        async with TaskContext(grace=1.0) as tc:
+        async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")
             yield
@@ -427,9 +440,10 @@ class _FunctionIOManager:
 
     @contextlib.asynccontextmanager
     async def handle_user_exception(self) -> AsyncGenerator[None, None]:
-        """Sets the task as failed in a way where it's not retried
+        """Sets the task as failed in a way where it's not retried.
 
-        Only used for importing user code atm
+        Used for handling exceptions from container lifecycle methods at the moment, which should
+        trigger a task failure state.
         """
         try:
             yield
@@ -458,12 +472,12 @@ class _FunctionIOManager:
 
     @contextlib.asynccontextmanager
     async def handle_input_exception(self, input_id, started_at: float) -> AsyncGenerator[None, None]:
-        global _ignore_cancellation
+        """Handle an exception while processing a function input."""
         try:
             yield
         except KeyboardInterrupt:
             raise
-        except InputCancellation:
+        except (InputCancellation, asyncio.CancelledError):
             # just skip creating any output for this input and keep going with the next instead
             # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
@@ -471,15 +485,6 @@ class _FunctionIOManager:
             await self.complete_call(started_at)
             return
         except BaseException as exc:
-            if isinstance(exc, asyncio.CancelledError) and (
-                str(exc) == INPUT_CANCELLATION_MESSAGE or _ignore_cancellation
-            ):
-                _ignore_cancellation = False  # reset for next cancellations
-                # for async functions, InputCancellation is represented by CancelledError with the INPUT_CANCELLATION_MESSAGE message
-                # or in the case of Python 3.8, we use a regular CancelledError with a global to indicate that it's to be ignored
-                logger.info(f"The current input ({input_id=}) was cancelled by a user request")
-                await self.complete_call(started_at)
-                return
             # print exception so it's logged
             traceback.print_exc()
             serialized_tb, tb_line_cache = self.serialize_traceback(exc)
@@ -597,170 +602,150 @@ FunctionIOManager = synchronize_api(_FunctionIOManager)
 
 
 def call_function_sync(
-    function_io_manager,  #: FunctionIOManager,  # TODO: this type is generated in runtime
+    function_io_manager,  #: FunctionIOManager,  TODO: this type is generated at runtime
     imp_fun: ImportedFunction,
 ):
-    def cancel_input_signal_handler(signum, stackframe):
-        raise InputCancellation("input was cancelled by user")
+    def run_input(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
+        started_at = time.time()
+        reset_context = _set_current_context_ids(input_id, function_call_id)
+        with function_io_manager.handle_input_exception(input_id, started_at):
+            logger.debug(f"Starting input {input_id} (sync)")
+            res = imp_fun.fun(*args, **kwargs)
+            logger.debug(f"Finished input {input_id} (sync)")
 
-    signal.signal(signal.SIGUSR1, cancel_input_signal_handler)
+            # TODO(erikbern): any exception below shouldn't be considered a user exception
+            if imp_fun.is_generator:
+                if not inspect.isgenerator(res):
+                    raise InvalidError(f"Generator function returned value of type {type(res)}")
 
-    try:
+                # Send up to this many outputs at a time.
+                generator_queue: asyncio.Queue[Any] = function_io_manager._queue_create(1024)
+                generator_output_task = function_io_manager.generator_output_task(
+                    function_call_id,
+                    imp_fun.data_format,
+                    generator_queue,
+                    _future=True,  # Synchronicity magic to return a future.
+                )
 
-        def run_inputs(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
-            started_at = time.time()
-            reset_context = _set_current_context_ids(input_id, function_call_id)
-            with function_io_manager.handle_input_exception(input_id, started_at):
-                logger.debug(f"Starting input {input_id} (sync)")
-                res = imp_fun.fun(*args, **kwargs)
-                logger.debug(f"Finished input {input_id} (sync)")
+                item_count = 0
+                for value in res:
+                    function_io_manager._queue_put(generator_queue, value)
+                    item_count += 1
 
-                # TODO(erikbern): any exception below shouldn't be considered a user exception
-                if imp_fun.is_generator:
-                    if not inspect.isgenerator(res):
-                        raise InvalidError(f"Generator function returned value of type {type(res)}")
-
-                    # Send up to this many outputs at a time.
-                    generator_queue: asyncio.Queue[Any] = function_io_manager._queue_create(1024)
-                    generator_output_task = function_io_manager.generator_output_task(
-                        function_call_id,
-                        imp_fun.data_format,
-                        generator_queue,
-                        _future=True,  # Synchronicity magic to return a future.
+                function_io_manager._queue_put(generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL)
+                generator_output_task.result()  # Wait to finish sending generator outputs.
+                message = api_pb2.GeneratorDone(items_total=item_count)
+                function_io_manager.push_output(input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
+            else:
+                if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
+                    raise InvalidError(
+                        f"Sync (non-generator) function return value of type {type(res)}."
+                        " You might need to use @stub.function(..., is_generator=True)."
                     )
+                function_io_manager.push_output(input_id, started_at, res, imp_fun.data_format)
+        reset_context()
 
-                    item_count = 0
-                    for value in res:
-                        function_io_manager._queue_put(generator_queue, value)
-                        item_count += 1
+    if imp_fun.input_concurrency > 1:
+        # We can't use `concurrent.futures.ThreadPoolExecutor` here because in Python 3.11+, this
+        # class has no workaround that allows us to exit the Python interpreter process without
+        # waiting for the worker threads to finish. We need this behavior on SIGINT.
 
-                    function_io_manager._queue_put(generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL)
-                    generator_output_task.result()  # Wait to finish sending generator outputs.
-                    message = api_pb2.GeneratorDone(items_total=item_count)
-                    function_io_manager.push_output(input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
-                else:
-                    if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
-                        raise InvalidError(
-                            f"Sync (non-generator) function return value of type {type(res)}."
-                            " You might need to use @stub.function(..., is_generator=True)."
-                        )
-                    function_io_manager.push_output(input_id, started_at, res, imp_fun.data_format)
-            reset_context()
+        import queue
+        import threading
 
-        if imp_fun.input_concurrency > 1:
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs(
-                    imp_fun.input_concurrency
-                ):
-                    executor.submit(run_inputs, input_id, function_call_id, args, kwargs)
+        spawned_workers = 0
+        inputs: queue.Queue[Any] = queue.Queue()
+        finished = threading.Event()
 
-                logger.debug("ThreadPoolExecutor is exiting")
-            logger.debug("ThreadPoolExecutor has exited")
-        else:
-            for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs(
-                imp_fun.input_concurrency
-            ):
-                run_inputs(input_id, function_call_id, args, kwargs)
-    finally:
-        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-            logger.debug("Running cls exit methods (sync)")
-            exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
-            for exit_method in exit_methods.values():
-                with function_io_manager.handle_user_exception():
-                    # We are deprecating parameterized exit methods but want to gracefully handle old code.
-                    # We can remove this once the deprecation in the actual @exit decorator is enforced.
-                    args = (None, None, None) if method_has_params(exit_method) else ()
-                    exit_method(*args)
+        def worker_thread():
+            while not finished.is_set():
+                try:
+                    args = inputs.get(timeout=1)
+                except queue.Empty:
+                    continue
+                try:
+                    run_input(*args)
+                except BaseException:
+                    pass
+                inputs.task_done()
+
+        for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs(
+            imp_fun.input_concurrency
+        ):
+            if spawned_workers < imp_fun.input_concurrency:
+                threading.Thread(target=worker_thread, daemon=True).start()
+                spawned_workers += 1
+            inputs.put((input_id, function_call_id, args, kwargs))
+
+        finished.set()
+        inputs.join()
+
+    else:
+        for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs(
+            imp_fun.input_concurrency
+        ):
+            run_input(input_id, function_call_id, args, kwargs)
 
 
 async def call_function_async(
-    function_io_manager,  #: FunctionIOManager,  # TODO: this one too
+    function_io_manager,  #: FunctionIOManager,  TODO: this type is generated at runtime
     imp_fun: ImportedFunction,
 ):
-    try:
+    async def run_input(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
+        started_at = time.time()
+        reset_context = _set_current_context_ids(input_id, function_call_id)
+        async with function_io_manager.handle_input_exception.aio(input_id, started_at):
+            logger.debug(f"Starting input {input_id} (async)")
+            res = imp_fun.fun(*args, **kwargs)
+            logger.debug(f"Finished input {input_id} (async)")
 
-        async def run_input(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
-            started_at = time.time()
-            reset_context = _set_current_context_ids(input_id, function_call_id)
-            async with function_io_manager.handle_input_exception.aio(input_id, started_at):
-                logger.debug(f"Starting input {input_id} (async)")
-                res = imp_fun.fun(*args, **kwargs)
-                logger.debug(f"Finished input {input_id} (async)")
+            # TODO(erikbern): any exception below shouldn't be considered a user exception
+            if imp_fun.is_generator:
+                if not inspect.isasyncgen(res):
+                    raise InvalidError(f"Async generator function returned value of type {type(res)}")
 
-                # TODO(erikbern): any exception below shouldn't be considered a user exception
-                if imp_fun.is_generator:
-                    if not inspect.isasyncgen(res):
-                        raise InvalidError(f"Async generator function returned value of type {type(res)}")
-
-                    # Send up to this many outputs at a time.
-                    generator_queue: asyncio.Queue[Any] = await function_io_manager._queue_create.aio(1024)
-                    generator_output_task = asyncio.create_task(
-                        function_io_manager.generator_output_task.aio(
-                            function_call_id,
-                            imp_fun.data_format,
-                            generator_queue,
-                        )
+                # Send up to this many outputs at a time.
+                generator_queue: asyncio.Queue[Any] = await function_io_manager._queue_create.aio(1024)
+                generator_output_task = asyncio.create_task(
+                    function_io_manager.generator_output_task.aio(
+                        function_call_id,
+                        imp_fun.data_format,
+                        generator_queue,
                     )
+                )
 
-                    item_count = 0
-                    async for value in res:
-                        await function_io_manager._queue_put.aio(generator_queue, value)
-                        item_count += 1
+                item_count = 0
+                async for value in res:
+                    await function_io_manager._queue_put.aio(generator_queue, value)
+                    item_count += 1
 
-                    await function_io_manager._queue_put.aio(
-                        generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL
+                await function_io_manager._queue_put.aio(generator_queue, _FunctionIOManager._GENERATOR_STOP_SENTINEL)
+                await generator_output_task  # Wait to finish sending generator outputs.
+                message = api_pb2.GeneratorDone(items_total=item_count)
+                await function_io_manager.push_output.aio(
+                    input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
+                )
+            else:
+                if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
+                    raise InvalidError(
+                        f"Async (non-generator) function returned value of type {type(res)}"
+                        " You might need to use @stub.function(..., is_generator=True)."
                     )
-                    await generator_output_task  # Wait to finish sending generator outputs.
-                    message = api_pb2.GeneratorDone(items_total=item_count)
-                    await function_io_manager.push_output.aio(
-                        input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
-                    )
-                else:
-                    if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
-                        raise InvalidError(
-                            f"Async (non-generator) function returned value of type {type(res)}"
-                            " You might need to use @stub.function(..., is_generator=True)."
-                        )
-                    value = await res
-                    await function_io_manager.push_output.aio(input_id, started_at, value, imp_fun.data_format)
-            reset_context()
+                value = await res
+                await function_io_manager.push_output.aio(input_id, started_at, value, imp_fun.data_format)
+        reset_context()
 
-        if imp_fun.input_concurrency > 1:
-            async with TaskContext() as execution_context:
-                async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
-                    imp_fun.input_concurrency
-                ):
-                    execution_context.create_task(run_input(input_id, function_call_id, args, kwargs))
-        else:
+    if imp_fun.input_concurrency > 1:
+        async with TaskContext() as execution_context:
             async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
                 imp_fun.input_concurrency
             ):
-                await run_input(input_id, function_call_id, args, kwargs)
-    finally:
-        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-            logger.debug("Running cls exit methods (async)")
-            exit_methods: Dict[str, Callable] = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
-            for exit_method in exit_methods.values():
-                # Call a user-defined method
-                with function_io_manager.handle_user_exception():
-                    # We are deprecating parameterized exit methods but want to gracefully handle old code.
-                    # We can remove this once the deprecation in the actual @exit decorator is enforced.
-                    args = (None, None, None) if method_has_params(exit_method) else ()
-                    exit_res = exit_method(*args)
-                    if inspect.iscoroutine(exit_res):
-                        await exit_res
-
-
-async def call_functions_for_setup(
-    function_io_manager,  #: FunctionIOManager TODO: this type is generated at runtime
-    funcs: Iterable[Callable],
-) -> None:
-    """Call function(s), can be sync or async, but any return values are ignored."""
-    with function_io_manager.handle_user_exception():
-        for func in funcs:
-            res = func()
-            if inspect.iscoroutine(res):
-                await res
+                execution_context.create_task(run_input(input_id, function_call_id, args, kwargs))
+    else:
+        async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
+            imp_fun.input_concurrency
+        ):
+            await run_input(input_id, function_call_id, args, kwargs)
 
 
 @dataclass
@@ -909,50 +894,60 @@ def import_function(
     )
 
 
-def main(container_args: api_pb2.ContainerArguments, client: Client):
-    # TODO: if there's an exception in this scope (in particular when we import code dynamically),
-    # we could catch that exception and set it properly serialized to the client. Right now the
-    # whole container fails with a non-zero exit code and we send back a more opaque error message.
+async def call_lifecycle_functions(
+    function_io_manager,  #: FunctionIOManager,  TODO: this type is generated at runtime
+    funcs: Iterable[Callable],
+) -> None:
+    """Call function(s), can be sync or async, but any return values are ignored."""
+    with function_io_manager.handle_user_exception():
+        for func in funcs:
+            # We are deprecating parameterized exit methods but want to gracefully handle old code.
+            # We can remove this once the deprecation in the actual @exit decorator is enforced.
+            args = (None, None, None) if method_has_params(func) else ()
+            res = func(*args)
+            if inspect.iscoroutine(res):
+                await res
 
+
+def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of FunctionIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
     function_io_manager = FunctionIOManager(container_args, client)
 
-    # Define a global app (need to do this before imports)
+    # Define a global app (need to do this before imports).
     container_app = function_io_manager.initialize_app()
 
-    with SignalHandlingEventLoop() as event_loop, function_io_manager.heartbeats():
+    with function_io_manager.heartbeats(), SignalHandlingEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = function_io_manager.get_serialized_function()
         else:
             ser_cls, ser_fun = None, None
 
-        # Initialize the function
-        # NOTE: detecting the stub causes all objects to be associated with the app and hydrated
+        # Initialize the function, importing user code.
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(
                 container_args.function_def, ser_cls, ser_fun, container_args.serialized_params, function_io_manager
             )
 
-        # Hydrate all function dependencies
+        # Hydrate all function dependencies.
         if imp_fun.function:
             dep_object_ids: list[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
 
-        # Identify all "enter" methods that need to run before we checkpoint
+        # Identify all "enter" methods that need to run before we checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
-            event_loop.run(call_functions_for_setup(function_io_manager, pre_checkpoint_methods.values()))
+            event_loop.run(call_lifecycle_functions(function_io_manager, pre_checkpoint_methods.values()))
 
-        # Checkpoint container after imports. Checkpointed containers start from this point
-        # onwards. This assumes that everything up to this point has run successfully,
-        # including global imports.
+        # If this container is being used to create a checkpoint, checkpoint the container after
+        # global imports and innitialization. Checkpointed containers run from this point onwards.
         if container_args.function_def.is_checkpointing_function:
             function_io_manager.checkpoint()
 
+        # Install hooks for interactive functions.
         if container_args.function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
-            # Interactive function
+
             def breakpoint_wrapper():
                 # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
                 interact()
@@ -962,22 +957,50 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
             sys.breakpointhook = breakpoint_wrapper
 
-        # Identify the "enter" methods to run after we resume
+        # Identify the "enter" methods to run after resuming from a checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
-            event_loop.run(call_functions_for_setup(function_io_manager, post_checkpoint_methods.values()))
+            event_loop.run(call_lifecycle_functions(function_io_manager, post_checkpoint_methods.values()))
 
-        if not imp_fun.is_async:
-            call_function_sync(function_io_manager, imp_fun)
-        else:
-            event_loop.run(call_function_async(function_io_manager, imp_fun))
+        # Execute the function.
+        try:
+            if imp_fun.is_async:
+                event_loop.run(call_function_async(function_io_manager, imp_fun))
+            else:
+                # Set up a signal handler for `SIGUSR1`, which gets translated to an InputCancellation
+                # during function execution. This is sent to cancel inputs from the user.
+                def _cancel_input_signal_handler(signum, stackframe):
+                    raise InputCancellation("Input was cancelled by user")
 
-        # Commit on exit to catch uncommitted volume changes and surface background
-        # commit errors.
-        function_io_manager.volume_commit(
-            [v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits]
-        )
-        function_io_manager.stop_heartbeat()  # avoid "Canceling remaining unfinished task" warnings etc.
+                signal.signal(signal.SIGUSR1, _cancel_input_signal_handler)
+
+                call_function_sync(function_io_manager, imp_fun)
+        finally:
+            # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
+            # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
+            # may have been sent to cancel inputs.
+            int_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+            usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+
+            try:
+                # Identify "exit" methods and run them.
+                if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
+                    exit_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
+                    event_loop.run(call_lifecycle_functions(function_io_manager, exit_methods.values()))
+
+                # Finally, commit on exit to catch uncommitted volume changes and surface background
+                # commit errors.
+                function_io_manager.volume_commit(
+                    [v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits]
+                )
+                # Avoid "Canceling remaining unfinished task" warnings.
+                function_io_manager.stop_heartbeat()
+
+            finally:
+                # Restore the original signal handler, needed for container_test hygiene since the
+                # test runs `main()` multiple times in the same process.
+                signal.signal(signal.SIGINT, int_handler)
+                signal.signal(signal.SIGUSR1, usr1_handler)
 
 
 if __name__ == "__main__":
@@ -999,5 +1022,18 @@ if __name__ == "__main__":
                 logger.info("User exception caught, exiting")
     except KeyboardInterrupt:
         logger.debug("Container: interrupted")
+
+    # Detect if any non-daemon threads are still running, which will prevent the Python interpreter
+    # from shutting down.
+    lingering_threads: List[threading.Thread] = []
+    for thread in threading.enumerate():
+        current_thread = threading.get_ident()
+        if thread.ident is not None and thread.ident != current_thread and not thread.daemon:
+            lingering_threads.append(thread)
+    if lingering_threads:
+        thread_names = ", ".join(t.name for t in lingering_threads)
+        logger.warning(
+            f"Detected {len(lingering_threads)} background thread(s) [{thread_names}] still running after container exit. This will prevent runner shutdown for up to 30 seconds."
+        )
 
     logger.debug("Container: done")

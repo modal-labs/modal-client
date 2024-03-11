@@ -2,19 +2,12 @@
 # Copyright (c) Modal Labs 2022
 
 import ast
-import inspect
-import re
-import subprocess
-from datetime import date
-
-if not hasattr(inspect, "getargspec"):
-    # Workaround until invoke supports Python 3.11
-    # https://github.com/pyinvoke/invoke/issues/833#issuecomment-1293148106
-    inspect.getargspec = inspect.getfullargspec  # type: ignore
-
 import datetime
 import os
+import re
+import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -51,6 +44,13 @@ def type_check(ctx):
     # use pyright for checking implementation of those files
     pyright_allowlist = [
         "modal/functions.py",
+        "modal_utils/__init__.py",
+        "modal_utils/app_utils.py",
+        "modal_utils/async_utils.py",
+        "modal_utils/grpc_testing.py",
+        "modal_utils/http_utils.py",
+        "modal_utils/logger.py",
+        "modal_utils/package_utils.py",
     ]
 
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
@@ -92,6 +92,21 @@ def check_copyright(ctx, fix=False):
         raise Exception(
             f"{len(invalid_files)} are missing copyright headers!" " Please run `inv check-copyright --fix`"
         )
+
+
+@task
+def publish_base_mounts(ctx, no_confirm=False):
+    from urllib.parse import urlparse
+
+    from modal import config
+
+    server_url = config.config["server_url"]
+    if "localhost" not in urlparse(server_url).netloc and not no_confirm:
+        answer = input(f"Modal server URL is '{server_url}' not localhost. Continue operation? [y/N]: ")
+        if answer.upper() not in ["Y", "YES"]:
+            exit("Aborting task.")
+    for mount in ["modal_client_package", "python_standalone"]:
+        ctx.run(f"{sys.executable} {Path(__file__).parent}/modal_global_objects/mounts/{mount}.py", pty=True)
 
 
 @task
@@ -177,7 +192,7 @@ def type_stubs(ctx):
         "modal.partial_function",
         "modal.proxy",
         "modal.queue",
-        "modal.s3mount",
+        "modal.cloud_bucket_mount",
         "modal.sandbox",
         "modal.secret",
         "modal.stub",

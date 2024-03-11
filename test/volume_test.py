@@ -262,7 +262,7 @@ async def test_volume_upload_file_timeout(client, tmp_path, servicer, blob_serve
     with servicer.intercept() as ctx:
         ctx.override_default("MountPutFile", mount_put_file)
         with mock.patch("modal._blob_utils.LARGE_FILE_LIMIT", 10):
-            with mock.patch("modal.volume.MOUNT_PUT_FILE_CLIENT_TIMEOUT", 0.5):
+            with mock.patch("modal.volume.VOLUME_PUT_FILE_CLIENT_TIMEOUT", 0.5):
                 stub = modal.Stub()
                 stub.vol = modal.Volume.new()
                 local_file_path = tmp_path / "bigfile"
