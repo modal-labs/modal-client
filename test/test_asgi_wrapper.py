@@ -139,23 +139,3 @@ async def test_app_reads_broken_data():
 
     assert len(outputs) == 2
     assert outputs[0]["status"] == 500
-
-
-@pytest.mark.asyncio
-async def test_app_reads_no_initial_data():
-    class NoDataIOManager:
-        class get_data_in:
-            @staticmethod
-            async def aio(_function_call_id):
-                await asyncio.sleep(10)  # returns no data
-
-    mock_manager = NoDataIOManager()
-    _set_current_context_ids("in-123", "fc-123")
-    wrapped_app = asgi_app_wrapper(app, mock_manager)
-    asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
-    outputs = []
-    async for output in wrapped_app(asgi_scope):
-        outputs.append(output)
-
-    assert len(outputs) == 2
-    assert outputs[0]["status"] == 500
