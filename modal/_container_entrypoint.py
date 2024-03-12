@@ -585,7 +585,12 @@ class _FunctionIOManager:
         results = await asyncio.gather(
             *[
                 retry_transient_errors(
-                    self._client.stub.VolumeCommit, api_pb2.VolumeCommitRequest(volume_id=v_id), max_retries=10
+                    self._client.stub.VolumeCommit,
+                    api_pb2.VolumeCommitRequest(volume_id=v_id),
+                    max_retries=9,
+                    base_delay=0.25,
+                    max_delay=256,
+                    delay_factor=2,
                 )
                 for v_id in volume_ids
             ],
