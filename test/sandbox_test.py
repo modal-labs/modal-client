@@ -105,3 +105,20 @@ def test_sandbox_terminate(client, servicer):
         sb.terminate()
 
         assert sb.returncode != 0
+
+
+@skip_non_linux
+def test_sandbox_stdin(client, servicer):
+    with stub.run(client=client):
+        sb = stub.spawn_sandbox("bash", "-c", "while read line; do echo $line; done && exit 13")
+        print(sb)
+        sb.stdin.write("foo\n")
+
+        sb.stdin.write("bar\n")
+
+        sb.stdin.write_eof()
+        sb.wait()
+        res = sb.stdout.read()
+        print(f"result: {res}")
+
+        assert sb.returncode == 13
