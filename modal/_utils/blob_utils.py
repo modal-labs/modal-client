@@ -13,13 +13,14 @@ from urllib.parse import urlparse
 from aiohttp import BytesIOPayload
 from aiohttp.abc import AbstractStreamWriter
 
-from modal.exception import ExecutionError
 from modal_proto import api_pb2
-from modal_utils.async_utils import retry
-from modal_utils.grpc_utils import retry_transient_errors
-from modal_utils.hash_utils import UploadHashes, get_sha256_hex, get_upload_hashes
-from modal_utils.http_utils import http_client_with_tls
-from modal_utils.logger import logger
+
+from ..exception import ExecutionError
+from .async_utils import retry
+from .grpc_utils import retry_transient_errors
+from .hash_utils import UploadHashes, get_sha256_hex, get_upload_hashes
+from .http_utils import http_client_with_tls
+from .logger import logger
 
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 2 * 1024 * 1024  # 2 MiB

@@ -5,9 +5,8 @@ from typing import Awaitable, Callable, ClassVar, Dict, Hashable, List, Optional
 
 from google.protobuf.message import Message
 
-from modal_utils.async_utils import synchronize_api
-
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api
 from .client import _Client
 from .config import config
 from .exception import ExecutionError, InvalidError

@@ -76,7 +76,7 @@ def _fill(msg, desc: Descriptor, rand: Random) -> None:
 def rand_pb(proto: Type[T], rand: Optional[Random] = None) -> T:
     """Generate a pseudorandom protobuf message.
 
-    ```python
+    ```python notest
     rand = random.Random(42)
     definition = rand_pb(api_pb2.Function, rand)
     ```

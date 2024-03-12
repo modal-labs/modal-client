@@ -3,7 +3,7 @@
 from typing import List
 
 from modal import Queue
-from modal._function_utils import FunctionInfo, get_referred_objects, method_has_params
+from modal._utils.function_utils import FunctionInfo, get_referred_objects, method_has_params
 from modal.object import Object
 
 q1 = Queue.new()

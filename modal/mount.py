@@ -15,13 +15,13 @@ from google.protobuf.message import Message
 import modal.exception
 from modal._types import typechecked
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import retry_transient_errors
-from modal_utils.package_utils import get_module_mount_info
 from modal_version import __version__
 
-from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api
+from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
+from ._utils.grpc_utils import retry_transient_errors
+from ._utils.package_utils import get_module_mount_info
 from .client import _Client
 from .config import config, logger
 from .object import _get_environment_name, _Object
@@ -606,11 +606,11 @@ def _create_client_mount():
 
     import modal
 
-    # Get the base_path because it also contains `modal_utils` and `modal_proto`.
+    # Get the base_path because it also contains `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
 
     # TODO(erikbern): this is incredibly dumb, but we only want to include packages that start with "modal"
-    # TODO(erikbern): merge functionality with _function_utils._is_modal_path
+    # TODO(erikbern): merge functionality with function_utils._is_modal_path
     prefix = os.path.join(base_path, "modal")
 
     def condition(arg):

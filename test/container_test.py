@@ -19,7 +19,6 @@ from unittest.mock import MagicMock
 
 from grpclib.exceptions import GRPCError
 
-import modal_utils
 from modal import Client
 from modal._container_entrypoint import UserException, main
 from modal._serialization import (
@@ -28,11 +27,11 @@ from modal._serialization import (
     serialize,
     serialize_data_format,
 )
+from modal._utils import async_utils
 from modal.exception import InvalidError
 from modal.partial_function import enter
 from modal.stub import _Stub
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
 
 from .helpers import deploy_stub_externally
 from .supports.skip import skip_windows_signals, skip_windows_unix_socket
@@ -392,7 +391,7 @@ def _get_web_inputs(path="/"):
     return _get_inputs(((scope,), {}))
 
 
-@synchronize_api  # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
+@async_utils.synchronize_api  # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
 async def _put_web_body(servicer, body: bytes):
     asgi = {"type": "http.request", "body": body, "more_body": False}
     data = serialize_data_format(asgi, api_pb2.DATA_FORMAT_ASGI)
@@ -1061,7 +1060,7 @@ def test_multiple_build_decorator_cls(unix_servicer, event_loop):
 @skip_windows_unix_socket
 @pytest.mark.timeout(10.0)
 def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_servicer):
-    synchronizer = modal_utils.async_utils.synchronizer
+    synchronizer = async_utils.synchronizer
 
     # set up spys to track synchronicity calls to _translate_scalar_in/out
     translate_in_spy = MagicMock(wraps=synchronizer._translate_scalar_in)

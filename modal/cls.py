@@ -8,12 +8,12 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api, synchronizer
-from modal_utils.grpc_utils import retry_transient_errors
 
-from ._mount_utils import validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api, synchronizer
+from ._utils.grpc_utils import retry_transient_errors
+from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .exception import InvalidError, NotFoundError, deprecation_error
 from .functions import (
