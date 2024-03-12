@@ -14,13 +14,13 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal._types import typechecked
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
-from ._blob_utils import MAX_OBJECT_SIZE_BYTES
-from ._function_utils import FunctionInfo
 from ._resolver import Resolver
 from ._serialization import serialize
+from ._utils.async_utils import synchronize_api
+from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from ._utils.function_utils import FunctionInfo
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 from .app import is_local
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning

@@ -12,11 +12,11 @@ from typing import Callable, List, Optional, Set, Type
 
 from modal_proto import api_pb2
 
-from ._serialization import serialize
-from .config import config, logger
-from .exception import InvalidError, ModuleNotMountable
-from .mount import ROOT_DIR, _Mount
-from .object import Object
+from .._serialization import serialize
+from ..config import config, logger
+from ..exception import InvalidError, ModuleNotMountable
+from ..mount import ROOT_DIR, _Mount
+from ..object import Object
 
 # Expand symlinks in paths (homebrew Python paths are all symlinks).
 SYS_PREFIXES = set(
@@ -66,7 +66,6 @@ def _is_modal_path(remote_path: PurePosixPath):
         is_modal_path = path_prefix in [
             base + ("modal",),
             base + ("modal_proto",),
-            base + ("modal_utils",),
             base + ("modal_version",),
             base + ("synchronicity",),
         ]
@@ -185,7 +184,7 @@ class FunctionInfo:
         return serialized_bytes
 
     def get_globals(self):
-        from ._vendor.cloudpickle import _extract_code_globals
+        from .._vendor.cloudpickle import _extract_code_globals
 
         func = self.raw_f
         f_globals_ref = _extract_code_globals(func.__code__)
@@ -290,8 +289,8 @@ def get_referred_objects(f: Callable) -> List[Object]:
     TODO: this does not yet support Object contained by another object,
     e.g. a list of Objects in global scope.
     """
-    from .cls import Cls
-    from .functions import Function
+    from ..cls import Cls
+    from ..functions import Function
 
     ret: List[Object] = []
     obj_queue: deque[Callable] = deque([f])

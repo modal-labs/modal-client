@@ -7,8 +7,8 @@ import pytest
 
 from synchronicity import Synchronizer
 
-from modal_utils import async_utils
-from modal_utils.async_utils import (
+from modal._utils import async_utils
+from modal._utils.async_utils import (
     ConcurrencyPool,
     TaskContext,
     queue_batch_iterator,
