@@ -251,9 +251,7 @@ def _asgi_app(
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    custom_domains: Optional[
-        Iterable[str]
-    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
+    custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
 
@@ -309,9 +307,7 @@ def _wsgi_app(
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    custom_domains: Optional[
-        Iterable[str]
-    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
+    custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
 
@@ -354,6 +350,62 @@ def _wsgi_app(
                 requested_suffix=label,
                 async_mode=_response_mode,
                 custom_domains=_parse_custom_domains(custom_domains),
+            ),
+        )
+
+    return wrapper
+
+
+@typechecked
+def _web_server(
+    port: int,
+    *,
+    startup_timeout: float = 5.0,  # Maximum number of seconds to wait for the web server to start.
+    label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+    custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+) -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Decorator that registers an HTTP web server inside the container.
+
+    This is similar to `@asgi_app` and `@wsgi_app`, but it allows you to expose a full HTTP server
+    listening on a container port. This is useful for servers written in other languages like Rust,
+    as well as integrating with non-ASGI frameworks like aiohttp and Tornado.
+
+    **Usage:**
+
+    ```python
+    import subprocess
+
+    @stub.function()
+    @modal.web_server(8000)
+    def my_file_server():
+        subprocess.Popen("python -m http.server -d / 8000", shell=True)
+    ```
+
+    The above example starts a simple file server, displaying the contents of the root directory.
+    Here, requests to the web endpoint will go to external port 8000 on the container. The
+    `http.server` module is included with Python, but you could run anything here.
+
+    Internally, the web server is transparently converted into a web endpoint by Modal, so it has
+    the same serverless autoscaling behavior as other web endpoints.
+
+    For more info, see the [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+    """
+    if not isinstance(port, int) or port < 1 or port > 65535:
+        raise InvalidError("First argument of `@web_server` must be a local port, such as `@web_server(8000)`.")
+    if startup_timeout < 0:
+        raise InvalidError("The `startup_timeout` argument of `@web_server` must be non-negative.")
+
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        return _PartialFunction(
+            raw_f,
+            _PartialFunctionFlags.FUNCTION,
+            api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
+                requested_suffix=label,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+                custom_domains=_parse_custom_domains(custom_domains),
+                web_server_port=port,
+                web_server_startup_timeout=startup_timeout,
             ),
         )
 
@@ -464,6 +516,7 @@ method = synchronize_api(_method)
 web_endpoint = synchronize_api(_web_endpoint)
 asgi_app = synchronize_api(_asgi_app)
 wsgi_app = synchronize_api(_wsgi_app)
+web_server = synchronize_api(_web_server)
 build = synchronize_api(_build)
 enter = synchronize_api(_enter)
 exit = synchronize_api(_exit)

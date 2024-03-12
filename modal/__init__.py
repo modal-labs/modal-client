@@ -20,7 +20,7 @@ try:
     from .image import Image
     from .mount import Mount, create_package_mounts
     from .network_file_system import NetworkFileSystem
-    from .partial_function import asgi_app, build, enter, exit, method, web_endpoint, wsgi_app
+    from .partial_function import asgi_app, build, enter, exit, method, web_endpoint, web_server, wsgi_app
     from .proxy import Proxy
     from .queue import Queue
     from .retries import Retries
@@ -75,6 +75,7 @@ __all__ = [
     "is_local",
     "method",
     "web_endpoint",
+    "web_server",
     "wsgi_app",
     "interact",
 ]
