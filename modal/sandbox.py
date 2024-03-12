@@ -92,14 +92,11 @@ class _LogsReader:
 
 
 class _StreamWriter:
-    # TODO: Is the Sandbox thread-safe? Can I run different clones of the sandbox
-    # in different threads and perform stdin? In that case we ay need something like
-    # Mutex<int>
     def __init__(self, sandbox_id: str, client: _Client):
         self._index = 1
         self._sandbox_id = sandbox_id
         self._client = client
-    
+
     def get_next_index(self):
         index = self._index
         self._index += 1
@@ -107,19 +104,16 @@ class _StreamWriter:
 
     async def write(self, input: str):
         index = self.get_next_index()
-        res = await retry_transient_errors(
+        await retry_transient_errors(
             self._client.stub.SandboxStdinWrite,
             api_pb2.SandboxStdinWriteRequest(sandbox_id=self._sandbox_id, input=input.encode("utf-8"), index=index),
         )
 
     async def write_eof(self):
         index = self.get_next_index()
-        return await retry_transient_errors(
+        await retry_transient_errors(
             self._client.stub.SandboxStdinEof,
-            api_pb2.SandboxStdinEofRequest(
-                sandbox_id=self._sandbox_id,
-                index=index
-            ),
+            api_pb2.SandboxStdinEofRequest(sandbox_id=self._sandbox_id, index=index),
         )
 
 
