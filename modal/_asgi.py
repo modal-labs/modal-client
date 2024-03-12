@@ -2,8 +2,6 @@
 import asyncio
 from typing import Any, Callable, Dict
 
-from asgiref.wsgi import WsgiToAsgi
-
 from modal_utils.async_utils import TaskContext
 
 from ._blob_utils import MAX_OBJECT_SIZE_BYTES
@@ -83,7 +81,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager):
 
         # Run the ASGI app, while draining the send message queue at the same time,
         # and yielding results.
-        async with TaskContext() as tc:
+        async with TaskContext(grace=0.01) as tc:
             app_task = tc.create_task(asgi_app(scope, receive, send))
             fetch_data_in_task = tc.create_task(fetch_data_in())
 
@@ -110,7 +108,9 @@ def asgi_app_wrapper(asgi_app, function_io_manager):
 
 
 def wsgi_app_wrapper(wsgi_app, function_io_manager):
-    asgi_app = WsgiToAsgi(wsgi_app)
+    from ._vendor.a2wsgi_wsgi import WSGIMiddleware
+
+    asgi_app = WSGIMiddleware(wsgi_app, workers=10000, send_queue_size=1)  # unlimited workers
     return asgi_app_wrapper(asgi_app, function_io_manager)
 
 

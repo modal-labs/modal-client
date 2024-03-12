@@ -1029,11 +1029,13 @@ if __name__ == "__main__":
         logger.debug("Container: interrupted")
 
     # Detect if any non-daemon threads are still running, which will prevent the Python interpreter
-    # from shutting down.
+    # from shutting down. The sleep(0) here is needed for finished ThreadPoolExecutor resources to
+    # shut down without triggering this warning (e.g., `@wsgi_app()`).
+    time.sleep(0)
     lingering_threads: List[threading.Thread] = []
     for thread in threading.enumerate():
         current_thread = threading.get_ident()
-        if thread.ident is not None and thread.ident != current_thread and not thread.daemon:
+        if thread.ident is not None and thread.ident != current_thread and not thread.daemon and thread.is_alive():
             lingering_threads.append(thread)
     if lingering_threads:
         thread_names = ", ".join(t.name for t in lingering_threads)

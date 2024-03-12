@@ -385,7 +385,7 @@ def _get_web_inputs(path="/"):
         "type": "http",
         "path": path,
         "headers": {},
-        "query_string": "arg=space",
+        "query_string": b"arg=space",
         "http_version": "2",
     }
     return _get_inputs(((scope,), {}))
@@ -487,8 +487,7 @@ def test_asgi(unix_servicer, event_loop):
         webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     )
 
-    # There should be one message for the header, one for the body, one for the EOF
-    # EOF is removed by _unwrap_asgi
+    # There should be one message for the header, and one for the body
     first_message, second_message = _unwrap_asgi(ret)
 
     # Check the headers
@@ -498,6 +497,33 @@ def test_asgi(unix_servicer, event_loop):
 
     # Check body
     assert json.loads(second_message["body"]) == {"hello": "space"}
+
+
+@skip_windows_unix_socket
+def test_wsgi(unix_servicer, event_loop):
+    inputs = _get_web_inputs(path="/")
+    _put_web_body(unix_servicer, b"my wsgi body")
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "basic_wsgi_app",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
+    )
+
+    # There should be one message for headers, one for the body, and one for the end-of-body.
+    first_message, second_message, third_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"text/plain; charset=utf-8"
+
+    # Check body
+    assert second_message["body"] == b"got body: my wsgi body"
+    assert second_message.get("more_body", False) is True
+    assert third_message["body"] == b""
+    assert third_message.get("more_body", False) is False
 
 
 @skip_windows_unix_socket
