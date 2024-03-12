@@ -55,6 +55,7 @@ class MockIOManager:
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(1)
 async def test_success():
     mock_manager = MockIOManager()
     _set_current_context_ids("in-123", "fc-123")
@@ -72,6 +73,7 @@ async def test_success():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("endpoint_url", ["/error", "/async_error"])
+@pytest.mark.timeout(1)
 async def test_endpoint_exception(endpoint_url):
     mock_manager = MockIOManager()
     _set_current_context_ids("in-123", "fc-123")
@@ -93,6 +95,7 @@ async def test_endpoint_exception(endpoint_url):
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(1)
 async def test_broken_io_unused(caplog):
     # if IO channel breaks, but the endpoint doesn't actually use
     # any of the body data, it should be allowed to output its data
@@ -120,6 +123,7 @@ async def test_broken_io_unused(caplog):
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(1)
 async def test_broken_io_used():
     class NoDataIOManager:
         class get_data_in:
