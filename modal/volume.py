@@ -11,17 +11,17 @@ from grpclib import GRPCError, Status
 
 from modal.exception import VolumeUploadTimeoutError, deprecation_warning
 from modal_proto import api_pb2
-from modal_utils.async_utils import asyncnullcontext, synchronize_api
-from modal_utils.grpc_utils import retry_transient_errors, unary_stream
 
-from ._blob_utils import (
+from ._resolver import Resolver
+from ._utils.async_utils import asyncnullcontext, synchronize_api
+from ._utils.blob_utils import (
     FileUploadSpec,
     blob_iter,
     blob_upload_file,
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
 )
-from ._resolver import Resolver
+from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from .client import _Client
 from .config import logger
 from .object import _get_environment_name, _Object, live_method, live_method_gen

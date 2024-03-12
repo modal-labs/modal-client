@@ -10,10 +10,9 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, TypeVar
 
 from synchronicity import Interface
 
-from modal_utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
-from modal_utils.logger import logger
-
 from ._output import OutputManager
+from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
+from ._utils.logger import logger
 from ._watcher import watch
 from .cli.import_refs import import_stub
 from .client import _Client

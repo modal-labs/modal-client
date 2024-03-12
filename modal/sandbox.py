@@ -9,12 +9,12 @@ from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_p
 from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from modal.volume import _Volume
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 from ._location import parse_cloud_provider
-from ._mount_utils import validate_mount_points, validate_volumes
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.mount_utils import validate_mount_points, validate_volumes
 from .client import _Client
 from .config import config
 from .gpu import GPU_T, parse_gpu_config

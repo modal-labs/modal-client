@@ -8,8 +8,8 @@ from typing import AsyncIterator, Optional, Tuple
 from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
 
+from ._utils.async_utils import synchronize_api
 from .client import _Client
 from .exception import InvalidError, RemoteError
 

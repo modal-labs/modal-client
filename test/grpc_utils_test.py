@@ -6,8 +6,8 @@ import time
 
 from grpclib import GRPCError, Status
 
+from modal._utils.grpc_utils import ChannelPool, create_channel, retry_transient_errors
 from modal_proto import api_grpc, api_pb2
-from modal_utils.grpc_utils import ChannelPool, create_channel, retry_transient_errors
 
 from .supports.skip import skip_windows_unix_socket
 

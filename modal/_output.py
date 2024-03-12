@@ -31,9 +31,9 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 from modal_proto import api_pb2
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
 from ._container_exec import handle_exec_input
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 from .client import _Client
 from .config import logger
 

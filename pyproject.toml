@@ -56,7 +56,6 @@ known-first-party = [
     "modal",
     "modal_global_objects",
     "modal_proto",
-    "modal_utils",
     "modal_version",
 ]
 extra-standard-library = ["pytest"]

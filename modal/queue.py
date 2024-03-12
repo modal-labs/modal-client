@@ -7,11 +7,11 @@ from typing import Any, List, Optional
 from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
+from ._utils.async_utils import synchronize_api
+from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
 from .exception import deprecation_error, deprecation_warning
 from .object import _get_environment_name, _Object, live_method

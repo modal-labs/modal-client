@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from modal import Stub
-from modal._blob_utils import LARGE_FILE_LIMIT
+from modal._utils.blob_utils import LARGE_FILE_LIMIT
 from modal.exception import ModuleNotMountable
 from modal.mount import Mount
 

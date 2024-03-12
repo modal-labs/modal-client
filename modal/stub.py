@@ -8,13 +8,13 @@ from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._types import typechecked
-from modal_utils.async_utils import synchronize_api
 
-from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
-from ._mount_utils import validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api
+from ._utils.function_utils import FunctionInfo
+from ._utils.mount_utils import validate_volumes
 from .app import _container_app, _ContainerApp, _LocalApp, is_local
 from .client import _Client
 from .cls import _Cls

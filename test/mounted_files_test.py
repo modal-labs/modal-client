@@ -9,7 +9,7 @@ import pytest_asyncio
 
 import modal
 from modal import Mount
-from modal._function_utils import FunctionInfo
+from modal._utils.function_utils import FunctionInfo
 
 from . import helpers
 from .supports.skip import skip_windows

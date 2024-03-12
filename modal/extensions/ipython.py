@@ -5,8 +5,8 @@ import sys
 from typing import Any
 
 from modal import Stub
+from modal._utils.async_utils import run_coro_blocking
 from modal.config import config, logger
-from modal_utils.async_utils import run_coro_blocking
 
 app_ctx: Any
 

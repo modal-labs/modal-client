@@ -209,9 +209,7 @@ def setup_rich_traceback() -> None:
     import synchronicity
     import typer
 
-    import modal_utils
-
-    install(suppress=[synchronicity, modal_utils, grpclib, click, typer], extra_lines=1)
+    install(suppress=[synchronicity, grpclib, click, typer], extra_lines=1)
 
 
 def highlight_modal_deprecation_warnings() -> None:

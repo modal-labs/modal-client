@@ -4,8 +4,8 @@ from enum import Enum
 from typing import List, Optional, Tuple, Union
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
 
+from ._utils.async_utils import synchronize_api
 from .secret import _Secret
 
 
@@ -16,6 +16,7 @@ class BucketType(Enum):
     def proto(self):
         if self.value == "s3":
             return api_pb2.CloudBucketMount.BucketType.S3
+
 
 @dataclass
 class _CloudBucketMount:
@@ -54,16 +55,16 @@ class _CloudBucketMount:
     secret: Optional[_Secret] = None
 
     read_only: bool = False
-    bucket_type: Union[BucketType, str] = BucketType.S3.value  # S3 is the default bucket type until other cloud buckets are supported
+    bucket_type: Union[
+        BucketType, str
+    ] = BucketType.S3.value  # S3 is the default bucket type until other cloud buckets are supported
 
 
 def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) -> List[api_pb2.CloudBucketMount]:
-    """Helper function to convert `CloudBucketMount` to a list of protobufs that can be passed to the server.
-    """
-    cloud_bucket_mounts:List[api_pb2.CloudBucketMount] = []
+    """Helper function to convert `CloudBucketMount` to a list of protobufs that can be passed to the server."""
+    cloud_bucket_mounts: List[api_pb2.CloudBucketMount] = []
 
     for path, mount in mounts:
-
         if isinstance(mount.bucket_type, str):
             bucket_type = BucketType(mount.bucket_type)
         else:
