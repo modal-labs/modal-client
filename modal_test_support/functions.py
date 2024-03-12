@@ -16,6 +16,7 @@ from modal import (
     exit,
     method,
     web_endpoint,
+    wsgi_app,
 )
 from modal.exception import deprecation_warning
 
@@ -146,6 +147,20 @@ def fastapi_app():
         return {"hello": arg}
 
     return web_app
+
+
+@stub.function()
+@wsgi_app()
+def basic_wsgi_app():
+    def simple_app(environ, start_response):
+        status = "200 OK"
+        headers = [("Content-type", "text/plain; charset=utf-8")]
+        body = environ["wsgi.input"].read()
+
+        start_response(status, headers)
+        yield b"got body: " + body
+
+    return simple_app
 
 
 @stub.cls()
