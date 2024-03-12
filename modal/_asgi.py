@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+from asyncio import QueueEmpty
 from typing import Any, AsyncGenerator, Callable, Dict, List
 
 from modal_utils.async_utils import TaskContext
@@ -91,23 +92,42 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
 
             await messages_from_app.put([msg])
 
-        async def receive():
-            return await messages_to_app.get()
-
         # Run the ASGI app, while draining the send message queue at the same time,
         # and yielding results.
         async with TaskContext(grace=0.01) as tc:
-            app_task = tc.create_task(asgi_app(scope, receive, send))
             fetch_data_in_task = tc.create_task(fetch_data_in())
+
+            async def receive():
+                try:
+                    return messages_to_app.get_nowait()
+                except QueueEmpty:
+                    pass
+
+                next_message_task = None
+                try:
+                    next_message_task = asyncio.create_task(messages_to_app.get())
+                    done, pending = await asyncio.wait(
+                        [next_message_task, fetch_data_in_task], return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if next_message_task in done:
+                        return next_message_task.result()
+                    else:
+                        assert (
+                            fetch_data_in_task.exception() is not None
+                        )  # data fetching should never exit without an exception
+                        fetch_data_in_task.result()  # raise errors from fetch_data_in_task
+                finally:
+                    if next_message_task:
+                        next_message_task.cancel()  # clean up
+
+            app_task = tc.create_task(asgi_app(scope, receive, send))
             pop_task = None
             try:
                 while True:
                     pop_task = tc.create_task(messages_from_app.get())
 
                     try:
-                        done, pending = await asyncio.wait(
-                            [pop_task, app_task, fetch_data_in_task], return_when=asyncio.FIRST_COMPLETED
-                        )
+                        done, pending = await asyncio.wait([pop_task, app_task], return_when=asyncio.FIRST_COMPLETED)
                     except asyncio.CancelledError:
                         break
 
@@ -128,9 +148,9 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
                         break
 
                 if fetch_data_in_task.done():
-                    # the data fetching loop task should typically not exit, not even gracefully
+                    # the data fetching loop task should typically not exit
+                    # but if it did, lets warn about it even if it didn't affect the app
                     logger.error(f"Data fetching task stopped unexpectedly: {fetch_data_in_task.exception()}")
-                    fetch_data_in_task.result()  # in case there were exceptions, raise those
             finally:
                 fetch_data_in_task.cancel()
                 if not app_task.done():

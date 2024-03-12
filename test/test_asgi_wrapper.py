@@ -96,13 +96,13 @@ async def test_endpoint_exception(endpoint_url):
 async def test_broken_io_unused(caplog):
     # if IO channel breaks, but the endpoint doesn't actually use
     # any of the body data, it should be allowed to output its data
-    # to the channel before we raise the relevant exception
+    # and not raise an exception - but print a warning since it's unexpected
     class BrokenIOManager:
         class get_data_in:
             @staticmethod
             async def aio(_function_call_id):
                 raise DummyException("error while fetching data")
-                yield  # noqa
+                yield  # noqa (makes this a generator)
 
     mock_manager = BrokenIOManager()
     _set_current_context_ids("in-123", "fc-123")
@@ -110,9 +110,8 @@ async def test_broken_io_unused(caplog):
     asgi_scope = _asgi_get_scope("/")
     outputs = []
 
-    with pytest.raises(DummyException, match="error while fetching data"):
-        async for output in wrapped_app(asgi_scope):
-            outputs.append(output)
+    async for output in wrapped_app(asgi_scope):
+        outputs.append(output)
 
     assert len(outputs) == 2
     assert outputs[0]["status"] == 200
@@ -121,19 +120,20 @@ async def test_broken_io_unused(caplog):
 
 
 @pytest.mark.asyncio
-async def test_app_reads_broken_data():
+async def test_broken_io_used():
     class NoDataIOManager:
         class get_data_in:
             @staticmethod
             async def aio(_function_call_id):
-                yield {}  # this asgi message has no "type"
+                raise DummyException()
+                yield  # noqa
 
     mock_manager = NoDataIOManager()
     _set_current_context_ids("in-123", "fc-123")
     wrapped_app = asgi_app_wrapper(app, mock_manager)
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
     outputs = []
-    with pytest.raises(KeyError, match="type"):
+    with pytest.raises(DummyException):
         async for output in wrapped_app(asgi_scope):
             outputs.append(output)
 
