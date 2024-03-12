@@ -199,6 +199,7 @@ enum WebhookType {
   WEBHOOK_TYPE_ASGI_APP = 1;
   WEBHOOK_TYPE_FUNCTION = 2;
   WEBHOOK_TYPE_WSGI_APP = 3;
+  WEBHOOK_TYPE_WEB_SERVER = 4;
 }
 
 enum WebhookAsyncMode {
@@ -1918,6 +1919,8 @@ message WebhookConfig {
   string requested_suffix = 4;
   WebhookAsyncMode async_mode = 5;
   repeated CustomDomainConfig custom_domains = 6;
+  uint32 web_server_port = 7;
+  float web_server_startup_timeout = 8;
 }
 
 message WebUrlInfo {
