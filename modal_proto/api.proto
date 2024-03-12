@@ -621,7 +621,6 @@ message DataChunk {
   oneof data_oneof {
     bytes data = 2;
     string data_blob_id = 3;
-    bool is_eof = 5; // Used for sandbox stdin 
   }
   uint64 index = 4; // Index of this data chunk in the stream.
 }
@@ -1497,18 +1496,10 @@ message SandboxStdinWriteRequest {
   string sandbox_id = 1;
   bytes input = 2;
   uint32 index = 3;
+  bool eof = 4;
 }
 
 message SandboxStdinWriteResponse {
-  GenericResult result = 1;
-}
-
-message SandboxStdinEofRequest {
-  string sandbox_id = 1;
-  uint32 index = 2;
-}
-
-message SandboxStdinEofResponse {
   GenericResult result = 1;
 }
 
@@ -1968,9 +1959,7 @@ message RuntimeOutputBatch {
 message RuntimeInputMessage {
   bytes message = 1;
   uint64 message_index = 2;
-  bool is_eof = 3;
 }
-
 
 service ModalClient {
   // Apps
@@ -2082,7 +2071,6 @@ service ModalClient {
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
-  rpc SandboxStdinEof(SandboxStdinEofRequest) returns (SandboxStdinEofResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
 
