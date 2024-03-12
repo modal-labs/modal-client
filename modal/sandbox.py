@@ -92,6 +92,8 @@ class _LogsReader:
 
 
 class _StreamWriter:
+    """Provides an interface to buffer and write logs to a sandbox stream (`stdin`)."""
+
     def __init__(self, sandbox_id: str, client: _Client):
         self._index = 1
         self._sandbox_id = sandbox_id
