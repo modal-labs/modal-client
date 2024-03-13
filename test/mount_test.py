@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import hashlib
 import os
+import platform
 import pytest
 import sys
 from pathlib import Path
@@ -26,7 +27,7 @@ async def test_get_files(servicer, client, tmpdir):
         files[upload_spec.mount_filename] = upload_spec
 
     os.umask(umask := os.umask(0o022))  # Get the current umask
-    expected_mode = 0o666 - umask
+    expected_mode = 0o644 if platform.system() == "Windows" else 0o666 - umask
 
     assert "/small.py" in files
     assert "/large.py" in files
