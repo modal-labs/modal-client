@@ -106,7 +106,7 @@ class _StreamWriter:
         self._index += 1
         return index
 
-    def write(self, data):
+    def write(self, data: Union[bytes, bytearray, memoryview]):
         if self._is_closed:
             return
         if isinstance(data, (bytes, bytearray, memoryview)):
