@@ -112,7 +112,7 @@ def test_import_object(dir_structure, ref, expected_object_type, mock_dir):
         assert isinstance(_translated_obj, expected_object_type)
 
 
-def test_import_package_and_module_names(monkeypatch, modal_test_support_dir):
+def test_import_package_and_module_names(monkeypatch, supports_dir):
     # We try to reproduce the package/module naming standard that the `python` command line tool uses,
     # i.e. when loading using a module path (-m flag w/ python) you get a fully qualified package/module name
     # but when loading using a filename, some/mod.py it will not have a __package__
@@ -120,17 +120,17 @@ def test_import_package_and_module_names(monkeypatch, modal_test_support_dir):
     # The biggest difference is that __name__ of the imported "entrypoint" script
     # is __main__ when using `python` but in the Modal runtime it's the name of the
     # file minus the ".py", since Modal has its own __main__
-    monkeypatch.chdir(modal_test_support_dir)
+    monkeypatch.chdir(supports_dir)
     mod1 = import_file_or_module("assert_package")
     assert mod1.__package__ == ""
     assert mod1.__name__ == "assert_package"
 
-    monkeypatch.chdir(modal_test_support_dir.parent)
-    mod2 = import_file_or_module("modal_test_support.assert_package")
-    assert mod2.__package__ == "modal_test_support"
-    assert mod2.__name__ == "modal_test_support.assert_package"
+    monkeypatch.chdir(supports_dir.parent)
+    mod2 = import_file_or_module("test.supports.assert_package")
+    assert mod2.__package__ == "test.supports"
+    assert mod2.__name__ == "test.supports.assert_package"
 
-    mod3 = import_file_or_module("modal_test_support/assert_package.py")
+    mod3 = import_file_or_module("supports/assert_package.py")
     assert mod3.__package__ == ""
     assert mod3.__name__ == "assert_package"
 

@@ -1332,10 +1332,3 @@ def modal_config():
 @pytest.fixture
 def supports_dir(test_dir):
     return test_dir / Path("supports")
-
-
-@pytest.fixture()
-def modal_test_support_dir(request):
-    # TODO: merge this with test/supports dir?
-    root_dir = Path(request.config.rootdir)
-    return root_dir / "modal_test_support"
