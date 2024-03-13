@@ -1500,7 +1500,6 @@ message SandboxStdinWriteRequest {
 }
 
 message SandboxStdinWriteResponse {
-  GenericResult result = 1;
 }
 
 message SandboxHandleMetadata {
