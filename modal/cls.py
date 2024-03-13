@@ -1,18 +1,19 @@
 # Copyright Modal Labs 2022
 import os
 import pickle
+import typing
 from typing import Any, Callable, Collection, Dict, List, Optional, Type, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api, synchronizer
-from modal_utils.grpc_utils import retry_transient_errors
 
-from ._mount_utils import validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api, synchronizer
+from ._utils.grpc_utils import retry_transient_errors
+from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .exception import InvalidError, NotFoundError, deprecation_error
 from .functions import (
@@ -32,6 +33,10 @@ from .secret import _Secret
 from .volume import _Volume
 
 T = TypeVar("T")
+
+
+if typing.TYPE_CHECKING:
+    import modal.stub
 
 
 class ClsMixin:
@@ -146,6 +151,7 @@ class _Cls(_Object, type_prefix="cs"):
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
+    _stub: Optional["modal.stub._Stub"] = None  # not set for lookups
 
     def _initialize_from_empty(self):
         self._user_cls = None

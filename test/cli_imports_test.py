@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import pytest
 
+from modal._utils.async_utils import synchronizer
 from modal.cli.import_refs import (
     DEFAULT_STUB_NAME,
     get_by_object_path,
@@ -9,7 +10,6 @@ from modal.cli.import_refs import (
 )
 from modal.functions import _Function
 from modal.stub import _LocalEntrypoint, _Stub
-from modal_utils.async_utils import synchronizer
 
 # Some helper vars for import_stub tests:
 local_entrypoint_src = """

@@ -4,8 +4,8 @@ import random
 
 from modal import Queue, Stub
 from modal._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
+from modal._utils.rand_pb_testing import rand_pb
 from modal_proto import api_pb2
-from modal_utils.rand_pb_testing import rand_pb
 
 from .supports.skip import skip_old_py
 

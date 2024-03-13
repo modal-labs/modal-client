@@ -1,13 +1,12 @@
 # Copyright Modal Labs 2022
 import uuid
 from functools import wraps
-from typing import Awaitable, Callable, ClassVar, Dict, List, Optional, Type, TypeVar
+from typing import Awaitable, Callable, ClassVar, Dict, Hashable, List, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 
-from modal_utils.async_utils import synchronize_api
-
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api
 from .client import _Client
 from .config import config
 from .exception import ExecutionError, InvalidError
@@ -204,8 +203,11 @@ class _Object:
                 " wasn't defined in global scope."
             )
         else:
-            resolver = Resolver()
+            resolver = Resolver()  # TODO: this resolver has no attached Client!
             await resolver.load(self)
+
+    async def _deduplication_key(self) -> Optional[Hashable]:
+        return None
 
 
 Object = synchronize_api(_Object, target_module=__name__)

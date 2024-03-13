@@ -15,13 +15,13 @@ from google.protobuf.message import Message
 import modal.exception
 from modal._types import typechecked
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import retry_transient_errors
-from modal_utils.package_utils import get_module_mount_info
 from modal_version import __version__
 
-from ._blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api
+from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
+from ._utils.grpc_utils import retry_transient_errors
+from ._utils.package_utils import get_module_mount_info
 from .client import _Client
 from .config import config, logger
 from .object import _get_environment_name, _Object
@@ -82,6 +82,7 @@ class _MountEntry(metaclass=abc.ABCMeta):
 
 
 def _select_files(entries: List[_MountEntry]) -> List[Tuple[Path, PurePosixPath]]:
+    # TODO: make this async
     all_files: typing.Set[Tuple[Path, PurePosixPath]] = set()
     for entry in entries:
         all_files |= set(entry.get_files_to_upload())
@@ -582,6 +583,19 @@ class _Mount(_Object, type_prefix="mo"):
         resolver = Resolver(client=client)
         await resolver.load(self)
 
+    async def _deduplication_key(self):
+        try:
+            included_files = await asyncio.get_event_loop().run_in_executor(None, _select_files, self.entries)
+        except NonLocalMountError:
+            return None
+        return frozenset(included_files)
+
+    def _get_metadata(self) -> api_pb2.MountHandleMetadata:
+        if self._content_checksum_sha256_hex is None:
+            raise ValueError("Trying to access checksum of unhydrated mount")
+
+        return api_pb2.MountHandleMetadata(content_checksum_sha256_hex=self._content_checksum_sha256_hex)
+
 
 Mount = synchronize_api(_Mount)
 
@@ -592,11 +606,11 @@ def _create_client_mount():
 
     import modal
 
-    # Get the base_path because it also contains `modal_utils` and `modal_proto`.
+    # Get the base_path because it also contains `modal_proto`.
     base_path, _ = os.path.split(modal.__path__[0])
 
     # TODO(erikbern): this is incredibly dumb, but we only want to include packages that start with "modal"
-    # TODO(erikbern): merge functionality with _function_utils._is_modal_path
+    # TODO(erikbern): merge functionality with function_utils._is_modal_path
     prefix = os.path.join(base_path, "modal")
 
     def condition(arg):
@@ -628,30 +642,6 @@ def _get_client_mount():
 _create_package_mounts_deprecation_msg = (
     "modal.create_package_mounts() is being deprecated, use modal.Mount.from_local_python_packages() instead"
 )
-
-
-class _MountCache:
-    # used for deduplicating Mounts
-    cache: typing.Dict[typing.FrozenSet[Tuple[Path, PurePosixPath]], _Mount]
-
-    def __init__(self):
-        self.cache = {}
-
-    def _cache_key(self, mount: _Mount) -> typing.FrozenSet[Tuple[Path, PurePosixPath]]:
-        return frozenset(_select_files(mount.entries))
-
-    def get(self, mount: _Mount) -> _Mount:
-        # return the mount itself or an equivalent one that has already been added
-        try:
-            return self.cache.setdefault(self._cache_key(mount), mount)
-        except NonLocalMountError:
-            return mount
-
-    def get_many(self, mounts: typing.Collection[_Mount]) -> List[_Mount]:
-        result = []
-        for m in mounts:
-            result.append(self.get(m))
-        return result
 
 
 @typechecked

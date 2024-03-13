@@ -22,22 +22,16 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, 
 
 from grpclib import Status
 
-from modal.stub import _Stub
 from modal_proto import api_pb2
-from modal_utils.async_utils import (
-    TaskContext,
-    asyncify,
-    synchronize_api,
-    synchronizer,
-)
-from modal_utils.grpc_utils import retry_transient_errors
 
 from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
-from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
+from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
+from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
+from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
+from ._utils.grpc_utils import retry_transient_errors
 from .app import _container_app, _ContainerApp, interact
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
@@ -45,6 +39,7 @@ from .config import config, logger
 from .exception import InputCancellation, InvalidError
 from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
+from .stub import _Stub
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -585,7 +580,12 @@ class _FunctionIOManager:
         results = await asyncio.gather(
             *[
                 retry_transient_errors(
-                    self._client.stub.VolumeCommit, api_pb2.VolumeCommitRequest(volume_id=v_id), max_retries=10
+                    self._client.stub.VolumeCommit,
+                    api_pb2.VolumeCommitRequest(volume_id=v_id),
+                    max_retries=9,
+                    base_delay=0.25,
+                    max_delay=256,
+                    delay_factor=2,
                 )
                 for v_id in volume_ids
             ],
@@ -1024,11 +1024,13 @@ if __name__ == "__main__":
         logger.debug("Container: interrupted")
 
     # Detect if any non-daemon threads are still running, which will prevent the Python interpreter
-    # from shutting down.
+    # from shutting down. The sleep(0) here is needed for finished ThreadPoolExecutor resources to
+    # shut down without triggering this warning (e.g., `@wsgi_app()`).
+    time.sleep(0)
     lingering_threads: List[threading.Thread] = []
     for thread in threading.enumerate():
         current_thread = threading.get_ident()
-        if thread.ident is not None and thread.ident != current_thread and not thread.daemon:
+        if thread.ident is not None and thread.ident != current_thread and not thread.daemon and thread.is_alive():
             lingering_threads.append(thread)
     if lingering_threads:
         thread_names = ", ".join(t.name for t in lingering_threads)

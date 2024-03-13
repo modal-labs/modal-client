@@ -7,7 +7,7 @@ import sys
 import time
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar
+from typing import Any, AsyncGenerator, Callable, Iterator, List, Optional, Set, TypeVar, cast
 
 import synchronicity
 from typing_extensions import ParamSpec
@@ -316,18 +316,18 @@ T = TypeVar("T")
 P = ParamSpec("P")
 
 
-def asyncify(f: Callable[P, T]) -> Callable[P, Awaitable[T]]:
+def asyncify(f: Callable[P, T]) -> Callable[P, typing.Coroutine[None, None, T]]:
     """Convert a blocking function into one that runs in the current loop's executor."""
 
     @functools.wraps(f)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Awaitable[T]:
+    async def wrapper(*args: P.args, **kwargs: P.kwargs):
         loop = asyncio.get_running_loop()
-        return loop.run_in_executor(None, functools.partial(f, *args, **kwargs))
+        return await loop.run_in_executor(None, functools.partial(f, *args, **kwargs))
 
     return wrapper
 
 
-async def iterate_blocking(iterator: Iterator[T]) -> AsyncIterator[T]:
+async def iterate_blocking(iterator: Iterator[T]) -> AsyncGenerator[T, None]:
     """Iterate over a blocking iterator in an async context."""
 
     loop = asyncio.get_running_loop()
@@ -336,7 +336,7 @@ async def iterate_blocking(iterator: Iterator[T]) -> AsyncIterator[T]:
         obj = await loop.run_in_executor(None, next, iterator, DONE)
         if obj is DONE:
             break
-        yield obj
+        yield cast(T, obj)
 
 
 class ConcurrencyPool:

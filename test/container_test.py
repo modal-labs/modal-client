@@ -19,7 +19,6 @@ from unittest.mock import MagicMock
 
 from grpclib.exceptions import GRPCError
 
-import modal_utils
 from modal import Client
 from modal._container_entrypoint import UserException, main
 from modal._serialization import (
@@ -28,6 +27,7 @@ from modal._serialization import (
     serialize,
     serialize_data_format,
 )
+from modal._utils import async_utils
 from modal.exception import InvalidError
 from modal.partial_function import enter
 from modal.stub import _Stub
@@ -385,13 +385,14 @@ def _get_web_inputs(path="/"):
         "type": "http",
         "path": path,
         "headers": {},
-        "query_string": "arg=space",
+        "query_string": b"arg=space",
         "http_version": "2",
     }
     return _get_inputs(((scope,), {}))
 
 
-def _put_web_body(servicer, body: bytes):
+@async_utils.synchronize_api  # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
+async def _put_web_body(servicer, body: bytes):
     asgi = {"type": "http.request", "body": body, "more_body": False}
     data = serialize_data_format(asgi, api_pb2.DATA_FORMAT_ASGI)
 
@@ -487,8 +488,7 @@ def test_asgi(unix_servicer, event_loop):
         webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     )
 
-    # There should be one message for the header, one for the body, one for the EOF
-    # EOF is removed by _unwrap_asgi
+    # There should be one message for the header, and one for the body
     first_message, second_message = _unwrap_asgi(ret)
 
     # Check the headers
@@ -498,6 +498,33 @@ def test_asgi(unix_servicer, event_loop):
 
     # Check body
     assert json.loads(second_message["body"]) == {"hello": "space"}
+
+
+@skip_windows_unix_socket
+def test_wsgi(unix_servicer, event_loop):
+    inputs = _get_web_inputs(path="/")
+    _put_web_body(unix_servicer, b"my wsgi body")
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.functions",
+        "basic_wsgi_app",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
+    )
+
+    # There should be one message for headers, one for the body, and one for the end-of-body.
+    first_message, second_message, third_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"text/plain; charset=utf-8"
+
+    # Check body
+    assert second_message["body"] == b"got body: my wsgi body"
+    assert second_message.get("more_body", False) is True
+    assert third_message["body"] == b""
+    assert third_message.get("more_body", False) is False
 
 
 @skip_windows_unix_socket
@@ -512,7 +539,6 @@ def test_webhook_streaming_sync(unix_servicer, event_loop):
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
-
     data = _unwrap_asgi(ret)
     bodies = [d["body"].decode() for d in data if d.get("body")]
     assert bodies == [f"{i}..." for i in range(10)]
@@ -1034,7 +1060,7 @@ def test_multiple_build_decorator_cls(unix_servicer, event_loop):
 @skip_windows_unix_socket
 @pytest.mark.timeout(10.0)
 def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_servicer):
-    synchronizer = modal_utils.async_utils.synchronizer
+    synchronizer = async_utils.synchronizer
 
     # set up spys to track synchronicity calls to _translate_scalar_in/out
     translate_in_spy = MagicMock(wraps=synchronizer._translate_scalar_in)

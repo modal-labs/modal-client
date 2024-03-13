@@ -35,27 +35,27 @@ from synchronicity.exceptions import UserCodeException
 
 from modal import _pty, is_local
 from modal_proto import api_grpc, api_pb2
-from modal_utils.async_utils import (
+
+from ._location import parse_cloud_provider
+from ._output import OutputManager
+from ._resolver import Resolver
+from ._serialization import deserialize, deserialize_data_format, serialize
+from ._traceback import append_modal_tb
+from ._utils.async_utils import (
     queue_batch_iterator,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
-
-from ._blob_utils import (
+from ._utils.blob_utils import (
     BLOB_MAX_PARALLELISM,
     MAX_OBJECT_SIZE_BYTES,
     blob_download,
     blob_upload,
 )
-from ._function_utils import FunctionInfo, get_referred_objects, is_async
-from ._location import parse_cloud_provider
-from ._mount_utils import validate_mount_points, validate_volumes
-from ._output import OutputManager
-from ._resolver import Resolver
-from ._serialization import deserialize, deserialize_data_format, serialize
-from ._traceback import append_modal_tb
+from ._utils.function_utils import FunctionInfo, get_referred_objects, is_async
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.mount_utils import validate_mount_points, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
@@ -71,7 +71,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount, _MountCache
+from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .proxy import _Proxy
@@ -632,7 +632,7 @@ class _Function(_Object, type_prefix="fu"):
 
         if checkpointing_enabled is not None:
             deprecation_warning(
-                (2024, 4, 4),
+                (2024, 3, 4),
                 "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
             )
             enable_memory_snapshot = checkpointing_enabled
@@ -756,11 +756,7 @@ class _Function(_Object, type_prefix="fu"):
                 # worker runtime
                 deps += list(explicit_mounts)
             else:
-                mount_cache = (
-                    stub._mount_cache if stub else _MountCache()
-                )  # builder functions don't have stubs at this point
-                optimized_mounts = mount_cache.get_many(all_mounts)
-                deps += list(optimized_mounts)
+                deps += list(all_mounts)
             if proxy:
                 deps.append(proxy)
             if image:
@@ -855,16 +851,20 @@ class _Function(_Object, type_prefix="fu"):
                 )
                 for path, volume in validated_volumes
             ]
-            mount_cache = (
-                stub._mount_cache if stub else _MountCache()
-            )  # builder functions don't have stubs at this point
-            optimized_mounts = mount_cache.get_many(all_mounts)
+            loaded_mount_ids = {m.object_id for m in all_mounts}
+
+            # Get object dependencies
+            object_dependencies = []
+            for dep in _deps(only_explicit_mounts=True):
+                if not dep.object_id:
+                    raise Exception(f"Dependency {dep} isn't hydrated")
+                object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
 
             # Create function remotely
             function_definition = api_pb2.Function(
                 module_name=info.module_name or "",
                 function_name=info.function_name,
-                mount_ids=[mount.object_id for mount in optimized_mounts],
+                mount_ids=loaded_mount_ids,
                 secret_ids=[secret.object_id for secret in secrets],
                 image_id=(image.object_id if image else ""),
                 definition_type=info.definition_type,
@@ -895,9 +895,7 @@ class _Function(_Object, type_prefix="fu"):
                 is_method=bool(info.cls),
                 checkpointing_enabled=enable_memory_snapshot,
                 is_checkpointing_function=False,
-                object_dependencies=[
-                    api_pb2.ObjectDependency(object_id=dep.object_id) for dep in _deps(only_explicit_mounts=True)
-                ],
+                object_dependencies=object_dependencies,
                 block_network=block_network,
                 max_inputs=max_inputs or 0,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
