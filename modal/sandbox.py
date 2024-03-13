@@ -91,6 +91,9 @@ class _LogsReader:
         return data
 
 
+MAX_BUFFER_SIZE = 4096
+
+
 class _StreamWriter:
     """Provides an interface to buffer and write logs to a sandbox stream (`stdin`)."""
 
@@ -110,6 +113,8 @@ class _StreamWriter:
         if self._is_closed:
             return
         if isinstance(data, (bytes, bytearray, memoryview)):
+            if len(self._buffer) + len(data) > 4096:
+                raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
             self._buffer.extend(data)
         else:
             raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")

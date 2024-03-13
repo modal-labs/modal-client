@@ -110,7 +110,7 @@ def test_sandbox_terminate(client, servicer):
 @skip_non_linux
 @pytest.mark.asyncio
 async def test_sandbox_stdin_async(client, servicer):
-    with stub.run(client=client):
+    async with stub.run.aio(client=client):
         sb = stub.spawn_sandbox("bash", "-c", "while read line; do echo $line; done && exit 13")
 
         sb.stdin.write(b"foo\n")
@@ -127,7 +127,6 @@ async def test_sandbox_stdin_async(client, servicer):
 
 
 @skip_non_linux
-@pytest.mark.asyncio
 def test_sandbox_stdin(client, servicer):
     with stub.run(client=client):
         sb = stub.spawn_sandbox("bash", "-c", "while read line; do echo $line; done && exit 13")
