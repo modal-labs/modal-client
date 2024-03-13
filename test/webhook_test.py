@@ -95,7 +95,7 @@ def test_webhook_generator():
 @pytest.mark.asyncio
 async def test_webhook_forgot_function(servicer, client):
     lib_dir = pathlib.Path(__file__).parent.parent
-    args = [sys.executable, "-m", "modal_test_support.webhook_forgot_function"]
+    args = [sys.executable, "-m", "test.supports.webhook_forgot_function"]
     ret = subprocess.run(args, cwd=lib_dir, stderr=subprocess.PIPE)
     stderr = ret.stderr.decode()
     assert "absent_minded_function" in stderr

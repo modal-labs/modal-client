@@ -264,7 +264,7 @@ def _unwrap_asgi(ret: ContainerResult):
 @skip_windows_unix_socket
 def test_success(unix_servicer, event_loop):
     t0 = time.time()
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "square")
+    ret = _run_container(unix_servicer, "test.supports.functions", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
     assert _unwrap_scalar(ret) == 42**2
 
@@ -273,7 +273,7 @@ def test_success(unix_servicer, event_loop):
 def test_generator_success(unix_servicer, event_loop):
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "gen_n",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
@@ -288,7 +288,7 @@ def test_generator_failure(unix_servicer, event_loop):
     inputs = _get_inputs(((10, 5), {}))
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "gen_n_fail_on_m",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
         inputs=inputs,
@@ -302,34 +302,34 @@ def test_generator_failure(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_async(unix_servicer):
     t0 = time.time()
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "square_async")
+    ret = _run_container(unix_servicer, "test.supports.functions", "square_async")
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
     assert _unwrap_scalar(ret) == 42**2
 
 
 @skip_windows_unix_socket
 def test_failure(unix_servicer):
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "raises")
+    ret = _run_container(unix_servicer, "test.supports.functions", "raises")
     assert _unwrap_exception(ret) == "Exception('Failure!')"
 
 
 @skip_windows_unix_socket
 def test_raises_base_exception(unix_servicer):
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "raises_sysexit")
+    ret = _run_container(unix_servicer, "test.supports.functions", "raises_sysexit")
     assert _unwrap_exception(ret) == "SystemExit(1)"
 
 
 @skip_windows_unix_socket
 def test_keyboardinterrupt(unix_servicer):
     with pytest.raises(KeyboardInterrupt):
-        _run_container(unix_servicer, "modal_test_support.functions", "raises_keyboardinterrupt")
+        _run_container(unix_servicer, "test.supports.functions", "raises_keyboardinterrupt")
 
 
 @skip_windows_unix_socket
 def test_rate_limited(unix_servicer, event_loop):
     t0 = time.time()
     unix_servicer.rate_limit_sleep_duration = 0.25
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "square")
+    ret = _run_container(unix_servicer, "test.supports.functions", "square")
     assert 0.25 <= time.time() - t0 < 0.25 + EXTRA_TOLERANCE_DELAY
     assert _unwrap_scalar(ret) == 42**2
 
@@ -340,7 +340,7 @@ def test_grpc_failure(unix_servicer, event_loop):
     with pytest.raises(GRPCError):
         _run_container(
             unix_servicer,
-            "modal_test_support.functions",
+            "test.supports.functions",
             "square",
             fail_get_inputs=True,
         )
@@ -351,7 +351,7 @@ def test_grpc_failure(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_missing_main_conditional(unix_servicer, event_loop):
-    _run_container(unix_servicer, "modal_test_support.missing_main_conditional", "square")
+    _run_container(unix_servicer, "test.supports.missing_main_conditional", "square")
 
     assert unix_servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     assert "modal run" in unix_servicer.task_result.traceback
@@ -362,7 +362,7 @@ def test_missing_main_conditional(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_startup_failure(unix_servicer, event_loop):
-    _run_container(unix_servicer, "modal_test_support.startup_failure", "f")
+    _run_container(unix_servicer, "test.supports.startup_failure", "f")
 
     assert unix_servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
 
@@ -375,7 +375,7 @@ def test_from_local_python_packages_inside_container(unix_servicer, event_loop):
     """`from_local_python_packages` shouldn't actually collect modules inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
     all the containers."""
-    ret = _run_container(unix_servicer, "modal_test_support.package_mount", "num_mounts")
+    ret = _run_container(unix_servicer, "test.supports.package_mount", "num_mounts")
     assert _unwrap_scalar(ret) == 0
 
 
@@ -406,7 +406,7 @@ def test_webhook(unix_servicer, event_loop):
     _put_web_body(unix_servicer, b"")
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "webhook",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
@@ -468,7 +468,7 @@ def test_webhook_serialized(unix_servicer, event_loop):
 def test_function_returning_generator(unix_servicer, event_loop):
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "fun_returning_gen",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
@@ -482,7 +482,7 @@ def test_asgi(unix_servicer, event_loop):
     _put_web_body(unix_servicer, b"")
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "fastapi_app",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
@@ -506,7 +506,7 @@ def test_wsgi(unix_servicer, event_loop):
     _put_web_body(unix_servicer, b"my wsgi body")
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "basic_wsgi_app",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
@@ -533,7 +533,7 @@ def test_webhook_streaming_sync(unix_servicer, event_loop):
     _put_web_body(unix_servicer, b"")
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "webhook_streaming",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
@@ -550,7 +550,7 @@ def test_webhook_streaming_async(unix_servicer, event_loop):
     _put_web_body(unix_servicer, b"")
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "webhook_streaming_async",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
@@ -564,14 +564,14 @@ def test_webhook_streaming_async(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_cls_function(unix_servicer, event_loop):
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "Cls.f")
+    ret = _run_container(unix_servicer, "test.supports.functions", "Cls.f")
     assert _unwrap_scalar(ret) == 42 * 111
 
 
 @skip_windows_unix_socket
 def test_lifecycle_enter_sync(unix_servicer, event_loop):
     ret = _run_container(
-        unix_servicer, "modal_test_support.functions", "LifecycleCls.f_sync", inputs=_get_inputs(((False,), {}))
+        unix_servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=_get_inputs(((False,), {}))
     )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync"]
 
@@ -579,7 +579,7 @@ def test_lifecycle_enter_sync(unix_servicer, event_loop):
 @skip_windows_unix_socket
 def test_lifecycle_enter_async(unix_servicer, event_loop):
     ret = _run_container(
-        unix_servicer, "modal_test_support.functions", "LifecycleCls.f_async", inputs=_get_inputs(((False,), {}))
+        unix_servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=_get_inputs(((False,), {}))
     )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async"]
 
@@ -589,7 +589,7 @@ def test_param_cls_function(unix_servicer, event_loop):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "ParamCls.f",
         serialized_params=serialized_params,
     )
@@ -601,7 +601,7 @@ def test_cls_web_endpoint(unix_servicer, event_loop):
     inputs = _get_web_inputs()
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "Cls.web",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
@@ -636,7 +636,7 @@ def test_serialized_cls(unix_servicer, event_loop):
 def test_cls_generator(unix_servicer, event_loop):
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "Cls.generator",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
     )
@@ -649,7 +649,7 @@ def test_cls_generator(unix_servicer, event_loop):
 def test_checkpointing_cls_function(unix_servicer, event_loop):
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "CheckpointingCls.f",
         inputs=_get_inputs((("D",), {})),
         is_checkpointing_function=True,
@@ -665,7 +665,7 @@ def test_checkpointing_cls_function(unix_servicer, event_loop):
 def test_cls_enter_uses_event_loop(unix_servicer):
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "EventLoopCls.f",
         inputs=_get_inputs(((), {})),
     )
@@ -674,7 +674,7 @@ def test_cls_enter_uses_event_loop(unix_servicer):
 
 @skip_windows_unix_socket
 def test_container_heartbeats(unix_servicer, event_loop):
-    _run_container(unix_servicer, "modal_test_support.functions", "square")
+    _run_container(unix_servicer, "test.supports.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)
 
 
@@ -684,7 +684,7 @@ def test_cli(unix_servicer, event_loop):
 
     # Build up payload we pass through sys args
     function_def = api_pb2.Function(
-        module_name="modal_test_support.functions",
+        module_name="test.supports.functions",
         function_name="square",
         function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
         definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
@@ -720,15 +720,15 @@ def test_cli(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_function_sibling_hydration(unix_servicer):
-    deploy_stub_externally(unix_servicer, "modal_test_support.functions", "stub")
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "check_sibling_hydration")
+    deploy_stub_externally(unix_servicer, "test.supports.functions", "stub")
+    ret = _run_container(unix_servicer, "test.supports.functions", "check_sibling_hydration")
     assert _unwrap_scalar(ret) is None
 
 
 @skip_windows_unix_socket
 def test_multistub(unix_servicer, caplog):
-    deploy_stub_externally(unix_servicer, "modal_test_support.multistub", "a")
-    ret = _run_container(unix_servicer, "modal_test_support.multistub", "a_func")
+    deploy_stub_externally(unix_servicer, "test.supports.multistub", "a")
+    ret = _run_container(unix_servicer, "test.supports.multistub", "a_func")
     assert _unwrap_scalar(ret) is None
     assert (
         len(caplog.messages) == 1
@@ -740,7 +740,7 @@ def test_multistub(unix_servicer, caplog):
 def test_multistub_privately_decorated(unix_servicer, caplog):
     # function handle does not override the original function, so we can't find the stub
     # and the two stubs are not named
-    ret = _run_container(unix_servicer, "modal_test_support.multistub_privately_decorated", "foo")
+    ret = _run_container(unix_servicer, "test.supports.multistub_privately_decorated", "foo")
     assert _unwrap_scalar(ret) == 1
     assert "You have more than one unnamed stub." in caplog.text
 
@@ -751,7 +751,7 @@ def test_multistub_privately_decorated_named_stub(unix_servicer, caplog):
     # but we can use the names of the stubs to determine the active stub
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.multistub_privately_decorated_named_stub",
+        "test.supports.multistub_privately_decorated_named_stub",
         "foo",
         stub_name="dummy",
     )
@@ -765,7 +765,7 @@ def test_multistub_same_name_warning(unix_servicer, caplog):
     # two stubs with the same name - warn since we won't know which one to hydrate
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.multistub_same_name",
+        "test.supports.multistub_same_name",
         "foo",
         stub_name="dummy",
     )
@@ -782,7 +782,7 @@ def test_multistub_serialized_func(unix_servicer, caplog):
     unix_servicer.function_serialized = serialize(dummy)
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.multistub_serialized_func",
+        "test.supports.multistub_serialized_func",
         "foo",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
     )
@@ -795,7 +795,7 @@ def test_image_run_function_no_warn(unix_servicer, caplog):
     # builder functions currently aren't tied to any modal stub, so they shouldn't need to warn if they can't determine a stub to use
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.image_run_function",
+        "test.supports.image_run_function",
         "builder_function",
         inputs=_get_inputs(((), {})),
         is_builder_function=True,
@@ -834,7 +834,7 @@ def test_concurrent_inputs_sync_function(unix_servicer):
     t0 = time.time()
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "sleep_700_sync",
         inputs=_get_inputs(n=n_inputs),
         allow_concurrent_inputs=n_parallel,
@@ -857,7 +857,7 @@ def test_concurrent_inputs_async_function(unix_servicer, event_loop):
     t0 = time.time()
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "sleep_700_async",
         inputs=_get_inputs(n=n_inputs),
         allow_concurrent_inputs=n_parallel,
@@ -874,7 +874,7 @@ def test_concurrent_inputs_async_function(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_unassociated_function(unix_servicer, event_loop):
-    ret = _run_container(unix_servicer, "modal_test_support.functions", "unassociated_function")
+    ret = _run_container(unix_servicer, "test.supports.functions", "unassociated_function")
     assert _unwrap_scalar(ret) == 58
 
 
@@ -883,7 +883,7 @@ def test_param_cls_function_calling_local(unix_servicer, event_loop):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "ParamCls.g",
         serialized_params=serialized_params,
     )
@@ -894,7 +894,7 @@ def test_param_cls_function_calling_local(unix_servicer, event_loop):
 def test_derived_cls(unix_servicer, event_loop):
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "DerivedCls.run",
         inputs=_get_inputs(((3,), {})),
     )
@@ -903,10 +903,10 @@ def test_derived_cls(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_call_function_that_calls_function(unix_servicer, event_loop):
-    deploy_stub_externally(unix_servicer, "modal_test_support.functions", "stub")
+    deploy_stub_externally(unix_servicer, "test.supports.functions", "stub")
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "cube",
         inputs=_get_inputs(((42,), {})),
     )
@@ -915,10 +915,10 @@ def test_call_function_that_calls_function(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_call_function_that_calls_method(unix_servicer, event_loop):
-    deploy_stub_externally(unix_servicer, "modal_test_support.functions", "stub")
+    deploy_stub_externally(unix_servicer, "test.supports.functions", "stub")
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "function_calling_method",
         inputs=_get_inputs(((42, "abc", 123), {})),
     )
@@ -931,7 +931,7 @@ def test_checkpoint_and_restore_success(unix_servicer, event_loop):
     simulating a restore operation."""
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "square",
         is_checkpointing_function=True,
     )
@@ -951,7 +951,7 @@ def test_volume_commit_on_exit(unix_servicer, event_loop):
     ]
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "square",
         volume_mounts=volume_mounts,
     )
@@ -969,7 +969,7 @@ def test_volume_commit_on_error(unix_servicer, event_loop):
     ]
     _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "raises",
         volume_mounts=volume_mounts,
     )
@@ -982,7 +982,7 @@ def test_no_volume_commit_on_exit(unix_servicer, event_loop):
     volume_mounts = [api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-999", allow_background_commits=False)]
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "square",
         volume_mounts=volume_mounts,
     )
@@ -1004,7 +1004,7 @@ def test_volume_commit_on_exit_doesnt_fail_container(unix_servicer, event_loop):
     ]
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "square",
         volume_mounts=volume_mounts,
     )
@@ -1015,10 +1015,10 @@ def test_volume_commit_on_exit_doesnt_fail_container(unix_servicer, event_loop):
 
 @skip_windows_unix_socket
 def test_function_dep_hydration(unix_servicer):
-    deploy_stub_externally(unix_servicer, "modal_test_support.functions", "stub")
+    deploy_stub_externally(unix_servicer, "test.supports.functions", "stub")
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "check_dep_hydration",
         deps=["im-1", "vo-1", "im-1", "im-2", "vo-1", "vo-2"],
     )
@@ -1029,7 +1029,7 @@ def test_function_dep_hydration(unix_servicer):
 def test_build_decorator_cls(unix_servicer, event_loop):
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "BuildCls.build1",
         inputs=_get_inputs(((), {})),
         is_builder_function=True,
@@ -1047,7 +1047,7 @@ def test_build_decorator_cls(unix_servicer, event_loop):
 def test_multiple_build_decorator_cls(unix_servicer, event_loop):
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "BuildCls.build2",
         inputs=_get_inputs(((), {})),
         is_builder_function=True,
@@ -1078,7 +1078,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
     # pr.enable()
     _run_container(
         unix_servicer,
-        "modal_test_support.functions",
+        "test.supports.functions",
         "ident",
         inputs=_get_inputs(((large_data_list,), {})),
     )
@@ -1150,7 +1150,7 @@ def test_cancellation_aborts_current_input_on_match(
     #    the backend
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
-            servicer, "modal_test_support.functions", function_name, inputs=[((arg,), {}) for arg in input_args]
+            servicer, "test.supports.functions", function_name, inputs=[((arg,), {}) for arg in input_args]
         )
         time.sleep(1)
         input_lock.wait()
@@ -1187,7 +1187,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     # send three inputs in container: in-100, in-101, in-102
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
-            servicer, "modal_test_support.functions", function_name, inputs=[((20,), {})], allow_concurrent_inputs=2
+            servicer, "test.supports.functions", function_name, inputs=[((20,), {})], allow_concurrent_inputs=2
         )
         input_lock.wait()
 
@@ -1205,7 +1205,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
 def test_lifecycle_full(servicer):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
-        servicer, "modal_test_support.functions", "LifecycleCls.f_sync", inputs=[((True,), {})]
+        servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=[((True,), {})]
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
@@ -1213,7 +1213,7 @@ def test_lifecycle_full(servicer):
 
     # Sync and async container lifecycle methods on an async function.
     container_process = _run_container_process(
-        servicer, "modal_test_support.functions", "LifecycleCls.f_async", inputs=[((True,), {})]
+        servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=[((True,), {})]
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0

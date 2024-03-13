@@ -19,7 +19,8 @@ from modal.partial_function import (
 )
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
-from modal_test_support.base_class import BaseCls2
+
+from .supports.base_class import BaseCls2
 
 stub = Stub("stub")
 
