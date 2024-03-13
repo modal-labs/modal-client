@@ -109,7 +109,7 @@ def test_sandbox_terminate(client, servicer):
 
 @skip_non_linux
 @pytest.mark.asyncio
-async def test_sandbox_stdin(client, servicer):
+async def test_sandbox_stdin_async(client, servicer):
     with stub.run(client=client):
         sb = stub.spawn_sandbox("bash", "-c", "while read line; do echo $line; done && exit 13")
 
@@ -119,6 +119,25 @@ async def test_sandbox_stdin(client, servicer):
         sb.stdin.write_eof()
 
         await sb.stdin.drain.aio()
+
+        sb.wait()
+
+        assert sb.stdout.read() == "foo\nbar\n"
+        assert sb.returncode == 13
+
+
+@skip_non_linux
+@pytest.mark.asyncio
+def test_sandbox_stdin(client, servicer):
+    with stub.run(client=client):
+        sb = stub.spawn_sandbox("bash", "-c", "while read line; do echo $line; done && exit 13")
+
+        sb.stdin.write(b"foo\n")
+        sb.stdin.write(b"bar\n")
+
+        sb.stdin.write_eof()
+
+        sb.stdin.drain()
 
         sb.wait()
 
