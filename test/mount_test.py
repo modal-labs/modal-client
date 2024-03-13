@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import hashlib
 import os
+import platform
 import pytest
 import sys
 from pathlib import Path
@@ -25,18 +26,21 @@ async def test_get_files(servicer, client, tmpdir):
     async for upload_spec in Mount._get_files.aio(m.entries):
         files[upload_spec.mount_filename] = upload_spec
 
+    os.umask(umask := os.umask(0o022))  # Get the current umask
+    expected_mode = 0o644 if platform.system() == "Windows" else 0o666 - umask
+
     assert "/small.py" in files
     assert "/large.py" in files
     assert "/fluff" not in files
     assert files["/small.py"].use_blob is False
     assert files["/small.py"].content == small_content
     assert files["/small.py"].sha256_hex == hashlib.sha256(small_content).hexdigest()
-    assert files["/small.py"].mode == 0o644
+    assert files["/small.py"].mode == expected_mode
 
     assert files["/large.py"].use_blob is True
     assert files["/large.py"].content is None
     assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
-    assert files["/large.py"].mode == 0o644
+    assert files["/large.py"].mode == expected_mode
 
     await m._deploy.aio("my-mount", client=client)
     blob_id = max(servicer.blobs.keys())  # last uploaded one
