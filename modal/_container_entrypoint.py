@@ -320,7 +320,7 @@ class _FunctionIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         iteration = 0
-        while not eof_received:
+        while not eof_received and _container_app.fetching_inputs:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self._input_concurrency

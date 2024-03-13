@@ -41,14 +41,16 @@ FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
 
-def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1) -> List[api_pb2.FunctionGetInputsResponse]:
+def _get_inputs(
+    args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1, kill_switch=True
+) -> List[api_pb2.FunctionGetInputsResponse]:
     input_pb = api_pb2.FunctionInput(args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE)
     inputs = [
         *(
             api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
             for i in range(n)
         ),
-        api_pb2.FunctionGetInputsItem(kill_switch=True),
+        *([api_pb2.FunctionGetInputsItem(kill_switch=True)] if kill_switch else []),
     ]
     return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
 
@@ -1218,3 +1220,19 @@ def test_lifecycle_full(servicer):
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
     assert "[events:enter_sync,enter_async,f_async,exit_sync,exit_async]" in stdout.decode()
+
+
+## modal.experimental functionality ##
+
+
+@skip_windows_unix_socket
+def test_stop_fetching_inputs(unix_servicer, event_loop):
+    ret = _run_container(
+        unix_servicer,
+        "modal_test_support.experimental",
+        "StopFetching.after_two",
+        inputs=_get_inputs(((42,), {}), n=4, kill_switch=False),
+    )
+
+    assert len(ret.items) == 2
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
