@@ -92,10 +92,9 @@ class Resolver:
             await obj._preload(obj, self, existing_object_id)
 
     async def load(self, obj: "_Object", existing_object_id: Optional[str] = None):
+        deduplication_key: Optional[Hashable] = None
         if obj._deduplication_key:
             deduplication_key = await obj._deduplication_key()
-        else:
-            deduplication_key = None
 
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
 

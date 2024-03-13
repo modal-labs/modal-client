@@ -36,7 +36,7 @@ class _Object:
     _is_another_app: bool
     _hydrate_lazily: bool
     _deps: Optional[Callable[..., List["_Object"]]]
-    _deduplication_key: Optional[Callable[[], Hashable]] = None
+    _deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None
 
     # For hydrated objects
     _object_id: str
@@ -61,7 +61,7 @@ class _Object:
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., List["_Object"]]] = None,
-        deduplication_key: Optional[Callable[[], Hashable]] = None,
+        deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -137,7 +137,7 @@ class _Object:
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., List["_Object"]]] = None,
-        deduplication_key: Optional[Awaitable[Hashable]] = None,
+        deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
