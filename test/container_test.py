@@ -1229,7 +1229,7 @@ def test_lifecycle_full(servicer):
 def test_stop_fetching_inputs(unix_servicer, event_loop):
     ret = _run_container(
         unix_servicer,
-        "modal_test_support.experimental",
+        "test.supports.experimental",
         "StopFetching.after_two",
         inputs=_get_inputs(((42,), {}), n=4, kill_switch=False),
     )
