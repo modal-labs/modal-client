@@ -591,6 +591,7 @@ message ContainerExecRequest {
   PTYInfo pty_info = 3;
   // Send SIGTERM to running container on exit of exec command.
   bool terminate_container_on_exit = 4;
+  bool runtime_debug = 5; // For internal debugging use only.
 }
 
 message ContainerExecGetOutputRequest {
@@ -1501,7 +1502,6 @@ message SandboxStdinWriteRequest {
 }
 
 message SandboxStdinWriteResponse {
-  GenericResult result = 1;
 }
 
 message SandboxHandleMetadata {
@@ -1964,6 +1964,7 @@ message RuntimeInputMessage {
   uint64 message_index = 2;
 }
 
+
 service ModalClient {
   // Apps
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
@@ -2073,9 +2074,9 @@ service ModalClient {
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
-  rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
+  rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
 
   // Secrets
   rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);  // Not used by client anymore
