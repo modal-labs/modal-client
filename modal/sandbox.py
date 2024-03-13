@@ -98,26 +98,33 @@ class _StreamWriter:
         self._index = 1
         self._sandbox_id = sandbox_id
         self._client = client
+        self._is_closed = False
+        self._buffer = bytearray()
 
     def get_next_index(self):
         index = self._index
         self._index += 1
         return index
 
-    async def write(self, input: str):
+    def write(self, data):
+        if self._is_closed:
+            return
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
+        self._buffer.extend(data)
+
+    def write_eof(self):
+        self._is_closed = True
+
+    async def drain(self):
+        result = bytes(self._buffer)
+        self._buffer.clear()
         index = self.get_next_index()
         await retry_transient_errors(
             self._client.stub.SandboxStdinWrite,
             api_pb2.SandboxStdinWriteRequest(
-                sandbox_id=self._sandbox_id, input=input.encode("utf-8"), index=index, eof=False
+                sandbox_id=self._sandbox_id, index=index, eof=self._is_closed, input=result
             ),
-        )
-
-    async def write_eof(self):
-        index = self.get_next_index()
-        await retry_transient_errors(
-            self._client.stub.SandboxStdinWrite,
-            api_pb2.SandboxStdinWriteRequest(sandbox_id=self._sandbox_id, index=index, eof=True),
         )
 
 
