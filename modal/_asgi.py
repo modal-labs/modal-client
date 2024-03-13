@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import time
-from asyncio import QueueEmpty
 from typing import Any, AsyncGenerator, Callable, Dict, List
 
 from modal_utils.async_utils import TaskContext
@@ -121,26 +120,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
             fetch_data_in_task = tc.create_task(fetch_data_in())
 
             async def receive():
-                try:
-                    return messages_to_app.get_nowait()
-                except QueueEmpty:
-                    pass
-
-                next_message_task = None
-                try:
-                    next_message_task = tc.create_task(messages_to_app.get())
-                    done, pending = await asyncio.wait(
-                        [next_message_task, fetch_data_in_task], return_when=asyncio.FIRST_COMPLETED
-                    )
-                    if next_message_task in done:
-                        return next_message_task.result()
-                    else:
-                        assert fetch_data_in_task in done
-                        fetch_data_in_task.result()  # raise potential errors from fetch_data_in_task, but this shouldn't happen
-                        raise ValueError("No data")
-                finally:
-                    if next_message_task:
-                        next_message_task.cancel()  # clean up
+                return await messages_to_app.get()
 
             app_task = tc.create_task(asgi_app(scope, receive, send))
             pop_task = None

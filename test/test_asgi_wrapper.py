@@ -28,13 +28,24 @@ def sync_error():
 
 @app.post("/async_reading_body")
 async def async_index_reading_body(req: fastapi.Request):
-    await req.body()
-    return {"some_result": "foo"}
+    body = await req.body()
+    return {"some_result": body}
 
 
 @app.get("/async_error")
 async def async_error():
     raise DummyException()
+
+
+@app.get("/streaming_response")
+async def streaming_response():
+    from fastapi.responses import StreamingResponse
+
+    async def stream_bytes():
+        yield b"foo"
+        yield b"bar"
+
+    return StreamingResponse(stream_bytes())
 
 
 def _asgi_get_scope(path, method="GET"):
@@ -141,18 +152,18 @@ async def test_broken_io_used():
     assert outputs[0]["status"] == 500
 
 
+class SlowIOManager:
+    class get_data_in:
+        @staticmethod
+        async def aio(_function_call_id):
+            await asyncio.sleep(5)
+            yield  # makes this an async generator
+
+
 @pytest.mark.asyncio
 @pytest.mark.timeout(2)
 async def test_first_message_timeout(monkeypatch):
     monkeypatch.setattr("modal._asgi.FIRST_MESSAGE_TIMEOUT_SECONDS", 0.1)  # simulate timeout
-
-    class SlowIOManager:
-        class get_data_in:
-            @staticmethod
-            async def aio(_function_call_id):
-                await asyncio.sleep(5)
-                yield  # makes this an async generator
-
     _set_current_context_ids("in-123", "fc-123")
     wrapped_app = asgi_app_wrapper(app, SlowIOManager())
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
@@ -163,3 +174,61 @@ async def test_first_message_timeout(monkeypatch):
 
     assert outputs[0]["status"] == 502
     assert b"Missing request" in outputs[1]["body"]
+
+
+@pytest.mark.asyncio
+async def test_cancellation_cleanup(caplog):
+    # this test mostly exists to get some coverage on the cancellation/error paths and ensure nothing unexpected happens there
+    _set_current_context_ids("in-123", "fc-123")
+    wrapped_app = asgi_app_wrapper(app, SlowIOManager())
+    asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
+    outputs = []
+
+    async def app_runner():
+        async for output in wrapped_app(asgi_scope):
+            outputs.append(output)
+
+    app_runner_task = asyncio.create_task(app_runner())
+    await asyncio.sleep(0.1)  # let it get started
+    app_runner_task.cancel()
+    await asyncio.sleep(0.1)  # let it shut down
+    assert len(outputs) == 0
+    assert caplog.text == ""  # make sure there are no junk traces about dangling tasks etc.
+
+
+@pytest.mark.asyncio
+async def test_streaming_response():
+    _set_current_context_ids("in-123", "fc-123")
+    wrapped_app = asgi_app_wrapper(app, SlowIOManager())
+    asgi_scope = _asgi_get_scope("/streaming_response", "GET")
+    outputs = []
+    async for output in wrapped_app(asgi_scope):
+        outputs.append(output)
+    assert outputs == [
+        {"headers": [], "status": 200, "type": "http.response.start"},
+        {"body": b"foo", "more_body": True, "type": "http.response.body"},
+        {"body": b"bar", "more_body": True, "type": "http.response.body"},
+        {"body": b"", "more_body": False, "type": "http.response.body"},
+    ]
+
+
+class StreamingIOManager:
+    class get_data_in:
+        @staticmethod
+        async def aio(_function_call_id):
+            yield {"type": "http.request", "body": b"foo", "more_body": True}
+            yield {"type": "http.request", "body": b"bar", "more_body": True}
+            yield {"type": "http.request", "body": b"baz", "more_body": False}
+            yield {"type": "http.request", "body": b"this should not be read", "more_body": False}
+
+
+@pytest.mark.asyncio
+async def test_streaming_body():
+    _set_current_context_ids("in-123", "fc-123")
+
+    wrapped_app = asgi_app_wrapper(app, StreamingIOManager())
+    asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
+    outputs = []
+    async for output in wrapped_app(asgi_scope):
+        outputs.append(output)
+    assert outputs[1] == {"type": "http.response.body", "body": b'{"some_result":"foobarbaz"}'}
