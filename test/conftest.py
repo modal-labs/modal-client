@@ -846,14 +846,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxStdinWrite(self, stream):
         request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
-        self.sandbox.stdin.write(request.input)
-        self.sandbox.stdin.flush()
+        if request.eof:
+            self.sandbox.stdin.close()
+        else:
+            self.sandbox.stdin.write(request.input)
+            self.sandbox.stdin.flush()
         await stream.send_message(api_pb2.SandboxStdinWriteResponse())
-
-    async def SandboxStdinEof(self, stream):
-        _request: api_pb2.SandboxStdinEofRequest = await stream.recv_message()
-        self.sandbox.stdin.close()
-        await stream.send_message(api_pb2.SandboxStdinEofResponse())
 
     ### Secret
 
