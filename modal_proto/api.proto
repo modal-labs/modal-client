@@ -591,6 +591,7 @@ message ContainerExecRequest {
   PTYInfo pty_info = 3;
   // Send SIGTERM to running container on exit of exec command.
   bool terminate_container_on_exit = 4;
+  bool runtime_debug = 5; // For internal debugging use only.
 }
 
 message ContainerExecGetOutputRequest {
