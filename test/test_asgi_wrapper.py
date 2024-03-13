@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 import fastapi
+from starlette.requests import ClientDisconnect
 
 from modal._asgi import asgi_app_wrapper
 from modal.functions import _set_current_context_ids
@@ -94,19 +95,20 @@ async def test_endpoint_exception(endpoint_url):
     assert body["type"] == "http.response.body"
 
 
+class BrokenIOManager:
+    class get_data_in:
+        @staticmethod
+        async def aio(_function_call_id):
+            raise DummyException("error while fetching data")
+            yield  # noqa (makes this a generator)
+
+
 @pytest.mark.asyncio
 @pytest.mark.timeout(1)
 async def test_broken_io_unused(caplog):
     # if IO channel breaks, but the endpoint doesn't actually use
     # any of the body data, it should be allowed to output its data
     # and not raise an exception - but print a warning since it's unexpected
-    class BrokenIOManager:
-        class get_data_in:
-            @staticmethod
-            async def aio(_function_call_id):
-                raise DummyException("error while fetching data")
-                yield  # noqa (makes this a generator)
-
     mock_manager = BrokenIOManager()
     _set_current_context_ids("in-123", "fc-123")
     wrapped_app = asgi_app_wrapper(app, mock_manager)
@@ -119,27 +121,45 @@ async def test_broken_io_unused(caplog):
     assert len(outputs) == 2
     assert outputs[0]["status"] == 200
     assert outputs[1]["body"] == b'{"some_result":"foo"}'
-    assert "Data fetching task stopped unexpectedly" in caplog.text
+    assert "Internal error" in caplog.text
+    assert "DummyException: error while fetching data" in caplog.text
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(1)
+@pytest.mark.timeout(10)
 async def test_broken_io_used():
-    class NoDataIOManager:
-        class get_data_in:
-            @staticmethod
-            async def aio(_function_call_id):
-                raise DummyException()
-                yield  # noqa
-
-    mock_manager = NoDataIOManager()
+    mock_manager = BrokenIOManager()
     _set_current_context_ids("in-123", "fc-123")
     wrapped_app = asgi_app_wrapper(app, mock_manager)
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
     outputs = []
-    with pytest.raises(DummyException):
+    with pytest.raises(ClientDisconnect):
         async for output in wrapped_app(asgi_scope):
             outputs.append(output)
 
     assert len(outputs) == 2
     assert outputs[0]["status"] == 500
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(2)
+async def test_first_message_timeout(monkeypatch):
+    monkeypatch.setattr("modal._asgi.FIRST_MESSAGE_TIMEOUT_SECONDS", 0.1)  # simulate timeout
+
+    class SlowIOManager:
+        class get_data_in:
+            @staticmethod
+            async def aio(_function_call_id):
+                await asyncio.sleep(5)
+                yield  # makes this an async generator
+
+    _set_current_context_ids("in-123", "fc-123")
+    wrapped_app = asgi_app_wrapper(app, SlowIOManager())
+    asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
+    outputs = []
+    with pytest.raises(ClientDisconnect):
+        async for output in wrapped_app(asgi_scope):
+            outputs.append(output)
+
+    assert outputs[0]["status"] == 502
+    assert b"Missing request" in outputs[1]["body"]

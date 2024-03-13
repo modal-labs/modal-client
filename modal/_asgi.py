@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import time
 from asyncio import QueueEmpty
 from typing import Any, AsyncGenerator, Callable, Dict, List
 
@@ -9,9 +10,7 @@ from ._blob_utils import MAX_OBJECT_SIZE_BYTES
 from .config import logger
 from .functions import current_function_call_id
 
-
-class NoRequestReceived(Exception):
-    pass
+FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
 
 def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenerator]:
@@ -23,6 +22,45 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
         messages_from_app: asyncio.Queue[List[Dict[str, Any]]] = asyncio.Queue(1)
         messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
 
+        async def disconnect_app():
+            if scope["type"] == "http":
+                await messages_to_app.put(
+                    {"type": "http.disconnect"},
+                )
+            elif scope["type"] == "websocket":
+                await messages_to_app.put(
+                    {"type": "websocket.disconnect"},
+                )
+
+        async def handle_first_input_timeout():
+            if scope["type"] == "http":
+                # TODO: prevent this from being sent if a response was already sent by the asgi app
+                #       also, prevent the (http) asgi app from sending additional data at this point
+                #       since this queues a full response
+                await messages_from_app.put(
+                    [
+                        {
+                            "type": "http.response.start",
+                            "status": 502,
+                        },  # TODO: should this have headers w/ content length/type?
+                        {
+                            "type": "http.response.body",
+                            "body": b"Missing request, possibly due to cancellation or crash",
+                        },
+                    ]
+                )
+            elif scope["type"] == "websocket":
+                await messages_from_app.put(
+                    [
+                        {
+                            "type": "websocket.close",
+                            "code": 1011,
+                            "reason": "Missing request, possibly due to cancellation or crash",
+                        }
+                    ]
+                )
+            await disconnect_app()
+
         async def fetch_data_in():
             # Cancel an ASGI app call if the initial message is not received within a short timeout.
             #
@@ -30,38 +68,23 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
             # immediately after starting the ASGI app's function call. If it is not received, that
             # indicates a request cancellation or other abnormal circumstance.
             message_gen = function_io_manager.get_data_in.aio(function_call_id)
+
+            t0 = time.monotonic()
             try:
-                first_message = await asyncio.wait_for(message_gen.__anext__(), 5.0)
-            except (asyncio.TimeoutError, StopAsyncIteration):
-                if scope["type"] == "http":
-                    await messages_from_app.put(
-                        [
-                            {"type": "http.response.start", "status": 502},
-                            {
-                                "type": "http.response.body",
-                                "body": b"Missing request, possibly due to cancellation or crash",
-                            },
-                        ]
-                    )
-                    await messages_to_app.put(
-                        {"type": "http.disconnect"},
-                    )
-                elif scope["type"] == "websocket":
-                    await messages_from_app.put(
-                        [
-                            {
-                                "type": "websocket.close",
-                                "code": 1011,
-                                "reason": "Missing request, possibly due to cancellation or crash",
-                            }
-                        ]
-                    )
-                    await messages_to_app.put(
-                        {"type": "websocket.disconnect"},
-                    )
-                else:
-                    logger.error(f"scope is neither http nor websocket {scope['type']})")
-                raise NoRequestReceived()
+                first_message = await asyncio.wait_for(message_gen.__anext__(), FIRST_MESSAGE_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError:
+                await handle_first_input_timeout()
+                return
+            except StopAsyncIteration:
+                # the generator shouldn't typically exit, but we handle it like a timeout in that case
+                remaining_grace_period = max(0.0, FIRST_MESSAGE_TIMEOUT_SECONDS - time.monotonic() - t0)
+                await asyncio.sleep(remaining_grace_period)
+                await handle_first_input_timeout()
+                return
+            except Exception:
+                logger.exception("Internal error")
+                await disconnect_app()
+                return
 
             await messages_to_app.put(first_message)
             async for message in message_gen:
@@ -105,17 +128,16 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
 
                 next_message_task = None
                 try:
-                    next_message_task = asyncio.create_task(messages_to_app.get())
+                    next_message_task = tc.create_task(messages_to_app.get())
                     done, pending = await asyncio.wait(
                         [next_message_task, fetch_data_in_task], return_when=asyncio.FIRST_COMPLETED
                     )
                     if next_message_task in done:
                         return next_message_task.result()
                     else:
-                        assert (
-                            fetch_data_in_task.exception() is not None
-                        )  # data fetching should never exit without an exception
-                        fetch_data_in_task.result()  # raise errors from fetch_data_in_task
+                        assert fetch_data_in_task in done
+                        fetch_data_in_task.result()  # raise potential errors from fetch_data_in_task, but this shouldn't happen
+                        raise ValueError("No data")
                 finally:
                     if next_message_task:
                         next_message_task.cancel()  # clean up
@@ -146,11 +168,6 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
 
                         app_task.result()  # consume/raise exceptions if there are any!
                         break
-
-                if fetch_data_in_task.done():
-                    # the data fetching loop task should typically not exit
-                    # but if it did, lets warn about it even if it didn't affect the app
-                    logger.error(f"Data fetching task stopped unexpectedly: {fetch_data_in_task.exception()}")
             finally:
                 fetch_data_in_task.cancel()
                 if not app_task.done():
