@@ -632,7 +632,7 @@ class _Function(_Object, type_prefix="fu"):
 
         if checkpointing_enabled is not None:
             deprecation_warning(
-                (2024, 4, 4),
+                (2024, 3, 4),
                 "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
             )
             enable_memory_snapshot = checkpointing_enabled
