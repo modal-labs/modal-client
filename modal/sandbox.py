@@ -108,14 +108,16 @@ class _StreamWriter:
         index = self.get_next_index()
         await retry_transient_errors(
             self._client.stub.SandboxStdinWrite,
-            api_pb2.SandboxStdinWriteRequest(sandbox_id=self._sandbox_id, input=input.encode("utf-8"), index=index),
+            api_pb2.SandboxStdinWriteRequest(
+                sandbox_id=self._sandbox_id, input=input.encode("utf-8"), index=index, eof=False
+            ),
         )
 
     async def write_eof(self):
         index = self.get_next_index()
         await retry_transient_errors(
-            self._client.stub.SandboxStdinEof,
-            api_pb2.SandboxStdinEofRequest(sandbox_id=self._sandbox_id, index=index),
+            self._client.stub.SandboxStdinWrite,
+            api_pb2.SandboxStdinWriteRequest(sandbox_id=self._sandbox_id, index=index, eof=True),
         )
 
 
