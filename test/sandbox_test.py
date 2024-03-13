@@ -149,4 +149,4 @@ def test_sandbox_stdin_invalid_write(client, servicer):
     with stub.run(client=client):
         sb = stub.spawn_sandbox("bash", "-c", "echo foo")
         with pytest.raises(TypeError):
-            sb.stdin.write("foo\n")
+            sb.stdin.write("foo\n")  # type: ignore
