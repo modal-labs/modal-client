@@ -647,3 +647,18 @@ async def test_deprecated_async_methods():
     stub = Stub("deprecated-async-cls")
     with pytest.warns(DeprecationError):
         stub.cls()(ClsWithDeprecatedAsyncMethods)()
+
+
+class HasSnapMethod:
+    @enter(snap=True)
+    def enter(self):
+        pass
+
+    @method()
+    def f(self):
+        pass
+
+
+def test_snap_method_without_snapshot_enabled():
+    with pytest.raises(InvalidError, match="A class must have `enable_memory_snapshot=True`"):
+        stub.cls(enable_memory_snapshot=False)(HasSnapMethod)
