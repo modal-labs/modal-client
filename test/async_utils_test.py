@@ -5,9 +5,6 @@ import os
 import platform
 import pytest
 
-from synchronicity import Synchronizer
-
-from modal._utils import async_utils
 from modal._utils.async_utils import (
     ConcurrencyPool,
     TaskContext,
@@ -185,24 +182,6 @@ async def test_no_warn_if_generator_is_consumed(caplog):
         del g  # Force destructor
 
     assert len(caplog.records) == 0
-
-
-def test_exit_handler():
-    result = None
-    sync = Synchronizer()
-
-    async def cleanup():
-        nonlocal result
-        result = "bye"
-
-    async def _setup_code():
-        async_utils.on_shutdown(cleanup())
-
-    setup_code = sync.create_blocking(_setup_code)
-    setup_code()
-
-    sync._close_loop()  # this is called on exit by synchronicity, which shuts down the event loop
-    assert result == "bye"
 
 
 @pytest.mark.asyncio

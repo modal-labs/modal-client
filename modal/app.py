@@ -129,7 +129,6 @@ class _LocalApp:
     ):
         """Tell the server the client has disconnected for this app. Terminates all running tasks
         for ephemeral apps."""
-
         if exc_str:
             exc_str = exc_str[:1000]  # Truncate to 1000 chars
 

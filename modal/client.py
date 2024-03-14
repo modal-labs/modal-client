@@ -128,16 +128,6 @@ class _Client:
         # Remove cached client.
         self.set_env_client(None)
 
-    def set_pre_stop(self, pre_stop: Callable[[], Awaitable[None]]):
-        """mdmd:hidden"""
-        # hack: stub.serve() gets into a losing race with the `on_shutdown` client
-        # teardown when an interrupt signal is received (eg. KeyboardInterrupt).
-        # By registering a pre-stop fn stub.serve() can have its teardown
-        # performed before the client is disconnected.
-        #
-        # ref: github.com/modal-labs/modal-client/pull/108
-        self._pre_stop = pre_stop
-
     async def _verify(self):
         logger.debug("Client: Starting")
         _check_config()
