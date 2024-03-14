@@ -25,6 +25,15 @@ def venv_path(tmp_path):
     yield venv_path
 
 
+@pytest.fixture
+def path_with_symlinked_files(tmp_path):
+    src = tmp_path / "foo.txt"
+    src.write_text("Hello")
+    trg = tmp_path / "bar.txt"
+    trg.symlink_to(src)
+    return tmp_path, {src, trg}
+
+
 script_path = "pkg_a/script.py"
 
 
@@ -267,3 +276,12 @@ def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servic
     assert files == {
         "/root/imports_six.py",
     }
+
+
+def test_mount_directory_with_symlinked_file(path_with_symlinked_files, servicer, server_url_env):
+    path, files = path_with_symlinked_files
+    mount = Mount.from_local_dir(path)
+    mount._deploy("mo-1")
+    pkg_a_mount = servicer.mount_contents["mo-1"]
+    for src_f in files:
+        assert any(mnt_f.endswith(src_f.name) for mnt_f in pkg_a_mount)
