@@ -94,10 +94,9 @@ def is_async(function):
 
 
 class FunctionInfo:
-    """Class the helps us extract a bunch of information about a function."""
+    """Class that helps us extract a bunch of information about a function."""
 
     # TODO: we should have a bunch of unit tests for this
-    # TODO: if the function is declared in a local scope, this function still "works": we should throw an exception
     def __init__(self, f, serialized=False, name_override: Optional[str] = None, cls: Optional[Type] = None):
         self.raw_f = f
         self.cls = cls
@@ -107,7 +106,11 @@ class FunctionInfo:
         elif f.__qualname__ != f.__name__ and not serialized:
             # Class function.
             if len(f.__qualname__.split(".")) > 2:
-                raise InvalidError("@stub.cls classes must be defined in global scope")
+                raise InvalidError(
+                    f"Cannot wrap `{f.__qualname__}`:"
+                    " functions and classes used in Modal must be defined in global scope."
+                    " If trying to apply additional decorators, they may need to use `functools.wraps`."
+                )
             self.function_name = f"{cls.__name__}.{f.__name__}"
         else:
             self.function_name = f.__qualname__
