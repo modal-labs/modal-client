@@ -741,7 +741,7 @@ def test_multistub(unix_servicer, caplog):
     assert (
         len(caplog.messages) == 1
     )  # warns in case the user would use is_inside checks... Hydration should work regardless
-    assert "You have more than one unnamed stub" in caplog.text
+    assert "You have more than one unnamed stub" in caplog.messages[0]
 
 
 @skip_windows_unix_socket
