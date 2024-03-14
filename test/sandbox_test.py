@@ -150,3 +150,12 @@ def test_sandbox_stdin_invalid_write(client, servicer):
         sb = stub.spawn_sandbox("bash", "-c", "echo foo")
         with pytest.raises(TypeError):
             sb.stdin.write("foo\n")  # type: ignore
+
+
+@skip_non_linux
+def test_sandbox_stdin_write_after_eof(client, servicer):
+    with stub.run(client=client):
+        sb = stub.spawn_sandbox("bash", "-c", "echo foo")
+        sb.stdin.write_eof()
+        with pytest.raises(EOFError):
+            sb.stdin.write(b"foo")

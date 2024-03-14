@@ -91,7 +91,7 @@ class _LogsReader:
         return data
 
 
-MAX_BUFFER_SIZE = 4096
+MAX_BUFFER_SIZE = 128 * 1024
 
 
 class _StreamWriter:
@@ -111,7 +111,7 @@ class _StreamWriter:
 
     def write(self, data: Union[bytes, bytearray, memoryview]):
         if self._is_closed:
-            return
+            raise EOFError("Stdin is closed. Cannot write to it.")
         if isinstance(data, (bytes, bytearray, memoryview)):
             if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
                 raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
