@@ -1045,7 +1045,6 @@ def test_build_decorator_cls(unix_servicer):
         is_builder_function=True,
         is_auto_snapshot=True,
     )
-    print(ret)
     assert _unwrap_scalar(ret) == 101
     # TODO: this is GENERIC_STATUS_FAILURE when `@exit` fails,
     # but why is it not set when `@exit` is successful?
