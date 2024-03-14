@@ -197,7 +197,10 @@ class _FunctionIOManager:
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")
-            yield
+            try:
+                yield
+            finally:
+                self._heartbeat_loop.cancel()
 
     def stop_heartbeat(self):
         if self._heartbeat_loop:
@@ -993,9 +996,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_io_manager.volume_commit(
                     [v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits]
                 )
-                # Avoid "Canceling remaining unfinished task" warnings.
-                function_io_manager.stop_heartbeat()
-
             finally:
                 # Restore the original signal handler, needed for container_test hygiene since the
                 # test runs `main()` multiple times in the same process.
