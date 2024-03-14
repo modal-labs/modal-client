@@ -344,7 +344,8 @@ class _FunctionIOManager:
                     )
                     await asyncio.sleep(response.rate_limit_sleep_duration)
                 elif response.inputs:
-                    # for input cancellations we currently assume there is no input buffering in the container
+                    # for input cancellations and concurrency logic we currently assume
+                    # that there is no input buffering in the container
                     assert len(response.inputs) == 1
 
                     for item in response.inputs:
@@ -739,10 +740,17 @@ async def call_function_async(
         reset_context()
 
     if imp_fun.input_concurrency > 1:
-        async with TaskContext() as execution_context:
+        # all run_input coroutines will have completed by the time we leave the execution context
+        # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
+        # for them to resolve gracefully:
+        async with TaskContext(0.01) as execution_context:
             async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
                 imp_fun.input_concurrency
             ):
+                # Note that run_inputs_outputs will not return until the concurrency semaphore has
+                # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
+                # This prevents leaving the execution_context before outputs have been created
+                # TODO: refactor to make this a bit more easy to follow?
                 execution_context.create_task(run_input(input_id, function_call_id, args, kwargs))
     else:
         async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
