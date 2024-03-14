@@ -113,7 +113,7 @@ class _StreamWriter:
         if self._is_closed:
             return
         if isinstance(data, (bytes, bytearray, memoryview)):
-            if len(self._buffer) + len(data) > 4096:
+            if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
                 raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
             self._buffer.extend(data)
         else:
