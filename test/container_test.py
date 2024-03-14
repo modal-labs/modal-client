@@ -286,7 +286,7 @@ def test_generator_success(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_generator_failure(unix_servicer, event_loop):
+def test_generator_failure(unix_servicer, capsys):
     inputs = _get_inputs(((10, 5), {}))
     ret = _run_container(
         unix_servicer,
@@ -299,6 +299,7 @@ def test_generator_failure(unix_servicer, event_loop):
     assert items == [i**2 for i in range(5)]
     assert isinstance(exc, Exception)
     assert exc.args == ("bad",)
+    assert 'raise Exception("bad")' in capsys.readouterr().err
 
 
 @skip_windows_unix_socket
@@ -310,15 +311,17 @@ def test_async(unix_servicer):
 
 
 @skip_windows_unix_socket
-def test_failure(unix_servicer):
+def test_failure(unix_servicer, capsys):
     ret = _run_container(unix_servicer, "test.supports.functions", "raises")
     assert _unwrap_exception(ret) == "Exception('Failure!')"
+    assert 'raise Exception("Failure!")' in capsys.readouterr().err  # traceback
 
 
 @skip_windows_unix_socket
-def test_raises_base_exception(unix_servicer):
+def test_raises_base_exception(unix_servicer, capsys):
     ret = _run_container(unix_servicer, "test.supports.functions", "raises_sysexit")
     assert _unwrap_exception(ret) == "SystemExit(1)"
+    assert "raise SystemExit(1)" in capsys.readouterr().err  # traceback
 
 
 @skip_windows_unix_socket
@@ -352,8 +355,10 @@ def test_grpc_failure(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_missing_main_conditional(unix_servicer, event_loop):
+def test_missing_main_conditional(unix_servicer, capsys):
     _run_container(unix_servicer, "test.supports.missing_main_conditional", "square")
+    output = capsys.readouterr()
+    assert "Can not run an app from within a container" in output.err
 
     assert unix_servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     assert "modal run" in unix_servicer.task_result.traceback
@@ -363,17 +368,18 @@ def test_missing_main_conditional(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_startup_failure(unix_servicer, event_loop):
+def test_startup_failure(unix_servicer, capsys):
     _run_container(unix_servicer, "test.supports.startup_failure", "f")
 
     assert unix_servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
 
     exc = deserialize(unix_servicer.task_result.data, None)
     assert isinstance(exc, ImportError)
+    assert "ModuleNotFoundError: No module named 'nonexistent_package'" in capsys.readouterr().err
 
 
 @skip_windows_unix_socket
-def test_from_local_python_packages_inside_container(unix_servicer, event_loop):
+def test_from_local_python_packages_inside_container(unix_servicer):
     """`from_local_python_packages` shouldn't actually collect modules inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
     all the containers."""
@@ -403,7 +409,7 @@ async def _put_web_body(servicer, body: bytes):
 
 
 @skip_windows_unix_socket
-def test_webhook(unix_servicer, event_loop):
+def test_webhook(unix_servicer):
     inputs = _get_web_inputs()
     _put_web_body(unix_servicer, b"")
     ret = _run_container(
@@ -428,7 +434,7 @@ def test_webhook(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_serialized_function(unix_servicer, event_loop):
+def test_serialized_function(unix_servicer):
     def triple(x):
         return 3 * x
 
@@ -443,7 +449,7 @@ def test_serialized_function(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_webhook_serialized(unix_servicer, event_loop):
+def test_webhook_serialized(unix_servicer):
     inputs = _get_web_inputs()
     _put_web_body(unix_servicer, b"")
 
@@ -467,7 +473,7 @@ def test_webhook_serialized(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_function_returning_generator(unix_servicer, event_loop):
+def test_function_returning_generator(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
@@ -479,7 +485,7 @@ def test_function_returning_generator(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_asgi(unix_servicer, event_loop):
+def test_asgi(unix_servicer):
     inputs = _get_web_inputs(path="/foo")
     _put_web_body(unix_servicer, b"")
     ret = _run_container(
@@ -503,7 +509,7 @@ def test_asgi(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_wsgi(unix_servicer, event_loop):
+def test_wsgi(unix_servicer):
     inputs = _get_web_inputs(path="/")
     _put_web_body(unix_servicer, b"my wsgi body")
     ret = _run_container(
@@ -530,7 +536,7 @@ def test_wsgi(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_webhook_streaming_sync(unix_servicer, event_loop):
+def test_webhook_streaming_sync(unix_servicer):
     inputs = _get_web_inputs()
     _put_web_body(unix_servicer, b"")
     ret = _run_container(
@@ -547,7 +553,7 @@ def test_webhook_streaming_sync(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_webhook_streaming_async(unix_servicer, event_loop):
+def test_webhook_streaming_async(unix_servicer):
     inputs = _get_web_inputs()
     _put_web_body(unix_servicer, b"")
     ret = _run_container(
@@ -565,13 +571,13 @@ def test_webhook_streaming_async(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_cls_function(unix_servicer, event_loop):
+def test_cls_function(unix_servicer):
     ret = _run_container(unix_servicer, "test.supports.functions", "Cls.f")
     assert _unwrap_scalar(ret) == 42 * 111
 
 
 @skip_windows_unix_socket
-def test_lifecycle_enter_sync(unix_servicer, event_loop):
+def test_lifecycle_enter_sync(unix_servicer):
     ret = _run_container(
         unix_servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=_get_inputs(((False,), {}))
     )
@@ -579,7 +585,7 @@ def test_lifecycle_enter_sync(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_lifecycle_enter_async(unix_servicer, event_loop):
+def test_lifecycle_enter_async(unix_servicer):
     ret = _run_container(
         unix_servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=_get_inputs(((False,), {}))
     )
@@ -587,7 +593,7 @@ def test_lifecycle_enter_async(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_param_cls_function(unix_servicer, event_loop):
+def test_param_cls_function(unix_servicer):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
     ret = _run_container(
         unix_servicer,
@@ -599,7 +605,7 @@ def test_param_cls_function(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_cls_web_endpoint(unix_servicer, event_loop):
+def test_cls_web_endpoint(unix_servicer):
     inputs = _get_web_inputs()
     ret = _run_container(
         unix_servicer,
@@ -614,7 +620,7 @@ def test_cls_web_endpoint(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_serialized_cls(unix_servicer, event_loop):
+def test_serialized_cls(unix_servicer):
     class Cls:
         @enter()
         def enter(self):
@@ -635,7 +641,7 @@ def test_serialized_cls(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_cls_generator(unix_servicer, event_loop):
+def test_cls_generator(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
@@ -648,7 +654,7 @@ def test_cls_generator(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_checkpointing_cls_function(unix_servicer, event_loop):
+def test_checkpointing_cls_function(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
@@ -675,13 +681,13 @@ def test_cls_enter_uses_event_loop(unix_servicer):
 
 
 @skip_windows_unix_socket
-def test_container_heartbeats(unix_servicer, event_loop):
+def test_container_heartbeats(unix_servicer):
     _run_container(unix_servicer, "test.supports.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in unix_servicer.requests)
 
 
 @skip_windows_unix_socket
-def test_cli(unix_servicer, event_loop):
+def test_cli(unix_servicer):
     # This tests the container being invoked as a subprocess (the if __name__ == "__main__" block)
 
     # Build up payload we pass through sys args
@@ -735,7 +741,7 @@ def test_multistub(unix_servicer, caplog):
     assert (
         len(caplog.messages) == 1
     )  # warns in case the user would use is_inside checks... Hydration should work regardless
-    assert "You have more than one unnamed stub" in caplog.text
+    assert "You have more than one unnamed stub" in caplog.messages[0]
 
 
 @skip_windows_unix_socket
@@ -762,7 +768,7 @@ def test_multistub_privately_decorated_named_stub(unix_servicer, caplog):
 
 
 @skip_windows_unix_socket
-def test_multistub_same_name_warning(unix_servicer, caplog):
+def test_multistub_same_name_warning(unix_servicer, caplog, capsys):
     # function handle does not override the original function, so we can't find the stub
     # two stubs with the same name - warn since we won't know which one to hydrate
     ret = _run_container(
@@ -773,6 +779,7 @@ def test_multistub_same_name_warning(unix_servicer, caplog):
     )
     assert _unwrap_scalar(ret) == 1
     assert "You have more than one stub with the same name ('dummy')" in caplog.text
+    capsys.readouterr()
 
 
 @skip_windows_unix_socket
@@ -852,7 +859,7 @@ def test_concurrent_inputs_sync_function(unix_servicer):
 
 
 @skip_windows_unix_socket
-def test_concurrent_inputs_async_function(unix_servicer, event_loop):
+def test_concurrent_inputs_async_function(unix_servicer):
     n_inputs = 18
     n_parallel = 6
 
@@ -875,13 +882,13 @@ def test_concurrent_inputs_async_function(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_unassociated_function(unix_servicer, event_loop):
+def test_unassociated_function(unix_servicer):
     ret = _run_container(unix_servicer, "test.supports.functions", "unassociated_function")
     assert _unwrap_scalar(ret) == 58
 
 
 @skip_windows_unix_socket
-def test_param_cls_function_calling_local(unix_servicer, event_loop):
+def test_param_cls_function_calling_local(unix_servicer):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
     ret = _run_container(
         unix_servicer,
@@ -893,7 +900,7 @@ def test_param_cls_function_calling_local(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_derived_cls(unix_servicer, event_loop):
+def test_derived_cls(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
@@ -904,7 +911,7 @@ def test_derived_cls(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_call_function_that_calls_function(unix_servicer, event_loop):
+def test_call_function_that_calls_function(unix_servicer):
     deploy_stub_externally(unix_servicer, "test.supports.functions", "stub")
     ret = _run_container(
         unix_servicer,
@@ -916,7 +923,7 @@ def test_call_function_that_calls_function(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_call_function_that_calls_method(unix_servicer, event_loop):
+def test_call_function_that_calls_method(unix_servicer):
     deploy_stub_externally(unix_servicer, "test.supports.functions", "stub")
     ret = _run_container(
         unix_servicer,
@@ -928,7 +935,7 @@ def test_call_function_that_calls_method(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_checkpoint_and_restore_success(unix_servicer, event_loop):
+def test_checkpoint_and_restore_success(unix_servicer):
     """Functions send a checkpointing request and continue to execute normally,
     simulating a restore operation."""
     ret = _run_container(
@@ -946,7 +953,7 @@ def test_checkpoint_and_restore_success(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_volume_commit_on_exit(unix_servicer, event_loop):
+def test_volume_commit_on_exit(unix_servicer):
     volume_mounts = [
         api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-123", allow_background_commits=True),
         api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-456", allow_background_commits=True),
@@ -964,7 +971,7 @@ def test_volume_commit_on_exit(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_volume_commit_on_error(unix_servicer, event_loop):
+def test_volume_commit_on_error(unix_servicer, capsys):
     volume_mounts = [
         api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-foo", allow_background_commits=True),
         api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-bar", allow_background_commits=True),
@@ -977,10 +984,11 @@ def test_volume_commit_on_error(unix_servicer, event_loop):
     )
     volume_commit_rpcs = [r for r in unix_servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
     assert {"vo-foo", "vo-bar"} == set(r.volume_id for r in volume_commit_rpcs)
+    assert 'raise Exception("Failure!")' in capsys.readouterr().err
 
 
 @skip_windows_unix_socket
-def test_no_volume_commit_on_exit(unix_servicer, event_loop):
+def test_no_volume_commit_on_exit(unix_servicer):
     volume_mounts = [api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-999", allow_background_commits=False)]
     ret = _run_container(
         unix_servicer,
@@ -994,7 +1002,7 @@ def test_no_volume_commit_on_exit(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_volume_commit_on_exit_doesnt_fail_container(unix_servicer, event_loop):
+def test_volume_commit_on_exit_doesnt_fail_container(unix_servicer):
     volume_mounts = [
         api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-999", allow_background_commits=True),
         api_pb2.VolumeMount(
@@ -1028,7 +1036,7 @@ def test_function_dep_hydration(unix_servicer):
 
 
 @skip_windows_unix_socket
-def test_build_decorator_cls(unix_servicer, event_loop):
+def test_build_decorator_cls(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
@@ -1037,7 +1045,6 @@ def test_build_decorator_cls(unix_servicer, event_loop):
         is_builder_function=True,
         is_auto_snapshot=True,
     )
-    print(ret)
     assert _unwrap_scalar(ret) == 101
     # TODO: this is GENERIC_STATUS_FAILURE when `@exit` fails,
     # but why is it not set when `@exit` is successful?
@@ -1046,7 +1053,7 @@ def test_build_decorator_cls(unix_servicer, event_loop):
 
 
 @skip_windows_unix_socket
-def test_multiple_build_decorator_cls(unix_servicer, event_loop):
+def test_multiple_build_decorator_cls(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
@@ -1226,7 +1233,7 @@ def test_lifecycle_full(servicer):
 
 
 @skip_windows_unix_socket
-def test_stop_fetching_inputs(unix_servicer, event_loop):
+def test_stop_fetching_inputs(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.experimental",
