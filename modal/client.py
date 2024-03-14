@@ -2,7 +2,7 @@
 import asyncio
 import platform
 import warnings
-from typing import Awaitable, Callable, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
@@ -99,7 +99,6 @@ class _Client:
         self.credentials = credentials
         self.version = version
         self.no_verify = no_verify
-        self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel = None
         self._stub: Optional[api_grpc.ModalClientStub] = None
 
@@ -118,10 +117,6 @@ class _Client:
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 
     async def _close(self):
-        if self._pre_stop is not None:
-            logger.debug("Client: running pre-stop coroutine before shutting down")
-            await self._pre_stop()  # type: ignore
-
         if self._channel is not None:
             self._channel.close()
 
