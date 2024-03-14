@@ -49,10 +49,10 @@ jobs:
         run: pip install -e .
 
       - name: Run client tests
-        run: pytest -v -s
+        run: pytest
 
       - name: Run docstring tests
-        run: pytest -s --markdown-docs -m markdown-docs modal
+        run: pytest --markdown-docs -m markdown-docs modal
 
   container-dependencies:
     name: Check minimal container dependencies for ${{ matrix.python-version }}

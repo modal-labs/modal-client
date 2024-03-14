@@ -197,7 +197,10 @@ class _FunctionIOManager:
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")
-            yield
+            try:
+                yield
+            finally:
+                t.cancel()
 
     def stop_heartbeat(self):
         if self._heartbeat_loop:
@@ -341,7 +344,8 @@ class _FunctionIOManager:
                     )
                     await asyncio.sleep(response.rate_limit_sleep_duration)
                 elif response.inputs:
-                    # for input cancellations we currently assume there is no input buffering in the container
+                    # for input cancellations and concurrency logic we currently assume
+                    # that there is no input buffering in the container
                     assert len(response.inputs) == 1
 
                     for item in response.inputs:
@@ -736,10 +740,17 @@ async def call_function_async(
         reset_context()
 
     if imp_fun.input_concurrency > 1:
-        async with TaskContext() as execution_context:
+        # all run_input coroutines will have completed by the time we leave the execution context
+        # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
+        # for them to resolve gracefully:
+        async with TaskContext(0.01) as execution_context:
             async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
                 imp_fun.input_concurrency
             ):
+                # Note that run_inputs_outputs will not return until the concurrency semaphore has
+                # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
+                # This prevents leaving the execution_context before outputs have been created
+                # TODO: refactor to make this a bit more easy to follow?
                 execution_context.create_task(run_input(input_id, function_call_id, args, kwargs))
     else:
         async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
@@ -993,9 +1004,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_io_manager.volume_commit(
                     [v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits]
                 )
-                # Avoid "Canceling remaining unfinished task" warnings.
-                function_io_manager.stop_heartbeat()
-
             finally:
                 # Restore the original signal handler, needed for container_test hygiene since the
                 # test runs `main()` multiple times in the same process.
