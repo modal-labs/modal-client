@@ -37,6 +37,7 @@ class _LogsReader:
         self.last_log_batch_entry_id = ""
 
     async def read_once(self) -> str:
+        print("Reading")
         data = ""
         req = api_pb2.SandboxGetLogsRequest(
                 sandbox_id=self._sandbox_id,
@@ -45,7 +46,7 @@ class _LogsReader:
                 last_entry_id=self.last_log_batch_entry_id,
             )
         log_batch = await retry_transient_errors(
-            self._client.stub.SandboxGetLogs, req
+            self._client.stub.SandboxGetLogsOnce, req
         )
         print(f"Kobe log batch: {log_batch}")
         # for item in log_batch.items:
