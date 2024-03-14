@@ -80,8 +80,8 @@ from typing import Any, Dict, Optional
 from google.protobuf.empty_pb2 import Empty
 
 from modal_proto import api_pb2
-from modal_utils.logger import configure_logger
 
+from ._utils.logger import configure_logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 
 # Locate config file and read it

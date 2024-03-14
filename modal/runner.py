@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, TypeVar
 from rich.console import Console
 
 from modal_proto import api_pb2
-from modal_utils.app_utils import is_valid_app_name
-from modal_utils.async_utils import TaskContext, synchronize_api
-from modal_utils.grpc_utils import retry_transient_errors
 
 from ._container_exec import container_exec
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
+from ._utils.app_utils import is_valid_app_name
+from ._utils.async_utils import TaskContext, synchronize_api
+from ._utils.grpc_utils import retry_transient_errors
 from .app import _LocalApp, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config

@@ -10,13 +10,13 @@ import typer
 from rich.console import Console
 from rich.syntax import Syntax
 
+from modal._utils.async_utils import synchronizer
+from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.secret import _Secret
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronizer
-from modal_utils.grpc_utils import retry_transient_errors
 
 secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=True)
 

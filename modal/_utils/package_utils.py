@@ -5,7 +5,7 @@ import typing
 from importlib.metadata import PackageNotFoundError, files
 from pathlib import Path
 
-from modal.exception import ModuleNotMountable
+from ..exception import ModuleNotMountable
 
 
 def get_file_formats(module):

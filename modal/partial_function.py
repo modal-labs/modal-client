@@ -13,9 +13,9 @@ from typing import (
 
 from modal._types import typechecked
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api, synchronizer
 
-from ._function_utils import method_has_params
+from ._utils.async_utils import synchronize_api, synchronizer
+from ._utils.function_utils import method_has_params
 from .config import logger
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function

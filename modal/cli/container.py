@@ -5,12 +5,11 @@ from typing import List, Union
 import typer
 from rich.text import Text
 
+from modal._container_exec import container_exec
+from modal._utils.async_utils import synchronizer
 from modal.cli.utils import display_table, timestamp_to_local
 from modal.client import _Client
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronizer
-
-from .._container_exec import container_exec
 
 container_cli = typer.Typer(name="container", help="Manage running containers.", no_args_is_help=True)
 

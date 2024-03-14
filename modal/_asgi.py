@@ -3,9 +3,8 @@ import asyncio
 import time
 from typing import Any, AsyncGenerator, Callable, Dict, List
 
-from modal_utils.async_utils import TaskContext
-
-from ._blob_utils import MAX_OBJECT_SIZE_BYTES
+from ._utils.async_utils import TaskContext
+from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from .config import logger
 from .functions import current_function_call_id
 

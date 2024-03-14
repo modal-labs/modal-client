@@ -35,27 +35,27 @@ from synchronicity.exceptions import UserCodeException
 
 from modal import _pty, is_local
 from modal_proto import api_grpc, api_pb2
-from modal_utils.async_utils import (
+
+from ._location import parse_cloud_provider
+from ._output import OutputManager
+from ._resolver import Resolver
+from ._serialization import deserialize, deserialize_data_format, serialize
+from ._traceback import append_modal_tb
+from ._utils.async_utils import (
     queue_batch_iterator,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
-
-from ._blob_utils import (
+from ._utils.blob_utils import (
     BLOB_MAX_PARALLELISM,
     MAX_OBJECT_SIZE_BYTES,
     blob_download,
     blob_upload,
 )
-from ._function_utils import FunctionInfo, get_referred_objects, is_async
-from ._location import parse_cloud_provider
-from ._mount_utils import validate_mount_points, validate_volumes
-from ._output import OutputManager
-from ._resolver import Resolver
-from ._serialization import deserialize, deserialize_data_format, serialize
-from ._traceback import append_modal_tb
+from ._utils.function_utils import FunctionInfo, get_referred_objects, is_async
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.mount_utils import validate_mount_points, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
@@ -632,7 +632,7 @@ class _Function(_Object, type_prefix="fu"):
 
         if checkpointing_enabled is not None:
             deprecation_warning(
-                (2024, 4, 4),
+                (2024, 3, 4),
                 "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
             )
             enable_memory_snapshot = checkpointing_enabled

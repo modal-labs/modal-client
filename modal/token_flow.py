@@ -9,9 +9,9 @@ import aiohttp.web
 from rich.console import Console
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
-from modal_utils.http_utils import run_temporary_http_server
 
+from ._utils.async_utils import synchronize_api
+from ._utils.http_utils import run_temporary_http_server
 from .client import _Client
 from .config import _lookup_workspace, _store_user_config, config, config_profiles, user_config_path
 from .exception import AuthError

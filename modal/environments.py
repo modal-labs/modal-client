@@ -7,7 +7,8 @@ from google.protobuf.wrappers_pb2 import StringValue
 from modal.client import _Client
 from modal.config import config
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronizer
+
+from ._utils.async_utils import synchronizer
 
 
 @synchronizer.create_blocking

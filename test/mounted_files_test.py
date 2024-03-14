@@ -9,7 +9,7 @@ import pytest_asyncio
 
 import modal
 from modal import Mount
-from modal._function_utils import FunctionInfo
+from modal._utils.function_utils import FunctionInfo
 
 from . import helpers
 from .supports.skip import skip_windows
@@ -152,8 +152,8 @@ def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_ur
     }
 
 
-def test_e2e_modal_run_py_file_mounts(servicer, test_dir):
-    helpers.deploy_stub_externally(servicer, "hello.py", cwd=test_dir.parent / "modal_test_support")
+def test_e2e_modal_run_py_file_mounts(servicer, supports_dir):
+    helpers.deploy_stub_externally(servicer, "hello.py", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount
@@ -161,8 +161,8 @@ def test_e2e_modal_run_py_file_mounts(servicer, test_dir):
     assert "/root/hello.py" in servicer.files_name2sha
 
 
-def test_e2e_modal_run_py_module_mounts(servicer, test_dir):
-    helpers.deploy_stub_externally(servicer, "hello", cwd=test_dir.parent / "modal_test_support")
+def test_e2e_modal_run_py_module_mounts(servicer, supports_dir):
+    helpers.deploy_stub_externally(servicer, "hello", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount

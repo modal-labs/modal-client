@@ -199,6 +199,7 @@ enum WebhookType {
   WEBHOOK_TYPE_ASGI_APP = 1;
   WEBHOOK_TYPE_FUNCTION = 2;
   WEBHOOK_TYPE_WSGI_APP = 3;
+  WEBHOOK_TYPE_WEB_SERVER = 4;
 }
 
 enum WebhookAsyncMode {
@@ -590,6 +591,7 @@ message ContainerExecRequest {
   PTYInfo pty_info = 3;
   // Send SIGTERM to running container on exit of exec command.
   bool terminate_container_on_exit = 4;
+  bool runtime_debug = 5; // For internal debugging use only.
 }
 
 message ContainerExecGetOutputRequest {
@@ -1492,6 +1494,16 @@ message SandboxGetLogsRequest {
   string last_entry_id = 4;
 }
 
+message SandboxStdinWriteRequest {
+  string sandbox_id = 1;
+  bytes input = 2;
+  uint32 index = 3;
+  bool eof = 4;
+}
+
+message SandboxStdinWriteResponse {
+}
+
 message SandboxHandleMetadata {
   GenericResult result = 1;
 }
@@ -1918,6 +1930,8 @@ message WebhookConfig {
   string requested_suffix = 4;
   WebhookAsyncMode async_mode = 5;
   repeated CustomDomainConfig custom_domains = 6;
+  uint32 web_server_port = 7;
+  float web_server_startup_timeout = 8;
 }
 
 message WebUrlInfo {
@@ -2062,6 +2076,7 @@ service ModalClient {
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
+  rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
 
   // Secrets
   rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);  // Not used by client anymore

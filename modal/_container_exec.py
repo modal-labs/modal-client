@@ -14,12 +14,14 @@ from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console
 
-from modal._pty import get_pty_info, raw_terminal, set_nonblocking
-from modal.client import _Client
-from modal.exception import ExecutionError, InteractiveTimeoutError, NotFoundError
 from modal_proto import api_pb2
-from modal_utils.async_utils import TaskContext, asyncify
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+
+from ._pty import get_pty_info, raw_terminal, set_nonblocking
+from ._utils.async_utils import TaskContext, asyncify
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from .client import _Client
+from .config import config
+from .exception import ExecutionError, InteractiveTimeoutError, NotFoundError
 
 
 async def container_exec(
@@ -43,6 +45,7 @@ async def container_exec(
                 command=command,
                 pty_info=get_pty_info(shell=True) if pty else None,
                 terminate_container_on_exit=terminate_container_on_exit,
+                runtime_debug=config.get("function_runtime_debug"),
             )
         )
     except GRPCError as err:

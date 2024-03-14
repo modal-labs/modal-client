@@ -4,8 +4,8 @@ import hashlib
 import io
 import pytest
 
-from modal._blob_utils import BytesIOSegmentPayload
-from modal_utils.app_utils import is_valid_app_name, is_valid_subdomain_label
+from modal._utils.app_utils import is_valid_app_name, is_valid_subdomain_label
+from modal._utils.blob_utils import BytesIOSegmentPayload
 
 
 def test_subdomain_label():

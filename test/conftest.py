@@ -30,15 +30,15 @@ from grpclib import GRPCError, Status
 import modal._serialization
 from modal import __version__, config
 from modal._serialization import serialize_data_format
+from modal._utils.async_utils import asyncify, synchronize_api
+from modal._utils.grpc_testing import patch_mock_servicer
+from modal._utils.grpc_utils import find_free_port
+from modal._utils.http_utils import run_temporary_http_server
 from modal._vendor import cloudpickle
 from modal.app import _ContainerApp
 from modal.client import Client
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
-from modal_utils.async_utils import asyncify, synchronize_api
-from modal_utils.grpc_testing import patch_mock_servicer
-from modal_utils.grpc_utils import find_free_port
-from modal_utils.http_utils import run_temporary_http_server
 
 
 @dataclasses.dataclass
@@ -1321,10 +1321,3 @@ def modal_config():
 @pytest.fixture
 def supports_dir(test_dir):
     return test_dir / Path("supports")
-
-
-@pytest.fixture()
-def modal_test_support_dir(request):
-    # TODO: merge this with test/supports dir?
-    root_dir = Path(request.config.rootdir)
-    return root_dir / "modal_test_support"

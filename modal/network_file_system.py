@@ -8,13 +8,13 @@ from grpclib import GRPCError, Status
 
 import modal
 from modal_proto import api_pb2
-from modal_utils.async_utils import ConcurrencyPool, synchronize_api
-from modal_utils.grpc_utils import retry_transient_errors, unary_stream
-from modal_utils.hash_utils import get_sha256_hex
 
-from ._blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._resolver import Resolver
 from ._types import typechecked
+from ._utils.async_utils import ConcurrencyPool, synchronize_api
+from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
+from ._utils.grpc_utils import retry_transient_errors, unary_stream
+from ._utils.hash_utils import get_sha256_hex
 from .client import _Client
 from .exception import deprecation_warning
 from .object import _get_environment_name, _Object, live_method, live_method_gen
