@@ -34,6 +34,23 @@ class _LogsReader:
         self._file_descriptor = file_descriptor
         self._sandbox_id = sandbox_id
         self._client = client
+        self.last_log_batch_entry_id = ""
+
+    async def read_once(self) -> str:
+        data = ""
+        req = api_pb2.SandboxGetLogsRequest(
+                sandbox_id=self._sandbox_id,
+                file_descriptor=self._file_descriptor,
+                timeout=55,
+                last_entry_id=self.last_log_batch_entry_id,
+            )
+        log_batch = await retry_transient_errors(
+            self._client.stub.SandboxGetLogs, req
+        )
+        print(f"Kobe log batch: {log_batch}")
+        # for item in log_batch.items:
+        #     data += item.data
+        return data
 
     async def read(self) -> str:
         """Fetch and return contents of the entire stream.
@@ -66,6 +83,7 @@ class _LogsReader:
             )
             log_batch: api_pb2.TaskLogsBatch
             async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
+                print(f"Kobe received: {log_batch}")
                 if log_batch.entry_id:
                     # log_batch entry_id is empty for fd="server" messages from AppGetLogs
                     last_log_batch_entry_id = log_batch.entry_id
@@ -79,15 +97,18 @@ class _LogsReader:
 
         while not completed:
             try:
+                print("Kobe calling get logs")
                 await _get_logs()
             except (GRPCError, StreamTerminatedError) as exc:
                 if isinstance(exc, GRPCError):
+                    print("Kobe GRPC error")
                     if exc.status in RETRYABLE_GRPC_STATUS_CODES:
                         continue
                 elif isinstance(exc, StreamTerminatedError):
+                    print("Kobe error")
                     continue
                 raise
-
+        print(f"Kobe returning data: {data}")
         return data
 
 
