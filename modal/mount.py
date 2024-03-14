@@ -249,7 +249,15 @@ class _Mount(_Object, type_prefix="mo"):
     @staticmethod
     def _new(entries: List[_MountEntry] = []) -> "_Mount":
         rep = f"Mount({entries})"
-        obj = _Mount._from_loader(_Mount._load_mount, rep)
+
+        async def mount_content_deduplication_key():
+            try:
+                included_files = await asyncio.get_event_loop().run_in_executor(None, _select_files, entries)
+            except NonLocalMountError:
+                return None
+            return (_Mount._type_prefix, "local", frozenset(included_files))
+
+        obj = _Mount._from_loader(_Mount._load_mount, rep, deduplication_key=mount_content_deduplication_key)
         obj._entries = entries
         obj._is_local = True
         return obj
@@ -582,13 +590,6 @@ class _Mount(_Object, type_prefix="mo"):
             client = await _Client.from_env()
         resolver = Resolver(client=client)
         await resolver.load(self)
-
-    async def _deduplication_key(self):
-        try:
-            included_files = await asyncio.get_event_loop().run_in_executor(None, _select_files, self.entries)
-        except NonLocalMountError:
-            return None
-        return frozenset(included_files)
 
     def _get_metadata(self) -> api_pb2.MountHandleMetadata:
         if self._content_checksum_sha256_hex is None:
