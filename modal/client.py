@@ -11,7 +11,6 @@ from grpclib import GRPCError, Status
 from modal_proto import api_grpc, api_pb2
 from modal_version import __version__
 
-from ._utils import async_utils
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
 from ._utils.http_utils import http_client_with_tls
@@ -212,7 +211,6 @@ class _Client:
             else:
                 client = _Client(server_url, client_type, credentials)
                 await client._open()
-                async_utils.on_shutdown(client._close())
                 try:
                     await client._verify()
                 except AuthError:
@@ -237,7 +235,6 @@ class _Client:
 
         client = _Client(server_url, client_type, credentials)
         await client._open()
-        async_utils.on_shutdown(client._close())
         return client
 
     @classmethod
