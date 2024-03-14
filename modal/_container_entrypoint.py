@@ -200,7 +200,7 @@ class _FunctionIOManager:
             try:
                 yield
             finally:
-                self._heartbeat_loop.cancel()
+                t.cancel()
 
     def stop_heartbeat(self):
         if self._heartbeat_loop:
