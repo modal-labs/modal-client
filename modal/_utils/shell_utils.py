@@ -50,8 +50,11 @@ async def _stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw
         message_index = 1
         while True:
             data = await _read_stdin()
+            print(f"read data from stdin: {data}")
             if data is None:
                 return
+            print(f"passing data to handle input: {data}")
+            
             await handle_input(data, message_index)
 
             message_index += 1
@@ -63,7 +66,7 @@ async def _stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw
             yield
     else:
         yield
-
+    print("EXITING WRITE")
     os.write(quit_pipe_write, b"\n")
     write_task.cancel()
 

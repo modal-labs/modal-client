@@ -6,17 +6,19 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 from ._utils.shell_utils import write_to_fd, connect_to_terminal
-from sandbox import _Sandbox
+from .sandbox import _Sandbox
 
 async def connect_to_sandbox(sandbox: _Sandbox):
-    async def handle_input(data: bytes, message_index: int):
+    async def _handle_input(data: bytes):
+        print("Writing!")
         sandbox.stdin.write(data)
-        sandbox.stdin.aio()
-
-    async def stream_to_stdout(on_connect: asyncio.Event):
+        print(f"draining sandbox! Data is: {data}")
+        await sandbox.stdin.drain.aio()
+    async def _stream_to_stdout(on_connect: asyncio.Event):
+        print("streaming OUT")
         await stream_sandbox_logs_to_stdout(sandbox, on_connect)
-
-    await connect_to_terminal(handle_input, stream_to_stdout)
+    print("connecting to sandbox")
+    await connect_to_terminal(_handle_input, _stream_to_stdout)
 
 async def stream_sandbox_logs_to_stdout(sandbox: _Sandbox, on_connect: Optional[asyncio.Event] = None) -> int:
     """
@@ -40,7 +42,7 @@ async def stream_sandbox_logs_to_stdout(sandbox: _Sandbox, on_connect: Optional[
         
         async for batch in sandbox.stdout.read_stream.aio():
             for message in batch.items:
-                # print(f"Kobe got batch!: {message}")
+                print(f"Kobe got batch!: {message}")
                 assert message.file_descriptor in [1, 2]
                 await write_to_fd(message.file_descriptor, str.encode(message.data))
         

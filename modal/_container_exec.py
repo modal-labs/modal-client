@@ -80,7 +80,8 @@ async def connect_to_exec(exec_id: str, sandbox: any, write: Callable[[int], int
             total_timeout=10,
         )
     await connect_to_terminal(handle_input, stream_to_stdout)
-    
+        
+
 async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
     """
     Streams exec output to stdout.
