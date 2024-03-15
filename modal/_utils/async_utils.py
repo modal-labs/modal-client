@@ -3,7 +3,6 @@ import asyncio
 import concurrent.futures
 import functools
 import inspect
-import sys
 import time
 import typing
 from contextlib import asynccontextmanager
