@@ -2,6 +2,7 @@
 import pytest
 from pathlib import Path
 from traceback import extract_tb
+from typing import Dict, List, Tuple
 
 from modal._traceback import append_modal_tb, extract_traceback, reduce_traceback_to_user_code
 from modal._vendor import tblib
@@ -76,7 +77,7 @@ def test_append_modal_tb():
     assert frames == ["test_append_modal_tb", "call_raise_error", "raise_error"]
 
 
-def make_tb_stack(frames):
+def make_tb_stack(frames: List[Tuple[str, str]]) -> List[Dict]:
     """Given a minimal specification of (code filename, code name), return dict formatted for tblib."""
     tb_frames = []
     for lineno, (filename, name) in enumerate(frames):
@@ -94,7 +95,7 @@ def make_tb_stack(frames):
     return tb_frames
 
 
-def tb_dict_from_stack_dicts(stack: list[dict]) -> dict:
+def tb_dict_from_stack_dicts(stack: List[Dict]) -> Dict:
     tb_root = tb = stack.pop(0)
     while stack:
         tb["tb_next"] = stack.pop(0)
