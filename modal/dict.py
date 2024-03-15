@@ -66,7 +66,7 @@ class _Dict(_Object, type_prefix="di"):
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, resolver.client, None)
 
-        return _Dict._from_loader(_load, "Dict()", is_another_app=True)
+        return _Dict._from_loader(_load, "Dict()")
 
     def __init__(self, data={}):
         """mdmd:hidden"""
@@ -105,7 +105,7 @@ class _Dict(_Object, type_prefix="di"):
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, resolver.client, None)
 
-        return _Dict._from_loader(_load, "Dict()")
+        return _Dict._from_loader(_load, "Dict()", is_another_app=True)
 
     @staticmethod
     def persisted(
