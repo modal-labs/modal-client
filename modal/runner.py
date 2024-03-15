@@ -327,7 +327,7 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
             raise InteractiveTimeoutError("Timed out while waiting for sandbox to start")
 
         loading_status.stop()
-        await container_exec(task_id, cmd, pty=True, client=client, terminate_container_on_exit=True)
+        await container_exec(task_id, cmd, pty=True, client=client, sandbox=sb, terminate_container_on_exit=True)
 
 
 run_stub = synchronize_api(_run_stub)

@@ -23,6 +23,8 @@ from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _Object
 from .secret import _Secret
+from typing import AsyncIterator
+
 
 
 class _LogsReader:
@@ -36,22 +38,14 @@ class _LogsReader:
         self._client = client
         self.last_log_batch_entry_id = ""
 
-    async def read_once(self) -> str:
-        print("Reading")
-        data = ""
+    async def read_stream(self) -> AsyncIterator[api_pb2.TaskLogsBatch]:
         req = api_pb2.SandboxGetLogsRequest(
-                sandbox_id=self._sandbox_id,
-                file_descriptor=self._file_descriptor,
-                timeout=55,
-                last_entry_id=self.last_log_batch_entry_id,
-            )
-        log_batch = await retry_transient_errors(
-            self._client.stub.SandboxGetLogsOnce, req
+            sandbox_id=self._sandbox_id,
+            file_descriptor=self._file_descriptor,
+            timeout=55,
+            last_entry_id=None,
         )
-        print(f"Kobe log batch: {log_batch}")
-        # for item in log_batch.items:
-        #     data += item.data
-        return data
+        return unary_stream(self._client.stub.SandboxGetLogs, req)
 
     async def read(self) -> str:
         """Fetch and return contents of the entire stream.
@@ -87,6 +81,7 @@ class _LogsReader:
                 print(f"Kobe received: {log_batch}")
                 if log_batch.entry_id:
                     # log_batch entry_id is empty for fd="server" messages from AppGetLogs
+                    print(f"Kobe there's entry ID! {log_batch.entry_id}")
                     last_log_batch_entry_id = log_batch.entry_id
 
                 if log_batch.eof:

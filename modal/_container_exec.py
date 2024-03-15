@@ -16,6 +16,8 @@ from rich.console import Console
 
 from modal_proto import api_pb2
 
+from .sandbox import _Sandbox
+
 from ._pty import get_pty_info, raw_terminal, set_nonblocking
 from ._utils.async_utils import TaskContext, asyncify
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
@@ -25,7 +27,7 @@ from .exception import ExecutionError, InteractiveTimeoutError, NotFoundError
 
 
 async def container_exec(
-    task_id: str, command: List[str], *, pty: bool, client: _Client, terminate_container_on_exit: bool = False
+    task_id: str, command: List[str], *, pty: bool, client: _Client, sandbox: _Sandbox, terminate_container_on_exit: bool = False
 ):
     """Execute a command inside an active container"""
     if platform.system() == "Windows":
@@ -54,10 +56,10 @@ async def container_exec(
             raise NotFoundError(f"Container ID {task_id} not found")
         raise
 
-    await connect_to_exec(res.exec_id, pty, connecting_status)
+    await connect_to_exec(res.exec_id, pty, connecting_status, sandbox=sandbox)
 
 
-async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Optional[rich.status.Status] = None):
+async def connect_to_exec(exec_id: str, sandbox: _Sandbox, pty: bool = False, connecting_status: Optional[rich.status.Status] = None):
     """
     Connects the current terminal to the given exec id.
 
@@ -72,7 +74,7 @@ async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Op
 
     on_connect = asyncio.Event()
     async with TaskContext() as tc:
-        exec_output_task = tc.create_task(handle_exec_output(client, exec_id, on_connect=on_connect))
+        exec_output_task = tc.create_task(handle_exec_output(client, exec_id, sandbox, on_connect=on_connect))
         try:
             # time out if we can't connect to the server fast enough
             await asyncio.wait_for(on_connect.wait(), timeout=15)
@@ -137,7 +139,7 @@ async def handle_exec_input(client: _Client, exec_id: str, use_raw_terminal=Fals
     write_task.cancel()
 
 
-async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
+async def handle_exec_output(client: _Client, exec_id: str, sandbox: _Sandbox, on_connect: Optional[asyncio.Event] = None) -> int:
     """
     Streams exec output to stdout.
 
@@ -162,27 +164,30 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
             timeout=55,
             last_batch_index=last_batch_index,
         )
-        async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
-            for message in batch.items:
-                assert message.file_descriptor in [1, 2]
+        # async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
+        async for batch in sandbox.stdout.read_stream():
+            print(f"Kobe got batch!: {batch}")
+            # for message in batch.items:
+            #     assert message.file_descriptor in [1, 2]
 
-                await _write_to_fd(message.file_descriptor, str.encode(message.message))
+            #     await _write_to_fd(message.file_descriptor, str.encode(message.message))
 
-            if not connected:
-                connected = True
-                if on_connect is not None:
-                    on_connect.set()
-                    # give up the event loop
-                    await asyncio.sleep(0)
+            # if not connected:
+            #     connected = True
+            #     if on_connect is not None:
+            #         on_connect.set()
+            #         # give up the event loop
+            #         await asyncio.sleep(0)
 
-            if batch.HasField("exit_code"):
-                exit_status = batch.exit_code
-                break
+            # if batch.HasField("exit_code"):
+            #     exit_status = batch.exit_code
+            #     break
 
-            last_batch_index = batch.batch_index
+            # last_batch_index = batch.batch_index
 
     while exit_status is None:
         try:
+            print("Kobe calls get output!")
             await _get_output()
         except (GRPCError, StreamTerminatedError) as exc:
             if isinstance(exc, GRPCError):
