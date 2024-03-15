@@ -13,6 +13,7 @@ import rich.status
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console
+from ._utils.shell_utils import _write_to_fd, connect_to_terminal 
 
 from modal_proto import api_pb2
 
@@ -23,8 +24,7 @@ from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_erro
 from .client import _Client
 from .config import config
 from .exception import ExecutionError, InteractiveTimeoutError, NotFoundError
-
-# from .sandbox import _Sandbox
+from typing import Callable
 
 
 async def container_exec(
@@ -59,8 +59,7 @@ async def container_exec(
 
     await connect_to_exec(res.exec_id, sandbox, pty, connecting_status)
 
-
-async def connect_to_exec(exec_id: str, sandbox: any, pty: bool = False, connecting_status: Optional[rich.status.Status] = None):
+async def connect_to_exec(exec_id: str, sandbox: any, write: Callable[[int], int], pty: bool = False, connecting_status: Optional[rich.status.Status] = None):
     """
     Connects the current terminal to the given exec id.
 
@@ -69,82 +68,20 @@ async def connect_to_exec(exec_id: str, sandbox: any, pty: bool = False, connect
 
     client = await _Client.from_env()
 
-    def stop_connecting_status():
-        if connecting_status:
-            connecting_status.stop()
+    async def handle_output(on_connect: asyncio.Event):
+        await handle_exec_output(client, exec_id, on_connect)
 
-    on_connect = asyncio.Event()
-    async with TaskContext() as tc:
-        exec_output_task = tc.create_task(handle_exec_output(client, exec_id, sandbox, on_connect=on_connect))
-        try:
-            # time out if we can't connect to the server fast enough
-            await asyncio.wait_for(on_connect.wait(), timeout=15)
-            stop_connecting_status()
-
-            async with handle_exec_input(client, exec_id, sandbox, use_raw_terminal=pty):
-                exit_status = await exec_output_task
-
-            if exit_status != 0:
-                raise ExecutionError(f"Process exited with status code {exit_status}")
-
-        except (asyncio.TimeoutError, TimeoutError):
-            stop_connecting_status()
-            exec_output_task.cancel()
-            raise InteractiveTimeoutError("Failed to establish connection to container.")
-
-old_version = True
-
-# note: this is very similar to code in _pty.py.
-@contextlib.asynccontextmanager
-async def handle_exec_input(client: _Client, exec_id: str, sb: any, use_raw_terminal=False):
-    quit_pipe_read, quit_pipe_write = os.pipe()
-
-    set_nonblocking(sys.stdin.fileno())
-
-    @asyncify
-    def _read_stdin() -> Optional[bytes]:
-        nonlocal quit_pipe_read
-        # TODO: Windows support.
-        (readable, _, _) = select.select([sys.stdin.buffer, quit_pipe_read], [], [], 5)
-        if quit_pipe_read in readable:
-            return None
-        if sys.stdin.buffer in readable:
-            return sys.stdin.buffer.read()
-        # we had 5 seconds of no input. send an empty string as a "heartbeat" to the server.
-        return b""
-
-    async def _write():
-        message_index = 1
-        while True:
-            data = await _read_stdin()
-            if data is None:
-                return
-            if old_version:
-                await retry_transient_errors(
-                    client.stub.ContainerExecPutInput,
-                    api_pb2.ContainerExecPutInputRequest(
-                        exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
-                    ),
-                    total_timeout=10,
-                )
-            else :
-                sb.stdin.write(data)
-                await sb.stdin.drain.aio()
-            message_index += 1
-
-    write_task = asyncio.create_task(_write())
-
-    if use_raw_terminal:
-        with raw_terminal():
-            yield
-    else:
-        yield
-
-    os.write(quit_pipe_write, b"\n")
-    write_task.cancel()
-
-
-async def handle_exec_output(client: _Client, exec_id: str, sandbox: any, on_connect: Optional[asyncio.Event] = None) -> int:
+    async def handle_input(data: bytes, message_index: int):
+        await retry_transient_errors(
+            client.stub.ContainerExecPutInput,
+            api_pb2.ContainerExecPutInputRequest(
+                exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
+            ),
+            total_timeout=10,
+        )
+    await connect_to_terminal(handle_input, handle_output)
+    
+async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
     """
     Streams exec output to stdout.
 
@@ -163,66 +100,31 @@ async def handle_exec_output(client: _Client, exec_id: str, sandbox: any, on_con
 
     async def _get_output():
         nonlocal last_batch_index, exit_status, connected
+        req = api_pb2.ContainerExecGetOutputRequest(
+            exec_id=exec_id,
+            timeout=55,
+            last_batch_index=last_batch_index,
+        )
+        async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
+            for message in batch.items:
+                # print(f"Kobe got message!: {message}")
+                assert message.file_descriptor in [1, 2]
 
-        # req = api_pb2.ContainerExecGetOutputRequest(
-        #     exec_id=exec_id,
-        #     timeout=55,
-        #     last_batch_index=last_batch_index,
-        # )
+                await _write_to_fd(message.file_descriptor, str.encode(message.message))
 
-        # async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
-        # async for batch in unary_stream(client.stub.SandboxGetLogs, req):
+            if not connected:
+                connected = True
+                if on_connect is not None:
+                    on_connect.set()
+                    # give up the event loop
+                    await asyncio.sleep(0)
 
-        if old_version:
-            req = api_pb2.ContainerExecGetOutputRequest(
-                exec_id=exec_id,
-                timeout=55,
-                last_batch_index=last_batch_index,
-            )
-            async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
-                for message in batch.items:
-                    assert message.file_descriptor in [1, 2]
-
-                    await _write_to_fd(message.file_descriptor, str.encode(message.message))
-
-                if not connected:
-                    connected = True
-                    if on_connect is not None:
-                        on_connect.set()
-                        # give up the event loop
-                        await asyncio.sleep(0)
-
-                if batch.HasField("exit_code"):
-                    exit_status = batch.exit_code
-                    break
-
-                last_batch_index = batch.batch_index
-        else:
-            async for batch in sandbox.stdout.read_stream.aio():
-                # print(f"Kobe got batch!: {batch}")
-                for message in batch.items:
-                    assert message.file_descriptor in [1, 2]
-                    await _write_to_fd(message.file_descriptor, str.encode(message.data))
-            
-                if not connected:
-                    connected = True
-                    if on_connect is not None:
-                        on_connect.set()
-                        # give up the event loop
-                        await asyncio.sleep(0)
-
-                if batch.eof:
-                    exit_status = batch.exit_code
-                    break
-                # if batch.HasField("exit_code"):
-                #     exit_status = batch.exit_code
-                #     break
-
-                # last_batch_index = batch.batch_index
+            if batch.HasField("exit_code"):
+                exit_status = batch.exit_code
+                break       
 
     while exit_status is None:
         try:
-            # print("Kobe calls get output!")
             await _get_output()
         except (GRPCError, StreamTerminatedError) as exc:
             if isinstance(exc, GRPCError):
@@ -233,21 +135,3 @@ async def handle_exec_output(client: _Client, exec_id: str, sandbox: any, on_con
             raise
 
     return exit_status
-
-
-def _write_to_fd(fd: int, data: bytes):
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-
-    def try_write():
-        try:
-            nbytes = os.write(fd, data)
-            loop.remove_writer(fd)
-            future.set_result(nbytes)
-        except OSError as e:
-            if e.errno != errno.EAGAIN:
-                future.set_exception(e)
-                raise
-
-    loop.add_writer(fd, try_write)
-    return future

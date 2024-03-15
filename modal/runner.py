@@ -319,7 +319,7 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
         if old_version:
             sb = await _stub.spawn_sandbox("sleep", "360000", **kwargs)
         else:
-            sb = await _stub.spawn_sandbox("bash", pty_info= get_pty_info(shell=True), **kwargs)
+            sb = await _stub.spawn_sandbox("bash", pty_info=get_pty_info(shell=True), **kwargs)
 
         for _ in range(40):
             await asyncio.sleep(0.5)
