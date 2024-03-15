@@ -23,6 +23,7 @@ from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_erro
 from .client import _Client
 from .config import config
 from .exception import ExecutionError, InteractiveTimeoutError, NotFoundError
+
 # from .sandbox import _Sandbox
 
 
@@ -91,6 +92,7 @@ async def connect_to_exec(exec_id: str, sandbox: any, pty: bool = False, connect
             exec_output_task.cancel()
             raise InteractiveTimeoutError("Failed to establish connection to container.")
 
+old_version = True
 
 # note: this is very similar to code in _pty.py.
 @contextlib.asynccontextmanager
@@ -117,15 +119,17 @@ async def handle_exec_input(client: _Client, exec_id: str, sb: any, use_raw_term
             data = await _read_stdin()
             if data is None:
                 return
-            sb.stdin.write(data)
-            await sb.stdin.drain.aio()
-            # await retry_transient_errors(
-            #     client.stub.ContainerExecPutInput,
-            #     api_pb2.ContainerExecPutInputRequest(
-            #         exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
-            #     ),
-            #     total_timeout=10,
-            # )
+            if old_version:
+                await retry_transient_errors(
+                    client.stub.ContainerExecPutInput,
+                    api_pb2.ContainerExecPutInputRequest(
+                        exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
+                    ),
+                    total_timeout=10,
+                )
+            else :
+                sb.stdin.write(data)
+                await sb.stdin.drain.aio()
             message_index += 1
 
     write_task = asyncio.create_task(_write())
@@ -160,33 +164,61 @@ async def handle_exec_output(client: _Client, exec_id: str, sandbox: any, on_con
     async def _get_output():
         nonlocal last_batch_index, exit_status, connected
 
-        req = api_pb2.ContainerExecGetOutputRequest(
-            exec_id=exec_id,
-            timeout=55,
-            last_batch_index=last_batch_index,
-        )
+        # req = api_pb2.ContainerExecGetOutputRequest(
+        #     exec_id=exec_id,
+        #     timeout=55,
+        #     last_batch_index=last_batch_index,
+        # )
 
         # async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
         # async for batch in unary_stream(client.stub.SandboxGetLogs, req):
 
-        async for batch in sandbox.stdout.read_stream.aio():
-            # print(f"Kobe got batch!: {batch}")
-            for message in batch.items:
-                assert message.file_descriptor in [1, 2]
-                await _write_to_fd(message.file_descriptor, str.encode(message.data))
-           
-            if not connected:
-                connected = True
-                if on_connect is not None:
-                    on_connect.set()
-                    # give up the event loop
-                    await asyncio.sleep(0)
+        if old_version:
+            req = api_pb2.ContainerExecGetOutputRequest(
+                exec_id=exec_id,
+                timeout=55,
+                last_batch_index=last_batch_index,
+            )
+            async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
+                for message in batch.items:
+                    assert message.file_descriptor in [1, 2]
 
-            # if batch.HasField("exit_code"):
-            #     exit_status = batch.exit_code
-            #     break
+                    await _write_to_fd(message.file_descriptor, str.encode(message.message))
 
-            # last_batch_index = batch.batch_index
+                if not connected:
+                    connected = True
+                    if on_connect is not None:
+                        on_connect.set()
+                        # give up the event loop
+                        await asyncio.sleep(0)
+
+                if batch.HasField("exit_code"):
+                    exit_status = batch.exit_code
+                    break
+
+                last_batch_index = batch.batch_index
+        else:
+            async for batch in sandbox.stdout.read_stream.aio():
+                # print(f"Kobe got batch!: {batch}")
+                for message in batch.items:
+                    assert message.file_descriptor in [1, 2]
+                    await _write_to_fd(message.file_descriptor, str.encode(message.data))
+            
+                if not connected:
+                    connected = True
+                    if on_connect is not None:
+                        on_connect.set()
+                        # give up the event loop
+                        await asyncio.sleep(0)
+
+                if batch.eof:
+                    exit_status = batch.exit_code
+                    break
+                # if batch.HasField("exit_code"):
+                #     exit_status = batch.exit_code
+                #     break
+
+                # last_batch_index = batch.batch_index
 
     while exit_status is None:
         try:

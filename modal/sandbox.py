@@ -38,7 +38,7 @@ class _LogsReader:
         self.last_log_batch_entry_id = ""
 
     async def read_stream(self) -> AsyncIterator[api_pb2.TaskLogsBatch]:
-        print("Kobe reading stream")
+        # print("Kobe reading stream")
         req = api_pb2.SandboxGetLogsRequest(
             sandbox_id=self._sandbox_id,
             file_descriptor=self._file_descriptor,
@@ -182,6 +182,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         allow_background_volume_commits: bool = False,
+        pty_info: Optional[api_pb2.PTYInfo] = None
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -241,6 +242,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 block_network=block_network,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
+                pty_info=pty_info
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
