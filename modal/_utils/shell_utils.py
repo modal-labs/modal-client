@@ -3,15 +3,15 @@ import asyncio
 import contextlib
 import errno
 import os
-from async_utils import asyncify, TaskContext
+from .async_utils import asyncify, TaskContext
 from modal._pty import get_pty_info, raw_terminal, set_nonblocking
 import sys
 import select
 from typing import List, Optional, Callable, Coroutine
-from exception import ExecutionError, InteractiveTimeoutError, NotFoundError
+from modal.exception import ExecutionError, InteractiveTimeoutError, NotFoundError
 import rich.status
 
-def _write_to_fd(fd: int, data: bytes):
+def write_to_fd(fd: int, data: bytes):
     loop = asyncio.get_event_loop()
     future = loop.create_future()
 
@@ -70,7 +70,7 @@ async def _stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw
 
 async def connect_to_terminal(
     handle_input: Callable[[bytes, int], Coroutine], 
-    handle_output: Callable[[asyncio.Event], Coroutine], 
+    stream_to_stdout: Callable[[asyncio.Event], Coroutine], 
     pty: bool = False, 
     connecting_status: Optional[rich.status.Status] = None
 ):
@@ -87,7 +87,7 @@ async def connect_to_terminal(
 
     on_connect = asyncio.Event()
     async with TaskContext() as tc:
-        exec_output_task = tc.create_task(handle_output(on_connect))
+        exec_output_task = tc.create_task(stream_to_stdout(on_connect))
         try:
             # time out if we can't connect to the server fast enough
             await asyncio.wait_for(on_connect.wait(), timeout=15)

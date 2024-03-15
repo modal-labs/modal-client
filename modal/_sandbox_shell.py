@@ -1,69 +1,24 @@
 # Copyright Modal Labs 2024
 import asyncio
-import contextlib
-import errno
-import os
-import platform
-import select
-import sys
-from typing import List, Optional
+from typing import Optional
 
-import rich
-import rich.status
-from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
-from rich.console import Console
 
-from modal_proto import api_pb2
-
-
-from ._pty import get_pty_info, raw_terminal, set_nonblocking
-from ._utils.async_utils import TaskContext, asyncify
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
-from .client import _Client
-from .config import config
-from .exception import ExecutionError, InteractiveTimeoutError, NotFoundError
-from typing import Callable
-from ._utils.shell_utils import _write_to_fd
+from ._utils.shell_utils import write_to_fd, connect_to_terminal
 from sandbox import _Sandbox
 
 async def connect_to_sandbox(sandbox: _Sandbox):
-    client = await _Client.from_env()
+    async def handle_input(data: bytes, message_index: int):
+        sandbox.stdin.write(data)
+        sandbox.stdin.aio()
 
-    def stop_connecting_status():
-        if connecting_status:
-            connecting_status.stop()
+    async def stream_to_stdout(on_connect: asyncio.Event):
+        await stream_sandbox_logs_to_stdout(sandbox, on_connect)
 
-    on_connect = asyncio.Event()
-    async with TaskContext() as tc:
-        exec_output_task = tc.create_task(handle_exec_output(client, exec_id, sandbox, on_connect=on_connect))
-        try:
-            # time out if we can't connect to the server fast enough
-            await asyncio.wait_for(on_connect.wait(), timeout=15)
-            stop_connecting_status()
+    await connect_to_terminal(handle_input, stream_to_stdout)
 
-            async def handle_input(data: bytes, message_index: int):
-                await retry_transient_errors(
-                    client.stub.ContainerExecPutInput,
-                    api_pb2.ContainerExecPutInputRequest(
-                        exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
-                    ),
-                    total_timeout=10,
-                )
-
-            async with _stream_stdin(handle_input, use_raw_terminal=pty):
-                exit_status = await exec_output_task
-
-            if exit_status != 0:
-                raise ExecutionError(f"Process exited with status code {exit_status}")
-
-        except (asyncio.TimeoutError, TimeoutError):
-            stop_connecting_status()
-            exec_output_task.cancel()
-            raise InteractiveTimeoutError("Failed to establish connection to container.")
-
-
-async def handle_exec_output(client: _Client, exec_id: str, write: Callable[[int], int], sandbox: any, on_connect: Optional[asyncio.Event] = None) -> int:
+async def stream_sandbox_logs_to_stdout(sandbox: _Sandbox, on_connect: Optional[asyncio.Event] = None) -> int:
     """
     Streams sandbox output to stdout.
 
@@ -87,7 +42,7 @@ async def handle_exec_output(client: _Client, exec_id: str, write: Callable[[int
             for message in batch.items:
                 # print(f"Kobe got batch!: {message}")
                 assert message.file_descriptor in [1, 2]
-                await _write_to_fd(message.file_descriptor, str.encode(message.data))
+                await write_to_fd(message.file_descriptor, str.encode(message.data))
         
             if not connected:
                 connected = True

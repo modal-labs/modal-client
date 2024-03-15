@@ -13,7 +13,7 @@ import rich.status
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console
-from ._utils.shell_utils import _write_to_fd, connect_to_terminal 
+from ._utils.shell_utils import write_to_fd, connect_to_terminal 
 
 from modal_proto import api_pb2
 
@@ -68,7 +68,7 @@ async def connect_to_exec(exec_id: str, sandbox: any, write: Callable[[int], int
 
     client = await _Client.from_env()
 
-    async def handle_output(on_connect: asyncio.Event):
+    async def stream_to_stdout(on_connect: asyncio.Event):
         await handle_exec_output(client, exec_id, on_connect)
 
     async def handle_input(data: bytes, message_index: int):
@@ -79,7 +79,7 @@ async def connect_to_exec(exec_id: str, sandbox: any, write: Callable[[int], int
             ),
             total_timeout=10,
         )
-    await connect_to_terminal(handle_input, handle_output)
+    await connect_to_terminal(handle_input, stream_to_stdout)
     
 async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
     """
@@ -110,7 +110,7 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
                 # print(f"Kobe got message!: {message}")
                 assert message.file_descriptor in [1, 2]
 
-                await _write_to_fd(message.file_descriptor, str.encode(message.message))
+                await write_to_fd(message.file_descriptor, str.encode(message.message))
 
             if not connected:
                 connected = True
