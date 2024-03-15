@@ -143,11 +143,7 @@ class TaskContext:
                 if task.done() or task in self._loops:
                     continue
 
-                if sys.version_info >= (3, 11):
-                    already_cancelling = task.cancelling() > 0
-                    if not already_cancelling:
-                        logger.warning(f"Canceling remaining unfinished task: {task}")
-
+                # Cancel any remaining unfinished tasks.
                 task.cancel()
 
     async def __aexit__(self, exc_type, value, tb):
