@@ -26,7 +26,7 @@ from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
-from .partial_function import PartialFunction, _PartialFunction
+from .partial_function import PartialFunction, _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
 from .proxy import _Proxy
 from .retries import Retries
 from .runner import _run_stub
@@ -664,6 +664,12 @@ class _Stub:
 
         def wrapper(user_cls: CLS_T) -> _Cls:
             cls: _Cls = _Cls.from_local(user_cls, self, decorator)
+
+            if (
+                _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
+                and not enable_memory_snapshot
+            ):
+                raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
             if len(cls._functions) > 1 and keep_warm is not None:
                 deprecation_warning(

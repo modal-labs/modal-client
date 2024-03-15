@@ -98,7 +98,7 @@ class _MountFile(_MountEntry):
         return str(self.local_file)
 
     def get_files_to_upload(self):
-        local_file = self.local_file.resolve().expanduser()
+        local_file = self.local_file.expanduser().absolute()
         if not local_file.exists():
             raise FileNotFoundError(local_file)
 
@@ -106,7 +106,7 @@ class _MountFile(_MountEntry):
         yield local_file, rel_filename
 
     def watch_entry(self):
-        safe_path = self.local_file.resolve().expanduser()
+        safe_path = self.local_file.expanduser().absolute()
         return safe_path.parent, safe_path
 
     def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
@@ -121,10 +121,10 @@ class _MountDir(_MountEntry):
     recursive: bool
 
     def description(self):
-        return str(self.local_dir.resolve().expanduser())
+        return str(self.local_dir.expanduser().absolute())
 
     def get_files_to_upload(self):
-        local_dir = self.local_dir.resolve().expanduser()
+        local_dir = self.local_dir.expanduser().absolute()
 
         if not local_dir.exists():
             raise FileNotFoundError(local_dir)
@@ -139,7 +139,7 @@ class _MountDir(_MountEntry):
 
         for local_filename in gen:
             if self.condition(local_filename):
-                local_relpath = Path(local_filename).resolve().relative_to(local_dir)
+                local_relpath = Path(local_filename).expanduser().absolute().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
                 yield local_filename, mount_path
 
@@ -249,7 +249,15 @@ class _Mount(_Object, type_prefix="mo"):
     @staticmethod
     def _new(entries: List[_MountEntry] = []) -> "_Mount":
         rep = f"Mount({entries})"
-        obj = _Mount._from_loader(_Mount._load_mount, rep)
+
+        async def mount_content_deduplication_key():
+            try:
+                included_files = await asyncio.get_event_loop().run_in_executor(None, _select_files, entries)
+            except NonLocalMountError:
+                return None
+            return (_Mount._type_prefix, "local", frozenset(included_files))
+
+        obj = _Mount._from_loader(_Mount._load_mount, rep, deduplication_key=mount_content_deduplication_key)
         obj._entries = entries
         obj._is_local = True
         return obj
@@ -582,13 +590,6 @@ class _Mount(_Object, type_prefix="mo"):
             client = await _Client.from_env()
         resolver = Resolver(client=client)
         await resolver.load(self)
-
-    async def _deduplication_key(self):
-        try:
-            included_files = await asyncio.get_event_loop().run_in_executor(None, _select_files, self.entries)
-        except NonLocalMountError:
-            return None
-        return frozenset(included_files)
 
     def _get_metadata(self) -> api_pb2.MountHandleMetadata:
         if self._content_checksum_sha256_hex is None:
