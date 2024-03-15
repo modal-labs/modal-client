@@ -255,8 +255,14 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
         disconnect_task = asyncio.create_task(listen_for_disconnect())
         await asyncio.wait([send_response_task, disconnect_task], return_when=asyncio.FIRST_COMPLETED)
     finally:
-        send_response_task.cancel()
-        disconnect_task.cancel()
+        if send_response_task.done():
+            send_response_task.result()
+        else:
+            send_response_task.cancel()
+        if disconnect_task.done():
+            disconnect_task.result()
+        else:
+            disconnect_task.cancel()
 
 
 async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receive, send) -> None:
@@ -291,7 +297,7 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
                     raise ExecutionError(f"Unexpected message type: {client_message['type']}")
 
         async def upstream_to_client():
-            msg = {
+            msg: Dict[str, Any] = {
                 "type": "websocket.accept",
                 "subprotocol": upstream_ws.protocol,
             }
@@ -300,11 +306,10 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
             while True:
                 upstream_message = await upstream_ws.receive()
                 if upstream_message.type == aiohttp.WSMsgType.closed:
-                    msg = {
-                        "type": "websocket.close",
-                        "code": cast(aiohttp.WSCloseCode, upstream_message.data).value,  # type: ignore
-                        "reason": upstream_message.extra,
-                    }
+                    msg = {"type": "websocket.close"}
+                    if upstream_message.data is not None:
+                        msg["code"] = cast(aiohttp.WSCloseCode, upstream_message.data).value
+                        msg["reason"] = upstream_message.extra
                     await send(msg)
                     break
                 elif upstream_message.type == aiohttp.WSMsgType.text:
@@ -319,8 +324,14 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
         try:
             await asyncio.wait([client_to_upstream_task, upstream_to_client_task], return_when=asyncio.FIRST_COMPLETED)
         finally:
-            client_to_upstream_task.cancel()
-            upstream_to_client_task.cancel()
+            if client_to_upstream_task.done():
+                client_to_upstream_task.result()
+            else:
+                client_to_upstream_task.cancel()
+            if upstream_to_client_task.done():
+                upstream_to_client_task.result()
+            else:
+                upstream_to_client_task.cancel()
 
 
 def web_server_proxy(host: str, port: int):
