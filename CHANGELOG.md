@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.61.53 (2024-03-15)
+
+- Fixed an bug where` Mount` was failing to include symbolic links.
+
+
+
 ### 0.61.45 (2024-03-13)
 
 When called from within a container, `modal.experimental.stop_fetching_inputs()` causes it to gracefully exit after the current input has been processed.
