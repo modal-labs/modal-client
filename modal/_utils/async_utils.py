@@ -98,7 +98,7 @@ class TaskContext:
 
     ```python notest
     async with TaskContext() as task_context:
-        task = task_context.create(coro())
+        task = task_context.create_task(coro())
     ```
     """
 
