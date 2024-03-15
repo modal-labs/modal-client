@@ -28,7 +28,7 @@ from typing import Callable
 
 
 async def container_exec(
-    task_id: str, command: List[str], *, pty: bool, client: _Client, sandbox: any, terminate_container_on_exit: bool = False
+    task_id: str, command: List[str], *, pty: bool, client: _Client, terminate_container_on_exit: bool = False
 ):
     """Execute a command inside an active container"""
     if platform.system() == "Windows":
@@ -57,9 +57,9 @@ async def container_exec(
             raise NotFoundError(f"Container ID {task_id} not found")
         raise
 
-    await connect_to_exec(res.exec_id, sandbox, pty, connecting_status)
+    await connect_to_exec(res.exec_id, pty, connecting_status)
 
-async def connect_to_exec(exec_id: str, sandbox: any, write: Callable[[int], int], pty: bool = False, connecting_status: Optional[rich.status.Status] = None):
+async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Optional[rich.status.Status] = None):
     """
     Connects the current terminal to the given exec id.
 
@@ -68,8 +68,8 @@ async def connect_to_exec(exec_id: str, sandbox: any, write: Callable[[int], int
 
     client = await _Client.from_env()
 
-    async def stream_to_stdout(on_connect: asyncio.Event):
-        await handle_exec_output(client, exec_id, on_connect)
+    async def stream_to_stdout(on_connect: asyncio.Event) -> int:
+        return await handle_exec_output(client, exec_id, on_connect)
 
     async def handle_input(data: bytes, message_index: int):
         await retry_transient_errors(
@@ -79,7 +79,7 @@ async def connect_to_exec(exec_id: str, sandbox: any, write: Callable[[int], int
             ),
             total_timeout=10,
         )
-    await connect_to_terminal(handle_input, stream_to_stdout)
+    await connect_to_terminal(handle_input, stream_to_stdout, pty, connecting_status)
         
 
 async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
@@ -108,7 +108,6 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
         )
         async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
             for message in batch.items:
-                # print(f"Kobe got message!: {message}")
                 assert message.file_descriptor in [1, 2]
 
                 await write_to_fd(message.file_descriptor, str.encode(message.message))
@@ -119,6 +118,8 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
                     on_connect.set()
                     # give up the event loop
                     await asyncio.sleep(0)
+                else:
+                    print("On connect is NONE")
 
             if batch.HasField("exit_code"):
                 exit_status = batch.exit_code
