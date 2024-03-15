@@ -141,9 +141,10 @@ class _FunctionIOManager:
             # pre Python3.8, CancelledErrors were a subclass of exception
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception:
                 # don't stop heartbeat loop if there are transient exceptions!
-                logger.warning("Heartbeat failure", exc_info=exc)
+                time_elapsed = time.monotonic() - t0
+                logger.exception(f"Heartbeat attempt failed (time_elapsed={time_elapsed})")
 
             heartbeat_duration = time.monotonic() - t0
             time_until_next_hearbeat = max(0.0, HEARTBEAT_INTERVAL - heartbeat_duration)
