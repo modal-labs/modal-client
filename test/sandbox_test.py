@@ -6,16 +6,17 @@ import pytest
 import time
 from pathlib import Path
 
+import modal
 from modal import Image, Mount, NetworkFileSystem, Sandbox, Secret, Stub
 from modal.exception import InvalidError
 
 stub = Stub()
 
 
-skip_non_linux = pytest.mark.skipif(platform.system() != "Linux", reason="sandbox mock uses subprocess")
+skip_non_posix = pytest.mark.skipif(platform.system() not in ("Linux", "Darwin"), reason="sandbox mock uses subprocess")
 
 
-@skip_non_linux
+@skip_non_posix
 def test_spawn_sandbox(client, servicer):
     with stub.run(client=client):
         sb = stub.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600)
@@ -34,7 +35,7 @@ def test_spawn_sandbox(client, servicer):
         assert sb.poll() == 42
 
 
-@skip_non_linux
+@skip_non_posix
 def test_sandbox_mount(client, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
@@ -50,7 +51,7 @@ def test_sandbox_mount(client, servicer, tmpdir):
     assert servicer.files_sha2data[sha]["data"] == b"foo"
 
 
-@skip_non_linux
+@skip_non_posix
 def test_sandbox_image(client, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
@@ -64,7 +65,7 @@ def test_sandbox_image(client, servicer, tmpdir):
     assert all(c in last_image.dockerfile_commands[-1] for c in ["foo", "bar", "potato"])
 
 
-@skip_non_linux
+@skip_non_posix
 def test_sandbox_secret(client, servicer, tmpdir):
     with stub.run(client=client):
         sb = stub.spawn_sandbox("echo", "$FOO", secrets=[Secret.from_dict({"FOO": "BAR"})])
@@ -73,7 +74,7 @@ def test_sandbox_secret(client, servicer, tmpdir):
     assert len(servicer.sandbox_defs[0].secret_ids) == 1
 
 
-@skip_non_linux
+@skip_non_posix
 def test_sandbox_nfs(client, servicer, tmpdir):
     with stub.run(client=client):
         nfs = NetworkFileSystem.new()
@@ -86,7 +87,7 @@ def test_sandbox_nfs(client, servicer, tmpdir):
     assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
 
 
-@skip_non_linux
+@skip_non_posix
 def test_sandbox_from_id(client, servicer):
     with stub.run(client=client):
         sb = stub.spawn_sandbox("bash", "-c", "echo foo && exit 42", timeout=600)
@@ -97,7 +98,7 @@ def test_sandbox_from_id(client, servicer):
     assert sb2.returncode == 42
 
 
-@skip_non_linux
+@skip_non_posix
 def test_sandbox_terminate(client, servicer):
     with stub.run(client=client):
         sb = stub.spawn_sandbox("bash", "-c", "sleep 10000")
@@ -105,3 +106,12 @@ def test_sandbox_terminate(client, servicer):
         sb.terminate()
 
         assert sb.returncode != 0
+
+
+@skip_non_posix
+def test_sandbox_ephemeral_object_reuse(client, servicer):
+    obj = modal.NetworkFileSystem.new()
+    with stub.run(client=client):
+        stub.spawn_sandbox("bash", network_file_systems={"/v": obj})
+        stub.spawn_sandbox("bash", network_file_systems={"/v": obj})
+    assert len(servicer.nfs_files) == 1
