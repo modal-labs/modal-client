@@ -8,6 +8,7 @@ from ._utils.async_utils import TaskContext
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from .config import logger
 from .exception import ExecutionError, InvalidError
+from .experimental import stop_fetching_inputs
 from .functions import current_function_call_id
 
 FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
@@ -344,13 +345,19 @@ def web_server_proxy(host: str, port: int):
                 read_bufsize=1024 * 1024,  # 1 MiB
             )
 
-        if scope["type"] == "lifespan":
-            pass  # Do nothing for lifespan events.
-        elif scope["type"] == "http":
-            await _proxy_http_request(session, scope, receive, send)
-        elif scope["type"] == "websocket":
-            await _proxy_websocket_request(session, scope, receive, send)
-        else:
-            raise NotImplementedError(f"Scope {scope} is not understood")
+        try:
+            if scope["type"] == "lifespan":
+                pass  # Do nothing for lifespan events.
+            elif scope["type"] == "http":
+                await _proxy_http_request(session, scope, receive, send)
+            elif scope["type"] == "websocket":
+                await _proxy_websocket_request(session, scope, receive, send)
+            else:
+                raise NotImplementedError(f"Scope {scope} is not understood")
+
+        except aiohttp.ClientConnectorError as exc:
+            # If the server is not running or not reachable, we should stop fetching new inputs.
+            logger.warning(f"Terminating runner due to @web_server connection issue: {exc}")
+            stop_fetching_inputs()
 
     return web_server_proxy_app
