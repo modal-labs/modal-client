@@ -218,13 +218,13 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
 
     path = scope["path"]
     if scope.get("query_string"):
-        path += scope["query_string"].decode()
+        path += "?" + scope["query_string"].decode()
 
     proxy_response = await session.request(
         method=scope["method"],
         url=path,
         headers=[(k.decode(), v.decode()) for k, v in scope["headers"]],
-        data=request_generator(),
+        data=None if scope["method"] in aiohttp.ClientRequest.GET_METHODS else request_generator(),
         allow_redirects=False,
     )
 
@@ -236,11 +236,7 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
         }
         await send(msg)
         async for data in proxy_response.content.iter_any():
-            msg = {
-                "type": "http.response.body",
-                "body": data,
-                "more_body": True,
-            }
+            msg = {"type": "http.response.body", "body": data, "more_body": True}
             await send(msg)
         await send({"type": "http.response.body"})
 
@@ -274,7 +270,7 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
 
     path = scope["path"]
     if scope.get("query_string"):
-        path += scope["query_string"].decode()
+        path += "?" + scope["query_string"].decode()
 
     async with session.ws_connect(
         url=path,
