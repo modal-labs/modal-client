@@ -344,3 +344,20 @@ def test_parse_custom_domains():
     assert len(_parse_custom_domains(["foo.com", "bar.com"])) == 2
     with pytest.raises(AssertionError):
         assert _parse_custom_domains("foo.com")
+
+
+def test_double_stub_run_doesnt_reuse_object(client):
+    stub = Stub()
+    nfs = modal.NetworkFileSystem.new()
+
+    stub.function(network_file_systems={"/v": nfs})(dummy)
+
+    with stub.run(client=client):
+        first_object_id = nfs.object_id
+
+    with stub.run(client=client):
+        second_object_id = nfs.object_id
+
+    # Since each run will be a separate app they can't reuse each other's objects
+    # TODO (elias/erik): Once we have app-less ephemeral objects we can allow this
+    assert first_object_id != second_object_id
