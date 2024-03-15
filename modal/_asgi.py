@@ -280,7 +280,7 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
             while True:
                 client_message = await receive()
                 if client_message["type"] == "websocket.disconnect":
-                    await upstream_ws.close(client_message.get("code", 1005))
+                    await upstream_ws.close(code=client_message.get("code", 1005))
                     break
                 elif client_message["type"] == "websocket.receive":
                     if client_message.get("text") is not None:
