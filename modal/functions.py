@@ -332,7 +332,9 @@ class _Invocation:
                 else:
                     yield item
                     items_received += 1
-                if items_received == items_total:
+                # The comparison avoids infinite loops if a non-deterministic generator is retried
+                # and produces less data in the second run than what was already sent.
+                if items_total is not None and items_received >= items_total:
                     break
 
 
