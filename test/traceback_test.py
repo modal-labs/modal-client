@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2024
+import pytest
 from pathlib import Path
 from traceback import extract_tb
 
-from modal._traceback import append_modal_tb, extract_traceback
+from modal._traceback import append_modal_tb, extract_traceback, reduce_traceback_to_user_code
+from modal._vendor import tblib
 
 from .supports.raise_error import raise_error
 
@@ -72,3 +74,61 @@ def test_append_modal_tb():
     assert remote_exc.__line_cache__ == line_cache  # type: ignore
     frames = [f.name for f in extract_tb(remote_exc.__traceback__)]
     assert frames == ["test_append_modal_tb", "call_raise_error", "raise_error"]
+
+
+def make_tb_stack(frames):
+    """Given a minimal specification of (code filename, code name), return dict formatted for tblib."""
+    tb_frames = []
+    for lineno, (filename, name) in enumerate(frames):
+        tb_frames.append(
+            {
+                "tb_lineno": lineno,
+                "tb_frame": {
+                    "f_lineno": lineno,
+                    "f_globals": {},
+                    "f_locals": {},
+                    "f_code": {"co_filename": filename, "co_name": name},
+                },
+            }
+        )
+    return tb_frames
+
+
+def tb_dict_from_stack_dicts(stack: list[dict]) -> dict:
+    tb_root = tb = stack.pop(0)
+    while stack:
+        tb["tb_next"] = stack.pop(0)
+        tb = tb["tb_next"]
+    tb["tb_next"] = None
+    return tb_root
+
+
+@pytest.mark.parametrize("user_mode", ["script", "module"])
+def test_reduce_traceback_to_user_code(user_mode):
+    if user_mode == "script":
+        user_source, user_filename, user_name = ("/root/user/ai.py", "/root/user/ai.py", "train")
+    elif user_mode == "module":
+        user_source, user_filename, user_name = ("ai.training", "/root/user/ai/training.py", "<module>")
+
+    stack = [
+        ("/modal/__main__.py", "main"),
+        ("/modal/entrypoint.py", "run"),
+        ("/site-packages/synchronicity/wizard.py", "magic"),
+        (user_filename, user_name),
+        ("/modal/function.py", "execute"),
+        ("/site-packages/synchronicity/devil.py", "pitchfork"),
+    ]
+
+    tb_dict = tb_dict_from_stack_dicts(make_tb_stack(stack))
+    tb = tblib.Traceback.from_dict(tb_dict)
+    tb_out = reduce_traceback_to_user_code(tb, user_source)
+
+    f = tb_out.tb_frame
+    assert f.f_code.co_filename == user_filename
+    assert f.f_code.co_name == user_name
+
+    f = tb_out.tb_next.tb_frame
+    assert f.f_code.co_filename == "/modal/function.py"
+    assert f.f_code.co_name == "execute"
+
+    assert tb_out.tb_next.tb_next is None
