@@ -26,7 +26,6 @@ from .secret import _Secret
 from typing import AsyncIterator
 
 
-
 class _LogsReader:
     """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`)."""
 
@@ -39,13 +38,15 @@ class _LogsReader:
         self.last_log_batch_entry_id = ""
 
     async def read_stream(self) -> AsyncIterator[api_pb2.TaskLogsBatch]:
+        print("Kobe reading stream")
         req = api_pb2.SandboxGetLogsRequest(
             sandbox_id=self._sandbox_id,
             file_descriptor=self._file_descriptor,
             timeout=55,
             last_entry_id=None,
         )
-        return unary_stream(self._client.stub.SandboxGetLogs, req)
+        async for a in unary_stream(self._client.stub.SandboxGetLogs, req):
+            yield a
 
     async def read(self) -> str:
         """Fetch and return contents of the entire stream.
