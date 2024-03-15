@@ -129,16 +129,25 @@ class _FunctionIOManager:
     async def _run_heartbeat_loop(self):
         while 1:
             t0 = time.monotonic()
-            if await self._heartbeat():
-                # got a cancellation event, fine to start another heartbeat immediately
-                # since the cancellation queue should be empty on the worker server
-                # however, we wait at least 1s to prevent short-circuiting the heartbeat loop
-                # in case there is ever a bug. This means it will take at least 1s between
-                # two subsequent cancellations on the same task at the moment
-                time_until_next_hearbeat = 1.0
-            else:
-                heartbeat_duration = time.monotonic() - t0
-                time_until_next_hearbeat = max(0.0, HEARTBEAT_INTERVAL - heartbeat_duration)
+            try:
+                if await self._heartbeat():
+                    # got a cancellation event, fine to start another heartbeat immediately
+                    # since the cancellation queue should be empty on the worker server
+                    # however, we wait at least 1s to prevent short-circuiting the heartbeat loop
+                    # in case there is ever a bug. This means it will take at least 1s between
+                    # two subsequent cancellations on the same task at the moment
+                    await asyncio.sleep(1.0)
+                    continue
+            # pre Python3.8, CancelledErrors were a subclass of exception
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # don't stop heartbeat loop if there are transient exceptions!
+                time_elapsed = time.monotonic() - t0
+                logger.exception(f"Heartbeat attempt failed (time_elapsed={time_elapsed})")
+
+            heartbeat_duration = time.monotonic() - t0
+            time_until_next_hearbeat = max(0.0, HEARTBEAT_INTERVAL - heartbeat_duration)
             await asyncio.sleep(time_until_next_hearbeat)
 
     async def _heartbeat(self) -> bool:
