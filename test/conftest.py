@@ -797,7 +797,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
         # Not using asyncio.subprocess here for Python 3.7 compatibility.
         self.sandbox = subprocess.Popen(
-            request.definition.entrypoint_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            request.definition.entrypoint_args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE,
         )
         self.sandbox_defs.append(request.definition)
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
@@ -840,6 +843,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # only used for `modal shell` / `modal container exec`
         _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
         await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="modal_container_exec"))
+
+    async def SandboxStdinWrite(self, stream):
+        request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
+        self.sandbox.stdin.write(request.input)
+        self.sandbox.stdin.flush()
+        if request.eof:
+            self.sandbox.stdin.close()
+        await stream.send_message(api_pb2.SandboxStdinWriteResponse())
 
     ### Secret
 

@@ -91,7 +91,49 @@ class _LogsReader:
         return data
 
 
+MAX_BUFFER_SIZE = 128 * 1024
+
+
+class _StreamWriter:
+    """Provides an interface to buffer and write logs to a sandbox stream (`stdin`)."""
+
+    def __init__(self, sandbox_id: str, client: _Client):
+        self._index = 1
+        self._sandbox_id = sandbox_id
+        self._client = client
+        self._is_closed = False
+        self._buffer = bytearray()
+
+    def get_next_index(self):
+        index = self._index
+        self._index += 1
+        return index
+
+    def write(self, data: Union[bytes, bytearray, memoryview]):
+        if self._is_closed:
+            raise EOFError("Stdin is closed. Cannot write to it.")
+        if isinstance(data, (bytes, bytearray, memoryview)):
+            if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
+                raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
+            self._buffer.extend(data)
+        else:
+            raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
+
+    def write_eof(self):
+        self._is_closed = True
+
+    async def drain(self):
+        data = bytes(self._buffer)
+        self._buffer.clear()
+        index = self.get_next_index()
+        await retry_transient_errors(
+            self._client.stub.SandboxStdinWrite,
+            api_pb2.SandboxStdinWriteRequest(sandbox_id=self._sandbox_id, index=index, eof=self._is_closed, input=data),
+        )
+
+
 LogsReader = synchronize_api(_LogsReader)
+StreamWriter = synchronize_api(_StreamWriter)
 
 
 class _Sandbox(_Object, type_prefix="sb"):
@@ -104,6 +146,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _result: Optional[api_pb2.GenericResult]
     _stdout: _LogsReader
     _stderr: _LogsReader
+    _stdin: _StreamWriter
 
     @staticmethod
     def _new(
@@ -193,6 +236,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
         self._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, self._client)
         self._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, self._client)
+        self._stdin = StreamWriter(self.object_id, self._client)
         self._result = None
 
     @staticmethod
@@ -261,6 +305,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         """`LogsReader` for the sandbox's stderr stream."""
 
         return self._stderr
+
+    @property
+    def stdin(self) -> _StreamWriter:
+        """`StreamWriter` for the sandbox's stdin stream."""
+
+        return self._stdin
 
     @property
     def returncode(self) -> Optional[int]:
