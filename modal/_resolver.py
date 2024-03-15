@@ -97,7 +97,6 @@ class Resolver:
             deduplication_key = await obj._deduplication_key()
 
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
-
         if not cached_future and deduplication_key is not None:
             # deduplication cache makes sure duplicate mounts are resolved only
             # once, even if they are different instances - as long as they have
@@ -112,8 +111,7 @@ class Resolver:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
                 # Wait for all its dependencies
-                # TODO(erikbern): do we need existing_object_id for those?
-                await asyncio.gather(*[self.load(dep) for dep in obj.deps()])
+                await asyncio.gather(*[self.load(dep, existing_object_id=dep.object_id) for dep in obj.deps()])
 
                 # Load the object itself
                 try:
