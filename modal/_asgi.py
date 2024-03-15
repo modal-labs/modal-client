@@ -260,7 +260,9 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
 
 async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receive, send) -> None:
     first_message = await receive()  # Consume the initial "websocket.connect" message.
-    if first_message["type"] != "websocket.connect":
+    if first_message["type"] == "websocket.disconnect":
+        return
+    elif first_message["type"] != "websocket.connect":
         raise ExecutionError(f"Unexpected message type: {first_message['type']}")
 
     path = scope["path"]
@@ -277,6 +279,7 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
             while True:
                 client_message = await receive()
                 if client_message["type"] == "websocket.disconnect":
+                    await upstream_ws.close(client_message.get("code", 1005))
                     break
                 elif client_message["type"] == "websocket.receive":
                     if client_message.get("text") is not None:
