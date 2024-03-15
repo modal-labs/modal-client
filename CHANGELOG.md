@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.61.57 (2024-03-15)
+
+- Add the `@web_server` decorator, which exposes a server listening on a container port as a web endpoint.
+
+
+
 ### 0.61.53 (2024-03-15)
 
 - Fixed an bug where` Mount` was failing to include symbolic links.
