@@ -1468,6 +1468,8 @@ message Sandbox {
   repeated CloudBucketMount cloud_bucket_mounts = 14;
 
   repeated VolumeMount volume_mounts = 13;
+
+  PTYInfo pty_info = 15;
 }
 
 message SandboxCreateRequest {
@@ -1734,6 +1736,10 @@ message TaskLogsBatch {
   string image_id = 13;  // Used for image logs
   bool eof = 14;
   string pty_exec_id = 15;  // Used for interactive functions
+}
+
+message TaskLogReadOnceResponse {
+  TaskLogsBatch batch = 1;
 }
 
 message TaskProgress {
@@ -2073,6 +2079,7 @@ service ModalClient {
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
+  rpc SandboxGetLogsOnce(SandboxGetLogsRequest) returns (TaskLogsBatch);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);

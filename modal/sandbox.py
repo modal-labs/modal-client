@@ -23,6 +23,7 @@ from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _Object
 from .secret import _Secret
+from typing import AsyncIterator
 
 
 class _LogsReader:
@@ -34,6 +35,18 @@ class _LogsReader:
         self._file_descriptor = file_descriptor
         self._sandbox_id = sandbox_id
         self._client = client
+        self.last_log_batch_entry_id = ""
+
+    async def read_stream(self) -> AsyncIterator[api_pb2.TaskLogsBatch]:
+        # print("Kobe reading stream")
+        req = api_pb2.SandboxGetLogsRequest(
+            sandbox_id=self._sandbox_id,
+            file_descriptor=self._file_descriptor,
+            timeout=55,
+            last_entry_id=None,
+        )
+        async for a in unary_stream(self._client.stub.SandboxGetLogs, req):
+            yield a
 
     async def read(self) -> str:
         """Fetch and return contents of the entire stream.
@@ -66,8 +79,10 @@ class _LogsReader:
             )
             log_batch: api_pb2.TaskLogsBatch
             async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
+                print(f"Kobe received: {log_batch}")
                 if log_batch.entry_id:
                     # log_batch entry_id is empty for fd="server" messages from AppGetLogs
+                    print(f"Kobe there's entry ID! {log_batch.entry_id}")
                     last_log_batch_entry_id = log_batch.entry_id
 
                 if log_batch.eof:
@@ -79,15 +94,18 @@ class _LogsReader:
 
         while not completed:
             try:
+                print("Kobe calling get logs")
                 await _get_logs()
             except (GRPCError, StreamTerminatedError) as exc:
                 if isinstance(exc, GRPCError):
+                    print("Kobe GRPC error")
                     if exc.status in RETRYABLE_GRPC_STATUS_CODES:
                         continue
                 elif isinstance(exc, StreamTerminatedError):
+                    print("Kobe error")
                     continue
                 raise
-
+        print(f"Kobe returning data: {data}")
         return data
 
 
@@ -164,6 +182,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         allow_background_volume_commits: bool = False,
+        pty_info: Optional[api_pb2.PTYInfo] = None
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -223,6 +242,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 block_network=block_network,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
+                pty_info=pty_info
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)

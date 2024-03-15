@@ -139,6 +139,7 @@ class _Obj:
             obj = self.get_local_obj()
             return getattr(obj, k)
         else:
+            print("WTF")
             raise AttributeError(k)
 
 
