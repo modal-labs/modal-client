@@ -35,7 +35,7 @@ class _LogsReader:
         self._file_descriptor = file_descriptor
         self._sandbox_id = sandbox_id
         self._client = client
-        self.stream = None
+        self._stream = None
 
     async def read(self) -> str:
         """Fetch and return contents of the entire stream.
@@ -94,11 +94,11 @@ class _LogsReader:
                 raise
 
     def __aiter__(self):
-        self.stream = self._stream_logs()
+        self._stream = self._stream_logs()
         return self
 
     async def __anext__(self):
-        value = await self.stream.__anext__()
+        value = await self._stream.__anext__()
 
         # The stream yields None if it receives an eof batch.
         if value is None:

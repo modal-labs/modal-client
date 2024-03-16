@@ -19,9 +19,7 @@ from .config import config
 from .exception import NotFoundError
 
 
-async def container_exec(
-    task_id: str, command: List[str], *, pty: bool, client: _Client, terminate_container_on_exit: bool = False
-):
+async def container_exec(task_id: str, command: List[str], *, pty: bool, client: _Client):
     """Execute a command inside an active container"""
     if platform.system() == "Windows":
         print("container exec is not currently supported on Windows.")
@@ -39,7 +37,6 @@ async def container_exec(
                 task_id=task_id,
                 command=command,
                 pty_info=get_pty_info(shell=True) if pty else None,
-                terminate_container_on_exit=terminate_container_on_exit,
                 runtime_debug=config.get("function_runtime_debug"),
             )
         )
