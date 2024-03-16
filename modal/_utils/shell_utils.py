@@ -34,7 +34,8 @@ def write_to_fd(fd: int, data: bytes):
 
 
 @contextlib.asynccontextmanager
-async def _stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw_terminal=False):
+async def stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw_terminal=False):
+    """Stream from terminal stdin to the handle_input provided by the method"""
     quit_pipe_read, quit_pipe_write = os.pipe()
 
     set_nonblocking(sys.stdin.fileno())
@@ -82,8 +83,8 @@ async def connect_to_terminal(
     connecting_status: Optional[rich.status.Status] = None,
 ):
     """
-    Connect to the current terminal by streaming data from stdin and streaming
-    data into stdout.
+    Connect to the current terminal by streaming data from terminal's stdin to the running process
+    and streaming output from running process into terminal's stdout.
 
     If connecting_status is given, this function will stop the status spinner upon connection or error.
     """
@@ -100,7 +101,7 @@ async def connect_to_terminal(
             await asyncio.wait_for(on_connect.wait(), timeout=15)
             stop_connecting_status()
 
-            async with _stream_stdin(handle_stdin, use_raw_terminal=pty):
+            async with stream_stdin(handle_stdin, use_raw_terminal=pty):
                 exit_status = await exec_output_task
 
             if exit_status != 0:

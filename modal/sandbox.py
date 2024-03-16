@@ -58,8 +58,8 @@ class _LogsReader:
         return data
 
     async def _stream_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogs]]:
-        """
-        TODO: The stream yields None if it receives an eof batch.
+        """mdmd:hidden The stream ends and yields None when it receives a
+        TaskLogsBatch with eof set to true.
         """
         last_log_batch_entry_id = ""
         completed = False
@@ -94,10 +94,12 @@ class _LogsReader:
                 raise
 
     def __aiter__(self):
+        """mdmd:hidden"""
         self._stream = self._stream_logs()
         return self
 
     async def __anext__(self):
+        """mdmd:hidden"""
         value = await self._stream.__anext__()
 
         # The stream yields None if it receives an eof batch.

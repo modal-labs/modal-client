@@ -7,19 +7,23 @@ from .sandbox import _Sandbox
 
 
 async def connect_to_sandbox(sandbox: _Sandbox):
-    async def _handle_input(data: bytes, _message_index: int):
+    """
+    Connects the current terminal to the Sandbox process.
+    """
+
+    async def _handle_input(data: bytes, _: int):
         sandbox.stdin.write(data)
         await sandbox.stdin.drain.aio()
 
     async def _stream_to_stdout(on_connect: asyncio.Event) -> int:
-        return await stream_sandbox_logs_to_stdout(sandbox, on_connect)
+        return await _stream_sandbox_logs_to_stdout(sandbox, on_connect)
 
     await connect_to_terminal(_handle_input, _stream_to_stdout, pty=True)
 
 
-async def stream_sandbox_logs_to_stdout(sandbox: _Sandbox, on_connect: Optional[asyncio.Event] = None) -> int:
+async def _stream_sandbox_logs_to_stdout(sandbox: _Sandbox, on_connect: Optional[asyncio.Event] = None) -> int:
     """
-    Streams sandbox output to stdout.
+    Streams sandbox output to the current terminal's stdout.
 
     If given, on_connect will be set when the client connects to the running process,
     and the event loop will be released.

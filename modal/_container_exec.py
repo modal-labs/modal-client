@@ -58,10 +58,10 @@ async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Op
 
     client = await _Client.from_env()
 
-    async def stream_to_stdout(on_connect: asyncio.Event) -> int:
+    async def _stream_to_stdout(on_connect: asyncio.Event) -> int:
         return await handle_exec_output(client, exec_id, on_connect)
 
-    async def handle_input(data: bytes, message_index: int):
+    async def _handle_input(data: bytes, message_index: int):
         await retry_transient_errors(
             client.stub.ContainerExecPutInput,
             api_pb2.ContainerExecPutInputRequest(
@@ -70,7 +70,7 @@ async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Op
             total_timeout=10,
         )
 
-    await connect_to_terminal(handle_input, stream_to_stdout, pty, connecting_status)
+    await connect_to_terminal(_handle_input, _stream_to_stdout, pty, connecting_status)
 
 
 async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
@@ -113,6 +113,7 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
             if batch.HasField("exit_code"):
                 exit_status = batch.exit_code
                 break
+            last_batch_index = batch.batch_index
 
     while exit_status is None:
         try:
