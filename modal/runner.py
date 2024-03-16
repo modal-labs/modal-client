@@ -7,13 +7,12 @@ from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, TypeVar
 
 from rich.console import Console
-from ._pty import get_pty_info
-from ._sandbox_shell import connect_to_sandbox
-
 
 from modal_proto import api_pb2
 
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
+from ._pty import get_pty_info
+from ._sandbox_shell import connect_to_sandbox
 from ._utils.app_utils import is_valid_app_name
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
@@ -314,15 +313,13 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
         console = Console()
         loading_status = console.status("Starting container...")
         loading_status.start()
-       
+
         sb = await _stub.spawn_sandbox("bash", pty_info=get_pty_info(shell=True), **kwargs)
-       
 
         for _ in range(40):
             await asyncio.sleep(0.5)
             resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
             if resp.task_id != "":
-                task_id = resp.task_id
                 break
             # else: sandbox hasn't been assigned a task yet
         else:

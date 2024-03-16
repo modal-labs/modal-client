@@ -1,11 +1,6 @@
 # Copyright Modal Labs 2024
 import asyncio
-import contextlib
-import errno
-import os
 import platform
-import select
-import sys
 from typing import List, Optional
 
 import rich
@@ -13,18 +8,15 @@ import rich.status
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console
-from ._utils.shell_utils import write_to_fd, connect_to_terminal 
 
 from modal_proto import api_pb2
 
-
-from ._pty import get_pty_info, raw_terminal, set_nonblocking
-from ._utils.async_utils import TaskContext, asyncify
+from ._pty import get_pty_info
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.shell_utils import connect_to_terminal, write_to_fd
 from .client import _Client
 from .config import config
-from .exception import ExecutionError, InteractiveTimeoutError, NotFoundError
-from typing import Callable
+from .exception import NotFoundError
 
 
 async def container_exec(
@@ -59,6 +51,7 @@ async def container_exec(
 
     await connect_to_exec(res.exec_id, pty, connecting_status)
 
+
 async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Optional[rich.status.Status] = None):
     """
     Connects the current terminal to the given exec id.
@@ -79,8 +72,9 @@ async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Op
             ),
             total_timeout=10,
         )
+
     await connect_to_terminal(handle_input, stream_to_stdout, pty, connecting_status)
-        
+
 
 async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
     """
@@ -123,7 +117,7 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
 
             if batch.HasField("exit_code"):
                 exit_status = batch.exit_code
-                break       
+                break
 
     while exit_status is None:
         try:

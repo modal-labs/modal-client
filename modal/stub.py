@@ -8,6 +8,7 @@ from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._types import typechecked
+from modal_proto import api_pb2
 
 from ._ipython import is_notebook
 from ._output import OutputManager
@@ -35,7 +36,6 @@ from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
-from modal_proto import api_pb2
 
 _default_image: _Image = _Image.debian_slim()
 
@@ -700,7 +700,7 @@ class _Stub:
         block_network: bool = False,  # Whether to block network access
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Volumes to mount in the sandbox.
         _allow_background_volume_commits: bool = False,
-        pty_info: Optional[api_pb2.PTYInfo] = None
+        pty_info: Optional[api_pb2.PTYInfo] = None,
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -739,7 +739,7 @@ class _Stub:
             block_network=block_network,
             volumes=volumes,
             allow_background_volume_commits=_allow_background_volume_commits,
-            pty_info=pty_info
+            pty_info=pty_info,
         )
         await resolver.load(obj)
         return obj

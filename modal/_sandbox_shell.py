@@ -4,17 +4,21 @@ from typing import Optional
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
-from ._utils.shell_utils import write_to_fd, connect_to_terminal
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
+from ._utils.shell_utils import connect_to_terminal, write_to_fd
 from .sandbox import _Sandbox
+
 
 async def connect_to_sandbox(sandbox: _Sandbox):
     async def _handle_input(data: bytes, _message_index: int):
         sandbox.stdin.write(data)
         await sandbox.stdin.drain.aio()
+
     async def _stream_to_stdout(on_connect: asyncio.Event) -> int:
         return await stream_sandbox_logs_to_stdout(sandbox, on_connect)
+
     await connect_to_terminal(_handle_input, _stream_to_stdout, pty=True)
+
 
 async def stream_sandbox_logs_to_stdout(sandbox: _Sandbox, on_connect: Optional[asyncio.Event] = None) -> int:
     """
@@ -35,22 +39,24 @@ async def stream_sandbox_logs_to_stdout(sandbox: _Sandbox, on_connect: Optional[
 
     async def _get_output():
         nonlocal last_batch_index, exit_status, connected
-        
-        async for batch in sandbox.stdout.read_stream.aio():
+
+        async for batch in sandbox.stdout:
             for message in batch.items:
                 assert message.file_descriptor in [1, 2]
                 await write_to_fd(message.file_descriptor, str.encode(message.data))
-        
+
             if not connected:
                 connected = True
                 if on_connect is not None:
                     on_connect.set()
                     # give up the event loop
                     await asyncio.sleep(0)
+            # print(f"Batch: {batch}\n")
 
             if batch.eof:
                 # exit_status = batch.exit_code
-                exit_status = 0
+                exit_status = 0  # is this ok? What kind of exit codes are there?
+                # print("BREAKKKKKKKKK")
                 break
             # last_batch_index = batch.batch_index
 
@@ -66,4 +72,3 @@ async def stream_sandbox_logs_to_stdout(sandbox: _Sandbox, on_connect: Optional[
             raise
 
     return exit_status
-

@@ -3,13 +3,17 @@ import asyncio
 import contextlib
 import errno
 import os
-from .async_utils import asyncify, TaskContext
-from modal._pty import get_pty_info, raw_terminal, set_nonblocking
-import sys
 import select
-from typing import List, Optional, Callable, Coroutine
-from modal.exception import ExecutionError, InteractiveTimeoutError, NotFoundError
+import sys
+from typing import Callable, Coroutine, Optional
+
 import rich.status
+
+from modal._pty import raw_terminal, set_nonblocking
+from modal.exception import ExecutionError, InteractiveTimeoutError
+
+from .async_utils import TaskContext, asyncify
+
 
 def write_to_fd(fd: int, data: bytes):
     loop = asyncio.get_event_loop()
@@ -27,6 +31,7 @@ def write_to_fd(fd: int, data: bytes):
 
     loop.add_writer(fd, try_write)
     return future
+
 
 @contextlib.asynccontextmanager
 async def _stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw_terminal=False):
@@ -52,7 +57,7 @@ async def _stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw
             data = await _read_stdin()
             if data is None:
                 return
-            
+
             await handle_input(data, message_index)
 
             message_index += 1
@@ -69,16 +74,16 @@ async def _stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw
 
 
 async def connect_to_terminal(
-    handle_input: Callable[[bytes, int], Coroutine], 
-    stream_to_stdout: Callable[[asyncio.Event], Coroutine[None, None, int]], 
-    pty: bool = False, 
-    connecting_status: Optional[rich.status.Status] = None
+    # Handles data read from stdin.
+    handle_stdin: Callable[[bytes, int], Coroutine],
+    # Creates a coroutine that streams data to stdout.
+    stream_to_stdout: Callable[[asyncio.Event], Coroutine[None, None, int]],
+    pty: bool = False,
+    connecting_status: Optional[rich.status.Status] = None,
 ):
     """
-    Connect to the current terminal by streaming inputs into stdin and streaming 
-    stdout to handler.
-
-    The stream_to_stdout callback returns the exit status of the output stream.
+    Connect to the current terminal by streaming data from stdin and streaming
+    data into stdout.
 
     If connecting_status is given, this function will stop the status spinner upon connection or error.
     """
@@ -95,7 +100,7 @@ async def connect_to_terminal(
             await asyncio.wait_for(on_connect.wait(), timeout=15)
             stop_connecting_status()
 
-            async with _stream_stdin(handle_input, use_raw_terminal=pty):
+            async with _stream_stdin(handle_stdin, use_raw_terminal=pty):
                 exit_status = await exec_output_task
 
             if exit_status != 0:

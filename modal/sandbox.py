@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import os
-from typing import Dict, List, Optional, Sequence, Union
+from typing import AsyncIterator, Dict, List, Optional, Sequence, Union
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -23,7 +23,6 @@ from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _Object
 from .secret import _Secret
-from typing import AsyncIterator
 
 
 class _LogsReader:
@@ -35,18 +34,7 @@ class _LogsReader:
         self._file_descriptor = file_descriptor
         self._sandbox_id = sandbox_id
         self._client = client
-        self.last_log_batch_entry_id = ""
-
-    async def read_stream(self) -> AsyncIterator[api_pb2.TaskLogsBatch]:
-        # print("Kobe reading stream")
-        req = api_pb2.SandboxGetLogsRequest(
-            sandbox_id=self._sandbox_id,
-            file_descriptor=self._file_descriptor,
-            timeout=55,
-            last_entry_id=None,
-        )
-        async for a in unary_stream(self._client.stub.SandboxGetLogs, req):
-            yield a
+        self.async_iter = None
 
     async def read(self) -> str:
         """Fetch and return contents of the entire stream.
@@ -74,15 +62,13 @@ class _LogsReader:
             req = api_pb2.SandboxGetLogsRequest(
                 sandbox_id=self._sandbox_id,
                 file_descriptor=self._file_descriptor,
-                timeout=55,
-                last_entry_id=last_log_batch_entry_id,
+                timeout=2,
+                # last_entry_id=last_log_batch_entry_id,
             )
             log_batch: api_pb2.TaskLogsBatch
             async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
-                print(f"Kobe received: {log_batch}")
                 if log_batch.entry_id:
                     # log_batch entry_id is empty for fd="server" messages from AppGetLogs
-                    print(f"Kobe there's entry ID! {log_batch.entry_id}")
                     last_log_batch_entry_id = log_batch.entry_id
 
                 if log_batch.eof:
@@ -94,19 +80,45 @@ class _LogsReader:
 
         while not completed:
             try:
-                print("Kobe calling get logs")
                 await _get_logs()
             except (GRPCError, StreamTerminatedError) as exc:
                 if isinstance(exc, GRPCError):
-                    print("Kobe GRPC error")
                     if exc.status in RETRYABLE_GRPC_STATUS_CODES:
                         continue
                 elif isinstance(exc, StreamTerminatedError):
-                    print("Kobe error")
                     continue
                 raise
-        print(f"Kobe returning data: {data}")
         return data
+
+    async def _stream_logs(self) -> AsyncIterator[api_pb2.TaskLogsBatch]:
+        last_log_batch_entry_id = ""
+        completed = False
+
+        while not completed:
+            req = api_pb2.SandboxGetLogsRequest(
+                sandbox_id=self._sandbox_id,
+                file_descriptor=self._file_descriptor,
+                timeout=55,
+                last_entry_id=last_log_batch_entry_id,
+            )
+            async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
+                last_log_batch_entry_id = log_batch.entry_id
+
+                if log_batch.eof:
+                    completed = True
+                    yield log_batch
+                    break
+
+                yield log_batch
+
+    def __aiter__(self):
+        print("AITERRR")
+        self.async_iter = self._stream_logs()
+        return self
+
+    async def __anext__(self):
+        value = await self.async_iter.__anext__()
+        return value
 
 
 MAX_BUFFER_SIZE = 128 * 1024
@@ -182,7 +194,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         allow_background_volume_commits: bool = False,
-        pty_info: Optional[api_pb2.PTYInfo] = None
+        pty_info: Optional[api_pb2.PTYInfo] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -242,7 +254,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 block_network=block_network,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
-                pty_info=pty_info
+                pty_info=pty_info,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)

@@ -100,9 +100,7 @@ def test_sandbox_from_id(client, servicer):
 @skip_non_linux
 def test_sandbox_terminate(client, servicer):
     with stub.run(client=client):
-        # sb = stub.spawn_sandbox("bash", "-c", "sleep 10000")
-        # sb = stub.spawn_sandbox("bash", "-c", "sleep 10000")
-
+        sb = stub.spawn_sandbox("bash", "-c", "sleep 10000")
         sb.terminate()
 
         assert sb.returncode != 0
