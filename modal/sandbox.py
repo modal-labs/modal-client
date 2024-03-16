@@ -34,7 +34,7 @@ class _LogsReader:
         self._file_descriptor = file_descriptor
         self._sandbox_id = sandbox_id
         self._client = client
-        self.async_iter = None
+        self.stream = None
 
     async def read(self) -> str:
         """Fetch and return contents of the entire stream.
@@ -90,10 +90,11 @@ class _LogsReader:
                 raise
         return data
 
-    async def _stream_logs(self) -> AsyncIterator[api_pb2.TaskLogsBatch]:
+    async def _stream_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogsBatch]]:
         last_log_batch_entry_id = ""
         completed = False
 
+        # TODO: Handle GRPCError?
         while not completed:
             req = api_pb2.SandboxGetLogsRequest(
                 sandbox_id=self._sandbox_id,
@@ -104,20 +105,22 @@ class _LogsReader:
             async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
                 last_log_batch_entry_id = log_batch.entry_id
 
+                for message in log_batch.items:
+                    yield message
                 if log_batch.eof:
                     completed = True
-                    yield log_batch
+                    yield None
                     break
 
-                yield log_batch
-
     def __aiter__(self):
-        print("AITERRR")
-        self.async_iter = self._stream_logs()
+        self.stream = self._stream_logs()
         return self
 
     async def __anext__(self):
-        value = await self.async_iter.__anext__()
+        value = await self.stream.__anext__()
+        if value is None:
+            # The stream yields None if it receives an eof batch.
+            raise StopAsyncIteration
         return value
 
 

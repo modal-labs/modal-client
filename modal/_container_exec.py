@@ -112,8 +112,6 @@ async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional
                     on_connect.set()
                     # give up the event loop
                     await asyncio.sleep(0)
-                else:
-                    print("On connect is NONE")
 
             if batch.HasField("exit_code"):
                 exit_status = batch.exit_code

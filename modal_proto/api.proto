@@ -1738,10 +1738,6 @@ message TaskLogsBatch {
   string pty_exec_id = 15;  // Used for interactive functions
 }
 
-message TaskLogReadOnceResponse {
-  TaskLogsBatch batch = 1;
-}
-
 message TaskProgress {
   uint64 len = 1;
   uint64 pos = 2;
