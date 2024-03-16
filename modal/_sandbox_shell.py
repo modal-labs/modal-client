@@ -29,9 +29,11 @@ async def stream_sandbox_logs_to_stdout(sandbox: _Sandbox, on_connect: Optional[
     # (the server will send an empty message when the process spawns)
     connected = False
 
+    # Since the sandbox process will run in a PTY, stderr will go to the PTY
+    # slave. The PTY shell will then relay data from PTY master to stdout.
+    # Therefore, we only need to stream from stdout here.
     async for message in sandbox.stdout:
-        assert message.file_descriptor in [1, 2]
-        await write_to_fd(message.file_descriptor, str.encode(message.data))
+        await write_to_fd(1, str.encode(message))
 
         if not connected:
             connected = True
@@ -39,6 +41,7 @@ async def stream_sandbox_logs_to_stdout(sandbox: _Sandbox, on_connect: Optional[
                 on_connect.set()
                 # give up the event loop
                 await asyncio.sleep(0)
+
     # Right now we don't propagate the exit_status to the TaskLogs, so setting
     # exit status to 0.
     return 0

@@ -162,18 +162,18 @@ def test_sandbox_stdin_write_after_eof(client, servicer):
 
 @skip_non_linux
 @pytest.mark.asyncio
-async def test_sandbox_stdout_streaming(client, servicer):
+async def test_sandbox_async_for(client, servicer):
     async with stub.run.aio(client=client):
-        sb = stub.spawn_sandbox("bash", "-c", "echo foo && echo bar && sleep 1 && echo baz && exit 13")
+        sb = stub.spawn_sandbox("bash", "-c", "echo hello && echo world && echo bye >&2")
 
-        data = ""
+        out = ""
 
         async for message in sb.stdout:
-            print(f"Message: {message}")
-            # data += message.data
+            out += message
+        assert out == "foo\nbar\n"
 
-        print(f"finished data: {data}")
+        err = ""
+        async for message in sb.stderr:
+            err += message
 
-        sb.wait()
-        assert data == "foo\nbar\n"
-        assert sb.returncode == 13
+        assert err == "bye\n"

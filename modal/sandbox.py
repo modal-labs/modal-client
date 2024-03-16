@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import os
 from typing import AsyncIterator, Dict, List, Optional, Sequence, Union
 
@@ -49,52 +50,21 @@ class _LogsReader:
         ```
 
         """
-
-        last_log_batch_entry_id = ""
-        completed = False
         data = ""
-
         # TODO: maybe combine this with get_app_logs_loop
+        async for message in self:
+            data += message
 
-        async def _get_logs():
-            nonlocal last_log_batch_entry_id, completed, data
-
-            req = api_pb2.SandboxGetLogsRequest(
-                sandbox_id=self._sandbox_id,
-                file_descriptor=self._file_descriptor,
-                timeout=2,
-                # last_entry_id=last_log_batch_entry_id,
-            )
-            log_batch: api_pb2.TaskLogsBatch
-            async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
-                if log_batch.entry_id:
-                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
-                    last_log_batch_entry_id = log_batch.entry_id
-
-                if log_batch.eof:
-                    completed = True
-                    break
-
-                for item in log_batch.items:
-                    data += item.data
-
-        while not completed:
-            try:
-                await _get_logs()
-            except (GRPCError, StreamTerminatedError) as exc:
-                if isinstance(exc, GRPCError):
-                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                        continue
-                elif isinstance(exc, StreamTerminatedError):
-                    continue
-                raise
         return data
 
-    async def _stream_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogsBatch]]:
+    async def _stream_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogs]]:
+        """
+        TODO: The stream yields None if it receives an eof batch.
+        """
         last_log_batch_entry_id = ""
         completed = False
 
-        # TODO: Handle GRPCError?
+        retries_remaining = 10
         while not completed:
             req = api_pb2.SandboxGetLogsRequest(
                 sandbox_id=self._sandbox_id,
@@ -102,15 +72,26 @@ class _LogsReader:
                 timeout=55,
                 last_entry_id=last_log_batch_entry_id,
             )
-            async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
-                last_log_batch_entry_id = log_batch.entry_id
+            try:
+                async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
+                    last_log_batch_entry_id = log_batch.entry_id
 
-                for message in log_batch.items:
-                    yield message
-                if log_batch.eof:
-                    completed = True
-                    yield None
-                    break
+                    for message in log_batch.items:
+                        yield message
+                    if log_batch.eof:
+                        completed = True
+                        yield None
+                        break
+            except (GRPCError, StreamTerminatedError) as exc:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, GRPCError):
+                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                            await asyncio.sleep(1.0)
+                            continue
+                    elif isinstance(exc, StreamTerminatedError):
+                        continue
+                raise
 
     def __aiter__(self):
         self.stream = self._stream_logs()
@@ -118,10 +99,12 @@ class _LogsReader:
 
     async def __anext__(self):
         value = await self.stream.__anext__()
+
+        # The stream yields None if it receives an eof batch.
         if value is None:
-            # The stream yields None if it receives an eof batch.
             raise StopAsyncIteration
-        return value
+
+        return value.data
 
 
 MAX_BUFFER_SIZE = 128 * 1024

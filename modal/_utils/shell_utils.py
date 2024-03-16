@@ -76,8 +76,8 @@ async def _stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw
 async def connect_to_terminal(
     # Handles data read from stdin.
     handle_stdin: Callable[[bytes, int], Coroutine],
-    # Creates a coroutine that streams data to stdout.
-    stream_to_stdout: Callable[[asyncio.Event], Coroutine[None, None, int]],
+    # Creates a coroutine that streams data to stdout/stderr.
+    stream_stdio: Callable[[asyncio.Event], Coroutine[None, None, int]],
     pty: bool = False,
     connecting_status: Optional[rich.status.Status] = None,
 ):
@@ -94,7 +94,7 @@ async def connect_to_terminal(
 
     on_connect = asyncio.Event()
     async with TaskContext() as tc:
-        exec_output_task = tc.create_task(stream_to_stdout(on_connect))
+        exec_output_task = tc.create_task(stream_stdio(on_connect))
         try:
             # time out if we can't connect to the server fast enough
             await asyncio.wait_for(on_connect.wait(), timeout=15)
