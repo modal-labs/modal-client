@@ -59,7 +59,7 @@ async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Op
     client = await _Client.from_env()
 
     async def _stream_to_stdout(on_connect: asyncio.Event) -> int:
-        return await handle_exec_output(client, exec_id, on_connect)
+        return await _handle_exec_output(client, exec_id, on_connect)
 
     async def _handle_input(data: bytes, message_index: int):
         await retry_transient_errors(
@@ -73,7 +73,7 @@ async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Op
     await connect_to_terminal(_handle_input, _stream_to_stdout, pty, connecting_status)
 
 
-async def handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
+async def _handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
     """
     Streams exec output to stdout.
 

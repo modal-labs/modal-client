@@ -383,7 +383,7 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
     Streams stdin to the given exec id until finish_event is triggered
     """
 
-    async def handle_input(data: bytes, message_index: int):
+    async def _handle_input(data: bytes, message_index: int):
         await retry_transient_errors(
             client.stub.ContainerExecPutInput,
             api_pb2.ContainerExecPutInputRequest(
@@ -392,7 +392,7 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
             total_timeout=10,
         )
 
-    async with stream_stdin(handle_input, use_raw_terminal=True):
+    async with stream_stdin(_handle_input, use_raw_terminal=True):
         await finish_event.wait()
 
 

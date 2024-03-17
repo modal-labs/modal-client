@@ -170,7 +170,13 @@ async def test_sandbox_async_for(client, servicer):
 
         async for message in sb.stdout:
             out += message
-        assert out == "foo\nbar\n"
+        assert out == "hello\nworld\n"
+
+        # test streaming stdout a second time
+        out2 = ""
+        async for message in sb.stdout:
+            out2 += message
+        assert out2 == ""
 
         err = ""
         async for message in sb.stderr:
