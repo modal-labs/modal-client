@@ -160,9 +160,10 @@ async def _run_stub(
                 exc_str = repr(exc_info)
             else:
                 exc_str = ""
-
+            print(f"Disconnecting! Reason: {reason}")
             await app.disconnect(reason, exc_str)
             stub._uncreate_all_objects()
+            print("Finished disconnecting")
 
     output_mgr.print_if_visible(
         step_completed(f"App completed. [grey70]View run at [underline]{app.log_url()}[/underline][/grey70]")
@@ -328,6 +329,7 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
 
         loading_status.stop()
         await connect_to_sandbox(sb)
+        print("Finished connecting to sandbox")
 
 
 run_stub = synchronize_api(_run_stub)

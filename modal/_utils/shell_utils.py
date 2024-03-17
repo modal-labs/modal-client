@@ -98,11 +98,13 @@ async def connect_to_terminal(
         exec_output_task = tc.create_task(stream_stdio(on_connect))
         try:
             # time out if we can't connect to the server fast enough
-            await asyncio.wait_for(on_connect.wait(), timeout=15)
+            await asyncio.wait_for(on_connect.wait(), timeout=2.5)
+            print("KOBE TIMES OUT")
             stop_connecting_status()
 
             async with stream_stdin(handle_stdin, use_raw_terminal=pty):
                 exit_status = await exec_output_task
+                print(f"Kobe exit status: {exit_status} !")
 
             if exit_status != 0:
                 raise ExecutionError(f"Process exited with status code {exit_status}")

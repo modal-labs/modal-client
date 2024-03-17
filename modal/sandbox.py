@@ -96,6 +96,7 @@ class _LogsReader:
 
     def __aiter__(self):
         """mdmd:hidden"""
+        print("Real sandbox iter")
         self._stream = self._stream_logs()
         return self
 
@@ -105,6 +106,7 @@ class _LogsReader:
 
         # The stream yields None if it receives an eof batch.
         if value is None:
+            print("Kobe stop async iteration")
             raise StopAsyncIteration
 
         return value.data

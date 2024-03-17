@@ -152,7 +152,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
 
         self.sandbox_defs = []
-        self.sandbox: subprocess.Popen = None
+        self.sandbox: MockSandbox = None
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
         self.token_flow_localhost_port = None
@@ -802,7 +802,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.PIPE,
         )
-        # self.sandbox = asyncio.subprocess.create_subprocess_exec(
+        # self.sandbox = MockSandbox(request.definition.entrypoint_args)
+        # self.sandbox = await asyncio.subprocess.create_subprocess_exec(
         #     request.definition.entrypoint_args,
         #     stdout=asyncio.subprocess.PIPE,
         #     stderr=asyncio.subprocess.PIPE,
@@ -814,12 +815,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
         print("Kobe sandbox get logs")
         if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
-            print("yo")
             data = self.sandbox.stdout.read()
+            print(f"Kobe sandbox read: {data}")
         else:
             print("lol")
             data = self.sandbox.stderr.read()
-        print("kobe data")
+        print(f"kobe data: {data}. File descriptor: {request.file_descriptor}")
 
         await stream.send_message(
             api_pb2.TaskLogsBatch(
@@ -1342,3 +1343,40 @@ def modal_config():
 @pytest.fixture
 def supports_dir(test_dir):
     return test_dir / Path("supports")
+
+class MockLogReader:
+    def __init__(self, io: subprocess.IO[bytes]):
+        self.io = io
+        self.next_called = False
+
+    def read(self) -> str:
+        print("Mock READ")
+        return self.io.read()
+
+    def __aiter__(self):
+        print("AITERRRR")
+        return self
+
+    async def __anext__(self):
+        print("Kobe sandbox NEXT!")
+        if self.next_called:
+            raise StopAsyncIteration
+        else:
+            self.next_called = True
+            return self.read()
+
+class MockSandbox:
+    def __init__(self, args):
+        print("hello")
+        # Not using asyncio.subprocess here for Python 3.7 compatibility.
+        self.subprocess = subprocess.Popen(
+            args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE,
+        )
+        self.stdout = MockLogReader(self.subprocess.stdout)
+        self.stdin = MockLogReader(self.subprocess.stdin)
+        self.stderr = self.subprocess.stderr
+    
+    

@@ -398,3 +398,4 @@ def shell(
         start_shell = partial(interactive_shell, image=modal_image, cpu=cpu, memory=memory, gpu=gpu, cloud=cloud)
 
     start_shell(stub, cmd=[cmd], environment_name=env, timeout=3600)
+    print("Finished starting shell")

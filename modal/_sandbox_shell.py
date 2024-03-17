@@ -1,7 +1,8 @@
 # Copyright Modal Labs 2024
 import asyncio
+from typing import Optional
 
-from ._utils.shell_utils import connect_to_terminal
+from ._utils.shell_utils import connect_to_terminal, write_to_fd
 from .sandbox import _Sandbox
 
 
@@ -25,19 +26,20 @@ async def connect_to_sandbox(sandbox: _Sandbox):
         # we are connected if we received at least one message from the server
         # (the server will send an empty message when the process spawns)
         connected = False
-
+        # on_connect.set()
         # Since the sandbox process will run in a PTY, stderr will go to the PTY
         # slave. The PTY shell will then relay data from PTY master to stdout.
         # Therefore, we only need to stream from stdout here.
-        # async for message in sandbox.stdout:
-        #     await write_to_fd(1, str.encode(message))
+        print("Kobe about to async for")
+        async for message in sandbox.stdout:
+            await write_to_fd(1, str.encode(message))
 
-        #     if not connected:
-        #         connected = True
-        #         if on_connect is not None:
-        #             on_connect.set()
-        #             # give up the event loop
-        #             await asyncio.sleep(0)
+            if not connected:
+                connected = True
+                if on_connect is not None:
+                    on_connect.set()
+                    # give up the event loop
+                    await asyncio.sleep(0)
 
         # Right now we don't propagate the exit_status to the TaskLogs, so setting
         # exit status to 0.
@@ -45,3 +47,4 @@ async def connect_to_sandbox(sandbox: _Sandbox):
         return 0
 
     await connect_to_terminal(_handle_input, _stream_to_stdout, pty=True)
+    print("Finished connecting to terminal")

@@ -352,6 +352,7 @@ def mock_shell_pty():
 
     async def write_to_fd(fd: int, data: bytes):
         nonlocal captured_out
+        print("WRITING TO TEST FD")
         captured_out.append((fd, data))
 
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
@@ -369,6 +370,7 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 
     # Function is explicitly specified
     _run(["shell", stub_file.as_posix() + "::foo"])
+    print("hahahahaha")
     assert mock_shell_pty == [(1, b"Hello World")]
     mock_shell_pty.clear()
 
