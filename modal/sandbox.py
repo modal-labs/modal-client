@@ -77,7 +77,6 @@ class _LogsReader:
                     last_log_batch_entry_id = log_batch.entry_id
                     print(f"Kobe batch: {log_batch}")
                     for message in log_batch.items:
-                        
                         yield message
                     if log_batch.eof:
                         print("Kobe eof")

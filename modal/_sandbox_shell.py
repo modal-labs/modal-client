@@ -1,8 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
-from typing import Optional
 
-from ._utils.shell_utils import connect_to_terminal, write_to_fd
+from ._utils.shell_utils import connect_to_terminal
 from .sandbox import _Sandbox
 
 

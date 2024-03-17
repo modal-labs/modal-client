@@ -802,8 +802,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.PIPE,
         )
-        # self.sandbox = asyncio.subprocess.create_subprocess_exec( 
-        #     request.definition.entrypoint_args,    
+        # self.sandbox = asyncio.subprocess.create_subprocess_exec(
+        #     request.definition.entrypoint_args,
         #     stdout=asyncio.subprocess.PIPE,
         #     stderr=asyncio.subprocess.PIPE,
         #     stdin=asyncio.subprocess.PIPE)
