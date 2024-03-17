@@ -353,8 +353,6 @@ def mock_shell_pty(servicer):
         nonlocal captured_out
         captured_out.append((fd, data))
 
-    servicer.is_shell = True
-
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
     ), mock.patch("modal.runner.get_pty_info", mock_get_pty_info), mock.patch(
@@ -368,6 +366,8 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     webhook_stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
 
+    # We need to send "exit\n" to the sandbox, otherwise sandbox.stdout.read() will not terminate
+    # as it hasn't received an EOF.
     servicer.add_to_sandbox_pending_cmds([b'echo "Hello World"\n', b"exit\n"])
     # Function is explicitly specified
     _run(["shell", stub_file.as_posix() + "::foo"])

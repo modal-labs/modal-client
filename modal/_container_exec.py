@@ -75,9 +75,9 @@ async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Op
 
 async def _handle_exec_output(client: _Client, exec_id: str, on_connect: Optional[asyncio.Event] = None) -> int:
     """
-    Streams exec output to stdout.
+    Streams exec output to current terminal's stdout.
 
-    If given, on_connect will be set when the client connects to the running process,
+    The on_connect event will be set when the client connects to the running process,
     and the event loop will be released.
 
     Returns the status code of the process.
@@ -105,10 +105,9 @@ async def _handle_exec_output(client: _Client, exec_id: str, on_connect: Optiona
 
             if not connected:
                 connected = True
-                if on_connect is not None:
-                    on_connect.set()
-                    # give up the event loop
-                    await asyncio.sleep(0)
+                on_connect.set()
+                # give up the event loop
+                await asyncio.sleep(0)
 
             if batch.HasField("exit_code"):
                 exit_status = batch.exit_code
