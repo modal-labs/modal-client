@@ -802,15 +802,25 @@ class MockClientServicer(api_grpc.ModalClientBase):
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.PIPE,
         )
+        # self.sandbox = asyncio.subprocess.create_subprocess_exec( 
+        #     request.definition.entrypoint_args,    
+        #     stdout=asyncio.subprocess.PIPE,
+        #     stderr=asyncio.subprocess.PIPE,
+        #     stdin=asyncio.subprocess.PIPE)
         self.sandbox_defs.append(request.definition)
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
+        print("Kobe sandbox get logs")
         if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            print("yo")
             data = self.sandbox.stdout.read()
         else:
+            print("lol")
             data = self.sandbox.stderr.read()
+        print("kobe data")
+
         await stream.send_message(
             api_pb2.TaskLogsBatch(
                 items=[api_pb2.TaskLogs(data=data.decode("utf-8"), file_descriptor=request.file_descriptor)]

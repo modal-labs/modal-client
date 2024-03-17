@@ -73,7 +73,6 @@ async def stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw_
     os.write(quit_pipe_write, b"\n")
     write_task.cancel()
 
-
 async def connect_to_terminal(
     # Handles data read from stdin.
     handle_stdin: Callable[[bytes, int], Coroutine],

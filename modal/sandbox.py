@@ -63,7 +63,6 @@ class _LogsReader:
         """
         last_log_batch_entry_id = ""
         completed = False
-
         retries_remaining = 10
         while not completed:
             req = api_pb2.SandboxGetLogsRequest(
@@ -72,13 +71,16 @@ class _LogsReader:
                 timeout=55,
                 last_entry_id=last_log_batch_entry_id,
             )
+            print("Kobe unary stream before")
             try:
                 async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
                     last_log_batch_entry_id = log_batch.entry_id
-
+                    print(f"Kobe batch: {log_batch}")
                     for message in log_batch.items:
+                        
                         yield message
                     if log_batch.eof:
+                        print("Kobe eof")
                         completed = True
                         yield None
                         break
