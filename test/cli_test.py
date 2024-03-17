@@ -335,7 +335,7 @@ def test_serve(servicer, set_env_client, server_url_env, test_dir):
 
 
 @pytest.fixture
-def mock_shell_pty():
+def mock_shell_pty(servicer):
     def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
         return api_pb2.PTYInfo(
@@ -353,11 +353,13 @@ def mock_shell_pty():
         nonlocal captured_out
         captured_out.append((fd, data))
 
+    servicer.is_shell = True
+
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
-    ), mock.patch("modal._container_exec.get_pty_info", mock_get_pty_info), mock.patch(
-        "modal._container_exec.handle_exec_input", asyncnullcontext
-    ), mock.patch("modal._container_exec._write_to_fd", write_to_fd):
+    ), mock.patch("modal.runner.get_pty_info", mock_get_pty_info), mock.patch(
+        "modal._utils.shell_utils.stream_stdin", asyncnullcontext
+    ), mock.patch("modal._sandbox_shell.write_to_fd", write_to_fd):
         yield captured_out
 
 
@@ -366,19 +368,21 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     webhook_stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
 
+    servicer.add_to_sandbox_pending_cmds([b'echo "Hello World"\n', b"exit\n"])
     # Function is explicitly specified
     _run(["shell", stub_file.as_posix() + "::foo"])
-    assert mock_shell_pty == [(1, b"Hello World")]
+
+    assert mock_shell_pty == [(1, b"Hello World\n")]
     mock_shell_pty.clear()
 
     # Function is explicitly specified
     _run(["shell", webhook_stub_file.as_posix() + "::foo"])
-    assert mock_shell_pty == [(1, b"Hello World")]
+    assert mock_shell_pty == [(1, b"Hello World\n")]
     mock_shell_pty.clear()
 
     # Function must be inferred
     _run(["shell", webhook_stub_file.as_posix()])
-    assert mock_shell_pty == [(1, b"Hello World")]
+    assert mock_shell_pty == [(1, b"Hello World\n")]
     mock_shell_pty.clear()
 
 

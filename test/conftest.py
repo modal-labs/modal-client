@@ -160,6 +160,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.container_heartbeat_abort = threading.Event()
 
+        # Shell commands to be submitted to sandbox after it's created.
+        self.pending_shell_cmds = []
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -793,6 +796,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Sandbox
 
+    # Add shell commands to submit to the sandbox after it's created.
+    def add_shell_cmds(self, args: list[bytes]):
+        self.pending_shell_cmds += args
+
     async def SandboxCreate(self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
         # Not using asyncio.subprocess here for Python 3.7 compatibility.
@@ -803,11 +810,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
             stdin=asyncio.subprocess.PIPE,
         )
         self.sandbox_defs.append(request.definition)
+        for cmd in self.pending_shell_cmds:
+            self.sandbox.stdin.write(cmd)
+        self.sandbox.stdin.flush()
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
         if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            # Blocking read until EOF is returned.
             data = self.sandbox.stdout.read()
         else:
             data = self.sandbox.stderr.read()
