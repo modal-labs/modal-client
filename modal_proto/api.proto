@@ -1473,6 +1473,8 @@ message Sandbox {
   repeated CloudBucketMount cloud_bucket_mounts = 14;
 
   repeated VolumeMount volume_mounts = 13;
+
+  PTYInfo pty_info = 15;
 }
 
 message SandboxCreateRequest {
