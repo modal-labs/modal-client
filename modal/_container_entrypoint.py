@@ -9,7 +9,6 @@ import inspect
 import json
 import math
 import os
-import pickle
 import signal
 import sys
 import threading
@@ -787,6 +786,7 @@ def import_function(
     ser_fun,
     ser_params: Optional[bytes],
     function_io_manager,
+    client: Client,
 ) -> ImportedFunction:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
@@ -867,7 +867,8 @@ def import_function(
     # Instantiate the class if it's defined
     if cls:
         if ser_params:
-            args, kwargs = pickle.loads(ser_params)
+            _client: _Client = synchronizer._translate_in(client)
+            args, kwargs = deserialize(ser_params, _client)
         else:
             args, kwargs = (), {}
         obj = cls(*args, **kwargs)
@@ -947,7 +948,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function, importing user code.
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(
-                container_args.function_def, ser_cls, ser_fun, container_args.serialized_params, function_io_manager
+                container_args.function_def,
+                ser_cls,
+                ser_fun,
+                container_args.serialized_params,
+                function_io_manager,
+                client,
             )
 
         # Hydrate all function dependencies.
