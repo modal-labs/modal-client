@@ -100,6 +100,7 @@ class _Dict(_Object, type_prefix="di"):
     @staticmethod
     def from_name(
         label: str,
+        data: Optional[dict] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -118,11 +119,13 @@ class _Dict(_Object, type_prefix="di"):
         """
 
         async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
+            serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=label,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+                data=serialized,
             )
             response = await resolver.client.stub.DictGetOrCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
@@ -141,6 +144,7 @@ class _Dict(_Object, type_prefix="di"):
     @staticmethod
     async def lookup(
         label: str,
+        data: Optional[dict] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -154,7 +158,7 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
         obj = _Dict.from_name(
-            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+            label, data=data, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
         )
         if client is None:
             client = await _Client.from_env()

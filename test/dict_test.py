@@ -24,9 +24,11 @@ def test_dict_app(servicer, client):
         assert stub.d["foo"] is None
 
 
-def test_dict_deploy(servicer, client):
-    d = Dict.lookup("xyz", create_if_missing=True, client=client)
+def test_dict_lookup(servicer, client):
+    d = Dict.lookup("xyz", {"foo": "bar"}, create_if_missing=True, client=client)
     d["xyz"] = 123
+    assert d.len() == 2
+    assert d["foo"] == "bar"
 
 
 def test_dict_ephemeral(servicer, client):
