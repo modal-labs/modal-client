@@ -235,11 +235,11 @@ class _Invocation:
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(function_id: str, detached: bool, args, kwargs, client: _Client) -> "_Invocation":
+    async def create(function_id: str, nowait: bool, args, kwargs, client: _Client) -> "_Invocation":
         assert client.stub
         item = await _create_input(args, kwargs, client)
 
-        parent_input_id = current_input_id() if not detached else None
+        parent_input_id = current_input_id() if not nowait else None
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
             parent_input_id=parent_input_id or "",
