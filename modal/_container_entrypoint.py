@@ -24,7 +24,14 @@ from grpclib import Status
 
 from modal_proto import api_pb2
 
-from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
+from ._asgi import (
+    asgi_app_wrapper,
+    get_ip_address,
+    wait_for_web_server,
+    web_server_proxy,
+    webhook_asgi_app,
+    wsgi_app_wrapper,
+)
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
@@ -878,28 +885,41 @@ def import_function(
     else:
         obj = None
 
-    if not pty_info.pty_type:  # do not wrap PTY-enabled functions
+    if function_def.webhook_config.type:
+        is_async = True
+        is_generator = True
+        data_format = api_pb2.DATA_FORMAT_ASGI
+
         if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
-            # function returns an asgi_app, that we can use as a callable.
-            asgi_app = fun()
-            fun = asgi_app_wrapper(asgi_app, function_io_manager)
-            is_async = True
-            is_generator = True
-            data_format = api_pb2.DATA_FORMAT_ASGI
+            # Function returns an asgi_app, which we can use as a callable.
+            fun = asgi_app_wrapper(fun(), function_io_manager)
+
         elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
-            # function returns an wsgi_app, that we can use as a callable.
-            wsgi_app = fun()
-            fun = wsgi_app_wrapper(wsgi_app, function_io_manager)
-            is_async = True
-            is_generator = True
-            data_format = api_pb2.DATA_FORMAT_ASGI
+            # Function returns an wsgi_app, which we can use as a callable.
+            fun = wsgi_app_wrapper(fun(), function_io_manager)
+
         elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-            # function is webhook without an ASGI app. Create one for it.
-            asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
-            fun = asgi_app_wrapper(asgi_app, function_io_manager)
-            is_async = True
-            is_generator = True
-            data_format = api_pb2.DATA_FORMAT_ASGI
+            # Function is a webhook without an ASGI app. Create one for it.
+            fun = asgi_app_wrapper(
+                webhook_asgi_app(fun, function_def.webhook_config.method),
+                function_io_manager,
+            )
+
+        elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WEB_SERVER:
+            # Function spawns an HTTP web server listening at a port.
+            fun()
+
+            # We intentionally try to connect to the external interface instead of the loopback
+            # interface here so users are forced to expose the server. This allows us to potentially
+            # change the implementation to use an external bridge in the future.
+            host = get_ip_address(b"eth0")
+            port = function_def.webhook_config.web_server_port
+            startup_timeout = function_def.webhook_config.web_server_startup_timeout
+            wait_for_web_server(host, port, timeout=startup_timeout)
+            fun = asgi_app_wrapper(web_server_proxy(host, port), function_io_manager)
+
+        else:
+            raise InvalidError(f"Unrecognized web endpoint type {function_def.webhook_config.type}")
 
     return ImportedFunction(
         obj,
