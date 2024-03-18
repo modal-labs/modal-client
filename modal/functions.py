@@ -235,13 +235,13 @@ class _Invocation:
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(function_id: str, args, kwargs, client: _Client) -> "_Invocation":
+    async def create(function_id: str, detached: bool, args, kwargs, client: _Client) -> "_Invocation":
         assert client.stub
         item = await _create_input(args, kwargs, client)
 
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
-            parent_input_id=current_input_id() or "",
+            parent_input_id=current_input_id() if detached else None,
             function_call_type=api_pb2.FUNCTION_CALL_TYPE_UNARY,
             pipelined_inputs=[item],
         )
@@ -1206,7 +1206,7 @@ class _Function(_Object, type_prefix="fu"):
             yield item
 
     async def _call_function(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
+        invocation = await _Invocation.create(self.object_id, False, args, kwargs, self._client)
         try:
             return await invocation.run_function()
         except asyncio.CancelledError:
@@ -1215,19 +1215,19 @@ class _Function(_Object, type_prefix="fu"):
                 raise
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
-        return await _Invocation.create(self.object_id, args, kwargs, self._client)
+        return await _Invocation.create(self.object_id, True, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
+        invocation = await _Invocation.create(self.object_id, False, args, kwargs, self._client)
         async for res in invocation.run_generator():
             yield res
 
     @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
-        return await _Invocation.create(self.object_id, args, kwargs, self._client)
+        return await _Invocation.create(self.object_id, True, args, kwargs, self._client)
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
