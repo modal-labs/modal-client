@@ -15,7 +15,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
 from .exception import deprecation_error, deprecation_warning
-from .object import _get_environment_name, _Object, live_method
+from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method
 
 
 class _Queue(_Object, type_prefix="qu"):
@@ -71,7 +71,10 @@ class _Queue(_Object, type_prefix="qu"):
     @classmethod
     @asynccontextmanager
     async def ephemeral(
-        cls: Type["_Queue"], client: Optional[_Client] = None, environment_name: Optional[str] = None
+        cls: Type["_Queue"],
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Queue"]:
         if client is None:
             client = await _Client.from_env()
@@ -82,7 +85,7 @@ class _Queue(_Object, type_prefix="qu"):
         response = await client.stub.QueueGetOrCreate(request)
         async with TaskContext() as tc:
             request = api_pb2.QueueHeartbeatRequest(queue_id=response.queue_id)
-            tc.infinite_loop(lambda: client.stub.QueueHeartbeat(request), sleep=300)
+            tc.infinite_loop(lambda: client.stub.QueueHeartbeat(request), sleep=_heartbeat_sleep)
             yield cls._new_hydrated(response.queue_id, client, None)
 
     @staticmethod
