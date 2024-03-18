@@ -10,6 +10,8 @@ from modal._utils.blob_utils import (
 )
 from modal.exception import ExecutionError
 
+from .supports.skip import skip_old_py
+
 blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
 blob_upload_file = synchronize_api(_blob_upload_file)
@@ -44,6 +46,7 @@ async def test_blob_large(servicer, blob_server, client):
     assert await blob_download.aio(blob_id, client.stub) == data
 
 
+@skip_old_py("random.randbytes() was introduced in python 3.9", (3, 9))
 @pytest.mark.asyncio
 async def test_blob_multipart(servicer, blob_server, client, monkeypatch, tmp_path):
     monkeypatch.setattr("modal._utils.blob_utils.DEFAULT_SEGMENT_CHUNK_SIZE", 128)
