@@ -26,9 +26,9 @@ from .client import _Client
 from .config import logger
 from .object import _get_environment_name, _Object, live_method, live_method_gen
 
-# 15 min max for uploading to volumes files
+# Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
-VOLUME_PUT_FILE_CLIENT_TIMEOUT = 15 * 60
+VOLUME_PUT_FILE_CLIENT_TIMEOUT = 30 * 60
 
 
 class _Volume(_Object, type_prefix="vo"):
@@ -513,6 +513,7 @@ class _VolumeUploadContextManager:
         request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
         response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
 
+        start_time = time.monotonic()
         if not response.exists:
             if file_spec.use_blob:
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
@@ -526,8 +527,7 @@ class _VolumeUploadContextManager:
                 )
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
-            start_time = time.monotonic()
-            while time.monotonic() - start_time < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
+            while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
                 response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
                 if response.exists:
                     break
