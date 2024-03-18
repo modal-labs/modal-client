@@ -1242,6 +1242,7 @@ message ImageGetOrCreateRequest {
   string build_function_id = 6;
   bool force_build = 7;
   DeploymentNamespace namespace = 8;
+  string builder_version = 9;
 }
 
 message ImageGetOrCreateResponse {
