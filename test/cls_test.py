@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Callable, Dict
 
 from typing_extensions import assert_type
 
-from modal import Cls, Function, Image, Stub, build, enter, exit, method
+from modal import Cls, Function, Image, Queue, Stub, build, enter, exit, method
 from modal._serialization import deserialize
 from modal.app import ContainerApp
 from modal.cls import ClsMixin
@@ -98,6 +98,13 @@ def test_call_cls_remote_invalid_type(client):
 
         exc = excinfo.value
         assert "function" in str(exc)
+
+
+def test_call_cls_remote_modal_type(client):
+    with stub_remote.run(client=client):
+        with Queue.ephemeral(client) as q:
+            FooRemote(42, q)  # type: ignore
+
 
 
 stub_2 = Stub()
