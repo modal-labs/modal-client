@@ -28,7 +28,15 @@ from .secret import _Secret
 
 class _LogsReader:
     """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`).
+
     As an asynchronous iterable, the object supports the async for statement.
+    **Usage**
+
+    ```python
+    sandbox = stub.app.spawn_sandbox("bash", "-c", "while true; do echo foo; sleep 1; done)
+    async for message in sandbox.stdout:
+        print(f"Message: {message}")
+    ```
     """
 
     def __init__(self, file_descriptor: int, sandbox_id: str, client: _Client) -> None:

@@ -800,6 +800,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     def add_shell_cmds(self, args: list[bytes]):
         self.pending_shell_cmds += args
 
+    def is_shell_cmds(self, cmds: list[str]):
+        shell_list = ["bash", "sh"]
+        if len(cmds) == 1 and cmds[0] in shell_list:
+            return True
+        else:
+            return False
+
     async def SandboxCreate(self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
         # Not using asyncio.subprocess here for Python 3.7 compatibility.
@@ -810,6 +817,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             stdin=asyncio.subprocess.PIPE,
         )
         self.sandbox_defs.append(request.definition)
+        if self.is_shell_cmds(request.definition.entrypoint_args) and len(self.pending_shell_cmds) == 0:
+            raise Exception(
+                f"The sandbox commands is ${request.definition.entrypoint_args} but there is no pending command to exit the shell. Call 'pending_shell_cmds' to add pending commands."
+            )
         for cmd in self.pending_shell_cmds:
             self.sandbox.stdin.write(cmd)
         self.sandbox.stdin.flush()

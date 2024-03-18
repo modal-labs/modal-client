@@ -186,3 +186,7 @@ async def test_sandbox_async_for(client, servicer):
             err += message
 
         assert err == "bye\n"
+
+        # test reading after receiving EOF
+        assert sb.stdout.read() == ""
+        assert sb.stderr.read() == ""

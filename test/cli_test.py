@@ -512,7 +512,8 @@ def test_environment_flag(test_dir, servicer, command):
     ):  # hacky - compatible with both argless modal run and interactive mode which always sends an arg...
         pass
 
-    servicer.add_shell_cmds([b"exit\n"])
+    # if command[0] == "shell":
+    #     servicer.add_shell_cmds([b"exit\n"])
     stub_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
     with servicer.intercept() as ctx:
         ctx.add_response(
