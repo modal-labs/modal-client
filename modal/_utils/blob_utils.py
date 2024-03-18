@@ -32,6 +32,9 @@ LARGE_FILE_LIMIT = 4 * 1024 * 1024  # 4 MiB
 # Max parallelism during map calls
 BLOB_MAX_PARALLELISM = 10
 
+# read ~16MiB chunks by default
+DEFAULT_SEGMENT_CHUNK_SIZE = 2**24
+
 
 class BytesIOSegmentPayload(BytesIOPayload):
     """Modified bytes payload for concurrent sends of chunks from the same file
@@ -51,7 +54,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
         read_lock: asyncio.Lock,
         segment_start: int,
         segment_length: int,
-        chunk_size: int = 2**24,  # read ~16MiB chunks by default
+        chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
     ):
         # not thread safe constructor!
         super().__init__(bytes_io)
@@ -247,6 +250,7 @@ async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO]
             max_part_size=resp.multipart.part_length,
             part_urls=resp.multipart.upload_urls,
             completion_url=resp.multipart.completion_url,
+            upload_chunk_size=DEFAULT_SEGMENT_CHUNK_SIZE,
         )
     else:
         lock = asyncio.Lock()  # not strictly necessary here
