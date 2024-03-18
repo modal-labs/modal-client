@@ -161,7 +161,7 @@ async def _upload_to_s3_url(
 
 
 async def perform_multipart_upload(
-    data_file: Union[io.BytesIO, io.FileIO],
+    data_file: Union[BinaryIO, io.BytesIO, io.FileIO],
     *,
     content_length: int,
     max_part_size: int,
@@ -175,12 +175,13 @@ async def perform_multipart_upload(
 
     # Give each part its own IO reader object to avoid needing to
     # lock access to the reader's position pointer.
-    try:
-        filename = data_file.name
-        data_file_readers = [open(filename, "rb") for _ in range(len(part_urls))]
-    except AttributeError:
+    data_file_readers: List[BinaryIO]
+    if isinstance(data_file, io.BytesIO):
         view = data_file.getbuffer()  # does not copy data
         data_file_readers = [io.BytesIO(view) for _ in range(len(part_urls))]
+    else:
+        filename = data_file.name
+        data_file_readers = [open(filename, "rb") for _ in range(len(part_urls))]
 
     for part_number, (data_file_rdr, part_url) in enumerate(zip(data_file_readers, part_urls), start=1):
         part_length_bytes = min(num_bytes_left, max_part_size)
