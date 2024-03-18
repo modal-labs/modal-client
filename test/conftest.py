@@ -90,6 +90,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         }
         self.n_inputs = 0
         self.n_queues = 0
+        self.n_queue_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
         self.mount_contents = {}
@@ -768,9 +769,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
             self.deployed_queues[k] = queue_id
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            self.n_queues += 1
+            queue_id = f"qu-{self.n_queues}"
         else:
             raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
+
+    async def QueueHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_queue_heartbeats += 1
+        await stream.send_message(Empty())
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()
