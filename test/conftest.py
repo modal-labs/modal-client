@@ -90,6 +90,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         }
         self.n_inputs = 0
         self.n_queues = 0
+        self.n_dict_heartbeats = 0
         self.n_queue_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
@@ -432,9 +433,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {}
             self.deployed_dicts[k] = dict_id
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            dict_id = f"di-{len(self.dicts)}"
+            self.dicts[dict_id] = {}
         else:
             raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
+
+    async def DictHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_dict_heartbeats += 1
+        await stream.send_message(Empty())
 
     async def DictClear(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()

@@ -1,17 +1,19 @@
 # Copyright Modal Labs 2022
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional, Type
+
+from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._types import typechecked
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
 from .config import logger
 from .exception import deprecation_error, deprecation_warning
-from .object import _get_environment_name, _Object, live_method
+from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method
 
 
 def _serialize_dict(data):
@@ -71,8 +73,26 @@ class _Dict(_Object, type_prefix="di"):
     def __init__(self, data={}):
         """mdmd:hidden"""
         deprecation_error((2023, 6, 27), "`Dict({...})` is deprecated. Please use `Dict.new({...})` instead.")
-        obj = _Dict.new(data)
-        self._init_from_other(obj)
+
+    @classmethod
+    @asynccontextmanager
+    async def ephemeral(
+        cls: Type["_Dict"],
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    ) -> AsyncIterator["_Dict"]:
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.DictGetOrCreateRequest(
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+            environment_name=_get_environment_name(environment_name),
+        )
+        response = await client.stub.DictGetOrCreate(request)
+        async with TaskContext() as tc:
+            request = api_pb2.DictHeartbeatRequest(dict_id=response.dict_id)
+            tc.infinite_loop(lambda: client.stub.DictHeartbeat(request), sleep=_heartbeat_sleep)
+            yield cls._new_hydrated(response.dict_id, client, None)
 
     @staticmethod
     def from_name(
