@@ -800,7 +800,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     def add_shell_cmds(self, args: list[bytes]):
         self.pending_shell_cmds += args
 
-    def is_shell_cmds(self, cmds: list[str]):
+    def is_shell_cmds(self, cmds):
         shell_list = ["bash", "sh"]
         if len(cmds) == 1 and cmds[0] in shell_list:
             return True

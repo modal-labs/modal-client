@@ -33,7 +33,7 @@ class _LogsReader:
     **Usage**
 
     ```python
-    sandbox = stub.app.spawn_sandbox("bash", "-c", "while true; do echo foo; sleep 1; done)
+    sandbox = stub.app.spawn_sandbox("bash", "-c", "while true; do echo foo; sleep 1; done")
     async for message in sandbox.stdout:
         print(f"Message: {message}")
     ```
