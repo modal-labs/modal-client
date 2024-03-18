@@ -29,6 +29,9 @@ def test_spawn_sandbox(client, servicer):
 
         assert sb.stdout.read() == "hi\n"
         assert sb.stderr.read() == "bye\n"
+        # read a second time
+        assert sb.stdout.read() == ""
+        assert sb.stderr.read() == ""
 
         assert sb.returncode == 42
         assert sb.poll() == 42

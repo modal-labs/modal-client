@@ -27,7 +27,9 @@ from .secret import _Secret
 
 
 class _LogsReader:
-    """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`)."""
+    """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`).
+    As an asynchronous iterable, the object supports the async for statement.
+    """
 
     def __init__(self, file_descriptor: int, sandbox_id: str, client: _Client) -> None:
         """mdmd:hidden"""
@@ -36,9 +38,14 @@ class _LogsReader:
         self._sandbox_id = sandbox_id
         self._client = client
         self._stream = None
+        self._last_log_batch_entry_id = ""
+        # Whether the reader received an EOF. Once eof is True, it returns
+        # an empty string for any subsequent reads (including async for)
+        self.eof = False
 
     async def read(self) -> str:
-        """Fetch and return contents of the entire stream.
+        """Fetch and return contents of the entire stream. If EOF was received,
+        return an empty string.
 
         **Usage**
 
@@ -52,16 +59,24 @@ class _LogsReader:
         """
         data = ""
         # TODO: maybe combine this with get_app_logs_loop
-        async for message in self:
-            data += message
+        async for message in self._get_logs():
+            if message is None:
+                break
+            data += message.data
 
         return data
 
-    async def _stream_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogs]]:
-        """mdmd:hidden The stream ends and yields None when it receives a
-        TaskLogsBatch with eof set to true.
+    async def _get_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogs]]:
+        """mdmd:hidden
+        Streams sandbox logs from the server to the reader.
+
+        When the stream receives an eof, it yields None. Once an EOF is received,
+        subsequent invocations will not yield logs.
         """
-        last_log_batch_entry_id = ""
+        if self.eof:
+            yield None
+            return
+
         completed = False
 
         retries_remaining = 10
@@ -70,15 +85,16 @@ class _LogsReader:
                 sandbox_id=self._sandbox_id,
                 file_descriptor=self._file_descriptor,
                 timeout=55,
-                last_entry_id=last_log_batch_entry_id,
+                last_entry_id=self._last_log_batch_entry_id,
             )
             try:
                 async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
-                    last_log_batch_entry_id = log_batch.entry_id
+                    self._last_log_batch_entry_id = log_batch.entry_id
 
                     for message in log_batch.items:
                         yield message
                     if log_batch.eof:
+                        self.eof = True
                         completed = True
                         yield None
                         break
@@ -95,7 +111,7 @@ class _LogsReader:
 
     def __aiter__(self):
         """mdmd:hidden"""
-        self._stream = self._stream_logs()
+        self._stream = self._get_logs()
         return self
 
     async def __anext__(self):
