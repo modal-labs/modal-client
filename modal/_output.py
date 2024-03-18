@@ -32,8 +32,8 @@ from rich.text import Text
 
 from modal_proto import api_pb2
 
-from ._container_exec import handle_exec_input
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.shell_utils import stream_from_stdin
 from .client import _Client
 from .config import logger
 
@@ -382,7 +382,17 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
     """
     Streams stdin to the given exec id until finish_event is triggered
     """
-    async with handle_exec_input(client, exec_id, use_raw_terminal=True):
+
+    async def _handle_input(data: bytes, message_index: int):
+        await retry_transient_errors(
+            client.stub.ContainerExecPutInput,
+            api_pb2.ContainerExecPutInputRequest(
+                exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
+            ),
+            total_timeout=10,
+        )
+
+    async with stream_from_stdin(_handle_input, use_raw_terminal=True):
         await finish_event.wait()
 
 

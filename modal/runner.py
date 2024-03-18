@@ -10,8 +10,9 @@ from rich.console import Console
 
 from modal_proto import api_pb2
 
-from ._container_exec import container_exec
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
+from ._pty import get_pty_info
+from ._sandbox_shell import connect_to_sandbox
 from ._utils.app_utils import is_valid_app_name
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
@@ -313,13 +314,12 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
         loading_status = console.status("Starting container...")
         loading_status.start()
 
-        sb = await _stub.spawn_sandbox("sleep", "360000", **kwargs)
+        sb = await _stub.spawn_sandbox("bash", pty_info=get_pty_info(shell=True), **kwargs)
 
         for _ in range(40):
             await asyncio.sleep(0.5)
             resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
             if resp.task_id != "":
-                task_id = resp.task_id
                 break
             # else: sandbox hasn't been assigned a task yet
         else:
@@ -327,7 +327,7 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
             raise InteractiveTimeoutError("Timed out while waiting for sandbox to start")
 
         loading_status.stop()
-        await container_exec(task_id, cmd, pty=True, client=client, terminate_container_on_exit=True)
+        await connect_to_sandbox(sb)
 
 
 run_stub = synchronize_api(_run_stub)

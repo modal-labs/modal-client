@@ -101,7 +101,6 @@ def test_sandbox_from_id(client, servicer):
 def test_sandbox_terminate(client, servicer):
     with stub.run(client=client):
         sb = stub.spawn_sandbox("bash", "-c", "sleep 10000")
-
         sb.terminate()
 
         assert sb.returncode != 0
@@ -159,3 +158,28 @@ def test_sandbox_stdin_write_after_eof(client, servicer):
         sb.stdin.write_eof()
         with pytest.raises(EOFError):
             sb.stdin.write(b"foo")
+
+
+@skip_non_linux
+@pytest.mark.asyncio
+async def test_sandbox_async_for(client, servicer):
+    async with stub.run.aio(client=client):
+        sb = stub.spawn_sandbox("bash", "-c", "echo hello && echo world && echo bye >&2")
+
+        out = ""
+
+        async for message in sb.stdout:
+            out += message
+        assert out == "hello\nworld\n"
+
+        # test streaming stdout a second time
+        out2 = ""
+        async for message in sb.stdout:
+            out2 += message
+        assert out2 == ""
+
+        err = ""
+        async for message in sb.stderr:
+            err += message
+
+        assert err == "bye\n"
