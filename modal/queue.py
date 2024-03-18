@@ -2,10 +2,10 @@
 import queue  # The system library
 import time
 import warnings
-from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, List, Optional, Type
 
 from grpclib import GRPCError, Status
+from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
