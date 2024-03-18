@@ -1226,6 +1226,10 @@ message Image {
   BuildFunction build_function = 21;
 }
 
+message ImageBuilderVersionLookupResponse {
+  string version = 1;
+}
+
 message ImageContextFile {
   string filename = 1;
   bytes data = 2;
@@ -2052,6 +2056,7 @@ service ModalClient {
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
+  rpc ImageBuilderVersionLookup(google.protobuf.Empty) returns (ImageBuilderVersionLookupResponse);
 
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
