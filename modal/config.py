@@ -201,6 +201,7 @@ _SETTINGS = {
     "restore_state_path": _Setting("/__modal/restore-state.json"),
     "force_build": _Setting(False, transform=lambda x: x not in ("", "0")),
     "traceback": _Setting(False, transform=lambda x: x not in ("", "0")),
+    "image_builder_version": _Setting(),
 }
 
 

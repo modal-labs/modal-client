@@ -5,12 +5,12 @@ import sys
 import threading
 from hashlib import sha256
 from tempfile import NamedTemporaryFile
-from typing import List
+from typing import List, Literal
 from unittest import mock
 
 from modal import Image, Mount, Secret, Stub, build, gpu, method
 from modal._serialization import serialize
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError, InvalidError, VersionError
 from modal.image import _dockerhub_python_version, _get_client_requirements_path
 from modal_proto import api_pb2
 
@@ -473,6 +473,27 @@ def test_image_env(client, servicer):
         assert any("ENV HELLO=" in cmd and "world!" in cmd for cmd in layers[0].dockerfile_commands)
 
 
+@mock.patch("modal.image._Image.builder_version", None)
+@mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"])
+@mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"])
+def test_image_builder_version(client, servicer, server_url_env):
+    stub = Stub(image=Image.debian_slim())
+    with stub.run(client=client):
+        assert servicer.image_builder_versions
+        for version in servicer.image_builder_versions.values():
+            assert version == "2000.01"
+
+
+@mock.patch("modal.image._Image.builder_version", None)
+@mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"])
+@mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"])
+def test_image_builder_supported_versions(client, servicer, server_url_env):
+    with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
+        stub = Stub(image=Image.debian_slim())
+        with stub.run(client=client):
+            pass
+
+
 def test_image_gpu(client, servicer):
     stub = Stub(image=Image.debian_slim().run_commands("echo 0"))
     with stub.run(client=client):
@@ -626,6 +647,7 @@ def test_get_client_requirements_path(version, expected):
 
 
 @skip_windows("Different hash values for context file paths")
+@mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.12"])
 def test_image_stability_on_2023_12(servicer, client, test_dir):
     def get_hash(img: Image) -> str:
         stub = Stub(image=img)

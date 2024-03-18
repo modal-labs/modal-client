@@ -8,8 +8,9 @@ import warnings
 from dataclasses import dataclass
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, cast, get_args
 
+from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -21,13 +22,27 @@ from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from .client import _Client
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret
+
+if typing.TYPE_CHECKING:
+    import modal.functions
+
+
+# This is used for both type checking and runtime validation
+ImageBuilderVersion = Literal["2023.12", "PREVIEW"]
+# TODO How can we require that version-dependent parmeters specify values for *all* versions?
+
+
+def _default_image():
+    """Single source of truth for the default image, which we reference from a number of places."""
+    return _Image.debian_slim()
 
 
 def _validate_python_version(version: str) -> None:
@@ -120,6 +135,40 @@ def _make_pip_install_args(
     return args
 
 
+async def _get_builder_version() -> ImageBuilderVersion:
+    async def lookup_version() -> str:
+        client = await _Client.from_env()
+        resp = await client.stub.ImageBuilderVersionLookup(Empty())
+        return resp.version
+
+    def check_version_is_supported(version: str) -> ImageBuilderVersion:
+        # Special case "PREVIEW": we allow, but don't advertise it, as it's intended for development
+        supported_versions: Set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
+        if version not in supported_versions:
+            if version < min(supported_versions):
+                remedy = "client library"
+            else:
+                remedy = "image builder version using the Modal dashboard"
+            raise VersionError(
+                "This version of the modal client supports the following image builder versions:"
+                f" {supported_versions - {'PREVIEW'}!r}"
+                f" You are using image builder {version!r}. Please update your {remedy}."
+            )
+        return cast(ImageBuilderVersion, version)  # Not sure why mypy can't figure this out itself
+
+    # We're mutating an attribute on the _Image object for the following reasons:
+    # - We might need to know the version for each layer of the image, and we don't want superfluous RPCs
+    # - We don't want to resolve the lookup in global scope because importing modal shouldn't require Auth
+    # - We don't mutate any state on _Image in image construction methods, we create a new object each time
+    if _Image.builder_version is None:
+        if config_version := config.get("image_builder_version"):
+            _Image.builder_version = check_version_is_supported(config_version)
+        else:
+            _Image.builder_version = check_version_is_supported(await lookup_version())
+
+    return _Image.builder_version
+
+
 class _ImageRegistryConfig:
     """mdmd:hidden"""
 
@@ -139,10 +188,6 @@ class _ImageRegistryConfig:
         )
 
 
-if typing.TYPE_CHECKING:
-    import modal.functions
-
-
 @dataclass
 class DockerfileSpec:
     # Ideally we would use field() with default_factory=, but doesn't work with synchronicity type-stub gen
@@ -159,6 +204,7 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
+    builder_version: Optional[ImageBuilderVersion] = None
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
@@ -211,6 +257,8 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+            builder_version = await _get_builder_version()
+
             if dockerfile_function is None:
                 dockerfile = DockerfileSpec(commands=[], context_files={})
             else:
@@ -287,6 +335,7 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id=build_function_id,
                 force_build=config.get("force_build") or force_build,
                 namespace=_namespace,
+                builder_version=builder_version,
             )
             resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
             image_id = resp.image_id
@@ -344,7 +393,12 @@ class _Image(_Object, type_prefix="im"):
         obj.force_build = force_build
         return obj
 
-    def extend(self, **kwargs) -> "_Image":
+    def extend(
+        self,
+        *,
+        dockerfile_commands: Union[List[str], Callable[[], List[str]]] = None,
+        **kwargs,
+    ) -> "_Image":
         """Deprecated! This is a low-level method not intended to be part of the public API."""
         deprecation_warning(
             (2024, 3, 7),
