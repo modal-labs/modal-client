@@ -239,9 +239,10 @@ class _Invocation:
         assert client.stub
         item = await _create_input(args, kwargs, client)
 
+        parent_input_id = current_input_id() if detached else None
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
-            parent_input_id=current_input_id() if detached else None,
+            parent_input_id=parent_input_id or "",
             function_call_type=api_pb2.FUNCTION_CALL_TYPE_UNARY,
             pipelined_inputs=[item],
         )
