@@ -78,15 +78,18 @@ class _Dict(_Object, type_prefix="di"):
     @asynccontextmanager
     async def ephemeral(
         cls: Type["_Dict"],
+        data: Optional[dict] = None,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Dict"]:
         if client is None:
             client = await _Client.from_env()
+        serialized = _serialize_dict(data if data is not None else {})
         request = api_pb2.DictGetOrCreateRequest(
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
             environment_name=_get_environment_name(environment_name),
+            data=serialized,
         )
         response = await client.stub.DictGetOrCreate(request)
         async with TaskContext() as tc:

@@ -31,9 +31,10 @@ def test_dict_deploy(servicer, client):
 
 def test_dict_ephemeral(servicer, client):
     assert servicer.n_dict_heartbeats == 0
-    with Dict.ephemeral(client=client, _heartbeat_sleep=1) as d:
+    with Dict.ephemeral({"bar": 123}, client=client, _heartbeat_sleep=1) as d:
         d["foo"] = 42
-        assert d.len() == 1
+        assert d.len() == 2
         assert d["foo"] == 42
+        assert d["bar"] == 123
         time.sleep(1.5)  # Make time for 2 heartbeats
     assert servicer.n_dict_heartbeats == 2
