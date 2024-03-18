@@ -34,7 +34,7 @@ def write_to_fd(fd: int, data: bytes):
 
 
 @contextlib.asynccontextmanager
-async def stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw_terminal=False):
+async def stream_from_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw_terminal=False):
     """Stream from terminal stdin to the handle_input provided by the method"""
     quit_pipe_read, quit_pipe_write = os.pipe()
 
@@ -75,10 +75,10 @@ async def stream_stdin(handle_input: Callable[[bytes, int], Coroutine], use_raw_
 
 
 async def connect_to_terminal(
-    # Handles data read from stdin.
+    # Handles data read from stdin. Inputs are the stdin data and message index.
     handle_stdin: Callable[[bytes, int], Coroutine],
-    # Creates a coroutine that streams data to stdout/stderr.
-    stream_stdio: Callable[[asyncio.Event], Coroutine[None, None, int]],
+    # Creates a coroutine that streams data to stdout/stderr. Returns the exit status.
+    stream_to_stdio: Callable[[asyncio.Event], Coroutine[None, None, int]],
     pty: bool = False,
     connecting_status: Optional[rich.status.Status] = None,
 ):
@@ -95,13 +95,13 @@ async def connect_to_terminal(
 
     on_connect = asyncio.Event()
     async with TaskContext() as tc:
-        exec_output_task = tc.create_task(stream_stdio(on_connect))
+        exec_output_task = tc.create_task(stream_to_stdio(on_connect))
         try:
             # time out if we can't connect to the server fast enough
             await asyncio.wait_for(on_connect.wait(), timeout=15)
             stop_connecting_status()
 
-            async with stream_stdin(handle_stdin, use_raw_terminal=pty):
+            async with stream_from_stdin(handle_stdin, use_raw_terminal=pty):
                 exit_status = await exec_output_task
 
             if exit_status != 0:

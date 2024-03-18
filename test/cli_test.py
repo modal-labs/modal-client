@@ -356,7 +356,7 @@ def mock_shell_pty(servicer):
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
     ), mock.patch("modal.runner.get_pty_info", mock_get_pty_info), mock.patch(
-        "modal._utils.shell_utils.stream_stdin", asyncnullcontext
+        "modal._utils.shell_utils.stream_from_stdin", asyncnullcontext
     ), mock.patch("modal._sandbox_shell.write_to_fd", write_to_fd):
         yield captured_out
 
@@ -368,7 +368,7 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 
     # We need to send "exit\n" to the sandbox, otherwise sandbox.stdout.read() will not terminate
     # as it hasn't received an EOF.
-    servicer.add_to_sandbox_pending_cmds([b'echo "Hello World"\n', b"exit\n"])
+    servicer.add_shell_cmds([b'echo "Hello World"\n', b"exit\n"])
     # Function is explicitly specified
     _run(["shell", stub_file.as_posix() + "::foo"])
 
