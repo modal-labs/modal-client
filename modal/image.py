@@ -7,8 +7,9 @@ import typing
 import warnings
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, cast, get_args
 
+from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -16,18 +17,32 @@ from modal_proto import api_pb2
 
 from ._resolver import Resolver
 from ._serialization import serialize
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import run_coro_blocking, synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 from .app import is_local
+from .client import _Client
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret
+
+if typing.TYPE_CHECKING:
+    import modal.functions
+
+
+ImageBuilderVersion = Literal["2023.12", "PREVIEW"]
+SUPPORTED_IMAGE_BUILDER_VERSIONS: Set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
+IMAGE_BUILDER_VERSION: Optional[ImageBuilderVersion] = None
+
+
+def _default_image():
+    """Single source of truth for the default image, which we reference from a number of places."""
+    return _Image.debian_slim()
 
 
 def _validate_python_version(version: str) -> None:
@@ -120,6 +135,46 @@ def _make_pip_install_args(
     return args
 
 
+def _get_builder_version() -> ImageBuilderVersion:
+    if not is_local():
+        # When running in the container, it doesn't actually matter what we return here,
+        # we just neet to make sure that the code can run without raising / hanging.
+        return sorted(SUPPORTED_IMAGE_BUILDER_VERSIONS)[0]
+
+    async def lookup_version() -> str:
+        client = await _Client.from_env()
+        resp = await client.stub.ImageBuilderVersionLookup(Empty())
+        return resp.version
+
+    def check_version_is_supported(version: str) -> ImageBuilderVersion:
+        # Special case "PREVIEW": we allow, but don't advertise it, as it's intended for development
+        if version not in SUPPORTED_IMAGE_BUILDER_VERSIONS:
+            if version < min(SUPPORTED_IMAGE_BUILDER_VERSIONS):
+                remedy = "client library"
+            else:
+                remedy = "image builder version using the Modal dashboard"
+            raise VersionError(
+                "This version of the modal client supports the following image builder versions:"
+                f" {SUPPORTED_IMAGE_BUILDER_VERSIONS - {'PREVIEW'}!r}"
+                f" You are using image builder {version!r}. Please update your {remedy}."
+            )
+        return cast(ImageBuilderVersion, version)  # Not sure why mypy can't figure this out itself
+
+    # Ugly, but using a global variable here for the following reasons:
+    # - We might need to know the version in multiple image builder methods, and don't want superfluous RPCs
+    # - We don't want to resolve the lookup in global scope because importing modal shouldn't require Auth
+    # - We don't maintain any Image state across chained method calls
+    # - I don't think it can be an Image attribute b/c of synchronicity? That would stil be globalish anyway.
+    global IMAGE_BUILDER_VERSION
+    if IMAGE_BUILDER_VERSION is None:
+        if config_version := config.get("image_builder_version"):
+            IMAGE_BUILDER_VERSION = check_version_is_supported(config_version)
+        else:
+            IMAGE_BUILDER_VERSION = check_version_is_supported(run_coro_blocking(lookup_version()))
+
+    return IMAGE_BUILDER_VERSION
+
+
 class _ImageRegistryConfig:
     """mdmd:hidden"""
 
@@ -137,10 +192,6 @@ class _ImageRegistryConfig:
             registry_auth_type=self.registry_auth_type,
             secret_id=(self.secret.object_id if self.secret else None),
         )
-
-
-if typing.TYPE_CHECKING:
-    import modal.functions
 
 
 class _Image(_Object, type_prefix="im"):
@@ -250,6 +301,8 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id = None
                 _build_function = None
 
+            builder_version = _get_builder_version()
+
             dockerfile_commands_list: List[str]
             if callable(dockerfile_commands):
                 # It's a closure (see DockerfileImage)
@@ -278,6 +331,7 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id=build_function_id,
                 force_build=config.get("force_build") or force_build,
                 namespace=_namespace,
+                builder_version=builder_version,
             )
             resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
             image_id = resp.image_id
@@ -1185,9 +1239,10 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
+        builder_version = _get_builder_version()
         python_version = _dockerhub_python_version(python_version)
-
-        requirements_path = _get_client_requirements_path(python_version)
+        if builder_version in {"2023.12", "PREVIEW"}:
+            requirements_path = _get_client_requirements_path(python_version)
         dockerfile_commands = [
             f"FROM python:{python_version}-slim-bullseye",
             "COPY /modal_requirements.txt /modal_requirements.txt",

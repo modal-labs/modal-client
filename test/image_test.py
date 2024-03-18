@@ -9,7 +9,7 @@ from unittest import mock
 
 from modal import Image, Mount, Secret, Stub, build, gpu, method
 from modal._serialization import serialize
-from modal.exception import DeprecationError, InvalidError, NotFoundError
+from modal.exception import DeprecationError, InvalidError, NotFoundError, VersionError
 from modal.image import _dockerhub_python_version, _get_client_requirements_path
 from modal_proto import api_pb2
 
@@ -430,6 +430,27 @@ def test_image_env(client, servicer):
     with stub.run(client=client):
         layers = get_image_layers(stub["image"].object_id, servicer)
         assert any("ENV HELLO=" in cmd and "world!" in cmd for cmd in layers[0].dockerfile_commands)
+
+
+@mock.patch("modal.image.IMAGE_BUILDER_VERSION", None)
+@mock.patch("modal.image.SUPPORTED_IMAGE_BUILDER_VERSIONS", {"2000.01"})
+@mock.patch("test.conftest.SUPPORTED_IMAGE_BUILDER_VERSIONS", {"2000.01"})
+def test_image_builder_version(client, servicer, server_url_env):
+    stub = Stub(image=Image.debian_slim())
+    with stub.run(client=client):
+        assert servicer.image_builder_versions
+        for version in servicer.image_builder_versions.values():
+            assert version == "2000.01"
+
+
+@mock.patch("modal.image.IMAGE_BUILDER_VERSION", None)
+@mock.patch("modal.image.SUPPORTED_IMAGE_BUILDER_VERSIONS", {"2000.01"})
+@mock.patch("test.conftest.SUPPORTED_IMAGE_BUILDER_VERSIONS", {"2023.01"})
+def test_image_builder_supported_versions(client, servicer, server_url_env):
+    with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
+        stub = Stub(image=Image.debian_slim())
+        with stub.run(client=client):
+            pass
 
 
 def test_image_gpu(client, servicer):
