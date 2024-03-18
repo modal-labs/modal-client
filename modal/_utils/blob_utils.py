@@ -168,22 +168,36 @@ async def _upload_to_s3_url(
 
 
 async def perform_multipart_upload(
-    data_file: BinaryIO,
+    data_file: Union[io.BytesIO, io.FileIO],
     *,
     content_length: int,
     max_part_size: int,
     part_urls: List[str],
     completion_url: str,
+    upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
 ):
     upload_coros = []
     file_read_lock = asyncio.Lock()
     file_offset = 0
     num_bytes_left = content_length
 
-    for part_number, part_url in enumerate(part_urls, start=1):
+    # Give each part its own IO reader object to avoid needing to
+    # lock access to the reader's position pointer.
+    try:
+        filename = data_file.name
+        data_file_copies = [open(filename, "rb") for _ in range(len(part_urls))]
+    except AttributeError:
+        view = data_file.getbuffer()
+        data_file_copies = [io.BytesIO(view) for _ in range(len(part_urls))]
+
+    for part_number, (data_file_copy, part_url) in enumerate(zip(data_file_copies, part_urls), start=1):
         part_length_bytes = min(num_bytes_left, max_part_size)
         part_payload = BytesIOSegmentPayload(
-            data_file, file_read_lock, segment_start=file_offset, segment_length=part_length_bytes
+            data_file_copy,
+            file_read_lock,
+            segment_start=file_offset,
+            segment_length=part_length_bytes,
+            chunk_size=upload_chunk_size,
         )
         upload_coros.append(_upload_to_s3_url(part_url, payload=part_payload, content_type=None))
         num_bytes_left -= part_length_bytes
