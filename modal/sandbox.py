@@ -32,7 +32,7 @@ class _LogsReader:
     As an asynchronous iterable, the object supports the async for statement.
     **Usage**
 
-    ```python
+    ```python notest
     sandbox = stub.app.spawn_sandbox("bash", "-c", "while true; do echo foo; sleep 1; done")
     async for message in sandbox.stdout:
         print(f"Message: {message}")
