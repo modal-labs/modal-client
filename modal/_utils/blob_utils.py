@@ -37,11 +37,10 @@ DEFAULT_SEGMENT_CHUNK_SIZE = 2**24
 
 
 class BytesIOSegmentPayload(BytesIOPayload):
-    """Modified bytes payload for concurrent sends of chunks from the same file
+    """Modified bytes payload for concurrent sends of chunks from the same file.
 
     Adds:
     * read limit using remaining_bytes, in order to split files across streams
-    * read lock to prevent file object seeks by concurrent parts
     * larger read chunk (to prevent excessive read contention between parts)
     * calculates an md5 for the segment
 
@@ -50,8 +49,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
 
     def __init__(
         self,
-        bytes_io: BinaryIO,
-        read_lock: asyncio.Lock,
+        bytes_io: BinaryIO,  # should *not* be shared as IO position modification is not locked
         segment_start: int,
         segment_length: int,
         chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
@@ -64,7 +62,6 @@ class BytesIOSegmentPayload(BytesIOPayload):
         # seek to start of file segment we are interested in, in order to make .size() evaluate correctly
         self._value.seek(self.initial_seek_pos + segment_start)
         assert self.segment_length <= super().size
-        self.read_lock = read_lock
         self.chunk_size = chunk_size
         self.reset_state()
 
@@ -91,14 +88,10 @@ class BytesIOSegmentPayload(BytesIOPayload):
         loop = asyncio.get_event_loop()
 
         async def safe_read():
-            # concurrency safe reading from same file object
-            async with self.read_lock:
-                pos = self._value.tell()
-                read_start = self.initial_seek_pos + self.segment_start + self.num_bytes_read
-                self._value.seek(read_start)
-                num_bytes = min(self.chunk_size, self.remaining_bytes())
-                chunk = await loop.run_in_executor(None, self._value.read, num_bytes)
-                self._value.seek(pos)
+            read_start = self.initial_seek_pos + self.segment_start + self.num_bytes_read
+            self._value.seek(read_start)
+            num_bytes = min(self.chunk_size, self.remaining_bytes())
+            chunk = await loop.run_in_executor(None, self._value.read, num_bytes)
 
             await loop.run_in_executor(None, self._md5_checksum.update, chunk)
             self.num_bytes_read += len(chunk)
@@ -177,7 +170,6 @@ async def perform_multipart_upload(
     upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
 ):
     upload_coros = []
-    file_read_lock = asyncio.Lock()
     file_offset = 0
     num_bytes_left = content_length
 
@@ -185,16 +177,15 @@ async def perform_multipart_upload(
     # lock access to the reader's position pointer.
     try:
         filename = data_file.name
-        data_file_copies = [open(filename, "rb") for _ in range(len(part_urls))]
+        data_file_readers = [open(filename, "rb") for _ in range(len(part_urls))]
     except AttributeError:
-        view = data_file.getbuffer()
-        data_file_copies = [io.BytesIO(view) for _ in range(len(part_urls))]
+        view = data_file.getbuffer()  # does not copy data
+        data_file_readers = [io.BytesIO(view) for _ in range(len(part_urls))]
 
-    for part_number, (data_file_copy, part_url) in enumerate(zip(data_file_copies, part_urls), start=1):
+    for part_number, (data_file_rdr, part_url) in enumerate(zip(data_file_readers, part_urls), start=1):
         part_length_bytes = min(num_bytes_left, max_part_size)
         part_payload = BytesIOSegmentPayload(
-            data_file_copy,
-            file_read_lock,
+            data_file_rdr,
             segment_start=file_offset,
             segment_length=part_length_bytes,
             chunk_size=upload_chunk_size,
@@ -267,8 +258,7 @@ async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO]
             upload_chunk_size=DEFAULT_SEGMENT_CHUNK_SIZE,
         )
     else:
-        lock = asyncio.Lock()  # not strictly necessary here
-        payload = BytesIOSegmentPayload(data, lock, segment_start=0, segment_length=content_length)
+        payload = BytesIOSegmentPayload(data, segment_start=0, segment_length=content_length)
         await _upload_to_s3_url(
             resp.upload_url,
             payload,
