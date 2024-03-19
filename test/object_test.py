@@ -8,7 +8,8 @@ from modal.exception import DeprecationError, InvalidError
 @pytest.mark.asyncio
 async def test_async_factory(client):
     stub = Stub()
-    stub["my_factory"] = Queue.new()
+    with pytest.warns(DeprecationError):
+        stub["my_factory"] = Queue.new()
     async with stub.run(client=client):
         assert isinstance(stub["my_factory"], Queue)
         assert stub["my_factory"].object_id == "qu-1"

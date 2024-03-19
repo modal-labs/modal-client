@@ -38,8 +38,9 @@ async def test_kwargs(servicer, client):
 @pytest.mark.asyncio
 async def test_attrs(servicer, client):
     stub = Stub()
-    stub.d = Dict.new()
-    stub.q = Queue.new()
+    with pytest.warns(DeprecationError):
+        stub.d = Dict.new()
+        stub.q = Queue.new()
     async with stub.run(client=client):
         await stub.d.put.aio("foo", "bar")  # type: ignore
         await stub.q.put.aio("baz")  # type: ignore
@@ -256,8 +257,8 @@ def test_set_image_on_stub_as_attribute():
 def test_redeploy_delete_objects(servicer, client):
     # Deploy an app with objects d1 and d2
     stub = Stub()
-    stub.d1 = Dict.new()
-    stub.d2 = Dict.new()
+    stub.function(name="d1")(dummy)
+    stub.function(name="d2")(dummy)
     app = deploy_stub(stub, "xyz", client=client)
 
     # Check objects
@@ -265,8 +266,8 @@ def test_redeploy_delete_objects(servicer, client):
 
     # Deploy an app with objects d2 and d3
     stub = Stub()
-    stub.d2 = Dict.new()
-    stub.d3 = Dict.new()
+    stub.function(name="d2")(dummy)
+    stub.function(name="d3")(dummy)
     app = deploy_stub(stub, "xyz", client=client)
 
     # Make sure d1 is deleted
@@ -276,13 +277,15 @@ def test_redeploy_delete_objects(servicer, client):
 @pytest.mark.asyncio
 async def test_unhydrate(servicer, client):
     stub = Stub()
-    stub.d = Dict.new()
-    assert not stub.d.is_hydrated
+
+    f = stub.function()(dummy)
+
+    assert not f.is_hydrated
     async with stub.run(client=client):
-        assert stub.d.is_hydrated
+        assert f.is_hydrated
 
     # After app finishes, it should unhydrate
-    assert not stub.d.is_hydrated
+    assert not f.is_hydrated
 
 
 def test_keyboard_interrupt(servicer, client):

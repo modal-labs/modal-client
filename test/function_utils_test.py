@@ -7,8 +7,8 @@ from modal._utils.function_utils import FunctionInfo, get_referred_objects, meth
 from modal.exception import InvalidError
 from modal.object import Object
 
-q1 = Queue.new()
-q2 = Queue.new()
+q1 = Queue.from_name("q1", create_if_missing=True)
+q2 = Queue.from_name("q2", create_if_missing=True)
 
 
 def f1():
