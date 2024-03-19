@@ -48,6 +48,11 @@ class VolumeFile:
     mode: int
 
 
+@pytest.fixture(scope="session", autouse=True)
+def set_env():
+    os.environ["MODAL_ENVIRONMENT"] = "main"
+
+
 @patch_mock_servicer
 class MockClientServicer(api_grpc.ModalClientBase):
     # TODO(erikbern): add more annotations
