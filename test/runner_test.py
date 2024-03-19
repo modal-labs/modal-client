@@ -1,8 +1,13 @@
 # Copyright Modal Labs 2023
+import asyncio
 import pytest
 import typing
 
+import grpclib.server
+
 import modal
+import modal._serialization
+from modal.exception import AppStopped
 from modal.runner import run_stub
 from modal_proto import api_pb2
 
@@ -67,3 +72,66 @@ def test_run_stub_custom_env_with_refs(servicer, client, monkeypatch):
 
     secret_get_or_create_2 = ctx.pop_request("SecretGetOrCreate")
     assert secret_get_or_create_2.environment_name == "third"
+
+
+def _foo():
+    pass
+
+
+@pytest.mark.timeout(5.0)
+def test_run_stub_exits_when_app_done(servicer, client):
+    dummy_stub = modal.Stub()
+
+    foo = dummy_stub.function()(_foo)
+    servicer.log_sleep = 0.05
+
+    stop_app = asyncio.Event()
+
+    async def MockAppGetLogs(
+        mock_servicer, stream: grpclib.server.Stream[api_pb2.AppGetLogsRequest, api_pb2.TaskLogsBatch]
+    ):
+        await stream.recv_message()
+        await stop_app.wait()
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    async def MockFunctionGetOutputs(mock_servicer, stream):
+        await stream.recv_message()
+        stop_app.set()
+        stop_app.clear()
+        await asyncio.sleep(0.1)  # should be aborted before this sleep finishes
+        await stream.send_message(
+            api_pb2.FunctionGetOutputsResponse(
+                outputs=[
+                    api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                            data=modal._serialization.serialize(123),
+                        )
+                    )
+                ]
+            )
+        )
+
+    # test .remote()
+    with servicer.intercept() as ctx:
+        ctx.override_default("FunctionGetOutputs", MockFunctionGetOutputs)
+        ctx.override_default("AppGetLogs", MockAppGetLogs)
+        with dummy_stub.run(client=client):
+            with pytest.raises(AppStopped):
+                foo.remote()
+
+        # test .map()
+        with dummy_stub.run(client=client):
+            with pytest.raises(AppStopped):
+                for _ in foo.map([1, 2, 3]):
+                    pass
+
+    # test .remote() on a foreign function (should not raise)
+    with servicer.intercept() as ctx:
+        ctx.override_default("AppGetLogs", MockAppGetLogs)
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id="fu-should-return"))
+        ctx.override_default("FunctionGetOutputs", MockFunctionGetOutputs)
+        func = modal.Function.lookup("some_app", "some_func", client=client)
+
+        with dummy_stub.run(client=client):
+            assert 123 == func.remote()  # should not be aborted

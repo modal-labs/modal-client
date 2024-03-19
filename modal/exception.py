@@ -88,6 +88,12 @@ class DeprecationError(UserWarning):
     # Overloading it to evade the default filter, which excludes __main__.
 
 
+class AppStopped(Error):
+    """Raised by function result pollers (.remote() etc) if an app is stopped during execution"""
+
+    pass
+
+
 class PendingDeprecationError(UserWarning):
     """Soon to be deprecated feature. Only used intermittently because of multi-repo concerns."""
 

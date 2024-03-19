@@ -113,9 +113,9 @@ manually, for example:
     return exc
 
 
-async def _process_result(result: api_pb2.GenericResult, data_format: int, stub, client=None):
+async def _process_result(result: api_pb2.GenericResult, data_format: int, grpc_api, client=None):
     if result.WhichOneof("data_oneof") == "data_blob_id":
-        data = await blob_download(result.data_blob_id, stub)
+        data = await blob_download(result.data_blob_id, grpc_api)
     else:
         data = result.data
 
@@ -228,8 +228,13 @@ class _OutputValue:
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
-    def __init__(self, stub: api_grpc.ModalClientStub, function_call_id: str, client: _Client):
-        self.stub = stub
+    def __init__(
+        self,
+        grpc_api: api_grpc.ModalClientStub,
+        function_call_id: str,
+        client: _Client,
+    ):
+        self.grpc_api = grpc_api
         self.client = client  # Used by the deserializer.
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
@@ -262,7 +267,7 @@ class _Invocation:
             raise Exception("Could not create function call - the input queue seems to be full")
         return _Invocation(client.stub, function_call_id, client)
 
-    async def pop_function_call_outputs(
+    async def _pop_function_call_outputs(
         self, timeout: Optional[float], clear_on_success: bool
     ) -> AsyncIterator[api_pb2.FunctionGetOutputsItem]:
         t0 = time.time()
@@ -280,10 +285,11 @@ class _Invocation:
                 clear_on_success=clear_on_success,
             )
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
-                self.stub.FunctionGetOutputs,
+                self.grpc_api.FunctionGetOutputs,
                 request,
                 attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
+
             if len(response.outputs) > 0:
                 for item in response.outputs:
                     yield item
@@ -298,10 +304,10 @@ class _Invocation:
     async def run_function(self) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
-            await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True))
+            await stream.list(self._pop_function_call_outputs(timeout=None, clear_on_success=True))
         )[0]
         assert not item.result.gen_status
-        return await _process_result(item.result, item.data_format, self.stub, self.client)
+        return await _process_result(item.result, item.data_format, self.grpc_api, self.client)
 
     async def poll_function(self, timeout: Optional[float] = None):
         """Waits up to timeout for a result from a function.
@@ -310,13 +316,13 @@ class _Invocation:
         cancellation-safe.
         """
         items: List[api_pb2.FunctionGetOutputsItem] = await stream.list(
-            self.pop_function_call_outputs(timeout=timeout, clear_on_success=False)
+            self._pop_function_call_outputs(timeout=timeout, clear_on_success=False)
         )
 
         if len(items) == 0:
             raise TimeoutError()
 
-        return await _process_result(items[0].result, items[0].data_format, self.stub, self.client)
+        return await _process_result(items[0].result, items[0].data_format, self.grpc_api, self.client)
 
     async def run_generator(self):
         data_stream = _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
@@ -564,7 +570,7 @@ class _Function(_Object, type_prefix="fu"):
     # TODO: more type annotations
     _info: Optional[FunctionInfo]
     _all_mounts: Collection[_Mount]
-    _stub: "modal.stub._Stub"
+    _stub: Optional["modal.stub._Stub"] = None  # not set in case of external lookups
     _obj: Any
     _web_url: Optional[str]
     _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
@@ -1107,6 +1113,7 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def stub(self) -> "modal.stub._Stub":
         """mdmd:hidden"""
+        assert self._stub
         return self._stub
 
     @property
@@ -1133,9 +1140,6 @@ class _Function(_Object, type_prefix="fu"):
         self._is_generator = None
         self._web_url = None
         self._output_mgr: Optional[OutputManager] = None
-        self._mute_cancellation = (
-            False  # set when a user terminates the app intentionally, to prevent useless traceback spam
-        )
         self._function_name = None
         self._info = None
 
@@ -1159,9 +1163,6 @@ class _Function(_Object, type_prefix="fu"):
             ),
             web_url=self._web_url or "",
         )
-
-    def _set_mute_cancellation(self, value: bool = True):
-        self._mute_cancellation = value
 
     def _set_output_mgr(self, output_mgr: OutputManager):
         self._output_mgr = output_mgr
@@ -1194,8 +1195,7 @@ class _Function(_Object, type_prefix="fu"):
         count_update_callback = (
             self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
         )
-
-        async for item in _map_invocation(
+        it = _map_invocation(
             self.object_id,
             input_stream,
             kwargs,
@@ -1203,17 +1203,17 @@ class _Function(_Object, type_prefix="fu"):
             order_outputs,
             return_exceptions,
             count_update_callback,
-        ):
-            yield item
+        )
+
+        while 1:
+            try:
+                yield await self._call_abort_on_stub_termination(it.__anext__())
+            except StopAsyncIteration:
+                break
 
     async def _call_function(self, args, kwargs):
         invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
-        try:
-            return await invocation.run_function()
-        except asyncio.CancelledError:
-            # this can happen if the user terminates a program, triggering a cancellation cascade
-            if not self._mute_cancellation:
-                raise
+        return await invocation.run_function()
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
@@ -1228,7 +1228,12 @@ class _Function(_Object, type_prefix="fu"):
 
     @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
-        return await _Invocation.create(self.object_id, args, kwargs, self._client)
+        return await _Invocation.create(
+            self.object_id,
+            args,
+            kwargs,
+            self._client,
+        )
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
@@ -1321,6 +1326,21 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
 
+    async def _call_abort_on_stub_termination(self, coro):
+        if not self._stub:
+            return await coro
+
+        termination = self.stub._termination_error_future()
+        response_future = asyncio.ensure_future(coro)
+
+        done, pending = await asyncio.wait([response_future, termination], return_when=asyncio.FIRST_COMPLETED)
+        if response_future in done:
+            return response_future.result()
+        else:
+            response_future.cancel()
+            # termination error
+            raise termination.result()
+
     @synchronizer.no_io_translation
     @live_method
     async def remote(self, *args, **kwargs) -> Any:
@@ -1337,8 +1357,7 @@ class _Function(_Object, type_prefix="fu"):
             raise InvalidError(
                 "A generator function cannot be called with `.remote(...)`. Use `.remote_gen(...)` instead."
             )
-
-        return await self._call_function(args, kwargs)
+        return await self._call_abort_on_stub_termination(self._call_function(args, kwargs))
 
     @synchronizer.no_io_translation
     @live_method_gen

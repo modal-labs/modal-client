@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import inspect
 import os
 import typing
@@ -118,6 +119,8 @@ class _Stub:
     _container_app: Optional[_ContainerApp]
     _local_app: Optional[_LocalApp]
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
+
+    _termination_exception: Optional[asyncio.Future] = None
 
     @typechecked
     def __init__(
@@ -291,10 +294,12 @@ class _Stub:
     @asynccontextmanager
     async def _set_local_app(self, app: _LocalApp) -> AsyncGenerator[None, None]:
         self._local_app = app
+        self._termination_exception = asyncio.Future()
         try:
             yield
         finally:
             self._local_app = None
+            self._termination_exception = None
 
     @asynccontextmanager
     async def run(
@@ -773,6 +778,21 @@ class _Stub:
                 )
 
             self._add_object(tag, object)
+
+    def _termination_error_future(self) -> asyncio.Future:
+        # can be awaited to in order to gracefully shut down tasks
+        if self._termination_exception is None:
+            self._termination_exception = asyncio.Future()  # lazily set, to get the right event loop
+        return self._termination_exception
+
+    def _set_terminating(self, exception: BaseException):
+        # intentionally not using .set_exception since we want it as a result
+        # so we can listen without having to deal with the exception and shut
+        # down loops gracefully when it resolves to *anything*
+        fut = self._termination_error_future()
+        if fut.done():
+            return
+        self._termination_error_future().set_result(exception)
 
 
 Stub = synchronize_api(_Stub)

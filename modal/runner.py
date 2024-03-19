@@ -18,7 +18,7 @@ from ._utils.grpc_utils import retry_transient_errors
 from .app import _LocalApp, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config
-from .exception import InteractiveTimeoutError, InvalidError, _CliUserExecutionError
+from .exception import AppStopped, InteractiveTimeoutError, InvalidError, _CliUserExecutionError
 
 if TYPE_CHECKING:
     from .stub import _Stub
@@ -98,6 +98,7 @@ async def _run_stub(
         # Start logs loop
         if not shell:
             logs_loop = tc.create_task(get_app_logs_loop(app.app_id, client, output_mgr))
+            logs_loop.add_done_callback(lambda _: stub._set_terminating(AppStopped()))
 
         exc_info: Optional[BaseException] = None
         try:
@@ -124,9 +125,7 @@ async def _run_stub(
                     yield stub
         except KeyboardInterrupt as e:
             exc_info = e
-            # mute cancellation errors on all function handles to prevent exception spam
-            for obj in stub.registered_functions.values():
-                obj._set_mute_cancellation(True)
+            stub._set_terminating(e)  # aborts any function calls gracefully, avoiding cancellation tracebacks
 
             if detach:
                 output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
@@ -142,6 +141,7 @@ async def _run_stub(
                 output_mgr.print_if_visible(
                     "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                 )
+            raise e
         except BaseException as e:
             exc_info = e
             raise e

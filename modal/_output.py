@@ -12,6 +12,8 @@ from datetime import timedelta
 from typing import Callable, Optional
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
+from modal_utils.async_utils import TaskContext
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.panel import Panel
@@ -33,7 +35,6 @@ from rich.text import Text
 from modal_proto import api_pb2
 
 from ._container_exec import handle_exec_input
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 from .client import _Client
 from .config import logger
 
@@ -387,7 +388,7 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
 
 
 async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputManager):
-    last_log_batch_entry_id = ""
+    last_log_batch_entry_id: Optional[str] = ""  # "" means stream from start, None means shut down
     pty_shell_finish_event: Optional[asyncio.Event] = None
     pty_shell_task_id: Optional[str] = None
 
@@ -420,7 +421,7 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
         elif log.data:
             await output_mgr.put_log_content(log)
 
-    async def _get_logs():
+    async def _get_logs(task_context):
         nonlocal last_log_batch_entry_id, pty_shell_finish_event, pty_shell_task_id
 
         request = api_pb2.AppGetLogsRequest(
@@ -447,14 +448,16 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
                 pass
             elif log_batch.pty_exec_id:
                 if pty_shell_finish_event:
-                    print("ERROR: concurrent PTY shells are not supported.")
+                    logger.error("ERROR: concurrent PTY shells are not supported.")
                 else:
                     output_mgr.flush_lines()
                     output_mgr.hide_status_spinner()
                     output_mgr._visible_progress = False
                     pty_shell_finish_event = asyncio.Event()
                     pty_shell_task_id = log_batch.task_id
-                    asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
+                    task_context.create_task(
+                        stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event)
+                    )
             else:
                 for log in log_batch.items:
                     await _put_log(log_batch, log)
@@ -464,34 +467,35 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
 
         output_mgr.flush_lines()
 
-    while True:
-        try:
-            await _get_logs()
-        except asyncio.CancelledError:
-            # TODO: this should come from the backend maybe
-            app_logs_url = f"https://modal.com/logs/{app_id}"
-            output_mgr.print_if_visible(
-                f"[red]Timed out waiting for logs. [grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
-            )
-            raise
-        except (GRPCError, StreamTerminatedError) as exc:
-            if isinstance(exc, GRPCError):
-                if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                    # Try again if we had a temporary connection drop,
-                    # for example if computer went to sleep.
-                    logger.debug("Log fetching timed out. Retrying ...")
+    async with TaskContext(grace=0.1) as tc:
+        while True:
+            try:
+                await _get_logs(tc)
+            except asyncio.CancelledError:
+                # TODO: this should come from the backend maybe
+                app_logs_url = f"https://modal.com/logs/{app_id}"
+                output_mgr.print_if_visible(
+                    f"[red]Timed out waiting for logs. [grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
+                )
+                raise
+            except (GRPCError, StreamTerminatedError) as exc:
+                if isinstance(exc, GRPCError):
+                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                        # Try again if we had a temporary connection drop,
+                        # for example if computer went to sleep.
+                        logger.debug("Log fetching timed out. Retrying ...")
+                        continue
+                elif isinstance(exc, StreamTerminatedError):
+                    logger.debug("Stream closed. Retrying ...")
                     continue
-            elif isinstance(exc, StreamTerminatedError):
-                logger.debug("Stream closed. Retrying ...")
-                continue
-            raise
-        except Exception as exc:
-            logger.exception(f"Failed to fetch logs: {exc}")
-            await asyncio.sleep(1)
+                raise
+            except Exception as exc:
+                logger.exception(f"Failed to fetch logs: {exc}")
+                await asyncio.sleep(1)
 
-        if last_log_batch_entry_id is None:
-            break
+            if last_log_batch_entry_id is None:
+                break
 
-    await stop_pty_shell()
+        await stop_pty_shell()
 
     logger.debug("Logging exited gracefully")
