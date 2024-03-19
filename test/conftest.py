@@ -90,6 +90,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         }
         self.n_inputs = 0
         self.n_queues = 0
+        self.n_dict_heartbeats = 0
+        self.n_queue_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
         self.mount_contents = {}
@@ -429,11 +431,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = self.deployed_dicts[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             dict_id = f"di-{len(self.dicts)}"
-            self.dicts[dict_id] = {}
+            self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
             self.deployed_dicts[k] = dict_id
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            dict_id = f"di-{len(self.dicts)}"
+            self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
         else:
             raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
+
+    async def DictHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_dict_heartbeats += 1
+        await stream.send_message(Empty())
 
     async def DictClear(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
@@ -768,9 +778,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
             self.deployed_queues[k] = queue_id
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            self.n_queues += 1
+            queue_id = f"qu-{self.n_queues}"
         else:
             raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
+
+    async def QueueHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_queue_heartbeats += 1
+        await stream.send_message(Empty())
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()

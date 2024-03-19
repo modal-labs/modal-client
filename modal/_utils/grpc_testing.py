@@ -2,29 +2,15 @@
 import contextlib
 import inspect
 import logging
-import traceback
+import typing
 from collections import Counter, defaultdict
-from functools import wraps
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Tuple
 
+import grpclib.server
 from grpclib import GRPCError, Status
 
-logging.basicConfig()
-logger = logging.getLogger("mock-server")
-logger.setLevel(logging.INFO)
-
-
-def log_exception(func):
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
-        except Exception as e:
-            logger.error(f"Exception in {func.__name__}: {e}")
-            logger.error(traceback.format_exc())
-            raise  # Re-raise the exception after logging
-
-    return wrapper
+if typing.TYPE_CHECKING:
+    from test.conftest import MockClientServicer
 
 
 def patch_mock_servicer(cls):
@@ -69,29 +55,33 @@ def patch_mock_servicer(cls):
     cls.intercept = intercept
     cls.interception_context = None
 
-    def make_interceptable(method_name, original_method):
-        async def intercepted_method(servicer_self, stream):
-            ctx = servicer_self.interception_context
-            if ctx:
-                intercepted_stream = await InterceptedStream(ctx, method_name, stream).initialize()
-                custom_responder = ctx.next_custom_responder(method_name, intercepted_stream.request_message)
-                if custom_responder:
-                    return await custom_responder(servicer_self, intercepted_stream)
+    def patch_grpc_method(method_name, original_method):
+        async def patched_method(servicer_self, stream):
+            try:
+                ctx = servicer_self.interception_context
+                if ctx:
+                    intercepted_stream = await InterceptedStream(ctx, method_name, stream).initialize()
+                    custom_responder = ctx.next_custom_responder(method_name, intercepted_stream.request_message)
+                    if custom_responder:
+                        return await custom_responder(servicer_self, intercepted_stream)
+                    else:
+                        # use default servicer, but intercept messages for assertions
+                        return await original_method(servicer_self, intercepted_stream)
                 else:
-                    # use default servicer, but intercept messages for assertions
-                    return await original_method(servicer_self, intercepted_stream)
-            else:
-                return await original_method(servicer_self, stream)
+                    return await original_method(servicer_self, stream)
+            except Exception:
+                logging.exception("Error in mock servicer responder:")
+                raise
 
-        return intercepted_method
+        return patched_method
 
     # Fill in the remaining methods on the class
     for name in dir(cls):
         method = getattr(cls, name)
         if getattr(method, "__isabstractmethod__", False):
-            setattr(cls, name, log_exception(make_interceptable(name, fallback)))
+            setattr(cls, name, patch_grpc_method(name, fallback))
         elif name[0].isupper() and inspect.isfunction(method):
-            setattr(cls, name, log_exception(make_interceptable(name, method)))
+            setattr(cls, name, patch_grpc_method(name, method))
 
     cls.__abstractmethods__ = frozenset()
     return cls
@@ -108,7 +98,7 @@ class InterceptionContext:
     def __init__(self):
         self.calls: List[Tuple[str, Any]] = []  # List[Tuple[method_name, message]]
         self.custom_responses: Dict[str, List[Tuple[Callable[[Any], bool], List[Any]]]] = defaultdict(list)
-        self.custom_defaults: Dict[str, Callable[[Any], Any]] = {}
+        self.custom_defaults: Dict[str, Callable[["MockClientServicer", grpclib.server.Stream], Awaitable[None]]] = {}
 
     def add_recv(self, method_name: str, msg):
         self.calls.append((method_name, msg))
@@ -119,12 +109,18 @@ class InterceptionContext:
         # adds one response to a queue of responses for requests of the specified type
         self.custom_responses[method_name].append((request_filter, [first_payload]))
 
-    def override_default(self, method_name: str, responder: Callable[[Any], Any]):
-        """Replace the default handler for a method. E.g.
+    def set_responder(
+        self, method_name: str, responder: Callable[["MockClientServicer", grpclib.server.Stream], Awaitable[None]]
+    ):
+        """Replace the default responder method. E.g.
 
         ```python notest
+        def custom_responder(servicer, stream):
+            request = stream.recv_message()
+            await stream.send_message(api_pb2.SomeMethodResponse(foo=123))
+
         with servicer.intercept() as ctx:
-            ctx.add_response("SomeMethod", lambda _req: api_pb2.SomeMethodResponse(foo=123))
+            ctx.set_responder("SomeMethod", custom_responder)
         ```
 
         Responses added via `.add_response()` take precedence.
@@ -133,7 +129,6 @@ class InterceptionContext:
 
     def next_custom_responder(self, method_name, request):
         method_responses = self.custom_responses[method_name]
-
         for i, (request_filter, response_messages) in enumerate(method_responses):
             try:
                 request_matches = request_filter(request)
@@ -149,16 +144,13 @@ class InterceptionContext:
             custom_default = self.custom_defaults.get(method_name)
             if not custom_default:
                 return None
-            next_response_messages = [custom_default(request)]
+            return custom_default
 
+        # build a new temporary responder based on the next queued response messages (added via add_response)
         async def responder(servicer_self, stream):
-            try:
-                await stream.recv_message()  # get the input message so we can track that
-                for msg in next_response_messages:
-                    await stream.send_message(msg)
-            except Exception:
-                logging.exception("Error when sending response")
-                raise
+            await stream.recv_message()  # get the input message so we can track that
+            for msg in next_response_messages:
+                await stream.send_message(msg)
 
         return responder
 

@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import pytest
+import time
 
 from modal import Dict, Stub
 
@@ -23,6 +24,19 @@ def test_dict_app(servicer, client):
         assert stub.d["foo"] is None
 
 
-def test_dict_deploy(servicer, client):
-    d = Dict.lookup("xyz", create_if_missing=True, client=client)
+def test_dict_lookup(servicer, client):
+    d = Dict.lookup("xyz", {"foo": "bar"}, create_if_missing=True, client=client)
     d["xyz"] = 123
+    assert d.len() == 2
+    assert d["foo"] == "bar"
+
+
+def test_dict_ephemeral(servicer, client):
+    assert servicer.n_dict_heartbeats == 0
+    with Dict.ephemeral({"bar": 123}, client=client, _heartbeat_sleep=1) as d:
+        d["foo"] = 42
+        assert d.len() == 2
+        assert d["foo"] == 42
+        assert d["bar"] == 123
+        time.sleep(1.5)  # Make time for 2 heartbeats
+    assert servicer.n_dict_heartbeats == 2
