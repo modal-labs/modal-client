@@ -28,27 +28,25 @@ class _Dict(_Object, type_prefix="di"):
 
     **Lifetime of a Dict and its items**
 
-    A `Dict` matches the lifetime of the app it is attached to, but an individual entry will expire 30 days after it was last added to its Dict object.
+    An individual dict entry will expire 30 days after it was last added to its Dict object.
     Because of this, `Dict`s are best not used for
     long-term storage. All data is deleted when the app is stopped.
 
     **Usage**
 
-    Create a new `Dict` with `Dict.new()`, then assign it to a stub or function.
-
     ```python
     from modal import Dict, Stub
 
     stub = Stub()
-    stub.my_dict = Dict.new()
+    my_dict = Dict.from_name("my-persisted_dict", create_if_missing=True)
 
     @stub.local_entrypoint()
     def main():
-        stub.my_dict["some key"] = "some value"
-        stub.my_dict[123] = 456
+        my_dict["some key"] = "some value"
+        my_dict[123] = 456
 
-        assert stub.my_dict["some key"] == "some value"
-        assert stub.my_dict[123] == 456
+        assert my_dict["some key"] == "some value"
+        assert my_dict[123] == 456
     ```
 
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-dicts).
@@ -57,7 +55,11 @@ class _Dict(_Object, type_prefix="di"):
     @typechecked
     @staticmethod
     def new(data: Optional[dict] = None) -> "_Dict":
-        """Create a new Dict, optionally with initial data."""
+        """`Dict.new` is deprecated.
+
+        Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts.
+        """
+        deprecation_warning((2024, 3, 19), Dict.new.__doc__)
 
         async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
@@ -83,6 +85,17 @@ class _Dict(_Object, type_prefix="di"):
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Dict"]:
+        """Creates a new ephemeral dict within a context manager:
+
+        Usage:
+        ```python
+        with Dict.ephemeral() as d:
+            d["foo"] = "bar"
+
+        async with Dict.ephemeral.aio() as d:
+            await d.put.aio("foo", "bar")
+        ```
+        """
         if client is None:
             client = await _Client.from_env()
         serialized = _serialize_dict(data if data is not None else {})
