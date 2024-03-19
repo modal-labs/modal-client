@@ -1619,6 +1619,10 @@ message SharedVolumeGetOrCreateResponse {
   string shared_volume_id = 1;
 }
 
+message SharedVolumeHeartbeatRequest {
+  string shared_volume_id = 1;
+}
+
 message SharedVolumeCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   CloudProvider cloud_provider = 2;
@@ -1817,6 +1821,10 @@ message VolumeGetOrCreateRequest {
 }
 
 message VolumeGetOrCreateResponse {
+  string volume_id = 1;
+}
+
+message VolumeHeartbeatRequest {
   string volume_id = 1;
 }
 
@@ -2094,6 +2102,7 @@ service ModalClient {
   // SharedVolumes
   rpc SharedVolumeGetOrCreate(SharedVolumeGetOrCreateRequest) returns (SharedVolumeGetOrCreateResponse);
   rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
+  rpc SharedVolumeHeartbeat(SharedVolumeHeartbeatRequest) returns (google.protobuf.Empty);
   rpc SharedVolumeList(SharedVolumeListRequest) returns (SharedVolumeListResponse);
   rpc SharedVolumeListFiles(SharedVolumeListFilesRequest) returns (SharedVolumeListFilesResponse);
   rpc SharedVolumeListFilesStream(SharedVolumeListFilesRequest) returns (stream SharedVolumeListFilesResponse);
@@ -2119,6 +2128,7 @@ service ModalClient {
   // Volumes
   rpc VolumeGetOrCreate(VolumeGetOrCreateRequest) returns (VolumeGetOrCreateResponse);
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
+  rpc VolumeHeartbeat(VolumeHeartbeatRequest) returns (google.protobuf.Empty);
   rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);
   rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
