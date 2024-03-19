@@ -1260,7 +1260,6 @@ def test_sigint_termination(servicer, method):
         os.kill(container_process.pid, signal.SIGINT)
 
     stdout, stderr = container_process.communicate(timeout=5)
-    print(stdout, stderr)
     assert container_process.returncode == 0
     assert f"[events:enter_sync,enter_async,{method},exit_sync,exit_async]" in stdout.decode()
     # assert "Traceback" not in stderr.decode()  # TODO (elias): fix sigint during an async function execution printing a long traceback from synchronicity
