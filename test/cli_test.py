@@ -391,18 +391,20 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     # Function is explicitly specified
     _run(["shell", stub_file.as_posix() + "::foo"])
 
+    shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
+
     # first captured message is the empty message the mock server sends
-    assert captured_out[1:] == [(1, b"Hello World\n")]
+    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
     captured_out.clear()
 
     # Function is explicitly specified
     _run(["shell", webhook_stub_file.as_posix() + "::foo"])
-    assert captured_out[1:] == [(1, b"Hello World\n")]
+    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
     captured_out.clear()
 
     # Function must be inferred
     _run(["shell", webhook_stub_file.as_posix()])
-    assert captured_out[1:] == [(1, b"Hello World\n")]
+    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
     captured_out.clear()
 
 
@@ -411,8 +413,7 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _, captured_out = mock_shell_pty
     _run(["shell", "--cmd", "pwd", stub_file.as_posix() + "::foo"])
-    p = subprocess.Popen("pwd", stdout=subprocess.PIPE)
-    expected_output = p.stdout.read()
+    expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
     assert captured_out == [(1, expected_output)]
 
 

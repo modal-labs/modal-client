@@ -47,7 +47,7 @@ class _LogsReader:
         self._client = client
         self._stream = None
         self._last_log_batch_entry_id = ""
-        # Whether the reader received an EOF. Once eof is True, it returns
+        # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
         self.eof = False
 
@@ -126,7 +126,7 @@ class _LogsReader:
         """mdmd:hidden"""
         value = await self._stream.__anext__()
 
-        # The stream yields None if it receives an eof batch.
+        # The stream yields None if it receives an EOF batch.
         if value is None:
             raise StopAsyncIteration
 

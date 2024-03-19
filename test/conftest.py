@@ -152,7 +152,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.sandbox_defs = []
         self.sandbox: asyncio.subprocess.Process = None
-        self.is_shell = False
+        self.sandbox_is_shell = False
+        self.sandbox_shell_prompt = "TEST_PROMPT# "
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
         self.token_flow_localhost_port = None
@@ -796,7 +797,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxCreate(self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
         if self.is_shell_cmds(request.definition.entrypoint_args):
-            self.is_shell = True
+            self.sandbox_is_shell = True
         self.sandbox = await asyncio.subprocess.create_subprocess_exec(
             *request.definition.entrypoint_args,
             stdout=asyncio.subprocess.PIPE,
@@ -809,28 +810,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     def is_shell_cmds(self, cmds):
-        shell_list = ["bash", "sh", "/bin/bash"]
-        if len(cmds) == 1 and cmds[0] in shell_list:
-            return True
-        else:
+        try:
+            return cmds[0] in ["bash", "sh", "/bin/bash"]
+        except KeyError:
             return False
 
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
-        io: asyncio.StreamReader
-        if self.is_shell:
+        f: asyncio.StreamReader
+        if self.sandbox_is_shell:
             # sends an empty message to simulate PTY
             await stream.send_message(
-                api_pb2.TaskLogsBatch(items=[api_pb2.TaskLogs(data="", file_descriptor=request.file_descriptor)])
+                api_pb2.TaskLogsBatch(
+                    items=[api_pb2.TaskLogs(data=self.sandbox_shell_prompt, file_descriptor=request.file_descriptor)]
+                )
             )
 
         if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
             # Blocking read until EOF is returned.
-            io = self.sandbox.stdout
+            f = self.sandbox.stdout
         else:
-            io = self.sandbox.stderr
+            f = self.sandbox.stderr
 
-        async for message in io:
+        async for message in f:
             await stream.send_message(
                 api_pb2.TaskLogsBatch(
                     items=[api_pb2.TaskLogs(data=message.decode("utf-8"), file_descriptor=request.file_descriptor)]

@@ -36,7 +36,7 @@ async def _stream_logs_to_stdout(sandbox: _Sandbox, on_connect: asyncio.Event) -
     # slave. The PTY shell will then relay data from PTY master to stdout.
     # Therefore, we only need to stream from/to stdout here.
     async for message in sandbox.stdout:
-        await write_to_fd(1, str.encode(message))
+        await write_to_fd(1, message.encode("utf-8"))
 
         if not connected:
             connected = True
