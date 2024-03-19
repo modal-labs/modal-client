@@ -8,6 +8,7 @@ import os
 import pathlib
 import pickle
 import pytest
+import signal
 import subprocess
 import sys
 import tempfile
@@ -1300,3 +1301,22 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
     assert loop_iteration_failures > 5
     assert "error=Exception('oops')" in caplog.text
     assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
+
+
+@skip_windows_signals
+@pytest.mark.usefixtures("server_url_env")
+@pytest.mark.parametrize("method", ["delay", "delay_async"])
+def test_sigint_termination(servicer, method):
+    # Sync and async container lifecycle methods on a sync function.
+    with servicer.input_lockstep() as input_barrier:
+        container_process = _run_container_process(
+            servicer, "test.supports.functions", f"LifecycleCls.{method}", inputs=[((5,), {})]
+        )
+        input_barrier.wait()  # get input
+        time.sleep(0.5)
+        os.kill(container_process.pid, signal.SIGINT)
+
+    stdout, stderr = container_process.communicate(timeout=5)
+    assert container_process.returncode == 0
+    assert f"[events:enter_sync,enter_async,{method},exit_sync,exit_async]" in stdout.decode()
+    # assert "Traceback" not in stderr.decode()  # TODO (elias): fix sigint during an async function execution printing a long traceback from synchronicity

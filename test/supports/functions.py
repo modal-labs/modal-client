@@ -230,6 +230,20 @@ class LifecycleCls:
         self.events.append("f_async")
         return self.events
 
+    @method()
+    def delay(self, duration: float):
+        self._print_at_exit()
+        self.events.append("delay")
+        time.sleep(duration)
+        return self.events
+
+    @method()
+    async def delay_async(self, duration: float):
+        self._print_at_exit()
+        self.events.append("delay_async")
+        await asyncio.sleep(duration)
+        return self.events
+
 
 @stub.function()
 def check_sibling_hydration(x):
