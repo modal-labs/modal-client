@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from unittest import mock
 from unittest.mock import MagicMock
 
+from grpclib import Status
 from grpclib.exceptions import GRPCError
 
 from modal import Client
@@ -1246,18 +1247,29 @@ def test_stop_fetching_inputs(unix_servicer):
 
 
 @skip_windows_unix_socket
-def test_container_heartbeat_survives_errors(unix_servicer):
-    unix_servicer
+def test_container_heartbeat_survives_errors(servicer, caplog, monkeypatch):
+    monkeypatch.setattr("modal._container_entrypoint.HEARTBEAT_INTERVAL", 0.01)
+    num_heartbeats = 0
 
-    def heartbeat_responder(req):
-        print("got heartbeat")
-        return api_pb2.ContainerHeartbeatResponse()
+    async def heartbeat_responder(servicer, stream):
+        nonlocal num_heartbeats
+        num_heartbeats += 1
+        await stream.recv_message()
+        raise GRPCError(Status.DEADLINE_EXCEEDED)
 
-    with unix_servicer.intercept() as ctx:
-        ctx.override_default("ContainerHeartbeat", heartbeat_responder)
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerHeartbeat", heartbeat_responder)
         ret = _run_container(
-            unix_servicer,
+            servicer,
             "test.supports.functions",
             "delay",
-            inputs=_get_inputs(((1,), {})),
+            inputs=_get_inputs(((2,), {})),
         )
+        assert ret.task_result is None  # should not cause a failure result
+    loop_iteration_failures = caplog.text.count("Heartbeat attempt failed")
+    assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
+    assert (
+        loop_iteration_failures > 1
+    )  # one occurence per failing `retry_transient_errors()`, so fewer than the number of failing requests!
+    assert loop_iteration_failures < num_heartbeats
+    assert num_heartbeats > 4  # more than the default number of retries per heartbeat attempt + 1
