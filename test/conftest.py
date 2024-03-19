@@ -158,6 +158,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.token_flow_localhost_port = None
         self.queue_max_len = 1_00
 
+        self.container_heartbeat_response = None
         self.container_heartbeat_abort = threading.Event()
 
         @self.function_body

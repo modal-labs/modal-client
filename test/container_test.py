@@ -8,6 +8,7 @@ import os
 import pathlib
 import pickle
 import pytest
+import signal
 import subprocess
 import sys
 import tempfile
@@ -1243,3 +1244,23 @@ def test_stop_fetching_inputs(unix_servicer):
 
     assert len(ret.items) == 2
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+
+
+@skip_windows_signals
+@pytest.mark.usefixtures("server_url_env")
+@pytest.mark.parametrize("method", ["delay", "delay_async"])
+def test_sigint_termination(servicer, method):
+    # Sync and async container lifecycle methods on a sync function.
+    with servicer.input_lockstep() as input_barrier:
+        container_process = _run_container_process(
+            servicer, "test.supports.functions", f"LifecycleCls.{method}", inputs=[((5,), {})]
+        )
+        input_barrier.wait()  # get input
+        time.sleep(0.5)
+        os.kill(container_process.pid, signal.SIGINT)
+
+    stdout, stderr = container_process.communicate(timeout=5)
+    print(stdout, stderr)
+    assert container_process.returncode == 0
+    assert f"[events:enter_sync,enter_async,{method},exit_sync,exit_async]" in stdout.decode()
+    # assert "Traceback" not in stderr.decode()  # TODO (elias): fix sigint during an async function execution printing a long traceback from synchronicity
