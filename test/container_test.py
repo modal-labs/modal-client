@@ -8,6 +8,7 @@ import os
 import pathlib
 import pickle
 import pytest
+import signal
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from unittest import mock
 from unittest.mock import MagicMock
 
+from grpclib import Status
 from grpclib.exceptions import GRPCError
 
 from modal import Client
@@ -1243,3 +1245,78 @@ def test_stop_fetching_inputs(unix_servicer):
 
     assert len(ret.items) == 2
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+
+
+@skip_windows_unix_socket
+def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypatch):
+    monkeypatch.setattr("modal._container_entrypoint.HEARTBEAT_INTERVAL", 0.01)
+    num_heartbeats = 0
+
+    async def heartbeat_responder(servicer, stream):
+        nonlocal num_heartbeats
+        num_heartbeats += 1
+        await stream.recv_message()
+        raise GRPCError(Status.DEADLINE_EXCEEDED)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerHeartbeat", heartbeat_responder)
+        ret = _run_container(
+            servicer,
+            "test.supports.functions",
+            "delay",
+            inputs=_get_inputs(((2,), {})),
+        )
+        assert ret.task_result is None  # should not cause a failure result
+    loop_iteration_failures = caplog.text.count("Heartbeat attempt failed")
+    assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
+    assert (
+        loop_iteration_failures > 1
+    )  # one occurence per failing `retry_transient_errors()`, so fewer than the number of failing requests!
+    assert loop_iteration_failures < num_heartbeats
+    assert num_heartbeats > 4  # more than the default number of retries per heartbeat attempt + 1
+
+
+@skip_windows_unix_socket
+def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeypatch):
+    numcalls = 0
+
+    async def custom_heartbeater(self):
+        nonlocal numcalls
+        numcalls += 1
+        raise Exception("oops")
+
+    monkeypatch.setattr("modal._container_entrypoint.HEARTBEAT_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        "modal._container_entrypoint._FunctionIOManager._heartbeat_handle_cancellations", custom_heartbeater
+    )
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "delay",
+        inputs=_get_inputs(((0.5,), {})),
+    )
+    assert ret.task_result is None  # should not cause a failure result
+    loop_iteration_failures = caplog.text.count("Heartbeat attempt failed")
+    assert loop_iteration_failures > 5
+    assert "error=Exception('oops')" in caplog.text
+    assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
+
+
+@skip_windows_signals
+@pytest.mark.usefixtures("server_url_env")
+@pytest.mark.parametrize("method", ["delay", "delay_async"])
+def test_sigint_termination(servicer, method):
+    # Sync and async container lifecycle methods on a sync function.
+    with servicer.input_lockstep() as input_barrier:
+        container_process = _run_container_process(
+            servicer, "test.supports.functions", f"LifecycleCls.{method}", inputs=[((5,), {})]
+        )
+        input_barrier.wait()  # get input
+        time.sleep(0.5)
+        os.kill(container_process.pid, signal.SIGINT)
+
+    stdout, stderr = container_process.communicate(timeout=5)
+    assert container_process.returncode == 0
+    assert f"[events:enter_sync,enter_async,{method},exit_sync,exit_async]" in stdout.decode()
+    # assert "Traceback" not in stderr.decode()  # TODO (elias): fix sigint during an async function execution printing a long traceback from synchronicity

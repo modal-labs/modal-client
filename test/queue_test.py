@@ -22,6 +22,16 @@ def test_queue(servicer, client):
         assert stub.q.len() == 0
 
 
+def test_queue_ephemeral(servicer, client):
+    with Queue.ephemeral(client=client, _heartbeat_sleep=1) as q:
+        q.put("hello")
+        assert q.len() == 1
+        assert q.get() == "hello"
+        time.sleep(1.5)  # enough to trigger two heartbeats
+
+    assert servicer.n_queue_heartbeats == 2
+
+
 @skip_macos("TODO(erikbern): this consistently fails on OSX. Unclear why.")
 @skip_windows("TODO(Jonathon): figure out why timeouts don't occur on Windows.")
 @pytest.mark.parametrize(

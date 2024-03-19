@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
 import inspect
-import pickle
 import time
 import warnings
 from contextvars import ContextVar
@@ -994,7 +993,7 @@ class _Function(_Object, type_prefix="fu"):
                     " created because it wasn't defined in global scope."
                 )
             assert self._parent._client.stub
-            serialized_params = pickle.dumps((args, kwargs))  # TODO(erikbern): use modal._serialization?
+            serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=self._parent._object_id,

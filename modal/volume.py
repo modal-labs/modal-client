@@ -4,16 +4,29 @@ import concurrent.futures
 import time
 from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
-from typing import IO, AsyncGenerator, AsyncIterator, BinaryIO, Callable, Generator, List, Optional, Sequence, Union
+from typing import (
+    IO,
+    AsyncGenerator,
+    AsyncIterator,
+    BinaryIO,
+    Callable,
+    Generator,
+    List,
+    Optional,
+    Sequence,
+    Type,
+    Union,
+)
 
 import aiostream
 from grpclib import GRPCError, Status
+from synchronicity.async_wrap import asynccontextmanager
 
 from modal.exception import VolumeUploadTimeoutError, deprecation_warning
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
-from ._utils.async_utils import asyncnullcontext, synchronize_api
+from ._utils.async_utils import TaskContext, asyncnullcontext, synchronize_api
 from ._utils.blob_utils import (
     FileUploadSpec,
     blob_iter,
@@ -24,11 +37,11 @@ from ._utils.blob_utils import (
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from .client import _Client
 from .config import logger
-from .object import _get_environment_name, _Object, live_method, live_method_gen
+from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
-# 15 min max for uploading to volumes files
+# Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
-VOLUME_PUT_FILE_CLIENT_TIMEOUT = 15 * 60
+VOLUME_PUT_FILE_CLIENT_TIMEOUT = 30 * 60
 
 
 class _Volume(_Object, type_prefix="vo"):
@@ -137,6 +150,26 @@ class _Volume(_Object, type_prefix="vo"):
             self._hydrate(response.volume_id, resolver.client, None)
 
         return _Volume._from_loader(_load, "Volume()")
+
+    @classmethod
+    @asynccontextmanager
+    async def ephemeral(
+        cls: Type["_Volume"],
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    ) -> AsyncIterator["_Volume"]:
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.VolumeGetOrCreateRequest(
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+            environment_name=_get_environment_name(environment_name),
+        )
+        response = await client.stub.VolumeGetOrCreate(request)
+        async with TaskContext() as tc:
+            request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
+            tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
+            yield cls._new_hydrated(response.volume_id, client, None)
 
     @staticmethod
     def persisted(
@@ -513,6 +546,7 @@ class _VolumeUploadContextManager:
         request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
         response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
 
+        start_time = time.monotonic()
         if not response.exists:
             if file_spec.use_blob:
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
@@ -526,8 +560,7 @@ class _VolumeUploadContextManager:
                 )
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
-            start_time = time.monotonic()
-            while time.monotonic() - start_time < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
+            while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
                 response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
                 if response.exists:
                     break

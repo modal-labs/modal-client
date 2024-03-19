@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import io
 import pytest
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -253,13 +254,14 @@ async def test_volume_upload_large_file(client, tmp_path, servicer, blob_server,
 async def test_volume_upload_file_timeout(client, tmp_path, servicer, blob_server, *args):
     call_count = 0
 
-    def mount_put_file(_request):
+    async def mount_put_file(self, stream):
+        await stream.recv_message()
         nonlocal call_count
         call_count += 1
-        return api_pb2.MountPutFileResponse(exists=False)
+        await stream.send_message(api_pb2.MountPutFileResponse(exists=False))
 
     with servicer.intercept() as ctx:
-        ctx.override_default("MountPutFile", mount_put_file)
+        ctx.set_responder("MountPutFile", mount_put_file)
         with mock.patch("modal._utils.blob_utils.LARGE_FILE_LIMIT", 10):
             with mock.patch("modal.volume.VOLUME_PUT_FILE_CLIENT_TIMEOUT", 0.5):
                 stub = modal.Stub()
@@ -338,3 +340,12 @@ def test_persisted(servicer, client):
 
     # Lookup should succeed now
     modal.Volume.lookup("xyz", client=client)
+
+
+def test_ephemeral(servicer, client):
+    assert servicer.n_vol_heartbeats == 0
+    with modal.Volume.ephemeral(client=client, _heartbeat_sleep=1) as vol:
+        assert vol.listdir("**") == []
+        # TODO(erikbern): perform some operations
+        time.sleep(1.5)  # Make time for 2 heartbeats
+    assert servicer.n_vol_heartbeats == 2

@@ -89,6 +89,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         }
         self.n_inputs = 0
         self.n_queues = 0
+        self.n_dict_heartbeats = 0
+        self.n_queue_heartbeats = 0
+        self.n_nfs_heartbeats = 0
+        self.n_vol_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
         self.mount_contents = {}
@@ -159,6 +163,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.token_flow_localhost_port = None
         self.queue_max_len = 1_00
 
+        self.container_heartbeat_response = None
         self.container_heartbeat_abort = threading.Event()
 
         @self.function_body
@@ -430,11 +435,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = self.deployed_dicts[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             dict_id = f"di-{len(self.dicts)}"
-            self.dicts[dict_id] = {}
+            self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
             self.deployed_dicts[k] = dict_id
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            dict_id = f"di-{len(self.dicts)}"
+            self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
         else:
             raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
+
+    async def DictHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_dict_heartbeats += 1
+        await stream.send_message(Empty())
 
     async def DictClear(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
@@ -769,9 +782,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
             self.deployed_queues[k] = queue_id
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            self.n_queues += 1
+            queue_id = f"qu-{self.n_queues}"
         else:
             raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
+
+    async def QueueHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_queue_heartbeats += 1
+        await stream.send_message(Empty())
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()
@@ -927,6 +948,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if k not in self.deployed_nfss:
                 raise GRPCError(Status.NOT_FOUND, "NFS not found")
             nfs_id = self.deployed_nfss[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            nfs_id = f"sv-{len(self.nfs_files)}"
+            self.nfs_files[nfs_id] = {}
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             if k not in self.deployed_nfss:
                 nfs_id = f"sv-{len(self.nfs_files)}"
@@ -944,6 +968,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         await stream.send_message(api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id=nfs_id))
 
+    async def SharedVolumeHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_nfs_heartbeats += 1
+        await stream.send_message(Empty())
+
     async def SharedVolumePutFile(self, stream):
         req = await stream.recv_message()
         self.nfs_files[req.shared_volume_id][req.path] = req
@@ -958,6 +987,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.SharedVolumeGetFileResponse(data_blob_id=put_req.data_blob_id))
         else:
             await stream.send_message(api_pb2.SharedVolumeGetFileResponse(data=put_req.data))
+
+    async def SharedVolumeListFilesStream(self, stream):
+        req: api_pb2.SharedVolumeListFilesRequest = await stream.recv_message()
+        for path in self.nfs_files[req.shared_volume_id].keys():
+            entry = api_pb2.SharedVolumeListFilesEntry(path=path)
+            response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
+            await stream.send_message(response)
 
     ### Task
 
@@ -1021,6 +1057,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if k not in self.deployed_volumes:
                 raise GRPCError(Status.NOT_FOUND, "Volume not found")
             volume_id = self.deployed_volumes[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            volume_id = f"vo-{len(self.volume_files)}"
+            self.volume_files[volume_id] = {}
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             if k not in self.deployed_volumes:
                 volume_id = f"vo-{len(self.volume_files)}"
@@ -1037,6 +1076,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
 
         await stream.send_message(api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id))
+
+    async def VolumeHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_vol_heartbeats += 1
+        await stream.send_message(Empty())
 
     async def VolumeCommit(self, stream):
         req = await stream.recv_message()

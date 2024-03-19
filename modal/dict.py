@@ -1,17 +1,19 @@
 # Copyright Modal Labs 2022
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional, Type
+
+from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._types import typechecked
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
 from .config import logger
 from .exception import deprecation_error, deprecation_warning
-from .object import _get_environment_name, _Object, live_method
+from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method
 
 
 def _serialize_dict(data):
@@ -66,17 +68,39 @@ class _Dict(_Object, type_prefix="di"):
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, resolver.client, None)
 
-        return _Dict._from_loader(_load, "Dict()", is_another_app=True)
+        return _Dict._from_loader(_load, "Dict()")
 
     def __init__(self, data={}):
         """mdmd:hidden"""
         deprecation_error((2023, 6, 27), "`Dict({...})` is deprecated. Please use `Dict.new({...})` instead.")
-        obj = _Dict.new(data)
-        self._init_from_other(obj)
+
+    @classmethod
+    @asynccontextmanager
+    async def ephemeral(
+        cls: Type["_Dict"],
+        data: Optional[dict] = None,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    ) -> AsyncIterator["_Dict"]:
+        if client is None:
+            client = await _Client.from_env()
+        serialized = _serialize_dict(data if data is not None else {})
+        request = api_pb2.DictGetOrCreateRequest(
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+            environment_name=_get_environment_name(environment_name),
+            data=serialized,
+        )
+        response = await client.stub.DictGetOrCreate(request)
+        async with TaskContext() as tc:
+            request = api_pb2.DictHeartbeatRequest(dict_id=response.dict_id)
+            tc.infinite_loop(lambda: client.stub.DictHeartbeat(request), sleep=_heartbeat_sleep)
+            yield cls._new_hydrated(response.dict_id, client, None)
 
     @staticmethod
     def from_name(
         label: str,
+        data: Optional[dict] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -95,17 +119,19 @@ class _Dict(_Object, type_prefix="di"):
         """
 
         async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
+            serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=label,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+                data=serialized,
             )
             response = await resolver.client.stub.DictGetOrCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, resolver.client, None)
 
-        return _Dict._from_loader(_load, "Dict()")
+        return _Dict._from_loader(_load, "Dict()", is_another_app=True)
 
     @staticmethod
     def persisted(
@@ -118,6 +144,7 @@ class _Dict(_Object, type_prefix="di"):
     @staticmethod
     async def lookup(
         label: str,
+        data: Optional[dict] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -131,7 +158,7 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
         obj = _Dict.from_name(
-            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+            label, data=data, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
         )
         if client is None:
             client = await _Client.from_env()
