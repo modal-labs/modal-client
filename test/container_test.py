@@ -1243,3 +1243,21 @@ def test_stop_fetching_inputs(unix_servicer):
 
     assert len(ret.items) == 2
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+
+
+@skip_windows_unix_socket
+def test_container_heartbeat_survives_errors(unix_servicer):
+    unix_servicer
+
+    def heartbeat_responder(req):
+        print("got heartbeat")
+        return api_pb2.ContainerHeartbeatResponse()
+
+    with unix_servicer.intercept() as ctx:
+        ctx.override_default("ContainerHeartbeat", heartbeat_responder)
+        ret = _run_container(
+            unix_servicer,
+            "test.supports.functions",
+            "delay",
+            inputs=_get_inputs(((1,), {})),
+        )

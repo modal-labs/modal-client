@@ -2,10 +2,29 @@
 import contextlib
 import inspect
 import logging
+import traceback
 from collections import Counter, defaultdict
+from functools import wraps
 from typing import Any, Callable, Dict, List, Tuple
 
 from grpclib import GRPCError, Status
+
+logging.basicConfig()
+logger = logging.getLogger("mock-server")
+logger.setLevel(logging.INFO)
+
+
+def log_exception(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Exception in {func.__name__}: {e}")
+            logger.error(traceback.format_exc())
+            raise  # Re-raise the exception after logging
+
+    return wrapper
 
 
 def patch_mock_servicer(cls):
@@ -70,9 +89,9 @@ def patch_mock_servicer(cls):
     for name in dir(cls):
         method = getattr(cls, name)
         if getattr(method, "__isabstractmethod__", False):
-            setattr(cls, name, make_interceptable(name, fallback))
+            setattr(cls, name, log_exception(make_interceptable(name, fallback)))
         elif name[0].isupper() and inspect.isfunction(method):
-            setattr(cls, name, make_interceptable(name, method))
+            setattr(cls, name, log_exception(make_interceptable(name, method)))
 
     cls.__abstractmethods__ = frozenset()
     return cls
