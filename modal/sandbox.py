@@ -97,6 +97,7 @@ class _LogsReader:
             )
             try:
                 async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
+                    print(f"{log_batch=}")
                     self._last_log_batch_entry_id = log_batch.entry_id
 
                     for message in log_batch.items:

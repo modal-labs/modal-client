@@ -88,6 +88,7 @@ async def connect_to_terminal(
 
     If connecting_status is given, this function will stop the status spinner upon connection or error.
     """
+    print("CONNECTING TO TERMINAL")
 
     def stop_connecting_status():
         if connecting_status:
@@ -101,8 +102,13 @@ async def connect_to_terminal(
             await asyncio.wait_for(on_connect.wait(), timeout=15)
             stop_connecting_status()
 
+            print("STREAM FROM STDIN")
+            import time
             async with stream_from_stdin(handle_stdin, use_raw_terminal=pty):
+                print("inside context manager")
+                t0 = time.time()
                 exit_status = await exec_output_task
+                print(f"exited in {time.time() - t0} seconds: {exit_status}")
 
             if exit_status != 0:
                 raise ExecutionError(f"Process exited with status code {exit_status}")

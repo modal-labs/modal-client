@@ -392,6 +392,7 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
             total_timeout=10,
         )
 
+    logger.warning("starting shell input")
     async with stream_from_stdin(_handle_input, use_raw_terminal=True):
         await finish_event.wait()
 
