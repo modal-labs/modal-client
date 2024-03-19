@@ -156,7 +156,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.sandbox_defs = []
         self.sandbox: asyncio.subprocess.Process = None
-        self.sandbox_is_shell = False
+
+        # Whether the sandbox is executing a shell program in interactive mode.
+        self.sandbox_is_interactive = False
         self.sandbox_shell_prompt = "TEST_PROMPT# "
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
@@ -817,8 +819,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxCreate(self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
-        if self.is_shell_cmds(request.definition.entrypoint_args):
-            self.sandbox_is_shell = True
+        if request.definition.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+            self.sandbox_is_interactive = True
+
         self.sandbox = await asyncio.subprocess.create_subprocess_exec(
             *request.definition.entrypoint_args,
             stdout=asyncio.subprocess.PIPE,
@@ -830,13 +833,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
-    def is_shell_cmds(self, cmds):
-        return len(cmds) == 1 and cmds[0] in ["bash", "sh", "/bin/bash"]
-
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
         f: asyncio.StreamReader
-        if self.sandbox_is_shell:
+        if self.sandbox_is_interactive:
             # sends an empty message to simulate PTY
             await stream.send_message(
                 api_pb2.TaskLogsBatch(
@@ -864,16 +864,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         try:
             await asyncio.wait_for(self.sandbox.wait(), request.timeout)
         except asyncio.TimeoutError:
-            if self.sandbox.returncode:
-                res = api_pb2.GenericResult(
-                    status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=self.sandbox.returncode
-                )
-                await stream.send_message(api_pb2.SandboxWaitResponse(result=res))
-            else:
-                await stream.send_message(api_pb2.SandboxWaitResponse())
-            return
+            pass
 
-        if self.sandbox.returncode != 0:
+        if self.sandbox.returncode is None:
+            # This happens when request.timeout is 0 and the sandbox hasn't completed.
+            await stream.send_message(api_pb2.SandboxWaitResponse())
+            return
+        elif self.sandbox.returncode != 0:
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=self.sandbox.returncode
             )

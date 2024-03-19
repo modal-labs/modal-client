@@ -347,6 +347,7 @@ def mock_shell_pty():
             env_term=os.environ.get("TERM"),
             env_colorterm=os.environ.get("COLORTERM"),
             env_term_program=os.environ.get("TERM_PROGRAM"),
+            pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL,
         )
 
     captured_out = []
@@ -414,7 +415,8 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     _, captured_out = mock_shell_pty
     _run(["shell", "--cmd", "pwd", stub_file.as_posix() + "::foo"])
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
-    assert captured_out == [(1, expected_output)]
+    shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
+    assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 
 def test_app_descriptions(servicer, server_url_env, test_dir):
