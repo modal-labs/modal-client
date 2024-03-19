@@ -78,7 +78,7 @@ class _LogsReader:
         """mdmd:hidden
         Streams sandbox logs from the server to the reader.
 
-        When the stream receives an eof, it yields None. Once an EOF is received,
+        When the stream receives an EOF, it yields None. Once an EOF is received,
         subsequent invocations will not yield logs.
         """
         if self.eof:

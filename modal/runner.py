@@ -314,8 +314,8 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
         loading_status = console.status("Starting container...")
         loading_status.start()
 
-        sb = await _stub.spawn_sandbox("bash", pty_info=get_pty_info(shell=True), **kwargs)
-
+        sandbox_cmds = cmd if len(cmd) > 0 else ["/bin/bash"]
+        sb = await _stub.spawn_sandbox(*sandbox_cmds, pty_info=get_pty_info(shell=True), **kwargs)
         for _ in range(40):
             await asyncio.sleep(0.5)
             resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))

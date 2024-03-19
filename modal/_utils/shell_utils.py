@@ -81,7 +81,7 @@ async def connect_to_terminal(
     stream_to_stdio: Callable[[asyncio.Event], Coroutine[None, None, int]],
     pty: bool = False,
     connecting_status: Optional[rich.status.Status] = None,
-):
+) -> None:
     """
     Connect to the current terminal by streaming data from terminal's stdin to the running process
     and streaming output from running process into terminal's stdout.

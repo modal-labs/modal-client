@@ -9,7 +9,6 @@ import inspect
 import os
 import pytest
 import shutil
-import subprocess
 import sys
 import tempfile
 import textwrap
@@ -810,7 +809,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     def is_shell_cmds(self, cmds):
-        shell_list = ["bash", "sh"]
+        shell_list = ["bash", "sh", "/bin/bash"]
         if len(cmds) == 1 and cmds[0] in shell_list:
             return True
         else:
@@ -843,8 +842,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxWait(self, stream):
         request: api_pb2.SandboxWaitRequest = await stream.recv_message()
         try:
-            await self.sandbox.wait(timeout=request.timeout)
-        except subprocess.TimeoutExpired:
+            await asyncio.wait_for(self.sandbox.wait(), request.timeout)
+        except asyncio.TimeoutError:
             await stream.send_message(api_pb2.SandboxWaitResponse())
             return
 

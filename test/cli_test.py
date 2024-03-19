@@ -5,6 +5,7 @@ import json
 import os
 import pytest
 import re
+import subprocess
 import sys
 import tempfile
 import traceback
@@ -336,7 +337,7 @@ def test_serve(servicer, set_env_client, server_url_env, test_dir):
 
 
 @pytest.fixture
-def mock_shell_pty(servicer):
+def mock_shell_pty():
     def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
         return api_pb2.PTYInfo(
@@ -403,6 +404,16 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     _run(["shell", webhook_stub_file.as_posix()])
     assert captured_out[1:] == [(1, b"Hello World\n")]
     captured_out.clear()
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
+    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _, captured_out = mock_shell_pty
+    _run(["shell", "--cmd", "pwd", stub_file.as_posix() + "::foo"])
+    p = subprocess.Popen("pwd", stdout=subprocess.PIPE)
+    expected_output = p.stdout.read()
+    assert captured_out == [(1, expected_output)]
 
 
 def test_app_descriptions(servicer, server_url_env, test_dir):
