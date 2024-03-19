@@ -136,7 +136,7 @@ class _FunctionIOManager:
         while 1:
             t0 = time.monotonic()
             try:
-                if await self._heartbeat():
+                if await self._heartbeat_handle_cancellations():
                     # got a cancellation event, fine to start another heartbeat immediately
                     # since the cancellation queue should be empty on the worker server
                     # however, we wait at least 1s to prevent short-circuiting the heartbeat loop
@@ -144,19 +144,17 @@ class _FunctionIOManager:
                     # two subsequent cancellations on the same task at the moment
                     await asyncio.sleep(1.0)
                     continue
-            # pre Python3.8, CancelledErrors were a subclass of exception
-            except asyncio.CancelledError:
-                raise
-            except Exception:
+            except Exception as exc:
                 # don't stop heartbeat loop if there are transient exceptions!
                 time_elapsed = time.monotonic() - t0
-                logger.exception(f"Heartbeat attempt failed (time_elapsed={time_elapsed})")
+                error = exc
+                logger.warning(f"Heartbeat attempt failed ({time_elapsed=}, {error=})")
 
             heartbeat_duration = time.monotonic() - t0
             time_until_next_hearbeat = max(0.0, HEARTBEAT_INTERVAL - heartbeat_duration)
             await asyncio.sleep(time_until_next_hearbeat)
 
-    async def _heartbeat(self) -> bool:
+    async def _heartbeat_handle_cancellations(self) -> bool:
         # Return True if a cancellation event was received, in that case we shouldn't wait too long for another heartbeat
 
         # Don't send heartbeats for tasks waiting to be checkpointed.

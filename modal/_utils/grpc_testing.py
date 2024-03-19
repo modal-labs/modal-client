@@ -9,6 +9,8 @@ from typing import Any, Awaitable, Callable, Dict, List, Tuple
 import grpclib.server
 from grpclib import GRPCError, Status
 
+from modal.config import logger
+
 if typing.TYPE_CHECKING:
     from test.conftest import MockClientServicer
 
@@ -69,8 +71,10 @@ def patch_mock_servicer(cls):
                         return await original_method(servicer_self, intercepted_stream)
                 else:
                     return await original_method(servicer_self, stream)
+            except GRPCError:
+                raise
             except Exception:
-                logging.exception("Error in mock servicer responder:")
+                logger.exception("Error in mock servicer responder:")
                 raise
 
         return patched_method
