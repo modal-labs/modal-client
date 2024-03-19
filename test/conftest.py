@@ -810,10 +810,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     def is_shell_cmds(self, cmds):
-        try:
-            return cmds[0] in ["bash", "sh", "/bin/bash"]
-        except KeyError:
-            return False
+        return len(cmds) == 1 and cmds[0] in ["bash", "sh", "/bin/bash"]
 
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
