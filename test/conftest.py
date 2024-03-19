@@ -823,7 +823,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         #         f"The sandbox commands is ${request.definition.entrypoint_args} but there is no pending command to exit the shell. Call 'pending_shell_cmds' to add pending commands."
         #     )
         # for cmd in self.pending_shell_cmds:
-            # self.sandbox.stdin.write(cmd)
+        # self.sandbox.stdin.write(cmd)
         # self.sandbox.stdin.flush()
         print("polling!!!")
         self.sandbox.poll()
@@ -835,11 +835,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.TaskLogsBatch(items=[api_pb2.TaskLogs(data=b"", file_descriptor=request.file_descriptor)])
+        )
+        import time
+
         if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
             # Blocking read until EOF is returned.
+            t0 = time.time()
             print("reading from sandbox.stdout")
             data = self.sandbox.stdout.read()
-            print("finished read from sandbox.stdout")
+            self.sandbox.poll()
+            print(f"{self.sandbox=} {self.sandbox.returncode=}")
+            print(f"finished read from sandbox.stdout {time.time()-t0}")
         else:
             data = self.sandbox.stderr.read()
         await stream.send_message(

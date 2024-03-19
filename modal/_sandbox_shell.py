@@ -41,9 +41,12 @@ async def _stream_logs_to_stdout(sandbox: _Sandbox, on_connect: asyncio.Event) -
 
         if not connected:
             connected = True
+            print("setting connected")
             on_connect.set()
+            print("set connected")
             # give up the event loop
             await asyncio.sleep(0)
+    print("EXITING OUT OF STDOUT LOGS STREAMING")
 
     # Right now we don't propagate the exit_status to the TaskLogs, so setting
     # exit status to 0.

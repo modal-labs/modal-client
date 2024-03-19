@@ -17,7 +17,6 @@ import pytest_asyncio
 import toml
 
 from modal import Client
-from modal._utils.async_utils import asyncnullcontext
 from modal.cli.entry_point import entrypoint_cli
 from modal_proto import api_pb2
 
@@ -53,8 +52,8 @@ def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: Optional
     with mock.patch.object(sys, "argv", args):
         res = runner.invoke(entrypoint_cli, args)
     if res.exit_code != expected_exit_code:
-        print("stdout:", repr(res.stdout))
-        print("stderr:", repr(res.stderr))
+        print("stdout:", repr(res.stdout), "stdout OVER")
+        print("stderr:", repr(res.stderr), "stderr OVER")
         traceback.print_tb(res.exc_info[2])
         print(res.exception, file=sys.stderr)
         assert res.exit_code == expected_exit_code
@@ -362,7 +361,7 @@ def mock_shell_pty(servicer):
             print("WEIRIDDIDIDIDI")
             message_index = 1
             while True:
-                data = fake_stdin[message_index-1]
+                data = fake_stdin[message_index - 1]
                 print(f"handling {data=}")
                 await handle_input(data, message_index)
                 message_index += 1
@@ -371,7 +370,7 @@ def mock_shell_pty(servicer):
         print("starting write task")
         write_task = asyncio.create_task(_write())
         print("yielding...")
-        # await write_task
+        await write_task
         yield
         print("cancelling")
         write_task.cancel()

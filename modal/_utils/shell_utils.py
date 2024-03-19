@@ -99,11 +99,15 @@ async def connect_to_terminal(
         exec_output_task = tc.create_task(stream_to_stdio(on_connect))
         try:
             # time out if we can't connect to the server fast enough
+            print("waiting for connection")
             await asyncio.wait_for(on_connect.wait(), timeout=15)
+            print("finished waiting for connection")
             stop_connecting_status()
+            print("stopped connecting status")
 
             print("STREAM FROM STDIN")
             import time
+
             async with stream_from_stdin(handle_stdin, use_raw_terminal=pty):
                 print("inside context manager")
                 t0 = time.time()
