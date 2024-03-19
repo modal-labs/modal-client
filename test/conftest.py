@@ -9,7 +9,6 @@ import inspect
 import os
 import pytest
 import shutil
-import subprocess
 import sys
 import tempfile
 import textwrap
@@ -162,7 +161,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
 
         self.sandbox_defs = []
-        self.sandbox: subprocess.Popen = None
+        self.sandbox: asyncio.subprocess.Process = None
+
+        # Whether the sandbox is executing a shell program in interactive mode.
+        self.sandbox_is_interactive = False
+        self.sandbox_shell_prompt = "TEST_PROMPT# "
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
         self.token_flow_localhost_port = None
@@ -822,38 +825,58 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxCreate(self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
-        # Not using asyncio.subprocess here for Python 3.7 compatibility.
-        self.sandbox = subprocess.Popen(
-            request.definition.entrypoint_args,
+        if request.definition.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+            self.sandbox_is_interactive = True
+
+        self.sandbox = await asyncio.subprocess.create_subprocess_exec(
+            *request.definition.entrypoint_args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.PIPE,
         )
+
         self.sandbox_defs.append(request.definition)
+
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
-        if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
-            data = self.sandbox.stdout.read()
-        else:
-            data = self.sandbox.stderr.read()
-        await stream.send_message(
-            api_pb2.TaskLogsBatch(
-                items=[api_pb2.TaskLogs(data=data.decode("utf-8"), file_descriptor=request.file_descriptor)]
+        f: asyncio.StreamReader
+        if self.sandbox_is_interactive:
+            # sends an empty message to simulate PTY
+            await stream.send_message(
+                api_pb2.TaskLogsBatch(
+                    items=[api_pb2.TaskLogs(data=self.sandbox_shell_prompt, file_descriptor=request.file_descriptor)]
+                )
             )
-        )
+
+        if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            # Blocking read until EOF is returned.
+            f = self.sandbox.stdout
+        else:
+            f = self.sandbox.stderr
+
+        async for message in f:
+            await stream.send_message(
+                api_pb2.TaskLogsBatch(
+                    items=[api_pb2.TaskLogs(data=message.decode("utf-8"), file_descriptor=request.file_descriptor)]
+                )
+            )
+
         await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
 
     async def SandboxWait(self, stream):
         request: api_pb2.SandboxWaitRequest = await stream.recv_message()
         try:
-            self.sandbox.wait(timeout=request.timeout)
-        except subprocess.TimeoutExpired:
+            await asyncio.wait_for(self.sandbox.wait(), request.timeout)
+        except asyncio.TimeoutError:
+            pass
+
+        if self.sandbox.returncode is None:
+            # This happens when request.timeout is 0 and the sandbox hasn't completed.
             await stream.send_message(api_pb2.SandboxWaitResponse())
             return
-
-        if self.sandbox.returncode != 0:
+        elif self.sandbox.returncode != 0:
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=self.sandbox.returncode
             )
@@ -873,8 +896,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxStdinWrite(self, stream):
         request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
+
         self.sandbox.stdin.write(request.input)
-        self.sandbox.stdin.flush()
+        await self.sandbox.stdin.drain()
+
         if request.eof:
             self.sandbox.stdin.close()
         await stream.send_message(api_pb2.SandboxStdinWriteResponse())

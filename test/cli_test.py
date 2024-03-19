@@ -1,8 +1,11 @@
 # Copyright Modal Labs 2022-2023
+import asyncio
+import contextlib
 import json
 import os
 import pytest
 import re
+import subprocess
 import sys
 import tempfile
 import traceback
@@ -15,7 +18,6 @@ import pytest_asyncio
 import toml
 
 from modal import Client
-from modal._utils.async_utils import asyncnullcontext
 from modal.cli.entry_point import entrypoint_cli
 from modal_proto import api_pb2
 
@@ -345,41 +347,76 @@ def mock_shell_pty():
             env_term=os.environ.get("TERM"),
             env_colorterm=os.environ.get("COLORTERM"),
             env_term_program=os.environ.get("TERM_PROGRAM"),
+            pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL,
         )
 
     captured_out = []
+    fake_stdin = [b"echo foo\n", b"exit\n"]
 
     async def write_to_fd(fd: int, data: bytes):
         nonlocal captured_out
         captured_out.append((fd, data))
 
+    @contextlib.asynccontextmanager
+    async def fake_stream_from_stdin(handle_input, use_raw_terminal=False):
+        async def _write():
+            message_index = 0
+            while True:
+                if message_index == len(fake_stdin):
+                    break
+                data = fake_stdin[message_index]
+                await handle_input(data, message_index)
+                message_index += 1
+
+        write_task = asyncio.create_task(_write())
+        yield
+        write_task.cancel()
+
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
-    ), mock.patch("modal._container_exec.get_pty_info", mock_get_pty_info), mock.patch(
-        "modal._container_exec.handle_exec_input", asyncnullcontext
-    ), mock.patch("modal._container_exec._write_to_fd", write_to_fd):
-        yield captured_out
+    ), mock.patch("modal.runner.get_pty_info", mock_get_pty_info), mock.patch(
+        "modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin
+    ), mock.patch("modal._sandbox_shell.write_to_fd", write_to_fd):
+        yield fake_stdin, captured_out
 
 
 @skip_windows("modal shell is not supported on Windows.")
 def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     webhook_stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
+    fake_stdin, captured_out = mock_shell_pty
+
+    fake_stdin.clear()
+    fake_stdin.extend([b'echo "Hello World"\n', b"exit\n"])
 
     # Function is explicitly specified
     _run(["shell", stub_file.as_posix() + "::foo"])
-    assert mock_shell_pty == [(1, b"Hello World")]
-    mock_shell_pty.clear()
+
+    shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
+
+    # first captured message is the empty message the mock server sends
+    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+    captured_out.clear()
 
     # Function is explicitly specified
     _run(["shell", webhook_stub_file.as_posix() + "::foo"])
-    assert mock_shell_pty == [(1, b"Hello World")]
-    mock_shell_pty.clear()
+    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+    captured_out.clear()
 
     # Function must be inferred
     _run(["shell", webhook_stub_file.as_posix()])
-    assert mock_shell_pty == [(1, b"Hello World")]
-    mock_shell_pty.clear()
+    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+    captured_out.clear()
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
+    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _, captured_out = mock_shell_pty
+    _run(["shell", "--cmd", "pwd", stub_file.as_posix() + "::foo"])
+    expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
+    shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
+    assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 
 def test_app_descriptions(servicer, server_url_env, test_dir):
@@ -508,6 +545,7 @@ def test_volume_rm(servicer, set_env_client):
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
 @pytest.mark.usefixtures("set_env_client", "mock_shell_pty")
+@skip_windows("modal shell is not supported on Windows.")
 def test_environment_flag(test_dir, servicer, command):
     @servicer.function_body
     def nothing(
@@ -539,6 +577,7 @@ def test_environment_flag(test_dir, servicer, command):
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
 @pytest.mark.usefixtures("set_env_client", "mock_shell_pty")
+@skip_windows("modal shell is not supported on Windows.")
 def test_environment_noflag(test_dir, servicer, command, monkeypatch):
     monkeypatch.setenv("MODAL_ENVIRONMENT", "some_weird_default_env")
 
@@ -549,7 +588,6 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
         pass
 
     stub_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
-
     with servicer.intercept() as ctx:
         ctx.add_response(
             "MountGetOrCreate",
