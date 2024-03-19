@@ -431,11 +431,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = self.deployed_dicts[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             dict_id = f"di-{len(self.dicts)}"
-            self.dicts[dict_id] = {}
+            self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
             self.deployed_dicts[k] = dict_id
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             dict_id = f"di-{len(self.dicts)}"
-            self.dicts[dict_id] = {}
+            self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
         else:
             raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
