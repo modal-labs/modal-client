@@ -48,6 +48,7 @@ class VolumeFile:
     mode: int
 
 
+# TODO: Isolate all test config from the host
 @pytest.fixture(scope="session", autouse=True)
 def set_env():
     os.environ["MODAL_ENVIRONMENT"] = "main"
