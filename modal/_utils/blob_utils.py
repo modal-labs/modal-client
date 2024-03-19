@@ -32,13 +32,15 @@ LARGE_FILE_LIMIT = 4 * 1024 * 1024  # 4 MiB
 # Max parallelism during map calls
 BLOB_MAX_PARALLELISM = 10
 
+# read ~16MiB chunks by default
+DEFAULT_SEGMENT_CHUNK_SIZE = 2**24
+
 
 class BytesIOSegmentPayload(BytesIOPayload):
-    """Modified bytes payload for concurrent sends of chunks from the same file
+    """Modified bytes payload for concurrent sends of chunks from the same file.
 
     Adds:
     * read limit using remaining_bytes, in order to split files across streams
-    * read lock to prevent file object seeks by concurrent parts
     * larger read chunk (to prevent excessive read contention between parts)
     * calculates an md5 for the segment
 
@@ -47,11 +49,10 @@ class BytesIOSegmentPayload(BytesIOPayload):
 
     def __init__(
         self,
-        bytes_io: BinaryIO,
-        read_lock: asyncio.Lock,
+        bytes_io: BinaryIO,  # should *not* be shared as IO position modification is not locked
         segment_start: int,
         segment_length: int,
-        chunk_size: int = 2**24,  # read ~16MiB chunks by default
+        chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
     ):
         # not thread safe constructor!
         super().__init__(bytes_io)
@@ -61,7 +62,6 @@ class BytesIOSegmentPayload(BytesIOPayload):
         # seek to start of file segment we are interested in, in order to make .size() evaluate correctly
         self._value.seek(self.initial_seek_pos + segment_start)
         assert self.segment_length <= super().size
-        self.read_lock = read_lock
         self.chunk_size = chunk_size
         self.reset_state()
 
@@ -88,14 +88,10 @@ class BytesIOSegmentPayload(BytesIOPayload):
         loop = asyncio.get_event_loop()
 
         async def safe_read():
-            # concurrency safe reading from same file object
-            async with self.read_lock:
-                pos = self._value.tell()
-                read_start = self.initial_seek_pos + self.segment_start + self.num_bytes_read
-                self._value.seek(read_start)
-                num_bytes = min(self.chunk_size, self.remaining_bytes())
-                chunk = await loop.run_in_executor(None, self._value.read, num_bytes)
-                self._value.seek(pos)
+            read_start = self.initial_seek_pos + self.segment_start + self.num_bytes_read
+            self._value.seek(read_start)
+            num_bytes = min(self.chunk_size, self.remaining_bytes())
+            chunk = await loop.run_in_executor(None, self._value.read, num_bytes)
 
             await loop.run_in_executor(None, self._md5_checksum.update, chunk)
             self.num_bytes_read += len(chunk)
@@ -165,22 +161,35 @@ async def _upload_to_s3_url(
 
 
 async def perform_multipart_upload(
-    data_file: BinaryIO,
+    data_file: Union[BinaryIO, io.BytesIO, io.FileIO],
     *,
     content_length: int,
     max_part_size: int,
     part_urls: List[str],
     completion_url: str,
+    upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
 ):
     upload_coros = []
-    file_read_lock = asyncio.Lock()
     file_offset = 0
     num_bytes_left = content_length
 
-    for part_number, part_url in enumerate(part_urls, start=1):
+    # Give each part its own IO reader object to avoid needing to
+    # lock access to the reader's position pointer.
+    data_file_readers: List[BinaryIO]
+    if isinstance(data_file, io.BytesIO):
+        view = data_file.getbuffer()  # does not copy data
+        data_file_readers = [io.BytesIO(view) for _ in range(len(part_urls))]
+    else:
+        filename = data_file.name
+        data_file_readers = [open(filename, "rb") for _ in range(len(part_urls))]
+
+    for part_number, (data_file_rdr, part_url) in enumerate(zip(data_file_readers, part_urls), start=1):
         part_length_bytes = min(num_bytes_left, max_part_size)
         part_payload = BytesIOSegmentPayload(
-            data_file, file_read_lock, segment_start=file_offset, segment_length=part_length_bytes
+            data_file_rdr,
+            segment_start=file_offset,
+            segment_length=part_length_bytes,
+            chunk_size=upload_chunk_size,
         )
         upload_coros.append(_upload_to_s3_url(part_url, payload=part_payload, content_type=None))
         num_bytes_left -= part_length_bytes
@@ -247,10 +256,10 @@ async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO]
             max_part_size=resp.multipart.part_length,
             part_urls=resp.multipart.upload_urls,
             completion_url=resp.multipart.completion_url,
+            upload_chunk_size=DEFAULT_SEGMENT_CHUNK_SIZE,
         )
     else:
-        lock = asyncio.Lock()  # not strictly necessary here
-        payload = BytesIOSegmentPayload(data, lock, segment_start=0, segment_length=content_length)
+        payload = BytesIOSegmentPayload(data, segment_start=0, segment_length=content_length)
         await _upload_to_s3_url(
             resp.upload_url,
             payload,

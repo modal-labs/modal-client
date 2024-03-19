@@ -15,6 +15,8 @@ O = TypeVar("O", bound="_Object")
 
 _BLOCKING_O = synchronize_api(O)
 
+EPHEMERAL_OBJECT_HEARTBEAT_SLEEP = 300
+
 
 def _get_environment_name(environment_name: Optional[str], resolver: Optional[Resolver] = None) -> Optional[str]:
     if environment_name:

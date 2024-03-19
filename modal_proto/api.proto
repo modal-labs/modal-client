@@ -1226,6 +1226,10 @@ message Image {
   BuildFunction build_function = 21;
 }
 
+message ImageBuilderVersionLookupResponse {
+  string version = 1;
+}
+
 message ImageContextFile {
   string filename = 1;
   bytes data = 2;
@@ -1238,6 +1242,7 @@ message ImageGetOrCreateRequest {
   string build_function_id = 6;
   bool force_build = 7;
   DeploymentNamespace namespace = 8;
+  string builder_version = 9;
 }
 
 message ImageGetOrCreateResponse {
@@ -1468,6 +1473,8 @@ message Sandbox {
   repeated CloudBucketMount cloud_bucket_mounts = 14;
 
   repeated VolumeMount volume_mounts = 13;
+
+  PTYInfo pty_info = 15;
 }
 
 message SandboxCreateRequest {
@@ -1609,6 +1616,10 @@ message SharedVolumeGetOrCreateRequest {
 }
 
 message SharedVolumeGetOrCreateResponse {
+  string shared_volume_id = 1;
+}
+
+message SharedVolumeHeartbeatRequest {
   string shared_volume_id = 1;
 }
 
@@ -1810,6 +1821,10 @@ message VolumeGetOrCreateRequest {
 }
 
 message VolumeGetOrCreateResponse {
+  string volume_id = 1;
+}
+
+message VolumeHeartbeatRequest {
   string volume_id = 1;
 }
 
@@ -2052,6 +2067,7 @@ service ModalClient {
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
+  rpc ImageBuilderVersionLookup(google.protobuf.Empty) returns (ImageBuilderVersionLookupResponse);
 
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
@@ -2086,6 +2102,7 @@ service ModalClient {
   // SharedVolumes
   rpc SharedVolumeGetOrCreate(SharedVolumeGetOrCreateRequest) returns (SharedVolumeGetOrCreateResponse);
   rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
+  rpc SharedVolumeHeartbeat(SharedVolumeHeartbeatRequest) returns (google.protobuf.Empty);
   rpc SharedVolumeList(SharedVolumeListRequest) returns (SharedVolumeListResponse);
   rpc SharedVolumeListFiles(SharedVolumeListFilesRequest) returns (SharedVolumeListFilesResponse);
   rpc SharedVolumeListFilesStream(SharedVolumeListFilesRequest) returns (stream SharedVolumeListFilesResponse);
@@ -2111,6 +2128,7 @@ service ModalClient {
   // Volumes
   rpc VolumeGetOrCreate(VolumeGetOrCreateRequest) returns (VolumeGetOrCreateResponse);
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
+  rpc VolumeHeartbeat(VolumeHeartbeatRequest) returns (google.protobuf.Empty);
   rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);
   rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);

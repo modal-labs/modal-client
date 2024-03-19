@@ -9,7 +9,6 @@ import inspect
 import json
 import math
 import os
-import pickle
 import signal
 import sys
 import threading
@@ -137,7 +136,7 @@ class _FunctionIOManager:
         while 1:
             t0 = time.monotonic()
             try:
-                if await self._heartbeat():
+                if await self._heartbeat_handle_cancellations():
                     # got a cancellation event, fine to start another heartbeat immediately
                     # since the cancellation queue should be empty on the worker server
                     # however, we wait at least 1s to prevent short-circuiting the heartbeat loop
@@ -145,19 +144,17 @@ class _FunctionIOManager:
                     # two subsequent cancellations on the same task at the moment
                     await asyncio.sleep(1.0)
                     continue
-            # pre Python3.8, CancelledErrors were a subclass of exception
-            except asyncio.CancelledError:
-                raise
-            except Exception:
+            except Exception as exc:
                 # don't stop heartbeat loop if there are transient exceptions!
                 time_elapsed = time.monotonic() - t0
-                logger.exception(f"Heartbeat attempt failed (time_elapsed={time_elapsed})")
+                error = exc
+                logger.warning(f"Heartbeat attempt failed ({time_elapsed=}, {error=})")
 
             heartbeat_duration = time.monotonic() - t0
             time_until_next_hearbeat = max(0.0, HEARTBEAT_INTERVAL - heartbeat_duration)
             await asyncio.sleep(time_until_next_hearbeat)
 
-    async def _heartbeat(self) -> bool:
+    async def _heartbeat_handle_cancellations(self) -> bool:
         # Return True if a cancellation event was received, in that case we shouldn't wait too long for another heartbeat
 
         # Don't send heartbeats for tasks waiting to be checkpointed.
@@ -794,6 +791,7 @@ def import_function(
     ser_fun,
     ser_params: Optional[bytes],
     function_io_manager,
+    client: Client,
 ) -> ImportedFunction:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
@@ -874,7 +872,8 @@ def import_function(
     # Instantiate the class if it's defined
     if cls:
         if ser_params:
-            args, kwargs = pickle.loads(ser_params)
+            _client: _Client = synchronizer._translate_in(client)
+            args, kwargs = deserialize(ser_params, _client)
         else:
             args, kwargs = (), {}
         obj = cls(*args, **kwargs)
@@ -967,7 +966,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function, importing user code.
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(
-                container_args.function_def, ser_cls, ser_fun, container_args.serialized_params, function_io_manager
+                container_args.function_def,
+                ser_cls,
+                ser_fun,
+                container_args.serialized_params,
+                function_io_manager,
+                client,
             )
 
         # Hydrate all function dependencies.

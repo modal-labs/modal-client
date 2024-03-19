@@ -253,13 +253,14 @@ async def test_volume_upload_large_file(client, tmp_path, servicer, blob_server,
 async def test_volume_upload_file_timeout(client, tmp_path, servicer, blob_server, *args):
     call_count = 0
 
-    def mount_put_file(_request):
+    async def mount_put_file(self, stream):
+        await stream.recv_message()
         nonlocal call_count
         call_count += 1
-        return api_pb2.MountPutFileResponse(exists=False)
+        await stream.send_message(api_pb2.MountPutFileResponse(exists=False))
 
     with servicer.intercept() as ctx:
-        ctx.override_default("MountPutFile", mount_put_file)
+        ctx.set_responder("MountPutFile", mount_put_file)
         with mock.patch("modal._utils.blob_utils.LARGE_FILE_LIMIT", 10):
             with mock.patch("modal.volume.VOLUME_PUT_FILE_CLIENT_TIMEOUT", 0.5):
                 stub = modal.Stub()
