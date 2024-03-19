@@ -536,6 +536,7 @@ def test_volume_rm(servicer, set_env_client):
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
 @pytest.mark.usefixtures("set_env_client", "mock_shell_pty")
+@skip_windows("modal shell is not supported on Windows.")
 def test_environment_flag(test_dir, servicer, command):
     @servicer.function_body
     def nothing(
@@ -567,6 +568,7 @@ def test_environment_flag(test_dir, servicer, command):
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
 @pytest.mark.usefixtures("set_env_client", "mock_shell_pty")
+@skip_windows("modal shell is not supported on Windows.")
 def test_environment_noflag(test_dir, servicer, command, monkeypatch):
     monkeypatch.setenv("MODAL_ENVIRONMENT", "some_weird_default_env")
 
