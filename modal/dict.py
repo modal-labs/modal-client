@@ -57,7 +57,7 @@ class _Dict(_Object, type_prefix="di"):
     def new(data: Optional[dict] = None) -> "_Dict":
         """`Dict.new` is deprecated.
 
-        Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) queues.
+        Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts.
         """
         deprecation_warning((2024, 3, 19), Dict.new.__doc__)
 
@@ -89,7 +89,7 @@ class _Dict(_Object, type_prefix="di"):
 
         Usage:
         ```python
-        with Dict.ephemeral() as :
+        with Dict.ephemeral() as d:
             d["foo"] = "bar"
 
         async with Dict.ephemeral.aio() as d:
