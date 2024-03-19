@@ -410,7 +410,7 @@ def test_logs(servicer, server_url_env):
         await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
 
     with servicer.intercept() as ctx:
-        ctx.override_default("AppGetLogs", app_done)
+        ctx.set_responder("AppGetLogs", app_done)
         res = _run(["app", "logs", "ap-123"], expected_exit_code=0)
         assert res.stdout == "hello\n"
 
