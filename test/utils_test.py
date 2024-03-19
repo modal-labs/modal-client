@@ -4,8 +4,8 @@ import hashlib
 import io
 import pytest
 
-from modal._blob_utils import BytesIOSegmentPayload
-from modal_utils.app_utils import is_valid_app_name, is_valid_subdomain_label
+from modal._utils.app_utils import is_valid_app_name, is_valid_subdomain_label
+from modal._utils.blob_utils import BytesIOSegmentPayload
 
 
 def test_subdomain_label():
@@ -27,7 +27,7 @@ def test_app_name():
 @pytest.mark.asyncio
 async def test_file_segment_payloads():
     data = io.BytesIO(b"abc123")
-    lock = asyncio.Lock()
+    data2 = io.BytesIO(data.getbuffer())
 
     class DummyOutput:  # AbstractStreamWriter
         def __init__(self):
@@ -38,8 +38,8 @@ async def test_file_segment_payloads():
 
     out1 = DummyOutput()
     out2 = DummyOutput()
-    p1 = BytesIOSegmentPayload(data, lock, 0, 3)
-    p2 = BytesIOSegmentPayload(data, lock, 3, 3)
+    p1 = BytesIOSegmentPayload(data, 0, 3)
+    p2 = BytesIOSegmentPayload(data2, 3, 3)
 
     # "out of order" writes
     await p2.write(out2)  # type: ignore
@@ -49,11 +49,10 @@ async def test_file_segment_payloads():
     assert p1.md5_checksum().digest() == hashlib.md5(b"abc").digest()
     assert p2.md5_checksum().digest() == hashlib.md5(b"123").digest()
 
-    assert data.read() == b"abc123"
-    data.seek(0)
+    data = io.BytesIO(b"abc123")
 
     # test reset_on_error
-    all_data = BytesIOSegmentPayload(data, lock, 0, 6)
+    all_data = BytesIOSegmentPayload(data, 0, 6)
 
     class DummyExc(Exception):
         pass
@@ -72,7 +71,7 @@ async def test_file_segment_payloads():
 @pytest.mark.asyncio
 async def test_file_segment_payloads_concurrency():
     data = io.BytesIO((b"123" * 1024 * 350)[: 1024 * 1024])  # 1 MiB
-    lock = asyncio.Lock()
+    data2 = io.BytesIO(data.getbuffer())
 
     class DummyOutput:  # AbstractStreamWriter
         def __init__(self):
@@ -83,7 +82,7 @@ async def test_file_segment_payloads_concurrency():
 
     out1 = DummyOutput()
     out2 = DummyOutput()
-    p1 = BytesIOSegmentPayload(data, lock, 0, len(data.getvalue()) // 2, chunk_size=100 * 1024)  # 100 KiB chunks
-    p2 = BytesIOSegmentPayload(data, lock, len(data.getvalue()) // 2, len(data.getvalue()) // 2, chunk_size=100 * 1024)
+    p1 = BytesIOSegmentPayload(data, 0, len(data.getvalue()) // 2, chunk_size=100 * 1024)  # 100 KiB chunks
+    p2 = BytesIOSegmentPayload(data2, len(data.getvalue()) // 2, len(data.getvalue()) // 2, chunk_size=100 * 1024)
     await asyncio.gather(p2.write(out2), p1.write(out1))  # type: ignore
     assert out1.value + out2.value == data.getvalue()

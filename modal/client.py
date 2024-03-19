@@ -9,12 +9,12 @@ from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 
 from modal_proto import api_grpc, api_pb2
-from modal_utils import async_utils
-from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import create_channel, retry_transient_errors
-from modal_utils.http_utils import http_client_with_tls
 from modal_version import __version__
 
+from ._utils import async_utils
+from ._utils.async_utils import synchronize_api
+from ._utils.grpc_utils import create_channel, retry_transient_errors
+from ._utils.http_utils import http_client_with_tls
 from .config import _check_config, config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 

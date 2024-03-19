@@ -13,7 +13,8 @@ from modal.exception import DeprecationError, ExecutionError, InvalidError, NotF
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
-from modal_test_support import module_1, module_2
+
+from .supports import module_1, module_2
 
 
 @pytest.mark.asyncio

@@ -30,15 +30,15 @@ from grpclib import GRPCError, Status
 import modal._serialization
 from modal import __version__, config
 from modal._serialization import serialize_data_format
+from modal._utils.async_utils import asyncify, synchronize_api
+from modal._utils.grpc_testing import patch_mock_servicer
+from modal._utils.grpc_utils import find_free_port
+from modal._utils.http_utils import run_temporary_http_server
 from modal._vendor import cloudpickle
 from modal.app import _ContainerApp
 from modal.client import Client
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
-from modal_utils.async_utils import asyncify, synchronize_api
-from modal_utils.grpc_testing import patch_mock_servicer
-from modal_utils.grpc_utils import find_free_port
-from modal_utils.http_utils import run_temporary_http_server
 
 
 @dataclasses.dataclass
@@ -91,6 +91,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         }
         self.n_inputs = 0
         self.n_queues = 0
+        self.n_dict_heartbeats = 0
+        self.n_queue_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
         self.mount_contents = {}
@@ -434,11 +436,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = self.deployed_dicts[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             dict_id = f"di-{len(self.dicts)}"
-            self.dicts[dict_id] = {}
+            self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
             self.deployed_dicts[k] = dict_id
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            dict_id = f"di-{len(self.dicts)}"
+            self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
         else:
             raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
+
+    async def DictHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_dict_heartbeats += 1
+        await stream.send_message(Empty())
 
     async def DictClear(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
@@ -773,9 +783,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
             self.deployed_queues[k] = queue_id
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            self.n_queues += 1
+            queue_id = f"qu-{self.n_queues}"
         else:
             raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
+
+    async def QueueHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_queue_heartbeats += 1
+        await stream.send_message(Empty())
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()
@@ -802,7 +820,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
         # Not using asyncio.subprocess here for Python 3.7 compatibility.
         self.sandbox = subprocess.Popen(
-            request.definition.entrypoint_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            request.definition.entrypoint_args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE,
         )
         self.sandbox_defs.append(request.definition)
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
@@ -845,6 +866,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # only used for `modal shell` / `modal container exec`
         _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
         await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="modal_container_exec"))
+
+    async def SandboxStdinWrite(self, stream):
+        request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
+        self.sandbox.stdin.write(request.input)
+        self.sandbox.stdin.flush()
+        if request.eof:
+            self.sandbox.stdin.close()
+        await stream.send_message(api_pb2.SandboxStdinWriteResponse())
 
     ### Secret
 
@@ -1326,10 +1355,3 @@ def modal_config():
 @pytest.fixture
 def supports_dir(test_dir):
     return test_dir / Path("supports")
-
-
-@pytest.fixture()
-def modal_test_support_dir(request):
-    # TODO: merge this with test/supports dir?
-    root_dir = Path(request.config.rootdir)
-    return root_dir / "modal_test_support"

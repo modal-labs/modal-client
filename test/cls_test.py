@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Callable, Dict
 
 from typing_extensions import assert_type
 
-from modal import Cls, Function, Image, Stub, build, enter, exit, method
+from modal import Cls, Function, Image, Queue, Stub, build, enter, exit, method
 from modal._serialization import deserialize
 from modal.app import ContainerApp
 from modal.cls import ClsMixin
@@ -19,7 +19,8 @@ from modal.partial_function import (
 )
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
-from modal_test_support.base_class import BaseCls2
+
+from .supports.base_class import BaseCls2
 
 stub = Stub("stub")
 
@@ -97,6 +98,13 @@ def test_call_cls_remote_invalid_type(client):
 
         exc = excinfo.value
         assert "function" in str(exc)
+
+
+def test_call_cls_remote_modal_type(client):
+    with stub_remote.run(client=client):
+        with Queue.ephemeral(client) as q:
+            FooRemote(42, q)  # type: ignore
+
 
 
 stub_2 = Stub()
@@ -646,3 +654,18 @@ async def test_deprecated_async_methods():
     stub = Stub("deprecated-async-cls")
     with pytest.warns(DeprecationError):
         stub.cls()(ClsWithDeprecatedAsyncMethods)()
+
+
+class HasSnapMethod:
+    @enter(snap=True)
+    def enter(self):
+        pass
+
+    @method()
+    def f(self):
+        pass
+
+
+def test_snap_method_without_snapshot_enabled():
+    with pytest.raises(InvalidError, match="A class must have `enable_memory_snapshot=True`"):
+        stub.cls(enable_memory_snapshot=False)(HasSnapMethod)

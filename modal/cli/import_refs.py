@@ -131,7 +131,7 @@ def _infer_function_or_help(
         function_name = sorted_function_choices[0]
     elif len(function_choices) == 0:
         if stub.registered_web_endpoints:
-            err_msg = "Modal stub has only webhook functions. Use `modal serve` instead of `modal run`."
+            err_msg = "Modal stub has only web endpoints. Use `modal serve` instead of `modal run`."
         else:
             err_msg = "Modal stub has no registered functions. Nothing to run."
         raise click.UsageError(err_msg)

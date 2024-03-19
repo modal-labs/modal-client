@@ -2,6 +2,7 @@
 import functools
 import traceback
 import warnings
+from types import TracebackType
 from typing import Any, Dict, Optional, Tuple
 
 from rich.console import Console, RenderResult, group
@@ -64,6 +65,33 @@ def append_modal_tb(exc: BaseException, tb_dict: TBDictType, line_cache: LineCac
     exc.__traceback__ = tb
 
     setattr(exc, "__line_cache__", line_cache)
+
+
+def reduce_traceback_to_user_code(tb: TracebackType, user_source: str) -> TracebackType:
+    """Return a traceback that does not contain modal entrypoint or synchronicity frames."""
+    # Step forward all the way through the traceback and drop any synchronicity frames
+    tb_root = tb
+    while tb is not None:
+        while tb.tb_next is not None:
+            if "/site-packages/synchronicity/" in tb.tb_next.tb_frame.f_code.co_filename:
+                tb.tb_next = tb.tb_next.tb_next
+            else:
+                break
+        tb = tb.tb_next
+    tb = tb_root
+
+    # Now step forward again until we get to first frame of user code
+    if user_source.endswith(".py"):
+        while tb is not None and tb.tb_frame.f_code.co_filename != user_source:
+            tb = tb.tb_next
+    else:
+        while tb is not None and tb.tb_frame.f_code.co_name != "<module>":
+            tb = tb.tb_next
+    if tb is None:
+        # In case we didn't find a frame that matched the user source, revert to the original root
+        tb = tb_root
+
+    return tb
 
 
 @group()
@@ -209,9 +237,7 @@ def setup_rich_traceback() -> None:
     import synchronicity
     import typer
 
-    import modal_utils
-
-    install(suppress=[synchronicity, modal_utils, grpclib, click, typer], extra_lines=1)
+    install(suppress=[synchronicity, grpclib, click, typer], extra_lines=1)
 
 
 def highlight_modal_deprecation_warnings() -> None:

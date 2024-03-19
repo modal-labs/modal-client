@@ -20,14 +20,14 @@ from typer import Typer
 import modal
 from modal._location import display_location
 from modal._output import step_completed, step_progress
+from modal._utils.async_utils import synchronizer
+from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli._download import _glob_download
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.network_file_system import _NetworkFileSystem
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronizer
-from modal_utils.grpc_utils import retry_transient_errors
 
 FileType = api_pb2.SharedVolumeListFilesEntry.FileType
 

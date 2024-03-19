@@ -9,7 +9,6 @@ import inspect
 import json
 import math
 import os
-import pickle
 import signal
 import sys
 import threading
@@ -22,22 +21,23 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, 
 
 from grpclib import Status
 
-from modal.stub import _Stub
 from modal_proto import api_pb2
-from modal_utils.async_utils import (
-    TaskContext,
-    asyncify,
-    synchronize_api,
-    synchronizer,
-)
-from modal_utils.grpc_utils import retry_transient_errors
 
-from ._asgi import asgi_app_wrapper, webhook_asgi_app, wsgi_app_wrapper
-from ._blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
+from ._asgi import (
+    asgi_app_wrapper,
+    get_ip_address,
+    wait_for_web_server,
+    web_server_proxy,
+    webhook_asgi_app,
+    wsgi_app_wrapper,
+)
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
+from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
+from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
+from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
+from ._utils.grpc_utils import retry_transient_errors
 from .app import _container_app, _ContainerApp, interact
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
@@ -45,6 +45,7 @@ from .config import config, logger
 from .exception import InputCancellation, InvalidError
 from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
+from .stub import _Stub
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -134,16 +135,25 @@ class _FunctionIOManager:
     async def _run_heartbeat_loop(self):
         while 1:
             t0 = time.monotonic()
-            if await self._heartbeat():
-                # got a cancellation event, fine to start another heartbeat immediately
-                # since the cancellation queue should be empty on the worker server
-                # however, we wait at least 1s to prevent short-circuiting the heartbeat loop
-                # in case there is ever a bug. This means it will take at least 1s between
-                # two subsequent cancellations on the same task at the moment
-                time_until_next_hearbeat = 1.0
-            else:
-                heartbeat_duration = time.monotonic() - t0
-                time_until_next_hearbeat = max(0.0, HEARTBEAT_INTERVAL - heartbeat_duration)
+            try:
+                if await self._heartbeat():
+                    # got a cancellation event, fine to start another heartbeat immediately
+                    # since the cancellation queue should be empty on the worker server
+                    # however, we wait at least 1s to prevent short-circuiting the heartbeat loop
+                    # in case there is ever a bug. This means it will take at least 1s between
+                    # two subsequent cancellations on the same task at the moment
+                    await asyncio.sleep(1.0)
+                    continue
+            # pre Python3.8, CancelledErrors were a subclass of exception
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # don't stop heartbeat loop if there are transient exceptions!
+                time_elapsed = time.monotonic() - t0
+                logger.exception(f"Heartbeat attempt failed (time_elapsed={time_elapsed})")
+
+            heartbeat_duration = time.monotonic() - t0
+            time_until_next_hearbeat = max(0.0, HEARTBEAT_INTERVAL - heartbeat_duration)
             await asyncio.sleep(time_until_next_hearbeat)
 
     async def _heartbeat(self) -> bool:
@@ -202,7 +212,10 @@ class _FunctionIOManager:
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")
-            yield
+            try:
+                yield
+            finally:
+                t.cancel()
 
     def stop_heartbeat(self):
         if self._heartbeat_loop:
@@ -325,7 +338,7 @@ class _FunctionIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         iteration = 0
-        while not eof_received:
+        while not eof_received and _container_app.fetching_inputs:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self._input_concurrency
@@ -346,7 +359,8 @@ class _FunctionIOManager:
                     )
                     await asyncio.sleep(response.rate_limit_sleep_duration)
                 elif response.inputs:
-                    # for input cancellations we currently assume there is no input buffering in the container
+                    # for input cancellations and concurrency logic we currently assume
+                    # that there is no input buffering in the container
                     assert len(response.inputs) == 1
 
                     for item in response.inputs:
@@ -585,7 +599,12 @@ class _FunctionIOManager:
         results = await asyncio.gather(
             *[
                 retry_transient_errors(
-                    self._client.stub.VolumeCommit, api_pb2.VolumeCommitRequest(volume_id=v_id), max_retries=10
+                    self._client.stub.VolumeCommit,
+                    api_pb2.VolumeCommitRequest(volume_id=v_id),
+                    max_retries=9,
+                    base_delay=0.25,
+                    max_delay=256,
+                    delay_factor=2,
                 )
                 for v_id in volume_ids
             ],
@@ -736,10 +755,17 @@ async def call_function_async(
         reset_context()
 
     if imp_fun.input_concurrency > 1:
-        async with TaskContext() as execution_context:
+        # all run_input coroutines will have completed by the time we leave the execution context
+        # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
+        # for them to resolve gracefully:
+        async with TaskContext(0.01) as execution_context:
             async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
                 imp_fun.input_concurrency
             ):
+                # Note that run_inputs_outputs will not return until the concurrency semaphore has
+                # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
+                # This prevents leaving the execution_context before outputs have been created
+                # TODO: refactor to make this a bit more easy to follow?
                 execution_context.create_task(run_input(input_id, function_call_id, args, kwargs))
     else:
         async for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs.aio(
@@ -767,6 +793,7 @@ def import_function(
     ser_fun,
     ser_params: Optional[bytes],
     function_io_manager,
+    client: Client,
 ) -> ImportedFunction:
     # This is not in function_io_manager, so that any global scope code that runs during import
     # runs on the main thread.
@@ -847,7 +874,8 @@ def import_function(
     # Instantiate the class if it's defined
     if cls:
         if ser_params:
-            args, kwargs = pickle.loads(ser_params)
+            _client: _Client = synchronizer._translate_in(client)
+            args, kwargs = deserialize(ser_params, _client)
         else:
             args, kwargs = (), {}
         obj = cls(*args, **kwargs)
@@ -858,28 +886,41 @@ def import_function(
     else:
         obj = None
 
-    if not pty_info.pty_type:  # do not wrap PTY-enabled functions
+    if function_def.webhook_config.type:
+        is_async = True
+        is_generator = True
+        data_format = api_pb2.DATA_FORMAT_ASGI
+
         if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
-            # function returns an asgi_app, that we can use as a callable.
-            asgi_app = fun()
-            fun = asgi_app_wrapper(asgi_app, function_io_manager)
-            is_async = True
-            is_generator = True
-            data_format = api_pb2.DATA_FORMAT_ASGI
+            # Function returns an asgi_app, which we can use as a callable.
+            fun = asgi_app_wrapper(fun(), function_io_manager)
+
         elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
-            # function returns an wsgi_app, that we can use as a callable.
-            wsgi_app = fun()
-            fun = wsgi_app_wrapper(wsgi_app, function_io_manager)
-            is_async = True
-            is_generator = True
-            data_format = api_pb2.DATA_FORMAT_ASGI
+            # Function returns an wsgi_app, which we can use as a callable.
+            fun = wsgi_app_wrapper(fun(), function_io_manager)
+
         elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-            # function is webhook without an ASGI app. Create one for it.
-            asgi_app = webhook_asgi_app(fun, function_def.webhook_config.method)
-            fun = asgi_app_wrapper(asgi_app, function_io_manager)
-            is_async = True
-            is_generator = True
-            data_format = api_pb2.DATA_FORMAT_ASGI
+            # Function is a webhook without an ASGI app. Create one for it.
+            fun = asgi_app_wrapper(
+                webhook_asgi_app(fun, function_def.webhook_config.method),
+                function_io_manager,
+            )
+
+        elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WEB_SERVER:
+            # Function spawns an HTTP web server listening at a port.
+            fun()
+
+            # We intentionally try to connect to the external interface instead of the loopback
+            # interface here so users are forced to expose the server. This allows us to potentially
+            # change the implementation to use an external bridge in the future.
+            host = get_ip_address(b"eth0")
+            port = function_def.webhook_config.web_server_port
+            startup_timeout = function_def.webhook_config.web_server_startup_timeout
+            wait_for_web_server(host, port, timeout=startup_timeout)
+            fun = asgi_app_wrapper(web_server_proxy(host, port), function_io_manager)
+
+        else:
+            raise InvalidError(f"Unrecognized web endpoint type {function_def.webhook_config.type}")
 
     return ImportedFunction(
         obj,
@@ -927,7 +968,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function, importing user code.
         with function_io_manager.handle_user_exception():
             imp_fun = import_function(
-                container_args.function_def, ser_cls, ser_fun, container_args.serialized_params, function_io_manager
+                container_args.function_def,
+                ser_cls,
+                ser_fun,
+                container_args.serialized_params,
+                function_io_manager,
+                client,
             )
 
         # Hydrate all function dependencies.
@@ -993,9 +1039,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_io_manager.volume_commit(
                     [v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits]
                 )
-                # Avoid "Canceling remaining unfinished task" warnings.
-                function_io_manager.stop_heartbeat()
-
             finally:
                 # Restore the original signal handler, needed for container_test hygiene since the
                 # test runs `main()` multiple times in the same process.
@@ -1024,11 +1067,13 @@ if __name__ == "__main__":
         logger.debug("Container: interrupted")
 
     # Detect if any non-daemon threads are still running, which will prevent the Python interpreter
-    # from shutting down.
+    # from shutting down. The sleep(0) here is needed for finished ThreadPoolExecutor resources to
+    # shut down without triggering this warning (e.g., `@wsgi_app()`).
+    time.sleep(0)
     lingering_threads: List[threading.Thread] = []
     for thread in threading.enumerate():
         current_thread = threading.get_ident()
-        if thread.ident is not None and thread.ident != current_thread and not thread.daemon:
+        if thread.ident is not None and thread.ident != current_thread and not thread.daemon and thread.is_alive():
             lingering_threads.append(thread)
     if lingering_threads:
         thread_names = ", ".join(t.name for t in lingering_threads)

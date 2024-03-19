@@ -12,6 +12,8 @@ from datetime import timedelta
 from typing import Callable, Optional
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
+from modal_utils.async_utils import TaskContext
+from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.panel import Panel
@@ -31,8 +33,6 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import TaskContext
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
 from ._container_exec import handle_exec_input
 from .client import _Client

@@ -9,7 +9,7 @@ import pytest_asyncio
 
 import modal
 from modal import Mount
-from modal._function_utils import FunctionInfo
+from modal._utils.function_utils import FunctionInfo
 
 from . import helpers
 from .supports.skip import skip_windows
@@ -23,6 +23,15 @@ def venv_path(tmp_path):
     subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", "."], check=True)
     subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "--force-reinstall", "six"], check=True)
     yield venv_path
+
+
+@pytest.fixture
+def path_with_symlinked_files(tmp_path):
+    src = tmp_path / "foo.txt"
+    src.write_text("Hello")
+    trg = tmp_path / "bar.txt"
+    trg.symlink_to(src)
+    return tmp_path, {src, trg}
 
 
 script_path = "pkg_a/script.py"
@@ -152,8 +161,8 @@ def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_ur
     }
 
 
-def test_e2e_modal_run_py_file_mounts(servicer, test_dir):
-    helpers.deploy_stub_externally(servicer, "hello.py", cwd=test_dir.parent / "modal_test_support")
+def test_e2e_modal_run_py_file_mounts(servicer, supports_dir):
+    helpers.deploy_stub_externally(servicer, "hello.py", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount
@@ -161,8 +170,8 @@ def test_e2e_modal_run_py_file_mounts(servicer, test_dir):
     assert "/root/hello.py" in servicer.files_name2sha
 
 
-def test_e2e_modal_run_py_module_mounts(servicer, test_dir):
-    helpers.deploy_stub_externally(servicer, "hello", cwd=test_dir.parent / "modal_test_support")
+def test_e2e_modal_run_py_module_mounts(servicer, supports_dir):
+    helpers.deploy_stub_externally(servicer, "hello", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount
@@ -267,3 +276,12 @@ def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servic
     assert files == {
         "/root/imports_six.py",
     }
+
+
+def test_mount_directory_with_symlinked_file(path_with_symlinked_files, servicer, server_url_env):
+    path, files = path_with_symlinked_files
+    mount = Mount.from_local_dir(path)
+    mount._deploy("mo-1")
+    pkg_a_mount = servicer.mount_contents["mo-1"]
+    for src_f in files:
+        assert any(mnt_f.endswith(src_f.name) for mnt_f in pkg_a_mount)

@@ -305,3 +305,26 @@ def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
         return api_pb2.GeneratorDone.FromString(s)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
+
+
+class ClsConstructorPickler(pickle.Pickler):
+    def __init__(self, buf):
+        super().__init__(buf, protocol=PICKLE_PROTOCOL)
+
+    def persistent_id(self, obj):
+        if isinstance(obj, (_Object, Object)):
+            if not obj.object_id:
+                raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
+            return True
+
+
+def check_valid_cls_constructor_arg(key, obj):
+    # Basically pickle, but with support for modal objects
+    buf = io.BytesIO()
+    try:
+        ClsConstructorPickler(buf).dump(obj)
+        return True
+    except (AttributeError, ValueError):
+        raise ValueError(
+            f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(obj)}."
+        )

@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import os
-import pickle
 import typing
 from typing import Any, Callable, Collection, Dict, List, Optional, Type, TypeVar, Union
 
@@ -8,12 +7,13 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api, synchronizer
-from modal_utils.grpc_utils import retry_transient_errors
 
-from ._mount_utils import validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
+from ._serialization import check_valid_cls_constructor_arg
+from ._utils.async_utils import synchronize_api, synchronizer
+from ._utils.grpc_utils import retry_transient_errors
+from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .exception import InvalidError, NotFoundError, deprecation_error
 from .functions import (
@@ -44,15 +44,6 @@ class ClsMixin:
         deprecation_error((2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
 
 
-def check_picklability(key, arg):
-    try:
-        pickle.dumps(arg)
-    except Exception:
-        raise ValueError(
-            f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(arg)}."
-        )
-
-
 class _Obj:
     """An instance of a `Cls`, i.e. `Cls("foo", 42)` returns an `Obj`.
 
@@ -75,9 +66,9 @@ class _Obj:
         kwargs,
     ):
         for i, arg in enumerate(args):
-            check_picklability(i + 1, arg)
+            check_valid_cls_constructor_arg(i + 1, arg)
         for key, kwarg in kwargs.items():
-            check_picklability(key, kwarg)
+            check_valid_cls_constructor_arg(key, kwarg)
 
         self._functions = {}
         for k, fun in base_functions.items():

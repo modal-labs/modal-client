@@ -113,8 +113,8 @@ class _CliUserExecutionError(Exception):
         self.user_source = user_source
 
 
-# TODO(erikbern): we have something similready in _function_utils.py
-_INTERNAL_MODULES = ["modal", "modal_utils", "synchronicity"]
+# TODO(erikbern): we have something similready in function_utils.py
+_INTERNAL_MODULES = ["modal", "synchronicity"]
 
 
 def _is_internal_frame(frame):

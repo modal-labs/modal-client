@@ -6,11 +6,11 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import get_proto_oneof, retry_transient_errors
 
 from ._output import OutputManager
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api
+from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
 from .client import _Client
 from .config import logger
 from .exception import ExecutionError, InvalidError, deprecation_error
@@ -251,6 +251,7 @@ class _ContainerApp:
     # if true, there's an active PTY shell session connected to this process.
     _is_interactivity_enabled: bool
     _function_def: Optional[api_pb2.Function]
+    _fetching_inputs: bool
 
     def __init__(self):
         self._client = None
@@ -261,6 +262,7 @@ class _ContainerApp:
         self._tag_to_object_id = {}
         self._object_handle_metadata = {}
         self._is_interactivity_enabled = False
+        self._fetching_inputs = True
 
     @property
     def client(self) -> Optional[_Client]:
@@ -271,6 +273,10 @@ class _ContainerApp:
     def app_id(self) -> Optional[str]:
         """A unique identifier for this running App."""
         return self._app_id
+
+    @property
+    def fetching_inputs(self) -> bool:
+        return self._fetching_inputs
 
     def _associate_stub_container(self, stub):
         if self._associated_stub:
@@ -365,6 +371,9 @@ class _ContainerApp:
         global _is_container_app, _container_app
         _is_container_app = False
         _container_app.__init__()  # type: ignore
+
+    def stop_fetching_inputs(self):
+        self._fetching_inputs = False
 
 
 LocalApp = synchronize_api(_LocalApp)

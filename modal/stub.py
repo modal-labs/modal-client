@@ -9,13 +9,13 @@ from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._types import typechecked
-from modal_utils.async_utils import synchronize_api
 
-from ._function_utils import FunctionInfo
 from ._ipython import is_notebook
-from ._mount_utils import validate_volumes
 from ._output import OutputManager
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api
+from ._utils.function_utils import FunctionInfo
+from ._utils.mount_utils import validate_volumes
 from .app import _container_app, _ContainerApp, _LocalApp, is_local
 from .client import _Client
 from .cls import _Cls
@@ -27,7 +27,7 @@ from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
-from .partial_function import PartialFunction, _PartialFunction
+from .partial_function import PartialFunction, _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
 from .proxy import _Proxy
 from .retries import Retries
 from .runner import _run_stub
@@ -668,6 +668,12 @@ class _Stub:
 
         def wrapper(user_cls: CLS_T) -> _Cls:
             cls: _Cls = _Cls.from_local(user_cls, self, decorator)
+
+            if (
+                _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
+                and not enable_memory_snapshot
+            ):
+                raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
             if len(cls._functions) > 1 and keep_warm is not None:
                 deprecation_warning(

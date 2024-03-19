@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 
-from modal_utils.async_utils import synchronize_api
-
+from ._utils.async_utils import synchronize_api
 from .exception import deprecation_error
 
 

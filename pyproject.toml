@@ -11,7 +11,11 @@ no_strict_optional = true
 namespace_packages = true
 
 [[tool.mypy.overrides]]
-module = ["modal/_vendor/cloudpickle", "modal/_vendor/tblib"]
+module = [
+    "modal/_vendor/cloudpickle",
+    "modal/_vendor/tblib",
+    "modal/_vendor/a2wsgi_wsgi",
+]
 ignore_errors = true
 
 
@@ -29,7 +33,15 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-exclude = ['.venv', '.git', '__pycache__', 'proto', 'build', 'modal_proto', 'modal/_vendor']
+exclude = [
+    '.venv',
+    '.git',
+    '__pycache__',
+    'proto',
+    'build',
+    'modal_proto',
+    'modal/_vendor',
+]
 line-length = 120
 lint.ignore = ['E501', 'E741']
 lint.select = ['E', 'F', 'W', 'I']
@@ -44,7 +56,6 @@ known-first-party = [
     "modal",
     "modal_global_objects",
     "modal_proto",
-    "modal_utils",
     "modal_version",
 ]
 extra-standard-library = ["pytest"]

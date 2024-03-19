@@ -15,9 +15,9 @@ import pytest_asyncio
 import toml
 
 from modal import Client
+from modal._utils.async_utils import asyncnullcontext
 from modal.cli.entry_point import entrypoint_cli
 from modal_proto import api_pb2
-from modal_utils.async_utils import asyncnullcontext
 
 from .supports.skip import skip_windows
 

@@ -2,7 +2,6 @@
 # Not currently used in production; exists for CI usage until we remove modal/requirements.txt
 aiohttp==3.9.1
 aiostream==0.4.4
-asgiref==3.5.2
 certifi>=2022.12.07
 fastapi==0.88.0
 grpclib==0.4.7

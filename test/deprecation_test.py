@@ -2,7 +2,8 @@
 import pytest
 
 from modal.exception import DeprecationError
-from modal_test_support.functions import deprecated_function
+
+from .supports.functions import deprecated_function
 
 # Not a pytest unit test, but an extra assertion that we catch issues in global scope too
 # See #2228
@@ -28,6 +29,6 @@ def test_deprecation():
         assert res == 1764
 
     # Make sure it raises in the right file
-    import modal_test_support.functions
+    from .supports import functions
 
-    assert record[0].filename == modal_test_support.functions.__file__
+    assert record[0].filename == functions.__file__

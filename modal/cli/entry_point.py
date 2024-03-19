@@ -6,7 +6,7 @@ import typer
 from rich.console import Console
 from rich.rule import Rule
 
-from modal_utils.async_utils import synchronizer
+from modal._utils.async_utils import synchronizer
 
 from . import run
 from .app import app_cli

@@ -5,9 +5,8 @@ from typing import Awaitable, Callable, ClassVar, Dict, Hashable, List, Optional
 
 from google.protobuf.message import Message
 
-from modal_utils.async_utils import synchronize_api
-
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api
 from .client import _Client
 from .config import config
 from .exception import ExecutionError, InvalidError
@@ -15,6 +14,8 @@ from .exception import ExecutionError, InvalidError
 O = TypeVar("O", bound="_Object")
 
 _BLOCKING_O = synchronize_api(O)
+
+EPHEMERAL_OBJECT_HEARTBEAT_SLEEP = 300
 
 
 def _get_environment_name(environment_name: Optional[str], resolver: Optional[Resolver] = None) -> Optional[str]:
@@ -37,6 +38,7 @@ class _Object:
     _is_another_app: bool
     _hydrate_lazily: bool
     _deps: Optional[Callable[..., List["_Object"]]]
+    _deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None
 
     # For hydrated objects
     _object_id: str
@@ -61,6 +63,7 @@ class _Object:
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., List["_Object"]]] = None,
+        deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -69,6 +72,7 @@ class _Object:
         self._is_another_app = is_another_app
         self._hydrate_lazily = hydrate_lazily
         self._deps = deps
+        self._deduplication_key = deduplication_key
 
         self._object_id = None
         self._client = None
@@ -135,10 +139,11 @@ class _Object:
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., List["_Object"]]] = None,
+        deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
-        obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps)
+        obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps, deduplication_key)
         return obj
 
     @classmethod
@@ -206,9 +211,6 @@ class _Object:
         else:
             resolver = Resolver()  # TODO: this resolver has no attached Client!
             await resolver.load(self)
-
-    async def _deduplication_key(self) -> Optional[Hashable]:
-        return None
 
 
 Object = synchronize_api(_Object, target_module=__name__)

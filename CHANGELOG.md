@@ -10,6 +10,30 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.61.57 (2024-03-15)
+
+- Add the `@web_server` decorator, which exposes a server listening on a container port as a web endpoint.
+
+
+
+### 0.61.53 (2024-03-15)
+
+- Fixed an bug where` Mount` was failing to include symbolic links.
+
+
+
+### 0.61.45 (2024-03-13)
+
+When called from within a container, `modal.experimental.stop_fetching_inputs()` causes it to gracefully exit after the current input has been processed.
+
+
+
+### 0.61.35 (2024-03-12)
+
+- The `@wsgi_app()` decorator now uses a different backend based on `a2wsgi` that streams requests in chunks, rather than buffering the entire request body.
+
+
+
 ### 0.61.32 (2024-03-11)
 
 * Stubs/apps can now be "composed" from several smaller stubs using `stub.include(...)`. This allows more ergonomic setup of multi-file Modal apps.
