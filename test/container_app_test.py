@@ -7,7 +7,7 @@ from unittest import mock
 import modal.secret
 from modal import Dict, Stub
 from modal.app import container_app
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -34,7 +34,8 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
     assert await my_f_container.remote.aio(42) == 1764  # type: ignore
 
     # Also make sure dicts work
-    my_d_container = Dict.new()
+    with pytest.warns(DeprecationError):
+        my_d_container = Dict.new()
     stub.my_d = my_d_container  # should trigger id assignment
     assert my_d_container.object_id == "di-123"
 
