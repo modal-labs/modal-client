@@ -147,11 +147,33 @@ class _StreamWriter:
         self._buffer = bytearray()
 
     def get_next_index(self):
+        """mdmd:hidden"""
         index = self._index
         self._index += 1
         return index
 
     def write(self, data: Union[bytes, bytearray, memoryview]):
+        """
+        This methods writes the data to an internal writer buffer waiting to be drained.
+
+        This method needs to be used along with the `drain()` method which flushes the buffer.
+
+        **Usage**
+
+        ```python
+        sandbox = stub.spawn_sandbox(
+            "bash",
+            "-c",
+            "while read line; do echo $line; done",
+        )
+        sandbox.stdin.write("foo\n")
+        sandbox.stdin.write("bar\n")
+        sb.stdin.write_eof()
+
+        sb.stdin.drain()
+        sb.wait()
+        ```
+        """
         if self._is_closed:
             raise EOFError("Stdin is closed. Cannot write to it.")
         if isinstance(data, (bytes, bytearray, memoryview)):
@@ -162,9 +184,18 @@ class _StreamWriter:
             raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
 
     def write_eof(self):
+        """
+        Close the write end of the stream after the buffered write data is drained.
+        If the sandbox process was blocked on input, it will become unblocked after `write_eof()`.
+
+        This method needs to be used along with the `drain()` method which flushes the EOF to the process.
+        """
         self._is_closed = True
 
     async def drain(self):
+        """
+        Flushes the write buffer and EOF to the running Sandbox process.
+        """
         data = bytes(self._buffer)
         self._buffer.clear()
         index = self.get_next_index()
