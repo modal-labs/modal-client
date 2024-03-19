@@ -844,7 +844,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         try:
             await asyncio.wait_for(self.sandbox.wait(), request.timeout)
         except asyncio.TimeoutError:
-            await stream.send_message(api_pb2.SandboxWaitResponse())
+            if self.sandbox.returncode:
+                res = api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=self.sandbox.returncode
+                )
+                await stream.send_message(api_pb2.SandboxWaitResponse(result=res))
+            else:
+                await stream.send_message(api_pb2.SandboxWaitResponse())
             return
 
         if self.sandbox.returncode != 0:
