@@ -4,16 +4,29 @@ import concurrent.futures
 import time
 from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
-from typing import IO, AsyncGenerator, AsyncIterator, BinaryIO, Callable, Generator, List, Optional, Sequence, Union
+from typing import (
+    IO,
+    AsyncGenerator,
+    AsyncIterator,
+    BinaryIO,
+    Callable,
+    Generator,
+    List,
+    Optional,
+    Sequence,
+    Type,
+    Union,
+)
 
 import aiostream
 from grpclib import GRPCError, Status
+from synchronicity.async_wrap import asynccontextmanager
 
 from modal.exception import VolumeUploadTimeoutError, deprecation_warning
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
-from ._utils.async_utils import asyncnullcontext, synchronize_api
+from ._utils.async_utils import TaskContext, asyncnullcontext, synchronize_api
 from ._utils.blob_utils import (
     FileUploadSpec,
     blob_iter,
@@ -24,7 +37,7 @@ from ._utils.blob_utils import (
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from .client import _Client
 from .config import logger
-from .object import _get_environment_name, _Object, live_method, live_method_gen
+from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 # Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
@@ -137,6 +150,26 @@ class _Volume(_Object, type_prefix="vo"):
             self._hydrate(response.volume_id, resolver.client, None)
 
         return _Volume._from_loader(_load, "Volume()")
+
+    @classmethod
+    @asynccontextmanager
+    async def ephemeral(
+        cls: Type["_Volume"],
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    ) -> AsyncIterator["_Volume"]:
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.VolumeGetOrCreateRequest(
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+            environment_name=_get_environment_name(environment_name),
+        )
+        response = await client.stub.VolumeGetOrCreate(request)
+        async with TaskContext() as tc:
+            request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
+            tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
+            yield cls._new_hydrated(response.volume_id, client, None)
 
     @staticmethod
     def persisted(

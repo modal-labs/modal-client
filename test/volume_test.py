@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import io
 import pytest
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -339,3 +340,12 @@ def test_persisted(servicer, client):
 
     # Lookup should succeed now
     modal.Volume.lookup("xyz", client=client)
+
+
+def test_ephemeral(servicer, client):
+    assert servicer.n_vol_heartbeats == 0
+    with modal.Volume.ephemeral(client=client, _heartbeat_sleep=1) as vol:
+        assert vol.listdir("**") == []
+        # TODO(erikbern): perform some operations
+        time.sleep(1.5)  # Make time for 2 heartbeats
+    assert servicer.n_vol_heartbeats == 2

@@ -2,22 +2,29 @@
 import os
 import time
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, BinaryIO, List, Optional, Tuple, Union
+from typing import AsyncIterator, BinaryIO, List, Optional, Tuple, Type, Union
 
 from grpclib import GRPCError, Status
+from synchronicity.async_wrap import asynccontextmanager
 
 import modal
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
 from ._types import typechecked
-from ._utils.async_utils import ConcurrencyPool, synchronize_api
+from ._utils.async_utils import ConcurrencyPool, TaskContext, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.hash_utils import get_sha256_hex
 from .client import _Client
 from .exception import deprecation_warning
-from .object import _get_environment_name, _Object, live_method, live_method_gen
+from .object import (
+    EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    _get_environment_name,
+    _Object,
+    live_method,
+    live_method_gen,
+)
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
@@ -133,6 +140,26 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             self._hydrate(response.shared_volume_id, resolver.client, None)
 
         return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
+
+    @classmethod
+    @asynccontextmanager
+    async def ephemeral(
+        cls: Type["_NetworkFileSystem"],
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    ) -> AsyncIterator["_NetworkFileSystem"]:
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.SharedVolumeGetOrCreateRequest(
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+            environment_name=_get_environment_name(environment_name),
+        )
+        response = await client.stub.SharedVolumeGetOrCreate(request)
+        async with TaskContext() as tc:
+            request = api_pb2.SharedVolumeHeartbeatRequest(shared_volume_id=response.shared_volume_id)
+            tc.infinite_loop(lambda: client.stub.SharedVolumeHeartbeat(request), sleep=_heartbeat_sleep)
+            yield cls._new_hydrated(response.shared_volume_id, client, None)
 
     @staticmethod
     def persisted(
