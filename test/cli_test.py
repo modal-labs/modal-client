@@ -403,9 +403,16 @@ def test_app_descriptions(servicer, server_url_env, test_dir):
 
 
 def test_logs(servicer, server_url_env):
-    servicer.done = True
-    res = _run(["app", "logs", "ap-123"], expected_exit_code=0)
-    assert res.stdout == "hello, world (1)\n"  # from servicer mock
+    async def app_done(self, stream):
+        await stream.recv_message()
+        log = api_pb2.TaskLogs(data="hello\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
+        await stream.send_message(api_pb2.TaskLogsBatch(entry_id="1", items=[log]))
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    with servicer.intercept() as ctx:
+        ctx.override_default("AppGetLogs", app_done)
+        res = _run(["app", "logs", "ap-123"], expected_exit_code=0)
+        assert res.stdout == "hello\n"
 
 
 def test_nfs_get(set_env_client):
