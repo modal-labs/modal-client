@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import pytest
+import time
 from unittest import mock
 
 import modal
@@ -171,3 +172,18 @@ def test_persisted(servicer, client):
 
     # Lookup should succeed now
     modal.NetworkFileSystem.lookup("xyz", client=client)
+
+
+def test_nfs_ephemeral(servicer, client, tmp_path):
+    local_file_path = tmp_path / "some_file"
+    local_file_path.write_text("hello world")
+
+    assert servicer.n_nfs_heartbeats == 0
+    with modal.NetworkFileSystem.ephemeral(client=client, _heartbeat_sleep=1) as nfs:
+        assert nfs.listdir("/") == []
+        nfs.write_file("xyz.txt", open(local_file_path, "rb"))
+        (entry,) = nfs.listdir("/")
+        assert entry.path == "xyz.txt"
+
+        time.sleep(1.5)  # Make time for 2 heartbeats
+    assert servicer.n_nfs_heartbeats == 2
