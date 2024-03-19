@@ -93,6 +93,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_dict_heartbeats = 0
         self.n_queue_heartbeats = 0
         self.n_nfs_heartbeats = 0
+        self.n_vol_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
         self.mount_contents = {}
@@ -1028,6 +1029,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if k not in self.deployed_volumes:
                 raise GRPCError(Status.NOT_FOUND, "Volume not found")
             volume_id = self.deployed_volumes[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            volume_id = f"vo-{len(self.volume_files)}"
+            self.volume_files[volume_id] = {}
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             if k not in self.deployed_volumes:
                 volume_id = f"vo-{len(self.volume_files)}"
@@ -1044,6 +1048,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
 
         await stream.send_message(api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id))
+
+    async def VolumeHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_vol_heartbeats += 1
+        await stream.send_message(Empty())
 
     async def VolumeCommit(self, stream):
         req = await stream.recv_message()
