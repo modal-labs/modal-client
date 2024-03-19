@@ -1247,7 +1247,7 @@ def test_stop_fetching_inputs(unix_servicer):
 
 
 @skip_windows_unix_socket
-def test_container_heartbeat_survives_errors(servicer, caplog, monkeypatch):
+def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypatch):
     monkeypatch.setattr("modal._container_entrypoint.HEARTBEAT_INTERVAL", 0.01)
     num_heartbeats = 0
 
@@ -1273,3 +1273,30 @@ def test_container_heartbeat_survives_errors(servicer, caplog, monkeypatch):
     )  # one occurence per failing `retry_transient_errors()`, so fewer than the number of failing requests!
     assert loop_iteration_failures < num_heartbeats
     assert num_heartbeats > 4  # more than the default number of retries per heartbeat attempt + 1
+
+
+@skip_windows_unix_socket
+def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeypatch):
+    numcalls = 0
+
+    async def custom_heartbeater(self):
+        nonlocal numcalls
+        numcalls += 1
+        raise Exception("oops")
+
+    monkeypatch.setattr("modal._container_entrypoint.HEARTBEAT_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        "modal._container_entrypoint._FunctionIOManager._heartbeat_handle_cancellations", custom_heartbeater
+    )
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "delay",
+        inputs=_get_inputs(((0.5,), {})),
+    )
+    assert ret.task_result is None  # should not cause a failure result
+    loop_iteration_failures = caplog.text.count("Heartbeat attempt failed")
+    assert loop_iteration_failures > 5
+    assert "error=Exception('oops')" in caplog.text
+    assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
