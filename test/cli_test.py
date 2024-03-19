@@ -1,4 +1,6 @@
 # Copyright Modal Labs 2022-2023
+import asyncio
+import contextlib
 import json
 import os
 import pytest
@@ -15,7 +17,6 @@ import pytest_asyncio
 import toml
 
 from modal import Client
-from modal._utils.async_utils import asyncnullcontext
 from modal.cli.entry_point import entrypoint_cli
 from modal_proto import api_pb2
 
@@ -348,42 +349,60 @@ def mock_shell_pty(servicer):
         )
 
     captured_out = []
+    fake_stdin = [b"echo foo\n", b"exit\n"]
 
     async def write_to_fd(fd: int, data: bytes):
         nonlocal captured_out
         captured_out.append((fd, data))
 
+    @contextlib.asynccontextmanager
+    async def fake_stream_from_stdin(handle_input, use_raw_terminal=False):
+        async def _write():
+            message_index = 0
+            while True:
+                if message_index == len(fake_stdin):
+                    break
+                data = fake_stdin[message_index]
+                await handle_input(data, message_index)
+                message_index += 1
+
+        write_task = asyncio.create_task(_write())
+        yield
+        write_task.cancel()
+
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
     ), mock.patch("modal.runner.get_pty_info", mock_get_pty_info), mock.patch(
-        "modal._utils.shell_utils.stream_from_stdin", asyncnullcontext
+        "modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin
     ), mock.patch("modal._sandbox_shell.write_to_fd", write_to_fd):
-        yield captured_out
+        yield fake_stdin, captured_out
 
 
 @skip_windows("modal shell is not supported on Windows.")
 def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     webhook_stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
+    fake_stdin, captured_out = mock_shell_pty
 
-    # We need to send "exit\n" to the sandbox, otherwise sandbox.stdout.read() will not terminate
-    # as it hasn't received an EOF.
-    servicer.add_shell_cmds([b'echo "Hello World"\n', b"exit\n"])
+    fake_stdin.clear()
+    fake_stdin.extend([b'echo "Hello World"\n', b"exit\n"])
+
     # Function is explicitly specified
     _run(["shell", stub_file.as_posix() + "::foo"])
 
-    assert mock_shell_pty == [(1, b"Hello World\n")]
-    mock_shell_pty.clear()
+    # first captured message is the empty message the mock server sends
+    assert captured_out[1:] == [(1, b"Hello World\n")]
+    captured_out.clear()
 
     # Function is explicitly specified
     _run(["shell", webhook_stub_file.as_posix() + "::foo"])
-    assert mock_shell_pty == [(1, b"Hello World\n")]
-    mock_shell_pty.clear()
+    assert captured_out[1:] == [(1, b"Hello World\n")]
+    captured_out.clear()
 
     # Function must be inferred
     _run(["shell", webhook_stub_file.as_posix()])
-    assert mock_shell_pty == [(1, b"Hello World\n")]
-    mock_shell_pty.clear()
+    assert captured_out[1:] == [(1, b"Hello World\n")]
+    captured_out.clear()
 
 
 def test_app_descriptions(servicer, server_url_env, test_dir):
@@ -512,8 +531,6 @@ def test_environment_flag(test_dir, servicer, command):
     ):  # hacky - compatible with both argless modal run and interactive mode which always sends an arg...
         pass
 
-    if command[0] == "shell":
-        servicer.add_shell_cmds([b"exit\n"])
     stub_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
     with servicer.intercept() as ctx:
         ctx.add_response(
@@ -548,7 +565,6 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
         pass
 
     stub_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
-    servicer.add_shell_cmds([b"exit\n"])
     with servicer.intercept() as ctx:
         ctx.add_response(
             "MountGetOrCreate",

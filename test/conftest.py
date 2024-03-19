@@ -152,16 +152,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
 
         self.sandbox_defs = []
-        self.sandbox: subprocess.Popen = None
+        self.sandbox: asyncio.subprocess.Process = None
+        self.is_shell = False
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
         self.token_flow_localhost_port = None
         self.queue_max_len = 1_00
 
         self.container_heartbeat_abort = threading.Event()
-
-        # Shell commands to be submitted to sandbox after it's created.
-        self.pending_shell_cmds = []
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -796,9 +794,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Sandbox
 
-    # Add shell commands to submit to the sandbox after it's created.
-    def add_shell_cmds(self, args: list[bytes]):
-        self.pending_shell_cmds += args
+    async def SandboxCreate(self, stream):
+        request: api_pb2.SandboxCreateRequest = await stream.recv_message()
+        if self.is_shell_cmds(request.definition.entrypoint_args):
+            self.is_shell = True
+        self.sandbox = await asyncio.subprocess.create_subprocess_exec(
+            *request.definition.entrypoint_args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE,
+        )
+
+        self.sandbox_defs.append(request.definition)
+
+        await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     def is_shell_cmds(self, cmds):
         shell_list = ["bash", "sh"]
@@ -807,43 +816,34 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             return False
 
-    async def SandboxCreate(self, stream):
-        request: api_pb2.SandboxCreateRequest = await stream.recv_message()
-        # Not using asyncio.subprocess here for Python 3.7 compatibility.
-        self.sandbox = subprocess.Popen(
-            request.definition.entrypoint_args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            stdin=asyncio.subprocess.PIPE,
-        )
-        self.sandbox_defs.append(request.definition)
-        if self.is_shell_cmds(request.definition.entrypoint_args) and len(self.pending_shell_cmds) == 0:
-            raise Exception(
-                f"The sandbox commands is ${request.definition.entrypoint_args} but there is no pending command to exit the shell. Call 'pending_shell_cmds' to add pending commands."
-            )
-        for cmd in self.pending_shell_cmds:
-            self.sandbox.stdin.write(cmd)
-        self.sandbox.stdin.flush()
-        await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
-
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
+        io: asyncio.StreamReader
+        if self.is_shell:
+            # sends an empty message to simulate PTY
+            await stream.send_message(
+                api_pb2.TaskLogsBatch(items=[api_pb2.TaskLogs(data="", file_descriptor=request.file_descriptor)])
+            )
+
         if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
             # Blocking read until EOF is returned.
-            data = self.sandbox.stdout.read()
+            io = self.sandbox.stdout
         else:
-            data = self.sandbox.stderr.read()
-        await stream.send_message(
-            api_pb2.TaskLogsBatch(
-                items=[api_pb2.TaskLogs(data=data.decode("utf-8"), file_descriptor=request.file_descriptor)]
+            io = self.sandbox.stderr
+
+        async for message in io:
+            await stream.send_message(
+                api_pb2.TaskLogsBatch(
+                    items=[api_pb2.TaskLogs(data=message.decode("utf-8"), file_descriptor=request.file_descriptor)]
+                )
             )
-        )
+
         await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
 
     async def SandboxWait(self, stream):
         request: api_pb2.SandboxWaitRequest = await stream.recv_message()
         try:
-            self.sandbox.wait(timeout=request.timeout)
+            await self.sandbox.wait(timeout=request.timeout)
         except subprocess.TimeoutExpired:
             await stream.send_message(api_pb2.SandboxWaitResponse())
             return
@@ -868,8 +868,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxStdinWrite(self, stream):
         request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
+
         self.sandbox.stdin.write(request.input)
-        self.sandbox.stdin.flush()
+        await self.sandbox.stdin.drain()
+
         if request.eof:
             self.sandbox.stdin.close()
         await stream.send_message(api_pb2.SandboxStdinWriteResponse())
