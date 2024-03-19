@@ -92,6 +92,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_queues = 0
         self.n_dict_heartbeats = 0
         self.n_queue_heartbeats = 0
+        self.n_nfs_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
         self.mount_contents = {}
@@ -918,6 +919,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if k not in self.deployed_nfss:
                 raise GRPCError(Status.NOT_FOUND, "NFS not found")
             nfs_id = self.deployed_nfss[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            nfs_id = f"sv-{len(self.nfs_files)}"
+            self.nfs_files[nfs_id] = {}
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             if k not in self.deployed_nfss:
                 nfs_id = f"sv-{len(self.nfs_files)}"
@@ -935,6 +939,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         await stream.send_message(api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id=nfs_id))
 
+    async def SharedVolumeHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_nfs_heartbeats += 1
+        await stream.send_message(Empty())
+
     async def SharedVolumePutFile(self, stream):
         req = await stream.recv_message()
         self.nfs_files[req.shared_volume_id][req.path] = req
@@ -949,6 +958,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.SharedVolumeGetFileResponse(data_blob_id=put_req.data_blob_id))
         else:
             await stream.send_message(api_pb2.SharedVolumeGetFileResponse(data=put_req.data))
+
+    async def SharedVolumeListFilesStream(self, stream):
+        req: api_pb2.SharedVolumeListFilesRequest = await stream.recv_message()
+        for path in self.nfs_files[req.shared_volume_id].keys():
+            entry = api_pb2.SharedVolumeListFilesEntry(path=path)
+            response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
+            await stream.send_message(response)
 
     ### Task
 
