@@ -339,7 +339,14 @@ def test_persisted(servicer, client):
     modal.Volume.lookup("xyz", create_if_missing=True, client=client)
 
     # Lookup should succeed now
-    modal.Volume.lookup("xyz", client=client)
+    v = modal.Volume.lookup("xyz", client=client)
+
+    # Delete it
+    v.delete(client=client)
+
+    # Lookup should fail again
+    with pytest.raises(NotFoundError):
+        modal.Volume.lookup("xyz", client=client)
 
 
 def test_ephemeral(servicer, client):

@@ -437,6 +437,12 @@ class _Volume(_Object, type_prefix="vo"):
         """
         return _VolumeUploadContextManager(self.object_id, self._client, force=force)
 
+    @live_method
+    async def delete(self, client: Optional[_Client] = None):
+        if client is None:
+            client = await _Client.from_env()
+        await retry_transient_errors(client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id))
+
 
 class _VolumeUploadContextManager:
     """Context manager for batch-uploading files to a Volume."""
