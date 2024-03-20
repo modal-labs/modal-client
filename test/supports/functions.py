@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import List
 
 from modal import (
     Image,
@@ -200,7 +201,7 @@ class LifecycleCls:
         sync_exit_duration=0,
         async_exit_duration=0,
     ):
-        self.events = []
+        self.events: List[str] = []
         self.sync_enter_duration = sync_enter_duration
         self.async_enter_duration = async_enter_duration
         self.sync_exit_duration = sync_exit_duration

@@ -1111,7 +1111,7 @@ def _run_container_process(
     module_name,
     function_name,
     *,
-    inputs: List[Tuple[Tuple[Any], Dict[str, Any]]],
+    inputs: List[Tuple[Tuple, Dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
     cls_params: Tuple[Tuple, Dict[str, Any]] = ((), {}),
     print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
