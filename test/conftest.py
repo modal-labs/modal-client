@@ -1093,6 +1093,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_commits[req.volume_id] += 1
         await stream.send_message(api_pb2.VolumeCommitResponse(skip_reload=False))
 
+    async def VolumeDelete(self, stream):
+        req: api_pb2.VolumeDeleteRequest = await stream.recv_message()
+        self.volume_files.pop(req.volume_id)
+        self.deployed_volumes = {k: vol_id for k, vol_id in self.deployed_volumes.items() if vol_id != req.volume_id}
+        await stream.send_message(Empty())
+
     async def VolumeReload(self, stream):
         req = await stream.recv_message()
         self.requests.append(req)
