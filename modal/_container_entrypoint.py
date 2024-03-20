@@ -60,8 +60,10 @@ class UserException(Exception):
     pass
 
 
-class SignalHandlingEventLoop:
+class UserCodeEventLoop:
     """Run an async event loop as a context manager and handle signals.
+
+    This will run all *user supplied* async code, i.e. async functions, as well as async enter/exit managers
 
     The following signals are handled while a coroutine is running on the event loop until
     completion (and then handlers are deregistered):
@@ -80,14 +82,11 @@ class SignalHandlingEventLoop:
             self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
         self.loop.close()
 
-    def run(self, coro, cancel_on_sigint: bool = True, is_blocking=False):
+    def run(self, coro, cancel_on_sigint: bool = True):
         task = asyncio.ensure_future(coro, loop=self.loop)
 
         def sigint_handler():
-            if is_blocking:
-                raise KeyboardInterrupt()  # raised in the blocking code
-            else:
-                self.loop.call_soon_threadsafe(task.cancel)
+            self.loop.call_soon_threadsafe(task.cancel)
 
         if cancel_on_sigint:
             old_handler = signal.signal(signal.SIGINT, lambda sig, frame: sigint_handler())
@@ -101,11 +100,12 @@ class SignalHandlingEventLoop:
         try:
             return self.loop.run_until_complete(task)
         except asyncio.CancelledError:
-            # this could happen if we get a sigint!
+            # we cancel the underlying task when a sigint is received while cancel_on_sigint
+            # we should reraise it as a KeyboardInterrupt to let the caller in the main
+            # thread know about the sigint
             raise KeyboardInterrupt()
         finally:
             self.loop.remove_signal_handler(signal.SIGUSR1)
-            self.loop.remove_signal_handler(signal.SIGINT)
             if cancel_on_sigint:
                 signal.signal(signal.SIGINT, old_handler)
 
@@ -475,9 +475,8 @@ class _FunctionIOManager:
         try:
             yield
         except KeyboardInterrupt:
-            # Send no output in case we get sigint:ed.
-            # The status of the input should have been handled externally already
-            # By issuing a retry or similar
+            # Send no task result in case we get sigint:ed by the runner
+            # The status of the input should have been handled externally already in that case
             raise
         except BaseException as exc:
             # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
@@ -956,20 +955,21 @@ def import_function(
     )
 
 
-async def call_lifecycle_functions(
+def call_lifecycle_functions(
+    event_loop: UserCodeEventLoop,
     function_io_manager,  #: FunctionIOManager,  TODO: this type is generated at runtime
     funcs: Iterable[Callable],
+    stop_on_sigint: bool = True,
 ) -> None:
     """Call function(s), can be sync or async, but any return values are ignored."""
-    async with function_io_manager.handle_user_exception.aio():
+    with function_io_manager.handle_user_exception():
         for func in funcs:
-            print("Calling lifecycle!", func)
             # We are deprecating parameterized exit methods but want to gracefully handle old code.
             # We can remove this once the deprecation in the actual @exit decorator is enforced.
             args = (None, None, None) if method_has_params(func) else ()
             res = func(*args)
             if inspect.iscoroutine(res):
-                await res
+                event_loop.run(res, cancel_on_sigint=stop_on_sigint)
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
@@ -980,7 +980,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # Define a global app (need to do this before imports).
     container_app = function_io_manager.initialize_app()
 
-    with function_io_manager.heartbeats(), SignalHandlingEventLoop() as event_loop:
+    with function_io_manager.heartbeats(), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = function_io_manager.get_serialized_function()
@@ -1006,8 +1006,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify all "enter" methods that need to run before we checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
-            event_loop.run(
-                call_lifecycle_functions(function_io_manager, pre_checkpoint_methods.values()), cancel_on_sigint=True
+            call_lifecycle_functions(
+                event_loop, function_io_manager, pre_checkpoint_methods.values(), stop_on_sigint=True
             )
 
         # If this container is being used to create a checkpoint, checkpoint the container after
@@ -1030,8 +1030,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify the "enter" methods to run after resuming from a checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
-            event_loop.run(
-                call_lifecycle_functions(function_io_manager, post_checkpoint_methods.values()), cancel_on_sigint=True
+            call_lifecycle_functions(
+                event_loop, function_io_manager, post_checkpoint_methods.values(), stop_on_sigint=True
             )
 
         # Execute the function.
@@ -1047,9 +1047,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 signal.signal(signal.SIGUSR1, _cancel_input_signal_handler)
 
                 call_function_sync(function_io_manager, imp_fun)
-        except KeyboardInterrupt:
-            print("KEYBOARRRRD")
-            raise
         finally:
             # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
             # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
@@ -1061,8 +1058,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 # Identify "exit" methods and run them.
                 if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
                     exit_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
-                    event_loop.run(
-                        call_lifecycle_functions(function_io_manager, exit_methods.values()), cancel_on_sigint=False
+                    call_lifecycle_functions(
+                        event_loop, function_io_manager, exit_methods.values(), stop_on_sigint=False
                     )
 
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
