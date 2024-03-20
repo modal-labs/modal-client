@@ -92,7 +92,7 @@ class _Dict(_Object, type_prefix="di"):
         with Dict.ephemeral() as d:
             d["foo"] = "bar"
 
-        async with Dict.ephemeral.aio() as d:
+        async with Dict.ephemeral() as d:
             await d.put.aio("foo", "bar")
         ```
         """
