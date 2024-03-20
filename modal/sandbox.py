@@ -160,7 +160,7 @@ class _StreamWriter:
 
         **Usage**
 
-        ```python
+        ```python notest
         sandbox = stub.spawn_sandbox(
             "bash",
             "-c",
