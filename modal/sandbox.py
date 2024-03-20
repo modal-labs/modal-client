@@ -154,7 +154,7 @@ class _StreamWriter:
 
     def write(self, data: Union[bytes, bytearray, memoryview]):
         """
-        This methods writes the data to an internal writer buffer waiting to be drained.
+        Write data to stream's internal buffer, but does not drain/flush the write.
 
         This method needs to be used along with the `drain()` method which flushes the buffer.
 
@@ -168,7 +168,7 @@ class _StreamWriter:
         )
         sandbox.stdin.write("foo\n")
         sandbox.stdin.write("bar\n")
-        sb.stdin.write_eof()
+        sandbox.stdin.write_eof()
 
         sb.stdin.drain()
         sb.wait()
