@@ -170,8 +170,8 @@ class _StreamWriter:
         sandbox.stdin.write("bar\n")
         sandbox.stdin.write_eof()
 
-        sb.stdin.drain()
-        sb.wait()
+        sandbox.stdin.drain()
+        sandbox.wait()
         ```
         """
         if self._is_closed:
