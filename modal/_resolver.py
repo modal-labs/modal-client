@@ -92,6 +92,10 @@ class Resolver:
             await obj._preload(obj, self, existing_object_id)
 
     async def load(self, obj: "_Object", existing_object_id: Optional[str] = None):
+        if obj._is_hydrated and obj._is_another_app:
+            # No need to assign ids to this, it won't change
+            return obj
+
         deduplication_key: Optional[Hashable] = None
         if obj._deduplication_key:
             deduplication_key = await obj._deduplication_key()

@@ -79,12 +79,11 @@ def test_sandbox_secret(client, servicer, tmpdir):
 @skip_non_linux
 def test_sandbox_nfs(client, servicer, tmpdir):
     with stub.run(client=client):
-        nfs = NetworkFileSystem.new()
+        with NetworkFileSystem.ephemeral(client=client) as nfs:
+            with pytest.raises(InvalidError):
+                stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs})
 
-        with pytest.raises(InvalidError):
-            stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs})
-
-        stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs})
+            stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs})
 
     assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
 
