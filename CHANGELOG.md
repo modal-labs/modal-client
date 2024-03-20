@@ -45,8 +45,8 @@ def my_fn():
     sandbox.stdin.write("foo\n")
     sandbox.stdin.write("bar\n")
     sandbox.stdin.write_eof()
-    sb.stdin.drain()
-    sb.wait()
+    sandbox.stdin.drain()
+    sandbox.wait()
 ```
 
 ### 0.61.53 (2024-03-15)
