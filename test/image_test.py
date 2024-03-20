@@ -424,6 +424,34 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
         assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
 
 
+def test_image_build_with_local_packages(client, servicer, tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MODAL_AUTOMOUNT", "0"
+    )  # to ensure we don't accidentally pass the test due to other test imports
+    stub = Stub("dummy", image=Image.debian_slim().copy_local_python_packages("modal_test_support"))
+
+    def expected_mount_request(build_request: api_pb2.MountBuildRequest):
+        return any(f for f in build_request.files if f.filename == "/pkg/modal_test_support/module_1.py")
+
+    def expected_image_request(req: api_pb2.ImageGetOrCreateRequest):
+        return req.image.context_mount_id == "mo-1337" and "COPY . /" in req.image.dockerfile_commands
+
+    with servicer.intercept() as ctx:
+        # The context manager will raise exceptions if the following expected requests aren't received by the servicer:
+        ctx.add_response(
+            "MountBuild", api_pb2.MountBuildResponse(mount_id="mo-1337"), request_filter=expected_mount_request
+        )
+        ctx.add_response(
+            "ImageGetOrCreate",
+            api_pb2.ImageGetOrCreateResponse(image_id="im-123"),
+            request_filter=expected_image_request,
+        )
+
+        from modal.runner import deploy_stub
+
+        deploy_stub(stub, client=client)
+
+
 def test_image_env(client, servicer):
     stub = Stub(image=Image.debian_slim().env({"HELLO": "world!"}))
 
