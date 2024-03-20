@@ -38,10 +38,10 @@ async def my_fn():
 @stub.function()
 def my_fn():
     sandbox = stub.spawn_sandbox(
-            "bash",
-            "-c",
-            "while read line; do echo $line; done",
-        )
+        "bash",
+        "-c",
+        "while read line; do echo $line; done",
+    )
     sandbox.stdin.write(b"foo\\n")
     sandbox.stdin.write(b"bar\\n")
     sandbox.stdin.write_eof()
