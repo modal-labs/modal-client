@@ -1369,16 +1369,16 @@ class _Image(_Object, type_prefix="im"):
 
     @typechecked
     def workdir(self, path: str) -> "_Image":
-        """Sets the working directory for subequent image build steps.
+        """Set the working directory for subsequent image build steps and function execution.
 
         **Example**
 
         ```python
         image = (
             modal.Image.debian_slim()
-                .run_commands("git clone https://xyz app")
-                .workdir("/app")
-                .run_commands("yarn install")
+            .run_commands("git clone https://xyz app")
+            .workdir("/app")
+            .run_commands("yarn install")
         )
         ```
         """
