@@ -149,6 +149,17 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_NetworkFileSystem"]:
+        """Creates a new ephemeral network filesystem within a context manager:
+
+        Usage:
+        ```python
+        with NetworkFileSystem.ephemeral() as nfs:
+            assert nfs.listdir() == []
+
+        async with NetworkFileSystem.ephemeral() as nfs:
+            assert await nfs.listdir() == []
+        ```
+        """
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(

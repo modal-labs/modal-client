@@ -159,6 +159,17 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Volume"]:
+        """Creates a new ephemeral volume within a context manager:
+
+        Usage:
+        ```python
+        with Volume.ephemeral() as vol:
+            assert vol.listdir() == []
+
+        async with Volume.ephemeral() as vol:
+            assert await vol.listdir() == []
+        ```
+        """
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.VolumeGetOrCreateRequest(
