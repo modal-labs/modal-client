@@ -161,17 +161,19 @@ class _StreamWriter:
         **Usage**
 
         ```python
-        sandbox = stub.spawn_sandbox(
-            "bash",
-            "-c",
-            "while read line; do echo $line; done",
-        )
-        sandbox.stdin.write("foo\n")
-        sandbox.stdin.write("bar\n")
-        sandbox.stdin.write_eof()
+        @stub.local_entrypoint()
+        def main():
+            sandbox = stub.spawn_sandbox(
+                "bash",
+                "-c",
+                "while read line; do echo $line; done",
+            )
+            sandbox.stdin.write(b"foo\\n")
+            sandbox.stdin.write(b"bar\\n")
+            sandbox.stdin.write_eof()
 
-        sb.stdin.drain()
-        sb.wait()
+            sandbox.stdin.drain()
+            sandbox.wait()
         ```
         """
         if self._is_closed:
@@ -316,7 +318,10 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def from_id(sandbox_id: str, client: Optional[_Client] = None) -> "_Sandbox":
-        """Construct a Sandbox from an id and look up the sandbox result."""
+        """Construct a Sandbox from an id and look up the sandbox result.
+
+        The ID of a Sandbox object can be accessed using `.object_id`.
+        """
         if client is None:
             client = await _Client.from_env()
 
