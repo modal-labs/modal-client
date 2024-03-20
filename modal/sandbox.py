@@ -154,7 +154,7 @@ class _StreamWriter:
 
     def write(self, data: Union[bytes, bytearray, memoryview]):
         """
-        Write data to stream's internal buffer, but does not drain/flush the write.
+        Writes data to stream's internal buffer, but does not drain/flush the write.
 
         This method needs to be used along with the `drain()` method which flushes the buffer.
 
@@ -185,7 +185,7 @@ class _StreamWriter:
 
     def write_eof(self):
         """
-        Close the write end of the stream after the buffered write data is drained.
+        Closes the write end of the stream after the buffered write data is drained.
         If the sandbox process was blocked on input, it will become unblocked after `write_eof()`.
 
         This method needs to be used along with the `drain()` method which flushes the EOF to the process.
