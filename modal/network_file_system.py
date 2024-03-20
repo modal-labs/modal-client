@@ -170,7 +170,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         async with TaskContext() as tc:
             request = api_pb2.SharedVolumeHeartbeatRequest(shared_volume_id=response.shared_volume_id)
             tc.infinite_loop(lambda: client.stub.SharedVolumeHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.shared_volume_id, client, None)
+            yield cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True)
 
     @staticmethod
     def persisted(
