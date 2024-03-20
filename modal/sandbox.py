@@ -166,8 +166,8 @@ class _StreamWriter:
             "-c",
             "while read line; do echo $line; done",
         )
-        sandbox.stdin.write("foo\n")
-        sandbox.stdin.write("bar\n")
+        sandbox.stdin.write("foo\\n")
+        sandbox.stdin.write("bar\\n")
         sandbox.stdin.write_eof()
 
         sandbox.stdin.drain()
