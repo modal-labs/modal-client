@@ -318,7 +318,10 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def from_id(sandbox_id: str, client: Optional[_Client] = None) -> "_Sandbox":
-        """Construct a Sandbox from an id and look up the sandbox result."""
+        """Construct a Sandbox from an id and look up the sandbox result.
+
+        The ID of a Sandbox object can be accessed using `.object_id`.
+        """
         if client is None:
             client = await _Client.from_env()
 
