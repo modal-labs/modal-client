@@ -342,7 +342,7 @@ def test_persisted(servicer, client):
     v = modal.Volume.lookup("xyz", client=client)
 
     # Delete it
-    v.delete(client=client)
+    v.delete()
 
     # Lookup should fail again
     with pytest.raises(NotFoundError):
