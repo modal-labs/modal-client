@@ -30,12 +30,19 @@ class _LogsReader:
     """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`).
 
     As an asynchronous iterable, the object supports the async for statement.
+
     **Usage**
 
-    ```python notest
-    sandbox = stub.app.spawn_sandbox("bash", "-c", "while true; do echo foo; sleep 1; done")
-    async for message in sandbox.stdout:
-        print(f"Message: {message}")
+    ```python
+    @stub.function()
+    async def my_fn():
+        sandbox = stub.spawn_sandbox(
+            "bash",
+            "-c",
+            "while true; do echo foo; sleep 1; done"
+        )
+        async for message in sandbox.stdout:
+            print(f"Message: {message}")
     ```
     """
 
