@@ -19,9 +19,7 @@ def test_volume_mount(client, servicer):
     stub = modal.Stub()
     vol = modal.Volume.from_name("xyz", create_if_missing=True)
 
-    _ = stub.function(
-        volumes={"/root/foo": vol}
-    )(dummy)
+    _ = stub.function(volumes={"/root/foo": vol})(dummy)
 
     with stub.run(client=client):
         pass
