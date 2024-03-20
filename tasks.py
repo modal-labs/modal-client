@@ -3,13 +3,16 @@
 
 import ast
 import datetime
+import importlib
 import os
+import pkgutil
 import re
 import subprocess
 import sys
 from datetime import date
 from pathlib import Path
-from typing import Optional
+from types import FunctionType
+from typing import List, Optional
 
 import requests
 from invoke import task
@@ -176,28 +179,32 @@ build-backend = "setuptools.build_meta"
 
 @task
 def type_stubs(ctx):
-    # we only generate type stubs for modules that contain synchronicity wrapped types
-    # TODO(erikbern): can we automate this list?
-    modules = [
-        "modal.app",
-        "modal.client",
-        "modal.cls",
-        "modal.dict",
-        "modal.environments",
-        "modal.functions",
-        "modal.image",
-        "modal.mount",
-        "modal.network_file_system",
-        "modal.object",
-        "modal.partial_function",
-        "modal.proxy",
-        "modal.queue",
-        "modal.cloud_bucket_mount",
-        "modal.sandbox",
-        "modal.secret",
-        "modal.stub",
-        "modal.volume",
-    ]
+    # We only generate type stubs for modules that contain synchronicity wrapped types
+    from synchronicity.synchronizer import SYNCHRONIZER_ATTR
+
+    def find_modal_modules(root: str = "modal"):
+        modules = []
+        path = importlib.import_module(root).__path__
+        for _, name, is_pkg in pkgutil.iter_modules(path):
+            full_name = f"{root}.{name}"
+            if is_pkg:
+                modules.extend(find_modal_modules(full_name))
+            else:
+                modules.append(full_name)
+        return modules
+
+    def get_wrapped_types(module_name: str) -> List[str]:
+        module = importlib.import_module(module_name)
+        return [
+            name
+            for name, obj in vars(module).items()
+            if isinstance(obj, (type, FunctionType))
+            and obj.__module__ == module_name
+            and not name.startswith("_")  # Avoid deprecation of _App.__getattr__
+            and hasattr(obj, SYNCHRONIZER_ATTR)
+        ]
+
+    modules = [m for m in find_modal_modules() if len(get_wrapped_types(m))]
     subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
 
 

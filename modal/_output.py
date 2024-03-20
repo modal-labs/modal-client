@@ -9,7 +9,7 @@ import platform
 import re
 import sys
 from datetime import timedelta
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console, Group, RenderableType
@@ -141,13 +141,13 @@ class LineBufferedOutput(io.StringIO):
 class OutputManager:
     _visible_progress: bool
     _console: Console
-    _task_states: dict[str, int]
-    _task_progress_items: dict[tuple[str, int], TaskID]
+    _task_states: Dict[str, int]
+    _task_progress_items: Dict[Tuple[str, int], TaskID]
     _current_render_group: Optional[Group]
     _function_progress: Optional[Progress]
     _function_queueing_progress: Optional[Progress]
     _snapshot_progress: Optional[Progress]
-    _line_buffers: dict[int, LineBufferedOutput]
+    _line_buffers: Dict[int, LineBufferedOutput]
     _status_spinner: Spinner
     _app_page_url: Optional[str]
     _show_image_logs: bool
