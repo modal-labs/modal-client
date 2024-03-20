@@ -97,7 +97,7 @@ class _Queue(_Object, type_prefix="qu"):
         async with TaskContext() as tc:
             request = api_pb2.QueueHeartbeatRequest(queue_id=response.queue_id)
             tc.infinite_loop(lambda: client.stub.QueueHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.queue_id, client, None)
+            yield cls._new_hydrated(response.queue_id, client, None, is_another_app=True)
 
     @staticmethod
     def from_name(
