@@ -106,10 +106,10 @@ def test_old_syntax(client, servicer):
 
 def test_redeploy(servicer, client):
     stub = modal.Stub()
-    # with pytest.warns(DeprecationError):
-    stub.n1 = modal.NetworkFileSystem.new()
-    stub.n2 = modal.NetworkFileSystem.new()
-    stub.n3 = modal.NetworkFileSystem.new()
+    with pytest.warns(DeprecationError):
+        stub.n1 = modal.NetworkFileSystem.new()
+        stub.n2 = modal.NetworkFileSystem.new()
+        stub.n3 = modal.NetworkFileSystem.new()
 
     # Deploy app once
     deploy_stub(stub, "my-app", client=client)

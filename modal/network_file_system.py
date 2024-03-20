@@ -89,7 +89,11 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     @typechecked
     @staticmethod
     def new(cloud: Optional[str] = None) -> "_NetworkFileSystem":
-        """Construct a new network file system, which is empty by default."""
+        """`NetworkFileSystem.new` is deprecated.
+
+        Please use `NetworkFileSystem.from_name` (for persisted) or `NetworkFileSystem.ephemeral` (for ephemeral) queues.
+        """
+        deprecation_warning((2024, 3, 20), NetworkFileSystem.new.__doc__)
 
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
