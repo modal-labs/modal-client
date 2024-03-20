@@ -80,18 +80,17 @@ class SignalHandlingEventLoop:
             self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
         self.loop.close()
 
-    def run(self, coro, cancel_on_sigint: bool = True):
+    def run(self, coro, cancel_on_sigint: bool = True, is_blocking=False):
         task = asyncio.ensure_future(coro, loop=self.loop)
-        got_sigint = False
 
-        def cancel():
-            print("GOT SIGINT")
-            nonlocal got_sigint
-            task.cancel()
-            got_sigint = True
+        def sigint_handler():
+            if is_blocking:
+                raise KeyboardInterrupt()  # raised in the blocking code
+            else:
+                self.loop.call_soon_threadsafe(task.cancel)
 
         if cancel_on_sigint:
-            self.loop.add_signal_handler(signal.SIGINT, cancel)
+            old_handler = signal.signal(signal.SIGINT, lambda sig, frame: sigint_handler())
 
         # Before Python 3.9 there is no argument to Task.cancel
         if sys.version_info[:2] >= (3, 9):
@@ -100,18 +99,15 @@ class SignalHandlingEventLoop:
             self.loop.add_signal_handler(signal.SIGUSR1, task.cancel)
 
         try:
-            print("ruuuuun")
             return self.loop.run_until_complete(task)
+        except asyncio.CancelledError:
+            # this could happen if we get a sigint!
+            raise KeyboardInterrupt()
         finally:
-            print("byyyye")
             self.loop.remove_signal_handler(signal.SIGUSR1)
             self.loop.remove_signal_handler(signal.SIGINT)
-            if got_sigint:
-                # if we got a sigint while overriding the signal handler
-                # we still want to raise KeyboardInterrupt here to let
-                # the caller in the main thread handle that error (or not)
-                print("")
-                raise KeyboardInterrupt()
+            if cancel_on_sigint:
+                signal.signal(signal.SIGINT, old_handler)
 
 
 class _FunctionIOManager:
@@ -961,7 +957,6 @@ def import_function(
 
 
 async def call_lifecycle_functions(
-    event_loop,
     function_io_manager,  #: FunctionIOManager,  TODO: this type is generated at runtime
     funcs: Iterable[Callable],
 ) -> None:
@@ -1011,7 +1006,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify all "enter" methods that need to run before we checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
-            call_lifecycle_functions(event_loop, function_io_manager, pre_checkpoint_methods.values())
+            event_loop.run(
+                call_lifecycle_functions(function_io_manager, pre_checkpoint_methods.values()), cancel_on_sigint=True
+            )
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and innitialization. Checkpointed containers run from this point onwards.
@@ -1033,7 +1030,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify the "enter" methods to run after resuming from a checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
-            call_lifecycle_functions(event_loop, function_io_manager, post_checkpoint_methods.values())
+            event_loop.run(
+                call_lifecycle_functions(function_io_manager, post_checkpoint_methods.values()), cancel_on_sigint=True
+            )
 
         # Execute the function.
         try:
@@ -1062,8 +1061,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 # Identify "exit" methods and run them.
                 if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
                     exit_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
-                    call_lifecycle_functions(
-                        event_loop, function_io_manager, exit_methods.values(), cancel_on_sigint=False
+                    event_loop.run(
+                        call_lifecycle_functions(function_io_manager, exit_methods.values()), cancel_on_sigint=False
                     )
 
                 # Finally, commit on exit to catch uncommitted volume changes and surface background

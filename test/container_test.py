@@ -580,17 +580,13 @@ def test_cls_function(unix_servicer):
 
 @skip_windows_unix_socket
 def test_lifecycle_enter_sync(unix_servicer):
-    ret = _run_container(
-        unix_servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=_get_inputs(((False,), {}))
-    )
+    ret = _run_container(unix_servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=_get_inputs(((), {})))
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync"]
 
 
 @skip_windows_unix_socket
 def test_lifecycle_enter_async(unix_servicer):
-    ret = _run_container(
-        unix_servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=_get_inputs(((False,), {}))
-    )
+    ret = _run_container(unix_servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=_get_inputs(((), {})))
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async"]
 
 
@@ -1117,11 +1113,14 @@ def _run_container_process(
     *,
     inputs: List[Tuple[Tuple[Any], Dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
-    serialized_params: bytes = "",
-    print=False,
+    cls_params: Tuple[Tuple, Dict[str, Any]] = ((), {}),
+    print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
 ) -> subprocess.Popen:
     container_args = _container_args(
-        module_name, function_name, allow_concurrent_inputs=allow_concurrent_inputs, serialized_params=serialized_params
+        module_name,
+        function_name,
+        allow_concurrent_inputs=allow_concurrent_inputs,
+        serialized_params=serialize(cls_params),
     )
     encoded_container_args = base64.b64encode(container_args.SerializeToString())
     servicer.container_inputs = _get_multi_inputs(inputs)
@@ -1220,7 +1219,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
 def test_lifecycle_full(servicer):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
-        servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=[((True,), {})]
+        servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=[((), {})]
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
@@ -1228,7 +1227,7 @@ def test_lifecycle_full(servicer):
 
     # Sync and async container lifecycle methods on an async function.
     container_process = _run_container_process(
-        servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=[((True,), {})]
+        servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=[((), {})]
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
@@ -1336,7 +1335,7 @@ def test_sigint_termination_input(servicer, method):
 
 @skip_windows_signals
 @pytest.mark.usefixtures("server_url_env")
-@pytest.mark.parametrize("enter_type", ["sync", "async"])
+@pytest.mark.parametrize("enter_type", ["sync_enter", "async_enter"])
 @pytest.mark.parametrize("method", ["delay", "delay_async"])
 def test_sigint_termination_enter_handler(servicer, method, enter_type):
     # Sync and async container lifecycle methods on a sync function.
@@ -1345,8 +1344,7 @@ def test_sigint_termination_enter_handler(servicer, method, enter_type):
         "test.supports.functions",
         f"LifecycleCls.{method}",
         inputs=[((5,), {})],
-        serialized_params=pickle.dumps(((), {f"{enter_type}_enter_duration": 10})),
-        print=True,
+        cls_params=((), {"print_at_exit": True, f"{enter_type}_duration": 10}),
     )
     time.sleep(0.5)  # should be enough to start the enter method
     signal_time = time.monotonic()
@@ -1355,7 +1353,7 @@ def test_sigint_termination_enter_handler(servicer, method, enter_type):
     stop_duration = time.monotonic() - signal_time
     assert len(servicer.container_outputs) == 0
     assert container_process.returncode == 0
-    if enter_type == "sync":
+    if enter_type == "sync_enter":
         assert "[events:enter_sync]" in stdout.decode()
     else:
         # enter_sync should run in 0s, and then we interrupt during the async enter

@@ -192,12 +192,21 @@ class Cls:
 class LifecycleCls:
     """Ensures that {sync,async} lifecycle hooks work with {sync,async} functions."""
 
-    def __init__(self, sync_enter_duration=0, async_enter_duration=0, sync_exit_duration=0, async_exit_duration=0):
+    def __init__(
+        self,
+        print_at_exit: bool,
+        sync_enter_duration=0,
+        async_enter_duration=0,
+        sync_exit_duration=0,
+        async_exit_duration=0,
+    ):
         self.events = []
         self.sync_enter_duration = sync_enter_duration
         self.async_enter_duration = async_enter_duration
         self.sync_exit_duration = sync_exit_duration
         self.async_exit_duration = async_exit_duration
+        if print_at_exit:
+            self._print_at_exit()
 
     def _print_at_exit(self):
         import atexit
@@ -225,16 +234,12 @@ class LifecycleCls:
         await asyncio.sleep(self.async_exit_duration)
 
     @method()
-    def f_sync(self, print_at_exit: bool):
-        if print_at_exit:
-            self._print_at_exit()
+    def f_sync(self):
         self.events.append("f_sync")
         return self.events
 
     @method()
-    async def f_async(self, print_at_exit: bool):
-        if print_at_exit:
-            self._print_at_exit()
+    async def f_async(self):
         self.events.append("f_async")
         return self.events
 
