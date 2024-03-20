@@ -1,13 +1,9 @@
 # Copyright Modal Labs 2022
-import importlib
-import os
 import pytest
-from unittest import mock
 
-import modal.secret
 from modal import Dict, Stub
 from modal.app import container_app
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -38,19 +34,3 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
         my_d_container = Dict.new()
     stub.my_d = my_d_container  # should trigger id assignment
     assert my_d_container.object_id == "di-123"
-
-
-@pytest.mark.skip("runtime type checking has been temporarily disabled")
-def test_typechecking_not_enforced_in_container():
-    def incorrect_usage():
-        class InvalidType:
-            pass
-
-        modal.secret.Secret(env_dict={"foo": InvalidType()})  # type: ignore
-
-    with pytest.raises(InvalidError):
-        incorrect_usage()  # should throw when running locally
-
-    with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": "im-123"}):
-        importlib.reload(modal.secret)
-        incorrect_usage()  # should not throw in container, since typechecks add a lot of overhead on import

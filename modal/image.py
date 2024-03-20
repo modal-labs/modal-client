@@ -12,7 +12,6 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
-from modal._types import typechecked
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -164,7 +163,6 @@ class _Image(_Object, type_prefix="im"):
                 raise exc
 
     @staticmethod
-    @typechecked
     def _from_args(
         base_images={},
         context_files={},
@@ -345,7 +343,6 @@ class _Image(_Object, type_prefix="im"):
         )
         return _Image._from_args(base_images={"base": self}, **kwargs)
 
-    @typechecked
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
@@ -394,7 +391,6 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    @typechecked
     def pip_install(
         self,
         *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
@@ -437,7 +433,6 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
-    @typechecked
     def pip_install_private_repos(
         self,
         *repositories: str,
@@ -531,7 +526,6 @@ class _Image(_Object, type_prefix="im"):
             force_build=self.force_build or force_build,
         )
 
-    @typechecked
     def pip_install_from_requirements(
         self,
         requirements_txt: str,  # Path to a requirements.txt file.
@@ -568,7 +562,6 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
-    @typechecked
     def pip_install_from_pyproject(
         self,
         pyproject_toml: str,
@@ -628,7 +621,6 @@ class _Image(_Object, type_prefix="im"):
             gpu=gpu,
         )
 
-    @typechecked
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
@@ -713,7 +705,6 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
         )
 
-    @typechecked
     def dockerfile_commands(
         self,
         *dockerfile_commands: Union[str, List[str]],
@@ -741,7 +732,6 @@ class _Image(_Object, type_prefix="im"):
             force_build=self.force_build or force_build,
         )
 
-    @typechecked
     def run_commands(
         self,
         *commands: Union[str, List[str]],
@@ -765,7 +755,6 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    @typechecked
     def conda(python_version: str = "3.9", force_build: bool = False) -> "_Image":
         """
         A Conda base image, using miniconda3 and derived from the official Docker Hub image.
@@ -826,7 +815,6 @@ class _Image(_Object, type_prefix="im"):
             ]
         )
 
-    @typechecked
     def conda_install(
         self,
         *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
@@ -860,7 +848,6 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=gpu_config,
         )
 
-    @typechecked
     def conda_update_from_environment(
         self,
         environment_yml: str,
@@ -892,7 +879,6 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    @typechecked
     def micromamba(
         python_version: str = "3.9",
         force_build: bool = False,
@@ -914,7 +900,6 @@ class _Image(_Object, type_prefix="im"):
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
-    @typechecked
     def micromamba_install(
         self,
         # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
@@ -972,7 +957,6 @@ class _Image(_Object, type_prefix="im"):
         ]
 
     @staticmethod
-    @typechecked
     def from_registry(
         tag: str,
         *,
@@ -1031,7 +1015,6 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    @typechecked
     def from_dockerhub(
         tag: str,
         setup_dockerfile_commands: List[str] = [],
@@ -1042,7 +1025,6 @@ class _Image(_Object, type_prefix="im"):
         deprecation_error((2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead.")
 
     @staticmethod
-    @typechecked
     def from_gcp_artifact_registry(
         tag: str,
         secret: Optional[_Secret] = None,
@@ -1088,7 +1070,6 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    @typechecked
     def from_aws_ecr(
         tag: str,
         secret: Optional[_Secret] = None,
@@ -1131,7 +1112,6 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    @typechecked
     def from_dockerfile(
         path: Union[str, Path],
         context_mount: Optional[
@@ -1203,7 +1183,6 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    @typechecked
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
         python_version = _dockerhub_python_version(python_version)
@@ -1228,7 +1207,6 @@ class _Image(_Object, type_prefix="im"):
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
-    @typechecked
     def apt_install(
         self,
         *packages: Union[str, List[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
@@ -1264,7 +1242,6 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
-    @typechecked
     def run_function(
         self,
         raw_f: Callable,
@@ -1347,7 +1324,6 @@ class _Image(_Object, type_prefix="im"):
             force_build=self.force_build or force_build,
         )
 
-    @typechecked
     def env(self, vars: Dict[str, str]) -> "_Image":
         """Sets the environmental variables of the image.
 
@@ -1367,7 +1343,6 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()],
         )
 
-    @typechecked
     def workdir(self, path: str) -> "_Image":
         """Sets the working directory for subequent image build steps.
 

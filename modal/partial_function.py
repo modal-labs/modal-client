@@ -11,7 +11,6 @@ from typing import (
     Union,
 )
 
-from modal._types import typechecked
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api, synchronizer
@@ -183,7 +182,6 @@ def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> Lis
     return _custom_domains
 
 
-@typechecked
 def _web_endpoint(
     _warn_parentheses_missing=None,
     *,
@@ -245,7 +243,6 @@ def _web_endpoint(
     return wrapper
 
 
-@typechecked
 def _asgi_app(
     _warn_parentheses_missing=None,
     *,
@@ -301,7 +298,6 @@ def _asgi_app(
     return wrapper
 
 
-@typechecked
 def _wsgi_app(
     _warn_parentheses_missing=None,
     *,
@@ -356,7 +352,6 @@ def _wsgi_app(
     return wrapper
 
 
-@typechecked
 def _web_server(
     port: int,
     *,
@@ -418,7 +413,6 @@ def _disallow_wrapping_method(f: _PartialFunction, wrapper: str) -> None:
         raise InvalidError(f"Cannot use `@{wrapper}` decorator with `@method`.")
 
 
-@typechecked
 def _build(
     _warn_parentheses_missing=None,
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
@@ -455,7 +449,6 @@ def _build(
     return wrapper
 
 
-@typechecked
 def _enter(
     _warn_parentheses_missing=None,
     *,
@@ -490,7 +483,6 @@ ExitHandlerType = Union[
 ]
 
 
-@typechecked
 def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _PartialFunction]:
     """Decorator for methods which should be executed when a container is about to exit.
 

@@ -13,7 +13,6 @@ import aiostream
 from google.protobuf.message import Message
 
 import modal.exception
-from modal._types import typechecked
 from modal_proto import api_pb2
 from modal_version import __version__
 
@@ -290,7 +289,6 @@ class _Mount(_Object, type_prefix="mo"):
         # we can't rely on it to be set. Let's clean this up later.
         return getattr(self, "_is_local", False)
 
-    @typechecked
     def add_local_dir(
         self,
         local_path: Union[str, Path],
@@ -326,7 +324,6 @@ class _Mount(_Object, type_prefix="mo"):
         )
 
     @staticmethod
-    @typechecked
     def from_local_dir(
         local_path: Union[str, Path],
         *,
@@ -354,7 +351,6 @@ class _Mount(_Object, type_prefix="mo"):
             local_path, remote_path=remote_path, condition=condition, recursive=recursive
         )
 
-    @typechecked
     def add_local_file(
         self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None
     ) -> "_Mount":
@@ -373,7 +369,6 @@ class _Mount(_Object, type_prefix="mo"):
         )
 
     @staticmethod
-    @typechecked
     def from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
         """
         Create a `Mount` mounting a single local file.
@@ -645,7 +640,6 @@ _create_package_mounts_deprecation_msg = (
 )
 
 
-@typechecked
 def _create_package_mounts(module_names: Sequence[str]):
     """`modal.create_package_mounts()` is being deprecated, use `modal.Mount.from_local_python_packages()` instead"""
     modal.exception.deprecation_error(

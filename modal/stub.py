@@ -7,7 +7,6 @@ from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional
 
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal._types import typechecked
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
@@ -120,7 +119,6 @@ class _Stub:
     _local_app: Optional[_LocalApp]
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
 
-    @typechecked
     def __init__(
         self,
         name: Optional[str] = None,
@@ -278,7 +276,6 @@ class _Stub:
         for obj in self._indexed_objects.values():
             obj._unhydrate()
 
-    @typechecked
     def is_inside(self, image: Optional[_Image] = None):
         """Deprecated: use `Image.imports()` instead! Usage:
         ```
@@ -436,7 +433,6 @@ class _Stub:
 
         return wrapped
 
-    @typechecked
     def function(
         self,
         _warn_parentheses_missing=None,

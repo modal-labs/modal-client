@@ -11,7 +11,6 @@ import modal
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
-from ._types import typechecked
 from ._utils.async_utils import ConcurrencyPool, TaskContext, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
@@ -86,7 +85,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     ```
     """
 
-    @typechecked
     @staticmethod
     def new(cloud: Optional[str] = None) -> "_NetworkFileSystem":
         """Construct a new network file system, which is empty by default."""
