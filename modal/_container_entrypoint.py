@@ -80,8 +80,18 @@ class SignalHandlingEventLoop:
             self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
         self.loop.close()
 
-    def run(self, coro):
+    def run(self, coro, cancel_on_sigint: bool = True):
         task = asyncio.ensure_future(coro, loop=self.loop)
+        got_sigint = False
+
+        def cancel():
+            print("GOT SIGINT")
+            nonlocal got_sigint
+            task.cancel()
+            got_sigint = True
+
+        if cancel_on_sigint:
+            self.loop.add_signal_handler(signal.SIGINT, cancel)
 
         # Before Python 3.9 there is no argument to Task.cancel
         if sys.version_info[:2] >= (3, 9):
@@ -90,9 +100,18 @@ class SignalHandlingEventLoop:
             self.loop.add_signal_handler(signal.SIGUSR1, task.cancel)
 
         try:
+            print("ruuuuun")
             return self.loop.run_until_complete(task)
         finally:
+            print("byyyye")
             self.loop.remove_signal_handler(signal.SIGUSR1)
+            self.loop.remove_signal_handler(signal.SIGINT)
+            if got_sigint:
+                # if we got a sigint while overriding the signal handler
+                # we still want to raise KeyboardInterrupt here to let
+                # the caller in the main thread handle that error (or not)
+                print("")
+                raise KeyboardInterrupt()
 
 
 class _FunctionIOManager:
@@ -460,6 +479,9 @@ class _FunctionIOManager:
         try:
             yield
         except KeyboardInterrupt:
+            # Send no output in case we get sigint:ed.
+            # The status of the input should have been handled externally already
+            # By issuing a retry or similar
             raise
         except BaseException as exc:
             # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
@@ -683,6 +705,8 @@ def call_function_sync(
                 try:
                     run_input(*args)
                 except BaseException:
+                    # This should basically never happen, since only KeyboardInterrupt is the only error that can
+                    # bubble out of from handle_input_exception and those wouldn't be raised outside the main thread
                     pass
                 inputs.task_done()
 
@@ -701,7 +725,10 @@ def call_function_sync(
         for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs(
             imp_fun.input_concurrency
         ):
-            run_input(input_id, function_call_id, args, kwargs)
+            try:
+                run_input(input_id, function_call_id, args, kwargs)
+            except:
+                raise
 
 
 async def call_function_async(
@@ -934,12 +961,14 @@ def import_function(
 
 
 async def call_lifecycle_functions(
+    event_loop,
     function_io_manager,  #: FunctionIOManager,  TODO: this type is generated at runtime
     funcs: Iterable[Callable],
 ) -> None:
     """Call function(s), can be sync or async, but any return values are ignored."""
-    with function_io_manager.handle_user_exception():
+    async with function_io_manager.handle_user_exception.aio():
         for func in funcs:
+            print("Calling lifecycle!", func)
             # We are deprecating parameterized exit methods but want to gracefully handle old code.
             # We can remove this once the deprecation in the actual @exit decorator is enforced.
             args = (None, None, None) if method_has_params(func) else ()
@@ -982,7 +1011,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify all "enter" methods that need to run before we checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
-            event_loop.run(call_lifecycle_functions(function_io_manager, pre_checkpoint_methods.values()))
+            call_lifecycle_functions(event_loop, function_io_manager, pre_checkpoint_methods.values())
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and innitialization. Checkpointed containers run from this point onwards.
@@ -1004,7 +1033,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify the "enter" methods to run after resuming from a checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
-            event_loop.run(call_lifecycle_functions(function_io_manager, post_checkpoint_methods.values()))
+            call_lifecycle_functions(event_loop, function_io_manager, post_checkpoint_methods.values())
 
         # Execute the function.
         try:
@@ -1019,6 +1048,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 signal.signal(signal.SIGUSR1, _cancel_input_signal_handler)
 
                 call_function_sync(function_io_manager, imp_fun)
+        except KeyboardInterrupt:
+            print("KEYBOARRRRD")
+            raise
         finally:
             # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
             # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
@@ -1030,7 +1062,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 # Identify "exit" methods and run them.
                 if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
                     exit_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
-                    event_loop.run(call_lifecycle_functions(function_io_manager, exit_methods.values()))
+                    call_lifecycle_functions(
+                        event_loop, function_io_manager, exit_methods.values(), cancel_on_sigint=False
+                    )
 
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
                 # commit errors.
