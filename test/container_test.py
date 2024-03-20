@@ -1219,7 +1219,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
 def test_lifecycle_full(servicer):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
-        servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=[((), {})]
+        servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=[((), {})], cls_params=((True,), {})
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
@@ -1227,7 +1227,7 @@ def test_lifecycle_full(servicer):
 
     # Sync and async container lifecycle methods on an async function.
     container_process = _run_container_process(
-        servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=[((), {})]
+        servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=[((), {})], cls_params=((True,), {})
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
@@ -1313,7 +1313,11 @@ def test_sigint_termination_input(servicer, method):
     # Sync and async container lifecycle methods on a sync function.
     with servicer.input_lockstep() as input_barrier:
         container_process = _run_container_process(
-            servicer, "test.supports.functions", f"LifecycleCls.{method}", inputs=[((5,), {})]
+            servicer,
+            "test.supports.functions",
+            f"LifecycleCls.{method}",
+            inputs=[((5,), {})],
+            cls_params=((), {"print_at_exit": True}),
         )
         input_barrier.wait()  # get input
         time.sleep(0.5)
@@ -1321,8 +1325,6 @@ def test_sigint_termination_input(servicer, method):
         os.kill(container_process.pid, signal.SIGINT)
 
     stdout, stderr = container_process.communicate(timeout=5)
-    print(stdout)
-    print(stderr.decode("utf8"))
     stop_duration = time.monotonic() - signal_time
     assert len(servicer.container_outputs) == 0
     assert (
@@ -1365,24 +1367,26 @@ def test_sigint_termination_enter_handler(servicer, method, enter_type):
 
 @skip_windows_signals
 @pytest.mark.usefixtures("server_url_env")
-@pytest.mark.parametrize("method", ["delay", "delay_async"])
-def test_sigint_termination_exit_handler(servicer, method):
+@pytest.mark.parametrize("exit_type", ["sync_exit", "async_exit"])
+def test_sigint_termination_exit_handler(servicer, exit_type):
     # Sync and async container lifecycle methods on a sync function.
-    with servicer.input_lockstep() as input_barrier:
+    with servicer.output_lockstep() as outputs:
         container_process = _run_container_process(
-            servicer, "test.supports.functions", f"LifecycleCls.{method}", inputs=[((5,), {})]
+            servicer,
+            "test.supports.functions",
+            "LifecycleCls.delay",
+            inputs=[((0,), {})],
+            cls_params=((), {"print_at_exit": True, f"{exit_type}_duration": 1}),
         )
-        input_barrier.wait()  # get input
-        time.sleep(0.5)
-        signal_time = time.monotonic()
-        os.kill(container_process.pid, signal.SIGINT)
+        outputs.wait()  # wait for first output to be emitted
+    time.sleep(0.5)  # give some time for container to end up in first exit handler
+    os.kill(container_process.pid, signal.SIGINT)
+    time.sleep(1)  # some additional time to end up in the *second* exit handler
+    os.kill(container_process.pid, signal.SIGINT)
 
     stdout, stderr = container_process.communicate(timeout=5)
-    print(stdout)
-    print(stderr.decode("utf8"))
-    stop_duration = time.monotonic() - signal_time
-    assert len(servicer.container_outputs) == 0
+
+    assert len(servicer.container_outputs) == 1
     assert container_process.returncode == 0
-    assert f"[events:enter_sync,enter_async,{method},exit_sync,exit_async]" in stdout.decode()
+    assert "[events:enter_sync,enter_async,delay,exit_sync,exit_async]" in stdout.decode()
     assert "Traceback" not in stderr.decode()
-    assert stop_duration < 2.0  # if this would be ~4.5s, then the input isn't getting terminated

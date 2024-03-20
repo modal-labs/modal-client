@@ -89,6 +89,7 @@ class UserCodeEventLoop:
             self.loop.call_soon_threadsafe(task.cancel)
 
         if cancel_on_sigint:
+            # this is needed when the user method is async and uses async generators etc. in order to avoid traceback spam
             old_handler = signal.signal(signal.SIGINT, lambda sig, frame: sigint_handler())
 
         # Before Python 3.9 there is no argument to Task.cancel
@@ -967,8 +968,11 @@ def call_lifecycle_functions(
             # We are deprecating parameterized exit methods but want to gracefully handle old code.
             # We can remove this once the deprecation in the actual @exit decorator is enforced.
             args = (None, None, None) if method_has_params(func) else ()
-            res = func(*args)
+            res = func(
+                *args
+            )  # in case func is non-async, it's executed here and sigint will by default interrupt it using a KeyboardInterrupt exception
             if inspect.iscoroutine(res):
+                # if however func is async, we have to jump through some hoops
                 event_loop.run(res, cancel_on_sigint=stop_on_sigint)
 
 

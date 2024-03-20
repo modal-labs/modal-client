@@ -194,7 +194,7 @@ class LifecycleCls:
 
     def __init__(
         self,
-        print_at_exit: bool,
+        print_at_exit: bool = False,
         sync_enter_duration=0,
         async_enter_duration=0,
         sync_exit_duration=0,
