@@ -1330,6 +1330,7 @@ def test_sigint_termination_input(servicer, method):
     assert f"[events:enter_sync,enter_async,{method},exit_sync,exit_async]" in stdout.decode()
     assert "Traceback" not in stderr.decode()
     assert stop_duration < 2.0  # if this would be ~4.5s, then the input isn't getting terminated
+    assert servicer.task_result is None
 
 
 @skip_windows_signals
@@ -1360,6 +1361,7 @@ def test_sigint_termination_enter_handler(servicer, method, enter_type):
 
     assert "Traceback" not in stderr.decode()
     assert stop_duration < 2.0  # if this would be ~4.5s, then the task isn't being terminated timely
+    assert servicer.task_result is None
 
 
 @skip_windows_signals
@@ -1387,3 +1389,4 @@ def test_sigint_termination_exit_handler(servicer, exit_type):
     assert container_process.returncode == 0
     assert "[events:enter_sync,enter_async,delay,exit_sync,exit_async]" in stdout.decode()
     assert "Traceback" not in stderr.decode()
+    assert servicer.task_result is None
