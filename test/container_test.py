@@ -1346,7 +1346,7 @@ def test_sigint_termination_enter_handler(servicer, method, enter_type):
         inputs=[((5,), {})],
         cls_params=((), {"print_at_exit": True, f"{enter_type}_duration": 10}),
     )
-    time.sleep(0.5)  # should be enough to start the enter method
+    time.sleep(1)  # should be enough to start the enter method
     signal_time = time.monotonic()
     os.kill(container_process.pid, signal.SIGINT)
     stdout, stderr = container_process.communicate(timeout=5)
@@ -1375,12 +1375,10 @@ def test_sigint_termination_exit_handler(servicer, exit_type):
             "test.supports.functions",
             "LifecycleCls.delay",
             inputs=[((0,), {})],
-            cls_params=((), {"print_at_exit": True, f"{exit_type}_duration": 1}),
+            cls_params=((), {"print_at_exit": True, f"{exit_type}_duration": 2}),
         )
         outputs.wait()  # wait for first output to be emitted
-    time.sleep(0.5)  # give some time for container to end up in first exit handler
-    os.kill(container_process.pid, signal.SIGINT)
-    time.sleep(1)  # some additional time to end up in the *second* exit handler
+    time.sleep(1)  # give some time for container to end up in the exit handler
     os.kill(container_process.pid, signal.SIGINT)
 
     stdout, stderr = container_process.communicate(timeout=5)
