@@ -2,11 +2,11 @@
 import itertools
 import os
 import webbrowser
-from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional, Tuple
 
 import aiohttp.web
 from rich.console import Console
+from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 

@@ -11,7 +11,6 @@ import subprocess
 import sys
 from datetime import date
 from pathlib import Path
-from types import FunctionType
 from typing import List, Optional
 
 import requests
@@ -198,7 +197,8 @@ def type_stubs(ctx):
         return [
             name
             for name, obj in vars(module).items()
-            if isinstance(obj, (type, FunctionType))
+            if not module_name.startswith("modal.cli")  # TODO we don't handle typer-wrapped functions well
+            and hasattr(obj, "__module__")
             and obj.__module__ == module_name
             and not name.startswith("_")  # Avoid deprecation of _App.__getattr__
             and hasattr(obj, SYNCHRONIZER_ATTR)
