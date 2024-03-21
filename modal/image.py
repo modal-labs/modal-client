@@ -995,7 +995,7 @@ class _Image(_Object, type_prefix="im"):
         remaining commands run. This might be useful if you want a custom Python installation or to
         set a `SHELL`. Prefer `run_commands()` when possible though.
 
-        To authenticate against a private registry with static credentials, you may set the `secret` parameter to
+        To authenticate against a private registry with static credentials, you must set the `secret` parameter to
         a `modal.Secret` containing a username (`REGISTRY_USERNAME`) and an access token or password (`REGISTRY_PASSWORD`).
 
         To authenticate against private registries with credentials from a cloud provider, use `Image.from_gcp_artifact_registry()`
@@ -1059,7 +1059,7 @@ class _Image(_Object, type_prefix="im"):
         role depending on the GCP registry used:
 
         - For Artifact Registry images (`pkg.dev` domains) use the ["Artifact Registry Reader"](https://cloud.google.com/artifact-registry/docs/access-control#roles) role
-        - For Contrainer Registry images (`gcr.io` domains) use the ["Storage Object Viewer"](https://cloud.google.com/artifact-registry/docs/transition/setup-gcr-repo#permissions) role
+        - For Container Registry images (`gcr.io` domains) use the ["Storage Object Viewer"](https://cloud.google.com/artifact-registry/docs/transition/setup-gcr-repo#permissions) role
 
         **Note:** This method does not use `GOOGLE_APPLICATION_CREDENTIALS` as that variable accepts a path to a JSON file, not the actual JSON string.
 
