@@ -149,7 +149,7 @@ Registered functions and local entrypoints on the selected stub are:
         # entrypoint is in entrypoint registry, for now
         return stub.registered_entrypoints[function_name]
 
-    return stub[function_name]  # functions are in blueprint
+    return stub.indexed_objects[function_name]  # functions are in blueprint
 
 
 def _show_no_auto_detectable_stub(stub_ref: ImportRef) -> None:

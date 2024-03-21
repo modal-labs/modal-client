@@ -129,7 +129,7 @@ def _get_clean_stub_description(func_ref: str) -> str:
 
 
 def _get_click_command_for_function(stub: Stub, function_tag):
-    function = stub[function_tag]
+    function = stub.indexed_objects[function_tag]
 
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
