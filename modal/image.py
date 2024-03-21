@@ -37,7 +37,6 @@ if typing.TYPE_CHECKING:
 
 ImageBuilderVersion = Literal["2023.12", "PREVIEW"]
 SUPPORTED_IMAGE_BUILDER_VERSIONS: Set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
-IMAGE_BUILDER_VERSION: Optional[ImageBuilderVersion] = None
 
 
 def _default_image():
@@ -155,18 +154,17 @@ async def _get_builder_version() -> ImageBuilderVersion:
             )
         return cast(ImageBuilderVersion, version)  # Not sure why mypy can't figure this out itself
 
-    # Ugly, but using a global variable here for the following reasons:
+    # We're mutating an attribute on the _Image object for the following reasons:
     # - We might need to know the version for each layer of the image, and we don't want superfluous RPCs
     # - We don't want to resolve the lookup in global scope because importing modal shouldn't require Auth
-    # - I don't think it can be an Image attribute b/c of synchronicity? That would stil be globalish anyway.
-    global IMAGE_BUILDER_VERSION
-    if IMAGE_BUILDER_VERSION is None:
+    # - We don't mutate any state on _Image in image construction methods, we create a new object each time
+    if _Image.builder_version is None:
         if config_version := config.get("image_builder_version"):
-            IMAGE_BUILDER_VERSION = check_version_is_supported(config_version)
+            _Image.builder_version = check_version_is_supported(config_version)
         else:
-            IMAGE_BUILDER_VERSION = check_version_is_supported(await lookup_version())
+            _Image.builder_version = check_version_is_supported(await lookup_version())
 
-    return IMAGE_BUILDER_VERSION
+    return _Image.builder_version
 
 
 class _ImageRegistryConfig:
@@ -197,6 +195,7 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
+    builder_version: Optional[ImageBuilderVersion] = None
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []

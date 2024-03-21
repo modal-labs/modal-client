@@ -432,7 +432,7 @@ def test_image_env(client, servicer):
         assert any("ENV HELLO=" in cmd and "world!" in cmd for cmd in layers[0].dockerfile_commands)
 
 
-@mock.patch("modal.image.IMAGE_BUILDER_VERSION", None)
+@mock.patch("modal.image._Image.builder_version", None)
 @mock.patch("modal.image.SUPPORTED_IMAGE_BUILDER_VERSIONS", {"2000.01"})
 @mock.patch("test.conftest.SUPPORTED_IMAGE_BUILDER_VERSIONS", {"2000.01"})
 def test_image_builder_version(client, servicer, server_url_env):
@@ -443,7 +443,7 @@ def test_image_builder_version(client, servicer, server_url_env):
             assert version == "2000.01"
 
 
-@mock.patch("modal.image.IMAGE_BUILDER_VERSION", None)
+@mock.patch("modal.image._Image.builder_version", None)
 @mock.patch("modal.image.SUPPORTED_IMAGE_BUILDER_VERSIONS", {"2000.01"})
 @mock.patch("test.conftest.SUPPORTED_IMAGE_BUILDER_VERSIONS", {"2023.01"})
 def test_image_builder_supported_versions(client, servicer, server_url_env):
