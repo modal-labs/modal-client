@@ -70,6 +70,8 @@ class UserCodeEventLoop:
 
     - `SIGUSR1`: converted to an async task cancellation. Note that this only affects the event
       loop, and the signal handler defined here doesn't run for sync functions.
+    - `SIGINT`: Unless the global signal handler has been set to SIGIGN, the loop's signal handler
+        is set to cancel the current task and raise KeyboardInterrupt to the caller.
     """
 
     def __enter__(self):
@@ -82,14 +84,26 @@ class UserCodeEventLoop:
             self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
         self.loop.close()
 
-    def run(self, coro, cancel_on_sigint: bool = True):
+    def run(self, coro):
         task = asyncio.ensure_future(coro, loop=self.loop)
+        self._sigints = 0
 
-        if cancel_on_sigint:
-            # this ensures that the ongoing event loop coro is shut down gracefully
-            # instead of raising a KeyboardInterrupt in the event loop which
-            # ends up spitting out a bunch of scary tracebacks
-            self.loop.add_signal_handler(signal.SIGINT, task.cancel)
+        def _sigint_handler():
+            # cancel the task in order to have run_until_complete return soon and
+            # prevent a bunch of unwanted tracebacks when shutting down the
+            # event loop.
+
+            # this basically replicates the sigint handler installed by asyncio.run()
+            self._sigints += 1
+            if self._sigints == 1:
+                # first sigint is graceful
+                task.cancel()
+                return
+            raise KeyboardInterrupt()  # this should normally not happen, but the second sigint would "hard kill" the event loop!
+
+        ignore_sigint = signal.getsignal(signal.SIGINT) == signal.SIG_IGN
+        if not ignore_sigint:
+            self.loop.add_signal_handler(signal.SIGINT, _sigint_handler)
 
         # Before Python 3.9 there is no argument to Task.cancel
         if sys.version_info[:2] >= (3, 9):
@@ -100,12 +114,11 @@ class UserCodeEventLoop:
         try:
             return self.loop.run_until_complete(task)
         except asyncio.CancelledError:
-            # when cancel_on_sigint is active, we still want to raise the KeyboardInterrupt from here
-            # which will let the caller know about the signal
-            raise KeyboardInterrupt()
+            if self._sigints > 0:
+                raise KeyboardInterrupt()
         finally:
             self.loop.remove_signal_handler(signal.SIGUSR1)
-            if cancel_on_sigint:
+            if not ignore_sigint:
                 self.loop.remove_signal_handler(signal.SIGINT)
 
 
@@ -958,7 +971,6 @@ def call_lifecycle_functions(
     event_loop: UserCodeEventLoop,
     function_io_manager,  #: FunctionIOManager,  TODO: this type is generated at runtime
     funcs: Iterable[Callable],
-    stop_on_sigint: bool = True,
 ) -> None:
     """Call function(s), can be sync or async, but any return values are ignored."""
     with function_io_manager.handle_user_exception():
@@ -971,7 +983,7 @@ def call_lifecycle_functions(
             )  # in case func is non-async, it's executed here and sigint will by default interrupt it using a KeyboardInterrupt exception
             if inspect.iscoroutine(res):
                 # if however func is async, we have to jump through some hoops
-                event_loop.run(res, cancel_on_sigint=stop_on_sigint)
+                event_loop.run(res)
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
@@ -1008,9 +1020,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify all "enter" methods that need to run before we checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
-            call_lifecycle_functions(
-                event_loop, function_io_manager, pre_checkpoint_methods.values(), stop_on_sigint=True
-            )
+            call_lifecycle_functions(event_loop, function_io_manager, pre_checkpoint_methods.values())
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and innitialization. Checkpointed containers run from this point onwards.
@@ -1032,9 +1042,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify the "enter" methods to run after resuming from a checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
-            call_lifecycle_functions(
-                event_loop, function_io_manager, post_checkpoint_methods.values(), stop_on_sigint=True
-            )
+            call_lifecycle_functions(event_loop, function_io_manager, post_checkpoint_methods.values())
 
         # Execute the function.
         try:
@@ -1060,9 +1068,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 # Identify "exit" methods and run them.
                 if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
                     exit_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
-                    call_lifecycle_functions(
-                        event_loop, function_io_manager, exit_methods.values(), stop_on_sigint=False
-                    )
+                    call_lifecycle_functions(event_loop, function_io_manager, exit_methods.values())
 
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
                 # commit errors.
