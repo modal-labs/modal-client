@@ -17,7 +17,7 @@ from modal_proto import api_pb2
 
 from ._resolver import Resolver
 from ._serialization import serialize
-from ._utils.async_utils import run_coro_blocking, synchronize_api
+from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
@@ -135,12 +135,7 @@ def _make_pip_install_args(
     return args
 
 
-def _get_builder_version() -> ImageBuilderVersion:
-    if not is_local():
-        # When running in the container, it doesn't actually matter what we return here,
-        # we just neet to make sure that the code can run without raising / hanging.
-        return sorted(SUPPORTED_IMAGE_BUILDER_VERSIONS)[0]
-
+async def _get_builder_version() -> ImageBuilderVersion:
     async def lookup_version() -> str:
         client = await _Client.from_env()
         resp = await client.stub.ImageBuilderVersionLookup(Empty())
@@ -161,16 +156,15 @@ def _get_builder_version() -> ImageBuilderVersion:
         return cast(ImageBuilderVersion, version)  # Not sure why mypy can't figure this out itself
 
     # Ugly, but using a global variable here for the following reasons:
-    # - We might need to know the version in multiple image builder methods, and don't want superfluous RPCs
+    # - We might need to know the version for each layer of the image, and we don't want superfluous RPCs
     # - We don't want to resolve the lookup in global scope because importing modal shouldn't require Auth
-    # - We don't maintain any Image state across chained method calls
     # - I don't think it can be an Image attribute b/c of synchronicity? That would stil be globalish anyway.
     global IMAGE_BUILDER_VERSION
     if IMAGE_BUILDER_VERSION is None:
         if config_version := config.get("image_builder_version"):
             IMAGE_BUILDER_VERSION = check_version_is_supported(config_version)
         else:
-            IMAGE_BUILDER_VERSION = check_version_is_supported(run_coro_blocking(lookup_version()))
+            IMAGE_BUILDER_VERSION = check_version_is_supported(await lookup_version())
 
     return IMAGE_BUILDER_VERSION
 
@@ -301,7 +295,7 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id = None
                 _build_function = None
 
-            builder_version = _get_builder_version()
+            builder_version = await _get_builder_version()
 
             dockerfile_commands_list: List[str]
             if callable(dockerfile_commands):
@@ -1239,10 +1233,8 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
-        builder_version = _get_builder_version()
         python_version = _dockerhub_python_version(python_version)
-        if builder_version in {"2023.12", "PREVIEW"}:
-            requirements_path = _get_client_requirements_path(python_version)
+        requirements_path = _get_client_requirements_path(python_version)
         dockerfile_commands = [
             f"FROM python:{python_version}-slim-bullseye",
             "COPY /modal_requirements.txt /modal_requirements.txt",
