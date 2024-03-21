@@ -91,7 +91,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     def new(cloud: Optional[str] = None) -> "_NetworkFileSystem":
         """`NetworkFileSystem.new` is deprecated.
 
-        Please use `NetworkFileSystem.from_name` (for persisted) or `NetworkFileSystem.ephemeral` (for ephemeral) queues.
+        Please use `NetworkFileSystem.from_name` (for persisted) or `NetworkFileSystem.ephemeral`
+        (for ephemeral) network filesystems.
         """
         deprecation_warning((2024, 3, 20), NetworkFileSystem.new.__doc__)
 

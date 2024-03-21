@@ -70,17 +70,17 @@ class _Volume(_Object, type_prefix="vo"):
     import modal
 
     stub = modal.Stub()
-    stub.volume = modal.Volume.new()
+    volume = modal.Volume.from_name("my-persisted-volume", create_if_missing=True)
 
-    @stub.function(volumes={"/root/foo": stub.volume})
+    @stub.function(volumes={"/root/foo": volume})
     def f():
         with open("/root/foo/bar.txt", "w") as f:
             f.write("hello")
-        stub.app.volume.commit()  # Persist changes
+        volume.commit()  # Persist changes
 
-    @stub.function(volumes={"/root/foo": stub.volume})
+    @stub.function(volumes={"/root/foo": volume})
     def g():
-        stub.app.volume.reload()  # Fetch latest changes
+        volume.reload()  # Fetch latest changes
         with open("/root/foo/bar.txt", "r") as f:
             print(f.read())
     ```
@@ -97,7 +97,11 @@ class _Volume(_Object, type_prefix="vo"):
 
     @staticmethod
     def new() -> "_Volume":
-        """Construct a new volume, which is empty by default."""
+        """`Volume.new` is deprecated.
+
+        Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes.
+        """
+        deprecation_warning((2024, 3, 20), Volume.new.__doc__)
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
