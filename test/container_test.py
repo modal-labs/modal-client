@@ -1115,6 +1115,7 @@ def _run_container_process(
     allow_concurrent_inputs: Optional[int] = None,
     cls_params: Tuple[Tuple, Dict[str, Any]] = ((), {}),
     print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
+    env={},
 ) -> subprocess.Popen:
     container_args = _container_args(
         module_name,
@@ -1126,7 +1127,7 @@ def _run_container_process(
     servicer.container_inputs = _get_multi_inputs(inputs)
     return subprocess.Popen(
         [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args],
-        env=os.environ,
+        env={**os.environ, **env},
         stdout=subprocess.PIPE if not print else None,
         stderr=subprocess.PIPE if not print else None,
     )
@@ -1135,28 +1136,18 @@ def _run_container_process(
 @skip_windows_signals
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize(
-    ["function_name", "input_args", "cancelled_input_ids", "expected_container_output"],
+    ["function_name", "input_args", "cancelled_input_ids", "expected_container_output", "live_cancellations"],
     [
         # the 10 second inputs here are to be cancelled:
-        ("delay", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02]),  # cancel second input
-        ("delay_async", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02]),  # async variant
+        ("delay", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02], 1),  # cancel second input
+        ("delay_async", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02], 1),  # async variant
         # cancel first input, but it has already been processed, so all three should come through:
-        (
-            "delay",
-            [0.01, 0.5, 0.03],
-            ["in-000"],
-            [0.01, 0.5, 0.03],
-        ),
-        (
-            "delay_async",
-            [0.01, 0.5, 0.03],
-            ["in-000"],
-            [0.01, 0.5, 0.03],
-        ),
+        ("delay", [0.01, 0.5, 0.03], ["in-000"], [0.01, 0.5, 0.03], 0),
+        ("delay_async", [0.01, 0.5, 0.03], ["in-000"], [0.01, 0.5, 0.03], 0),
     ],
 )
 def test_cancellation_aborts_current_input_on_match(
-    servicer, function_name, input_args, cancelled_input_ids, expected_container_output
+    servicer, function_name, input_args, cancelled_input_ids, expected_container_output, live_cancellations
 ):
     # NOTE: for a cancellation to actually happen in this test, it needs to be
     #    triggered while the relevant input is being processed. A future input
@@ -1164,7 +1155,10 @@ def test_cancellation_aborts_current_input_on_match(
     #    the backend
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
-            servicer, "test.supports.functions", function_name, inputs=[((arg,), {}) for arg in input_args]
+            servicer,
+            "test.supports.functions",
+            function_name,
+            inputs=[((arg,), {}) for arg in input_args],
         )
         time.sleep(1)
         input_lock.wait()
@@ -1180,7 +1174,10 @@ def test_cancellation_aborts_current_input_on_match(
     servicer.container_heartbeat_return_now(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
-    assert container_process.wait() == 0  # wait for container to exit
+    stdout, stderr = container_process.communicate()
+    assert stderr.decode().count("was cancelled by a user request") == live_cancellations
+    assert "Traceback" not in stderr.decode()
+    assert container_process.returncode == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit
 
     items = _flatten_outputs(servicer.container_outputs)

@@ -85,12 +85,11 @@ class UserCodeEventLoop:
     def run(self, coro, cancel_on_sigint: bool = True):
         task = asyncio.ensure_future(coro, loop=self.loop)
 
-        def sigint_handler():
-            self.loop.call_soon_threadsafe(task.cancel)
-
         if cancel_on_sigint:
-            # this is needed when the user method is async and uses async generators etc. in order to avoid traceback spam
-            old_handler = signal.signal(signal.SIGINT, lambda sig, frame: sigint_handler())
+            # this ensures that the ongoing event loop coro is shut down gracefully
+            # instead of raising a KeyboardInterrupt in the event loop which
+            # ends up spitting out a bunch of scary tracebacks
+            self.loop.add_signal_handler(signal.SIGINT, task.cancel)
 
         # Before Python 3.9 there is no argument to Task.cancel
         if sys.version_info[:2] >= (3, 9):
@@ -101,14 +100,13 @@ class UserCodeEventLoop:
         try:
             return self.loop.run_until_complete(task)
         except asyncio.CancelledError:
-            # we cancel the underlying task when a sigint is received while cancel_on_sigint
-            # we should reraise it as a KeyboardInterrupt to let the caller in the main
-            # thread know about the sigint
+            # when cancel_on_sigint is active, we still want to raise the KeyboardInterrupt from here
+            # which will let the caller know about the signal
             raise KeyboardInterrupt()
         finally:
             self.loop.remove_signal_handler(signal.SIGUSR1)
             if cancel_on_sigint:
-                signal.signal(signal.SIGINT, old_handler)
+                self.loop.remove_signal_handler(signal.SIGINT)
 
 
 class _FunctionIOManager:
@@ -511,7 +509,7 @@ class _FunctionIOManager:
             # just skip creating any output for this input and keep going with the next instead
             # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
-            logger.info(f"The current input ({input_id=}) was cancelled by a user request")
+            logger.warning(f"The current input ({input_id=}) was cancelled by a user request")
             await self.complete_call(started_at)
             return
         except BaseException as exc:
