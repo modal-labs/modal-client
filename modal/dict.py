@@ -7,7 +7,6 @@ from modal_proto import api_pb2
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
-from ._types import typechecked
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
@@ -52,7 +51,6 @@ class _Dict(_Object, type_prefix="di"):
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-dicts).
     """
 
-    @typechecked
     @staticmethod
     def new(data: Optional[dict] = None) -> "_Dict":
         """`Dict.new` is deprecated.
@@ -171,7 +169,11 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
         obj = _Dict.from_name(
-            label, data=data, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+            label,
+            data=data,
+            namespace=namespace,
+            environment_name=environment_name,
+            create_if_missing=create_if_missing,
         )
         if client is None:
             client = await _Client.from_env()
