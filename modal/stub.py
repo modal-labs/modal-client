@@ -363,6 +363,10 @@ class _Stub:
         return self._local_entrypoints
 
     @property
+    def indexed_objects(self) -> Dict[str, _Object]:
+        return self._indexed_objects
+
+    @property
     def registered_web_endpoints(self) -> List[str]:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return self._web_endpoints
