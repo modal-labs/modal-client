@@ -202,9 +202,9 @@ def type_stubs(ctx):
 
 
 @task
-def update_changelog(ctx):
-    # Parse the most recent commit message for a GitHub PR number
-    res = ctx.run("git log --pretty=format:%s -n 1", hide="stdout")
+def update_changelog(ctx, sha: str = ""):
+    # Parse a commit message for a GitHub PR number, defaulting to most recent commit
+    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout")
     m = re.search(r"\(#(\d+)\)$", res.stdout)
     if m:
         pull_number = m.group(1)
