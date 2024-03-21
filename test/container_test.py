@@ -1032,7 +1032,7 @@ def test_function_dep_hydration(unix_servicer):
         unix_servicer,
         "test.supports.functions",
         "check_dep_hydration",
-        deps=["im-1", "vo-1", "im-1", "im-2", "vo-1", "vo-2"],
+        deps=["im-1", "vo-0", "im-1", "im-2", "vo-0", "vo-1"],
     )
     assert _unwrap_scalar(ret) is None
 
