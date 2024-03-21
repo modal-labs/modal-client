@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 import modal
-from modal.exception import InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 
@@ -104,10 +104,10 @@ def test_volume_reload(client, servicer):
 
 def test_redeploy(servicer, client):
     stub = modal.Stub()
-    # with pytest.warns(DeprecationError):
-    stub.v1 = modal.Volume.new()
-    stub.v2 = modal.Volume.new()
-    stub.v3 = modal.Volume.new()
+    with pytest.warns(DeprecationError):
+        stub.v1 = modal.Volume.new()
+        stub.v2 = modal.Volume.new()
+        stub.v3 = modal.Volume.new()
 
     # Deploy app once
     deploy_stub(stub, "my-app", client=client)
