@@ -97,7 +97,7 @@ class Resolver:
             if obj.local_uuid not in self._local_uuid_to_future:
                 # a bit dumb - but we still need to store a reference to the object here
                 # to be able to include all referenced objects when setting up the app
-                fut = asyncio.Future()
+                fut: Future = Future()
                 fut.set_result(obj)
                 self._local_uuid_to_future[obj.local_uuid] = fut
             return obj
