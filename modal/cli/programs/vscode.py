@@ -7,7 +7,7 @@ import subprocess
 import threading
 import time
 import webbrowser
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from modal import Image, Queue, Stub, forward
 
@@ -17,7 +17,7 @@ stub = Stub()
 stub.image = Image.from_registry("codercom/code-server", add_python="3.11").dockerfile_commands("ENTRYPOINT []")
 
 
-def wait_for_port(data: tuple[str, str], q: Queue):
+def wait_for_port(data: Tuple[str, str], q: Queue):
     start_time = time.monotonic()
     while True:
         try:
@@ -30,7 +30,7 @@ def wait_for_port(data: tuple[str, str], q: Queue):
     q.put(data)
 
 
-@stub.function(cpu=args["cpu"], memory=args["memory"], gpu=args["gpu"], timeout=args["timeout"])
+@stub.function(cpu=args.get("cpu"), memory=args.get("memory"), gpu=args.get("gpu"), timeout=args.get("timeout"))
 def run_vscode(q: Queue):
     os.chdir("/home/coder")
     token = secrets.token_urlsafe(13)

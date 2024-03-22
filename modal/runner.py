@@ -1,12 +1,12 @@
 # Copyright Modal Labs 2022
 import asyncio
-import contextlib
 import dataclasses
 import os
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, TypeVar
 
 from rich.console import Console
+from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
@@ -35,7 +35,7 @@ async def _heartbeat(client, app_id):
     await retry_transient_errors(client.stub.AppHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
 
-@contextlib.asynccontextmanager
+@asynccontextmanager
 async def _run_stub(
     stub: _Stub,
     client: Optional[_Client] = None,
