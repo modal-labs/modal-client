@@ -93,7 +93,13 @@ class Resolver:
 
     async def load(self, obj: "_Object", existing_object_id: Optional[str] = None):
         if obj._is_hydrated and obj._is_another_app:
-            # No need to assign ids to this, it won't change
+            # No need to reload this, it won't typically change
+            if obj.local_uuid not in self._local_uuid_to_future:
+                # a bit dumb - but we still need to store a reference to the object here
+                # to be able to include all referenced objects when setting up the app
+                fut: Future = Future()
+                fut.set_result(obj)
+                self._local_uuid_to_future[obj.local_uuid] = fut
             return obj
 
         deduplication_key: Optional[Hashable] = None

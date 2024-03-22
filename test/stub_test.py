@@ -347,3 +347,13 @@ def test_parse_custom_domains():
     assert len(_parse_custom_domains(["foo.com", "bar.com"])) == 2
     with pytest.raises(AssertionError):
         assert _parse_custom_domains("foo.com")
+
+
+def test_hydrated_other_app_object_gets_referenced(servicer, client):
+    stub = Stub("my-stub")
+    with servicer.intercept() as ctx:
+        with modal.Volume.ephemeral(client=client) as vol:
+            stub.function(volumes={"/vol": vol})(dummy)  # implicitly load vol
+            deploy_stub(stub, client=client)
+            app_set_objects_req = ctx.pop_request("AppSetObjects")
+            assert vol.object_id in app_set_objects_req.unindexed_object_ids
