@@ -14,7 +14,7 @@ from modal import Image, Queue, Stub, forward
 args: Dict[str, Any] = {}
 
 stub = Stub()
-stub.image = Image.from_registry(args["image"], add_python=args["add_python"]).pip_install("jupyterlab")
+stub.image = Image.from_registry(args.get("image"), add_python=args.get("add_python")).pip_install("jupyterlab")
 
 
 def wait_for_port(url: str, q: Queue):
@@ -30,7 +30,7 @@ def wait_for_port(url: str, q: Queue):
     q.put(url)
 
 
-@stub.function(cpu=args["cpu"], memory=args["memory"], gpu=args["gpu"], timeout=args["timeout"])
+@stub.function(cpu=args.get("cpu"), memory=args.get("memory"), gpu=args.get("gpu"), timeout=args.get("timeout"))
 def run_jupyter(q: Queue):
     os.mkdir("/lab")
     token = secrets.token_urlsafe(13)

@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import contextlib
 import io
 import multiprocessing
 import platform
@@ -9,6 +8,7 @@ from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, TypeVar
 
 from synchronicity import Interface
+from synchronicity.async_wrap import asynccontextmanager
 
 from ._output import OutputManager
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
@@ -98,7 +98,7 @@ def _get_clean_stub_description(stub_ref: str) -> str:
         return " ".join(sys.argv)
 
 
-@contextlib.asynccontextmanager
+@asynccontextmanager
 async def _serve_stub(
     stub: "_Stub",
     stub_ref: str,
