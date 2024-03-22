@@ -5,6 +5,7 @@ import shlex
 import sys
 import typing
 import warnings
+from functools import wraps
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -143,6 +144,18 @@ if typing.TYPE_CHECKING:
     import modal.functions
 
 
+def remote_noop(method):
+    """Wrapper for Image methods to prevent their execution when running remotely."""
+
+    @wraps(method)
+    def wrapper(*args, **kwargs):
+        if not is_local():
+            return _Image._from_args()
+        return method(*args, **kwargs)
+
+    return wrapper
+
+
 class _Image(_Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
@@ -164,9 +177,9 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def _from_args(
-        base_images={},
-        context_files={},
-        dockerfile_commands: Union[List[str], Callable[[], List[str]]] = [],
+        base_images: Dict[str, "_Image"] = {},
+        context_files: Dict[str, str] = {},
+        dockerfile_commands: List[str] = [],
         secrets: Sequence[_Secret] = [],
         gpu_config: Optional[api_pb2.GPUConfig] = None,
         build_function: Optional["modal.functions._Function"] = None,
@@ -182,7 +195,7 @@ class _Image(_Object, type_prefix="im"):
         if image_registry_config is None:
             image_registry_config = _ImageRegistryConfig()
 
-        if not dockerfile_commands and not build_function:
+        if not dockerfile_commands and not build_function and is_local():
             raise InvalidError(
                 "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
             )
@@ -250,16 +263,9 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id = None
                 _build_function = None
 
-            dockerfile_commands_list: List[str]
-            if callable(dockerfile_commands):
-                # It's a closure (see DockerfileImage)
-                dockerfile_commands_list = dockerfile_commands()
-            else:
-                dockerfile_commands_list = dockerfile_commands
-
             image_definition = api_pb2.Image(
                 base_images=base_images_pb2s,
-                dockerfile_commands=dockerfile_commands_list,
+                dockerfile_commands=dockerfile_commands,
                 context_files=context_file_pb2s,
                 secret_ids=[secret.object_id for secret in secrets],
                 gpu=bool(gpu_config.type),  # Note: as of 2023-01-27, server still uses this
@@ -335,6 +341,7 @@ class _Image(_Object, type_prefix="im"):
         obj.force_build = force_build
         return obj
 
+    @remote_noop
     def extend(self, **kwargs) -> "_Image":
         """Deprecated! This is a low-level method not intended to be part of the public API."""
         deprecation_warning(
@@ -343,6 +350,7 @@ class _Image(_Object, type_prefix="im"):
         )
         return _Image._from_args(base_images={"base": self}, **kwargs)
 
+    @remote_noop
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
@@ -366,6 +374,7 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
+    @remote_noop
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
         """Copy a file into the image as a part of building it.
 
@@ -379,6 +388,7 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
+    @remote_noop
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
@@ -391,6 +401,7 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
+    @remote_noop
     def pip_install(
         self,
         *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
@@ -433,6 +444,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
+    @remote_noop
     def pip_install_private_repos(
         self,
         *repositories: str,
@@ -526,6 +538,7 @@ class _Image(_Object, type_prefix="im"):
             force_build=self.force_build or force_build,
         )
 
+    @remote_noop
     def pip_install_from_requirements(
         self,
         requirements_txt: str,  # Path to a requirements.txt file.
@@ -562,6 +575,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
+    @remote_noop
     def pip_install_from_pyproject(
         self,
         pyproject_toml: str,
@@ -581,11 +595,6 @@ class _Image(_Object, type_prefix="im"):
         optional-dependencies section(s) of the `pyproject.toml` file
         (e.g. test, doc, experiment, etc). When provided,
         all of the packages in each listed section are installed as well."""
-        from modal.app import is_local
-
-        # Don't re-run inside container.
-        if not is_local():
-            return self
 
         # Defer toml import so we don't need it in the container runtime environment
         import toml
@@ -621,6 +630,7 @@ class _Image(_Object, type_prefix="im"):
             gpu=gpu,
         )
 
+    @remote_noop
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
@@ -649,10 +659,6 @@ class _Image(_Object, type_prefix="im"):
         Note that the root project of the poetry project is not installed,
         only the dependencies. For including local packages see `modal.Mount.from_local_python_packages`
         """
-        if not is_local():
-            # existence checks can fail in global scope of the containers
-            return self
-
         poetry_pyproject_toml = os.path.expanduser(poetry_pyproject_toml)
 
         dockerfile_commands = [
@@ -705,6 +711,7 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
         )
 
+    @remote_noop
     def dockerfile_commands(
         self,
         *dockerfile_commands: Union[str, List[str]],
@@ -732,6 +739,7 @@ class _Image(_Object, type_prefix="im"):
             force_build=self.force_build or force_build,
         )
 
+    @remote_noop
     def run_commands(
         self,
         *commands: Union[str, List[str]],
@@ -755,6 +763,7 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
+    @remote_noop
     def conda(python_version: str = "3.9", force_build: bool = False) -> "_Image":
         """
         A Conda base image, using miniconda3 and derived from the official Docker Hub image.
@@ -815,6 +824,7 @@ class _Image(_Object, type_prefix="im"):
             ]
         )
 
+    @remote_noop
     def conda_install(
         self,
         *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
@@ -848,6 +858,7 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=gpu_config,
         )
 
+    @remote_noop
     def conda_update_from_environment(
         self,
         environment_yml: str,
@@ -879,6 +890,7 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
+    @remote_noop
     def micromamba(
         python_version: str = "3.9",
         force_build: bool = False,
@@ -900,6 +912,7 @@ class _Image(_Object, type_prefix="im"):
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
+    @remote_noop
     def micromamba_install(
         self,
         # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
@@ -957,6 +970,7 @@ class _Image(_Object, type_prefix="im"):
         ]
 
     @staticmethod
+    @remote_noop
     def from_registry(
         tag: str,
         *,
@@ -1015,6 +1029,7 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
+    @remote_noop
     def from_dockerhub(
         tag: str,
         setup_dockerfile_commands: List[str] = [],
@@ -1025,6 +1040,7 @@ class _Image(_Object, type_prefix="im"):
         deprecation_error((2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead.")
 
     @staticmethod
+    @remote_noop
     def from_gcp_artifact_registry(
         tag: str,
         secret: Optional[_Secret] = None,
@@ -1070,6 +1086,7 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
+    @remote_noop
     def from_aws_ecr(
         tag: str,
         secret: Optional[_Secret] = None,
@@ -1112,6 +1129,7 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
+    @remote_noop
     def from_dockerfile(
         path: Union[str, Path],
         context_mount: Optional[
@@ -1136,12 +1154,8 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
 
-        path = os.path.expanduser(path)
-
-        def base_dockerfile_commands():
-            # Make it a closure so that it's only invoked locally
-            with open(path) as f:
-                return f.read().split("\n")
+        with open(os.path.expanduser(path)) as f:
+            base_dockerfile_commands = f.read().split("\n")
 
         gpu_config = parse_gpu_config(gpu)
         base_image = _Image._from_args(
@@ -1183,6 +1197,7 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
+    @remote_noop
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
         python_version = _dockerhub_python_version(python_version)
@@ -1207,6 +1222,7 @@ class _Image(_Object, type_prefix="im"):
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
+    @remote_noop
     def apt_install(
         self,
         *packages: Union[str, List[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
@@ -1242,6 +1258,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
+    @remote_noop
     def run_function(
         self,
         raw_f: Callable,
@@ -1324,6 +1341,7 @@ class _Image(_Object, type_prefix="im"):
             force_build=self.force_build or force_build,
         )
 
+    @remote_noop
     def env(self, vars: Dict[str, str]) -> "_Image":
         """Sets the environmental variables of the image.
 
@@ -1343,6 +1361,7 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()],
         )
 
+    @remote_noop
     def workdir(self, path: str) -> "_Image":
         """Set the working directory for subsequent image build steps and function execution.
 
