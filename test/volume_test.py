@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 import modal
-from modal.exception import InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
 
@@ -17,10 +17,9 @@ def dummy():
 
 def test_volume_mount(client, servicer):
     stub = modal.Stub()
+    vol = modal.Volume.from_name("xyz", create_if_missing=True)
 
-    _ = stub.function(
-        volumes={"/root/foo": modal.Volume.new()},
-    )(dummy)
+    _ = stub.function(volumes={"/root/foo": vol})(dummy)
 
     with stub.run(client=client):
         pass
@@ -28,46 +27,44 @@ def test_volume_mount(client, servicer):
 
 def test_volume_bad_paths():
     stub = modal.Stub()
+    vol = modal.Volume.from_name("xyz")
 
     with pytest.raises(InvalidError):
-        stub.function(volumes={"/root/../../foo": modal.Volume.new()})(dummy)
+        stub.function(volumes={"/root/../../foo": vol})(dummy)
 
     with pytest.raises(InvalidError):
-        stub.function(volumes={"/": modal.Volume.new()})(dummy)
+        stub.function(volumes={"/": vol})(dummy)
 
     with pytest.raises(InvalidError):
-        stub.function(volumes={"/tmp/": modal.Volume.new()})(dummy)
+        stub.function(volumes={"/tmp/": vol})(dummy)
 
 
 def test_volume_duplicate_mount():
     stub = modal.Stub()
+    vol = modal.Volume.from_name("xyz")
 
-    volume = modal.Volume.new()
     with pytest.raises(InvalidError):
-        stub.function(volumes={"/foo": volume, "/bar": volume})(dummy)
+        stub.function(volumes={"/foo": vol, "/bar": vol})(dummy)
 
 
 @pytest.mark.parametrize("skip_reload", [False, True])
 def test_volume_commit(client, servicer, skip_reload):
-    stub = modal.Stub()
-    stub.vol = modal.Volume.new()
-
     with servicer.intercept() as ctx:
         ctx.add_response("VolumeCommit", api_pb2.VolumeCommitResponse(skip_reload=skip_reload))
         ctx.add_response("VolumeCommit", api_pb2.VolumeCommitResponse(skip_reload=skip_reload))
 
-        with stub.run(client=client):
+        with modal.Volume.ephemeral(client=client) as vol:
             # Note that in practice this will not work unless run in a task.
-            stub.vol.commit()
+            vol.commit()
 
             # Make sure we can commit through the provider too
-            stub.vol.commit()
+            vol.commit()
 
-            assert ctx.pop_request("VolumeCommit").volume_id == stub.vol.object_id
-            assert ctx.pop_request("VolumeCommit").volume_id == stub.vol.object_id
+            assert ctx.pop_request("VolumeCommit").volume_id == vol.object_id
+            assert ctx.pop_request("VolumeCommit").volume_id == vol.object_id
 
             # commit should implicitly reload on successful commit if skip_reload=False
-            assert servicer.volume_reloads[stub.vol.object_id] == 0 if skip_reload else 2
+            assert servicer.volume_reloads[vol.object_id] == 0 if skip_reload else 2
 
 
 @pytest.mark.asyncio
@@ -98,21 +95,19 @@ async def test_volume_get(servicer, client, tmp_path):
 
 
 def test_volume_reload(client, servicer):
-    stub = modal.Stub()
-    stub.vol = modal.Volume.new()
-
-    with stub.run(client=client):
+    with modal.Volume.ephemeral(client=client) as vol:
         # Note that in practice this will not work unless run in a task.
-        stub.vol.reload()
+        vol.reload()
 
-        assert servicer.volume_reloads[stub.vol.object_id] == 1
+        assert servicer.volume_reloads[vol.object_id] == 1
 
 
 def test_redeploy(servicer, client):
     stub = modal.Stub()
-    stub.v1 = modal.Volume.new()
-    stub.v2 = modal.Volume.new()
-    stub.v3 = modal.Volume.new()
+    with pytest.warns(DeprecationError):
+        stub.v1 = modal.Volume.new()
+        stub.v2 = modal.Volume.new()
+        stub.v3 = modal.Volume.new()
 
     # Deploy app once
     deploy_stub(stub, "my-app", client=client)
@@ -140,9 +135,6 @@ def test_redeploy(servicer, client):
 
 @pytest.mark.asyncio
 async def test_volume_batch_upload(servicer, client, tmp_path):
-    stub = modal.Stub()
-    stub.vol = modal.Volume.new()
-
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
@@ -154,15 +146,15 @@ async def test_volume_batch_upload(servicer, client, tmp_path):
     subdir.mkdir()
     (subdir / "other").write_text("####")
 
-    with stub.run(client=client):
+    async with modal.Volume.ephemeral(client=client) as vol:
         with open(local_file_path, "rb") as fp:
-            with stub.vol.batch_upload() as batch:
+            with vol.batch_upload() as batch:
                 batch.put_file(local_file_path, "/some_file")
                 batch.put_directory(local_dir, "/some_dir")
                 batch.put_file(io.BytesIO(b"data from a file-like object"), "/filelike", mode=0o600)
                 batch.put_directory(local_dir, "/non-recursive", recursive=False)
                 batch.put_file(fp, "/filelike2")
-        object_id = stub.vol.object_id
+        object_id = vol.object_id
 
     assert servicer.volume_files[object_id].keys() == {
         "/some_file",
@@ -184,47 +176,41 @@ async def test_volume_batch_upload(servicer, client, tmp_path):
 
 @pytest.mark.asyncio
 async def test_volume_batch_upload_force(servicer, client, tmp_path):
-    stub = modal.Stub()
-    stub.vol = modal.Volume.new()
-
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
     local_file_path2 = tmp_path / "some_file2"
     local_file_path2.write_text("overwritten")
 
-    with stub.run(client=client):
+    async with modal.Volume.ephemeral(client=client) as vol:
         with servicer.intercept() as ctx:
             # Seed the volume
-            with stub.vol.batch_upload() as batch:
+            with vol.batch_upload() as batch:
                 batch.put_file(local_file_path, "/some_file")
             assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
 
             # Attempting to overwrite the file with force=False should result in an error
             with pytest.raises(FileExistsError):
-                with stub.vol.batch_upload(force=False) as batch:
+                with vol.batch_upload(force=False) as batch:
                     batch.put_file(local_file_path, "/some_file")
             assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
-            assert servicer.volume_files[stub.vol.object_id]["/some_file"].data == b"hello world"
+            assert servicer.volume_files[vol.object_id]["/some_file"].data == b"hello world"
 
             # Overwriting should work with force=True
-            with stub.vol.batch_upload(force=True) as batch:
+            with vol.batch_upload(force=True) as batch:
                 batch.put_file(local_file_path2, "/some_file")
             assert not ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
-            assert servicer.volume_files[stub.vol.object_id]["/some_file"].data == b"overwritten"
+            assert servicer.volume_files[vol.object_id]["/some_file"].data == b"overwritten"
 
 
 @pytest.mark.asyncio
 async def test_volume_upload_removed_file(servicer, client, tmp_path):
-    stub = modal.Stub()
-    stub.vol = modal.Volume.new()
-
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
-    with stub.run(client=client):
+    async with modal.Volume.ephemeral(client=client) as vol:
         with pytest.raises(FileNotFoundError):
-            with stub.vol.batch_upload() as batch:
+            with vol.batch_upload() as batch:
                 batch.put_file(local_file_path, "/dest")
                 local_file_path.unlink()
 
@@ -232,15 +218,13 @@ async def test_volume_upload_removed_file(servicer, client, tmp_path):
 @pytest.mark.asyncio
 async def test_volume_upload_large_file(client, tmp_path, servicer, blob_server, *args):
     with mock.patch("modal._utils.blob_utils.LARGE_FILE_LIMIT", 10):
-        stub = modal.Stub()
-        stub.vol = modal.Volume.new()
         local_file_path = tmp_path / "bigfile"
         local_file_path.write_text("hello world, this is a lot of text")
 
-        async with stub.run(client=client):
-            async with stub.vol.batch_upload() as batch:
+        async with modal.Volume.ephemeral(client=client) as vol:
+            async with vol.batch_upload() as batch:
                 batch.put_file(local_file_path, "/a")
-            object_id = stub.vol.object_id
+            object_id = vol.object_id
 
         assert servicer.volume_files[object_id].keys() == {"/a"}
         assert servicer.volume_files[object_id]["/a"].data == b""
@@ -264,57 +248,54 @@ async def test_volume_upload_file_timeout(client, tmp_path, servicer, blob_serve
         ctx.set_responder("MountPutFile", mount_put_file)
         with mock.patch("modal._utils.blob_utils.LARGE_FILE_LIMIT", 10):
             with mock.patch("modal.volume.VOLUME_PUT_FILE_CLIENT_TIMEOUT", 0.5):
-                stub = modal.Stub()
-                stub.vol = modal.Volume.new()
                 local_file_path = tmp_path / "bigfile"
                 local_file_path.write_text("hello world, this is a lot of text")
 
-                async with stub.run(client=client):
+                async with modal.Volume.ephemeral(client=client) as vol:
                     with pytest.raises(VolumeUploadTimeoutError):
-                        async with stub.vol.batch_upload() as batch:
+                        async with vol.batch_upload() as batch:
                             batch.put_file(local_file_path, "/dest")
 
                 assert call_count > 2
 
 
 @pytest.mark.asyncio
-async def test_volume_copy(client, tmp_path, servicer):
-    # setup
-    stub = modal.Stub()
-    stub.vol = modal.Volume.new()
-
+async def test_volume_copy_1(client, tmp_path, servicer):
     ## test 1: copy src path to dst path ##
     src_path = "original.txt"
     dst_path = "copied.txt"
     local_file_path = tmp_path / src_path
     local_file_path.write_text("test copy")
 
-    with stub.run(client=client):
+    async with modal.Volume.ephemeral(client=client) as vol:
         # add local file to volume
-        async with stub.vol.batch_upload() as batch:
+        async with vol.batch_upload() as batch:
             batch.put_file(local_file_path, src_path)
-        object_id = stub.vol.object_id
+        object_id = vol.object_id
 
         # copy file from src_path to dst_path
-        stub.vol.copy_files([src_path], dst_path)
+        vol.copy_files([src_path], dst_path)
 
     assert servicer.volume_files[object_id].keys() == {src_path, dst_path}
 
     assert servicer.volume_files[object_id][src_path].data == b"test copy"
     assert servicer.volume_files[object_id][dst_path].data == b"test copy"
 
+
+@pytest.mark.asyncio
+async def test_volume_copy_2(client, tmp_path, servicer):
     ## test 2: copy multiple files into a directory ##
     file_paths = ["file1.txt", "file2.txt"]
 
-    with stub.run(client=client):
+    async with modal.Volume.ephemeral(client=client) as vol:
         for file_path in file_paths:
             local_file_path = tmp_path / file_path
             local_file_path.write_text("test copy")
-            async with stub.vol.batch_upload() as batch:
+            async with vol.batch_upload() as batch:
                 batch.put_file(local_file_path, file_path)
-            object_id = stub.vol.object_id
+            object_id = vol.object_id
 
-        stub.vol.copy_files(file_paths, "test_dir")
+        vol.copy_files(file_paths, "test_dir")
 
     returned_volume_files = [Path(file) for file in servicer.volume_files[object_id].keys()]
     expected_volume_files = [
@@ -339,7 +320,14 @@ def test_persisted(servicer, client):
     modal.Volume.lookup("xyz", create_if_missing=True, client=client)
 
     # Lookup should succeed now
-    modal.Volume.lookup("xyz", client=client)
+    v = modal.Volume.lookup("xyz", client=client)
+
+    # Delete it
+    v.delete()
+
+    # Lookup should fail again
+    with pytest.raises(NotFoundError):
+        modal.Volume.lookup("xyz", client=client)
 
 
 def test_ephemeral(servicer, client):

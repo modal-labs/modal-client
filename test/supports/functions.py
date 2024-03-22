@@ -335,8 +335,8 @@ def function_calling_method(x, y, z):
 
 image = Image.debian_slim().pip_install("xyz")
 other_image = Image.debian_slim().pip_install("abc")
-volume = Volume.new()
-other_volume = Volume.new()
+volume = Volume.from_name("vol", create_if_missing=True)
+other_volume = Volume.from_name("other-vol", create_if_missing=True)
 
 
 @stub.function(image=image, volumes={"/tmp/xyz": volume})

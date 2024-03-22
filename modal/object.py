@@ -147,7 +147,9 @@ class _Object:
         return obj
 
     @classmethod
-    def _new_hydrated(cls: Type[O], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> O:
+    def _new_hydrated(
+        cls: Type[O], object_id: str, client: _Client, handle_metadata: Optional[Message], is_another_app: bool = False
+    ) -> O:
         if cls._type_prefix is not None:
             # This is called directly on a subclass, e.g. Secret.from_id
             if not object_id.startswith(cls._type_prefix + "-"):
@@ -166,7 +168,7 @@ class _Object:
         obj_cls = cls._prefix_to_type[prefix]
         obj = _Object.__new__(obj_cls)
         rep = f"Object({object_id})"  # TODO(erikbern): dumb
-        obj._init(rep)
+        obj._init(rep, is_another_app=is_another_app)
         obj._hydrate(object_id, client, handle_metadata)
 
         return obj

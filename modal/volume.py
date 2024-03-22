@@ -70,17 +70,17 @@ class _Volume(_Object, type_prefix="vo"):
     import modal
 
     stub = modal.Stub()
-    stub.volume = modal.Volume.new()
+    volume = modal.Volume.from_name("my-persisted-volume", create_if_missing=True)
 
-    @stub.function(volumes={"/root/foo": stub.volume})
+    @stub.function(volumes={"/root/foo": volume})
     def f():
         with open("/root/foo/bar.txt", "w") as f:
             f.write("hello")
-        stub.app.volume.commit()  # Persist changes
+        volume.commit()  # Persist changes
 
-    @stub.function(volumes={"/root/foo": stub.volume})
+    @stub.function(volumes={"/root/foo": volume})
     def g():
-        stub.app.volume.reload()  # Fetch latest changes
+        volume.reload()  # Fetch latest changes
         with open("/root/foo/bar.txt", "r") as f:
             print(f.read())
     ```
@@ -97,7 +97,11 @@ class _Volume(_Object, type_prefix="vo"):
 
     @staticmethod
     def new() -> "_Volume":
-        """Construct a new volume, which is empty by default."""
+        """`Volume.new` is deprecated.
+
+        Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes.
+        """
+        deprecation_warning((2024, 3, 20), Volume.new.__doc__)
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
@@ -159,6 +163,17 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Volume"]:
+        """Creates a new ephemeral volume within a context manager:
+
+        Usage:
+        ```python
+        with Volume.ephemeral() as vol:
+            assert vol.listdir() == []
+
+        async with Volume.ephemeral() as vol:
+            assert await vol.listdir() == []
+        ```
+        """
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.VolumeGetOrCreateRequest(
@@ -169,7 +184,7 @@ class _Volume(_Object, type_prefix="vo"):
         async with TaskContext() as tc:
             request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
             tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.volume_id, client, None)
+            yield cls._new_hydrated(response.volume_id, client, None, is_another_app=True)
 
     @staticmethod
     def persisted(
@@ -436,6 +451,10 @@ class _Volume(_Object, type_prefix="vo"):
         ```
         """
         return _VolumeUploadContextManager(self.object_id, self._client, force=force)
+
+    @live_method
+    async def delete(self):
+        await retry_transient_errors(self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id))
 
 
 class _VolumeUploadContextManager:

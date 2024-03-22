@@ -2,22 +2,17 @@
 import pytest
 import random
 
-from modal import Queue, Stub
+from modal import Queue
 from modal._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from modal._utils.rand_pb_testing import rand_pb
 from modal_proto import api_pb2
 
 from .supports.skip import skip_old_py
 
-stub = Stub()
-
-stub.q = Queue.new()
-
 
 @pytest.mark.asyncio
 async def test_roundtrip(servicer, client):
-    async with stub.run(client=client):
-        q = stub.q
+    async with Queue.ephemeral(client=client) as q:
         data = serialize(q)
         # TODO: strip synchronizer reference from synchronicity entities!
         assert len(data) < 350  # Used to be 93...

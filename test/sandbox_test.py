@@ -29,6 +29,9 @@ def test_spawn_sandbox(client, servicer):
 
         assert sb.stdout.read() == "hi\n"
         assert sb.stderr.read() == "bye\n"
+        # read a second time
+        assert sb.stdout.read() == ""
+        assert sb.stderr.read() == ""
 
         assert sb.returncode == 42
         assert sb.poll() == 42
@@ -76,12 +79,11 @@ def test_sandbox_secret(client, servicer, tmpdir):
 @skip_non_linux
 def test_sandbox_nfs(client, servicer, tmpdir):
     with stub.run(client=client):
-        nfs = NetworkFileSystem.new()
+        with NetworkFileSystem.ephemeral(client=client) as nfs:
+            with pytest.raises(InvalidError):
+                stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs})
 
-        with pytest.raises(InvalidError):
-            stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs})
-
-        stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs})
+            stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs})
 
     assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
 
@@ -101,7 +103,6 @@ def test_sandbox_from_id(client, servicer):
 def test_sandbox_terminate(client, servicer):
     with stub.run(client=client):
         sb = stub.spawn_sandbox("bash", "-c", "sleep 10000")
-
         sb.terminate()
 
         assert sb.returncode != 0
@@ -159,3 +160,32 @@ def test_sandbox_stdin_write_after_eof(client, servicer):
         sb.stdin.write_eof()
         with pytest.raises(EOFError):
             sb.stdin.write(b"foo")
+
+
+@skip_non_linux
+@pytest.mark.asyncio
+async def test_sandbox_async_for(client, servicer):
+    async with stub.run.aio(client=client):
+        sb = stub.spawn_sandbox("bash", "-c", "echo hello && echo world && echo bye >&2")
+
+        out = ""
+
+        async for message in sb.stdout:
+            out += message
+        assert out == "hello\nworld\n"
+
+        # test streaming stdout a second time
+        out2 = ""
+        async for message in sb.stdout:
+            out2 += message
+        assert out2 == ""
+
+        err = ""
+        async for message in sb.stderr:
+            err += message
+
+        assert err == "bye\n"
+
+        # test reading after receiving EOF
+        assert sb.stdout.read() == ""
+        assert sb.stderr.read() == ""

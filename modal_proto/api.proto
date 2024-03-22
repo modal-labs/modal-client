@@ -1848,7 +1848,7 @@ message VolumeCommitResponse {
 
 message VolumeDeleteRequest {
   string volume_id = 1;
-  string environment_name = 2;
+  string environment_name = 2 [deprecated=true];
 }
 
 message VolumeGetFileRequest {
@@ -1884,6 +1884,7 @@ message VolumeListFilesEntry {
 message VolumeListFilesRequest {
   string volume_id = 1;
   string path = 2;
+  optional int32 max_entries = 3;
 }
 
 message VolumeListFilesResponse {

@@ -11,7 +11,6 @@ import modal
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
-from ._types import typechecked
 from ._utils.async_utils import ConcurrencyPool, TaskContext, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
@@ -86,10 +85,14 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     ```
     """
 
-    @typechecked
     @staticmethod
     def new(cloud: Optional[str] = None) -> "_NetworkFileSystem":
-        """Construct a new network file system, which is empty by default."""
+        """`NetworkFileSystem.new` is deprecated.
+
+        Please use `NetworkFileSystem.from_name` (for persisted) or `NetworkFileSystem.ephemeral`
+        (for ephemeral) network filesystems.
+        """
+        deprecation_warning((2024, 3, 20), NetworkFileSystem.new.__doc__)
 
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
@@ -149,6 +152,17 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_NetworkFileSystem"]:
+        """Creates a new ephemeral network filesystem within a context manager:
+
+        Usage:
+        ```python
+        with NetworkFileSystem.ephemeral() as nfs:
+            assert nfs.listdir() == []
+
+        async with NetworkFileSystem.ephemeral() as nfs:
+            assert await nfs.listdir() == []
+        ```
+        """
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(
@@ -159,7 +173,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         async with TaskContext() as tc:
             request = api_pb2.SharedVolumeHeartbeatRequest(shared_volume_id=response.shared_volume_id)
             tc.infinite_loop(lambda: client.stub.SharedVolumeHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.shared_volume_id, client, None)
+            yield cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True)
 
     @staticmethod
     def persisted(

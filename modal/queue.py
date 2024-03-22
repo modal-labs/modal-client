@@ -31,21 +31,19 @@ class _Queue(_Object, type_prefix="qu"):
 
     **Usage**
 
-    Create a new `Queue` with `Queue.new()`, then assign it to a stub or function.
-
     ```python
     from modal import Queue, Stub
 
     stub = Stub()
-    stub.my_queue = Queue.new()
+    my_queue = Queue.from_name("my-persisted-queue", create_if_missing=True)
 
     @stub.local_entrypoint()
     def main():
-        stub.my_queue.put("some value")
-        stub.my_queue.put(123)
+        my_queue.put("some value")
+        my_queue.put(123)
 
-        assert stub.my_queue.get() == "some value"
-        assert stub.my_queue.get() == 123
+        assert my_queue.get() == "some value"
+        assert my_queue.get() == 123
     ```
 
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
@@ -53,7 +51,11 @@ class _Queue(_Object, type_prefix="qu"):
 
     @staticmethod
     def new():
-        """Create an empty Queue."""
+        """`Queue.new` is deprecated.
+
+        Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues.
+        """
+        deprecation_warning((2024, 3, 19), Queue.new.__doc__)
 
         async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
@@ -64,9 +66,7 @@ class _Queue(_Object, type_prefix="qu"):
 
     def __init__(self):
         """mdmd:hidden"""
-        deprecation_error((2023, 6, 27), "`Queue()` is deprecated. Please use `Queue.new()` instead.")
-        obj = _Queue.new()
-        self._init_from_other(obj)
+        deprecation_error((2023, 6, 27), "`Queue()` is deprecated. Please use `Queue.ephemeral()` instead.")
 
     @classmethod
     @asynccontextmanager
@@ -76,6 +76,17 @@ class _Queue(_Object, type_prefix="qu"):
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Queue"]:
+        """Creates a new ephemeral queue within a context manager:
+
+        Usage:
+        ```python
+        with Queue.ephemeral() as q:
+            q.put(123)
+
+        async with Queue.ephemeral() as q:
+            await q.put.aio(123)
+        ```
+        """
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.QueueGetOrCreateRequest(
@@ -86,7 +97,7 @@ class _Queue(_Object, type_prefix="qu"):
         async with TaskContext() as tc:
             request = api_pb2.QueueHeartbeatRequest(queue_id=response.queue_id)
             tc.infinite_loop(lambda: client.stub.QueueHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.queue_id, client, None)
+            yield cls._new_hydrated(response.queue_id, client, None, is_another_app=True)
 
     @staticmethod
     def from_name(

@@ -7,7 +7,7 @@ from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional
 
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal._types import typechecked
+from modal_proto import api_pb2
 
 from ._ipython import is_notebook
 from ._output import OutputManager
@@ -119,7 +119,6 @@ class _Stub:
     _local_app: Optional[_LocalApp]
     _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
 
-    @typechecked
     def __init__(
         self,
         name: Optional[str] = None,
@@ -277,7 +276,6 @@ class _Stub:
         for obj in self._indexed_objects.values():
             obj._unhydrate()
 
-    @typechecked
     def is_inside(self, image: Optional[_Image] = None):
         """Deprecated: use `Image.imports()` instead! Usage:
         ```
@@ -365,6 +363,10 @@ class _Stub:
         return self._local_entrypoints
 
     @property
+    def indexed_objects(self) -> Dict[str, _Object]:
+        return self._indexed_objects
+
+    @property
     def registered_web_endpoints(self) -> List[str]:
         """Names of web endpoint (ie. webhook) functions registered on the stub."""
         return self._web_endpoints
@@ -435,7 +437,6 @@ class _Stub:
 
         return wrapped
 
-    @typechecked
     def function(
         self,
         _warn_parentheses_missing=None,
@@ -699,6 +700,7 @@ class _Stub:
         block_network: bool = False,  # Whether to block network access
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Volumes to mount in the sandbox.
         _allow_background_volume_commits: bool = False,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -737,6 +739,7 @@ class _Stub:
             block_network=block_network,
             volumes=volumes,
             allow_background_volume_commits=_allow_background_volume_commits,
+            pty_info=pty_info,
         )
         await resolver.load(obj)
         return obj

@@ -10,11 +10,44 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.61.76 (2024-03-19)
+
+- The `Sandbox`'s `LogsReader` is now an asynchronous iterable. It supports the `async for` statement to stream data from the sandbox's `stdout/stderr`.
+
+```python
+@stub.function()
+async def my_fn():
+    sandbox = stub.spawn_sandbox(
+      "bash", 
+      "-c", 
+      "while true; do echo foo; sleep 1; done"
+    )
+    async for message in sandbox.stdout:
+        print(f"Message: {message}")
+```
+
 ### 0.61.57 (2024-03-15)
 
 - Add the `@web_server` decorator, which exposes a server listening on a container port as a web endpoint.
 
+### 0.61.56 (2024-03-15)
 
+- Allow users to write to the `Sandbox`'s `stdin` with `StreamWriter`.
+
+```python
+@stub.function()
+def my_fn():
+    sandbox = stub.spawn_sandbox(
+        "bash",
+        "-c",
+        "while read line; do echo $line; done",
+    )
+    sandbox.stdin.write(b"foo\\n")
+    sandbox.stdin.write(b"bar\\n")
+    sandbox.stdin.write_eof()
+    sandbox.stdin.drain()
+    sandbox.wait()
+```
 
 ### 0.61.53 (2024-03-15)
 

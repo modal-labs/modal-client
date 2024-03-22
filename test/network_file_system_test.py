@@ -14,10 +14,9 @@ def dummy():
 
 def test_network_file_system_files(client, test_dir, servicer):
     stub = modal.Stub()
+    nfs = modal.NetworkFileSystem.from_name("xyz", create_if_missing=True)
 
-    dummy_modal = stub.function(
-        network_file_systems={"/root/foo": modal.NetworkFileSystem.new()},
-    )(dummy)
+    dummy_modal = stub.function(network_file_systems={"/root/foo": nfs})(dummy)
 
     with stub.run(client=client):
         dummy_modal.remote()
@@ -25,30 +24,29 @@ def test_network_file_system_files(client, test_dir, servicer):
 
 def test_network_file_system_bad_paths():
     stub = modal.Stub()
+    nfs = modal.NetworkFileSystem.from_name("xyz", create_if_missing=True)
 
     def _f():
         pass
 
     with pytest.raises(InvalidError):
-        stub.function(network_file_systems={"/root/../../foo": modal.NetworkFileSystem.new()})(dummy)
+        stub.function(network_file_systems={"/root/../../foo": nfs})(dummy)
 
     with pytest.raises(InvalidError):
-        stub.function(network_file_systems={"/": modal.NetworkFileSystem.new()})(dummy)
+        stub.function(network_file_systems={"/": nfs})(dummy)
 
     with pytest.raises(InvalidError):
-        stub.function(network_file_systems={"/tmp/": modal.NetworkFileSystem.new()})(dummy)
+        stub.function(network_file_systems={"/tmp/": nfs})(dummy)
 
 
 def test_network_file_system_handle_single_file(client, tmp_path, servicer):
-    stub = modal.Stub()
-    stub.vol = modal.NetworkFileSystem.new()
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
-    with stub.run(client=client):
-        stub.vol.add_local_file(local_file_path)
-        stub.vol.add_local_file(local_file_path.as_posix(), remote_path="/foo/other_destination")
-        object_id = stub.vol.object_id
+    with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
+        nfs.add_local_file(local_file_path)
+        nfs.add_local_file(local_file_path.as_posix(), remote_path="/foo/other_destination")
+        object_id = nfs.object_id
 
     assert servicer.nfs_files[object_id].keys() == {
         "/some_file",
@@ -60,8 +58,6 @@ def test_network_file_system_handle_single_file(client, tmp_path, servicer):
 
 @pytest.mark.asyncio
 async def test_network_file_system_handle_dir(client, tmp_path, servicer):
-    stub = modal.Stub()
-    stub.vol = modal.NetworkFileSystem.new()
     local_dir = tmp_path / "some_dir"
     local_dir.mkdir()
     (local_dir / "smol").write_text("###")
@@ -70,9 +66,9 @@ async def test_network_file_system_handle_dir(client, tmp_path, servicer):
     subdir.mkdir()
     (subdir / "other").write_text("####")
 
-    with stub.run(client=client):
-        stub.vol.add_local_dir(local_dir)
-        object_id = stub.vol.object_id
+    with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
+        nfs.add_local_dir(local_dir)
+        object_id = nfs.object_id
 
     assert servicer.nfs_files[object_id].keys() == {
         "/some_dir/smol",
@@ -85,14 +81,12 @@ async def test_network_file_system_handle_dir(client, tmp_path, servicer):
 @pytest.mark.asyncio
 async def test_network_file_system_handle_big_file(client, tmp_path, servicer, blob_server, *args):
     with mock.patch("modal.network_file_system.LARGE_FILE_LIMIT", 10):
-        stub = modal.Stub()
-        stub.vol = modal.NetworkFileSystem.new()
         local_file_path = tmp_path / "bigfile"
         local_file_path.write_text("hello world, this is a lot of text")
 
-        async with stub.run(client=client):
-            await stub.vol.add_local_file.aio(local_file_path)
-            object_id = stub.vol.object_id
+        async with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
+            await nfs.add_local_file.aio(local_file_path)
+            object_id = nfs.object_id
 
         assert servicer.nfs_files[object_id].keys() == {"/bigfile"}
         assert servicer.nfs_files[object_id]["/bigfile"].data == b""
@@ -112,9 +106,10 @@ def test_old_syntax(client, servicer):
 
 def test_redeploy(servicer, client):
     stub = modal.Stub()
-    stub.n1 = modal.NetworkFileSystem.new()
-    stub.n2 = modal.NetworkFileSystem.new()
-    stub.n3 = modal.NetworkFileSystem.new()
+    with pytest.warns(DeprecationError):
+        stub.n1 = modal.NetworkFileSystem.new()
+        stub.n2 = modal.NetworkFileSystem.new()
+        stub.n3 = modal.NetworkFileSystem.new()
 
     # Deploy app once
     deploy_stub(stub, "my-app", client=client)
@@ -141,25 +136,21 @@ def test_redeploy(servicer, client):
 
 
 def test_read_file(client, tmp_path, servicer):
-    stub = modal.Stub()
-    stub.vol = modal.NetworkFileSystem.new()
-    with stub.run(client=client):
+    with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
         with pytest.raises(FileNotFoundError):
-            for _ in stub.vol.read_file("idontexist.txt"):
+            for _ in nfs.read_file("idontexist.txt"):
                 ...
 
 
 def test_write_file(client, tmp_path, servicer):
-    stub = modal.Stub()
-    stub.vol = modal.NetworkFileSystem.new()
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
-    with stub.run(client=client):
-        stub.vol.write_file("remote_path.txt", open(local_file_path, "rb"))
+    with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
+        nfs.write_file("remote_path.txt", open(local_file_path, "rb"))
 
         # Make sure we can write through the provider too
-        stub.vol.write_file("remote_path.txt", open(local_file_path, "rb"))
+        nfs.write_file("remote_path.txt", open(local_file_path, "rb"))
 
 
 def test_persisted(servicer, client):

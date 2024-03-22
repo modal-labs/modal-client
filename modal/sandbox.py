@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
+import asyncio
 import os
-from typing import Dict, List, Optional, Sequence, Union
+from typing import AsyncIterator, Dict, List, Optional, Sequence, Union
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -26,7 +27,24 @@ from .secret import _Secret
 
 
 class _LogsReader:
-    """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`)."""
+    """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`).
+
+    As an asynchronous iterable, the object supports the async for statement.
+
+    **Usage**
+
+    ```python
+    @stub.function()
+    async def my_fn():
+        sandbox = stub.spawn_sandbox(
+            "bash",
+            "-c",
+            "while true; do echo foo; sleep 1; done"
+        )
+        async for message in sandbox.stdout:
+            print(f"Message: {message}")
+    ```
+    """
 
     def __init__(self, file_descriptor: int, sandbox_id: str, client: _Client) -> None:
         """mdmd:hidden"""
@@ -34,9 +52,15 @@ class _LogsReader:
         self._file_descriptor = file_descriptor
         self._sandbox_id = sandbox_id
         self._client = client
+        self._stream = None
+        self._last_log_batch_entry_id = ""
+        # Whether the reader received an EOF. Once EOF is True, it returns
+        # an empty string for any subsequent reads (including async for)
+        self.eof = False
 
     async def read(self) -> str:
-        """Fetch and return contents of the entire stream.
+        """Fetch and return contents of the entire stream. If EOF was received,
+        return an empty string.
 
         **Usage**
 
@@ -48,47 +72,72 @@ class _LogsReader:
         ```
 
         """
-
-        last_log_batch_entry_id = ""
-        completed = False
         data = ""
-
         # TODO: maybe combine this with get_app_logs_loop
+        async for message in self._get_logs():
+            if message is None:
+                break
+            data += message.data
 
-        async def _get_logs():
-            nonlocal last_log_batch_entry_id, completed, data
+        return data
 
+    async def _get_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogs]]:
+        """mdmd:hidden
+        Streams sandbox logs from the server to the reader.
+
+        When the stream receives an EOF, it yields None. Once an EOF is received,
+        subsequent invocations will not yield logs.
+        """
+        if self.eof:
+            yield None
+            return
+
+        completed = False
+
+        retries_remaining = 10
+        while not completed:
             req = api_pb2.SandboxGetLogsRequest(
                 sandbox_id=self._sandbox_id,
                 file_descriptor=self._file_descriptor,
                 timeout=55,
-                last_entry_id=last_log_batch_entry_id,
+                last_entry_id=self._last_log_batch_entry_id,
             )
-            log_batch: api_pb2.TaskLogsBatch
-            async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
-                if log_batch.entry_id:
-                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
-                    last_log_batch_entry_id = log_batch.entry_id
-
-                if log_batch.eof:
-                    completed = True
-                    break
-
-                for item in log_batch.items:
-                    data += item.data
-
-        while not completed:
             try:
-                await _get_logs()
+                async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
+                    self._last_log_batch_entry_id = log_batch.entry_id
+
+                    for message in log_batch.items:
+                        yield message
+                    if log_batch.eof:
+                        self.eof = True
+                        completed = True
+                        yield None
+                        break
             except (GRPCError, StreamTerminatedError) as exc:
-                if isinstance(exc, GRPCError):
-                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, GRPCError):
+                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                            await asyncio.sleep(1.0)
+                            continue
+                    elif isinstance(exc, StreamTerminatedError):
                         continue
-                elif isinstance(exc, StreamTerminatedError):
-                    continue
                 raise
 
-        return data
+    def __aiter__(self):
+        """mdmd:hidden"""
+        self._stream = self._get_logs()
+        return self
+
+    async def __anext__(self):
+        """mdmd:hidden"""
+        value = await self._stream.__anext__()
+
+        # The stream yields None if it receives an EOF batch.
+        if value is None:
+            raise StopAsyncIteration
+
+        return value.data
 
 
 MAX_BUFFER_SIZE = 128 * 1024
@@ -105,11 +154,35 @@ class _StreamWriter:
         self._buffer = bytearray()
 
     def get_next_index(self):
+        """mdmd:hidden"""
         index = self._index
         self._index += 1
         return index
 
     def write(self, data: Union[bytes, bytearray, memoryview]):
+        """
+        Writes data to stream's internal buffer, but does not drain/flush the write.
+
+        This method needs to be used along with the `drain()` method which flushes the buffer.
+
+        **Usage**
+
+        ```python
+        @stub.local_entrypoint()
+        def main():
+            sandbox = stub.spawn_sandbox(
+                "bash",
+                "-c",
+                "while read line; do echo $line; done",
+            )
+            sandbox.stdin.write(b"foo\\n")
+            sandbox.stdin.write(b"bar\\n")
+            sandbox.stdin.write_eof()
+
+            sandbox.stdin.drain()
+            sandbox.wait()
+        ```
+        """
         if self._is_closed:
             raise EOFError("Stdin is closed. Cannot write to it.")
         if isinstance(data, (bytes, bytearray, memoryview)):
@@ -120,9 +193,18 @@ class _StreamWriter:
             raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
 
     def write_eof(self):
+        """
+        Closes the write end of the stream after the buffered write data is drained.
+        If the sandbox process was blocked on input, it will become unblocked after `write_eof()`.
+
+        This method needs to be used along with the `drain()` method which flushes the EOF to the process.
+        """
         self._is_closed = True
 
     async def drain(self):
+        """
+        Flushes the write buffer and EOF to the running Sandbox process.
+        """
         data = bytes(self._buffer)
         self._buffer.clear()
         index = self.get_next_index()
@@ -164,6 +246,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         allow_background_volume_commits: bool = False,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -223,6 +306,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 block_network=block_network,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
+                pty_info=pty_info,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
@@ -241,7 +325,10 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def from_id(sandbox_id: str, client: Optional[_Client] = None) -> "_Sandbox":
-        """Construct a Sandbox from an id and look up the sandbox result."""
+        """Construct a Sandbox from an id and look up the sandbox result.
+
+        The ID of a Sandbox object can be accessed using `.object_id`.
+        """
         if client is None:
             client = await _Client.from_env()
 

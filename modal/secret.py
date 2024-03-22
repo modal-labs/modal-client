@@ -4,7 +4,6 @@ from typing import Dict, List, Optional, Union
 
 from grpclib import GRPCError, Status
 
-from modal._types import typechecked
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -28,7 +27,6 @@ class _Secret(_Object, type_prefix="st"):
     See [the secrets guide page](/docs/guide/secrets) for more information.
     """
 
-    @typechecked
     @staticmethod
     def from_dict(
         env_dict: Dict[
@@ -72,7 +70,6 @@ class _Secret(_Object, type_prefix="st"):
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep)
 
-    @typechecked
     @staticmethod
     def from_local_environ(
         env_keys: List[str],  # list of local env vars to be included for remote execution

@@ -43,12 +43,6 @@ def test_run_function(client, servicer):
         assert foo.remote(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
 
-        # Make sure we can also call the Function object
-        fun = stub.foo
-        assert isinstance(fun, Function)
-        assert fun.remote(2, 4) == 20
-        assert len(servicer.cleared_function_calls) == 2
-
 
 @pytest.mark.asyncio
 async def test_call_function_locally(client, servicer):
@@ -72,14 +66,6 @@ async def test_call_function_locally(client, servicer):
         assert async_foo.remote(2, 4) == 20
         assert await async_foo.remote.aio(2, 4) == 20
 
-        # Make sure we can also call the Function object
-        assert isinstance(stub.foo, Function)
-        assert isinstance(stub.async_foo, Function)
-        with pytest.raises(DeprecationError):
-            stub.foo(22, 55)
-        with pytest.raises(DeprecationError):
-            await stub.async_foo(22, 44)
-
 
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
 @pytest.mark.timeout(120)
@@ -95,12 +81,6 @@ def test_map(client, servicer, slow_put_inputs):
         assert len(servicer.cleared_function_calls) == 1
         assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
         assert len(servicer.cleared_function_calls) == 2
-
-        # Make sure we can map on the Function object too
-        fun = stub.dummy
-        assert isinstance(fun, Function)
-        assert list(fun.map([5, 2], [4, 3])) == [41, 13]
-        assert len(servicer.cleared_function_calls) == 3
 
 
 _side_effect_count = 0
@@ -118,12 +98,7 @@ def test_for_each(client, servicer):
     with stub.run(client=client):
         side_effect_modal.for_each(range(10))
 
-        # Call stub function too
-        fun = stub.side_effect
-        assert isinstance(fun, Function)
-        fun.for_each(range(10))
-
-    assert _side_effect_count == 20
+    assert _side_effect_count == 10
 
 
 def custom_function(x):
@@ -484,7 +459,8 @@ def f(x):
 
 def test_allow_cross_region_volumes(client, servicer):
     stub = Stub()
-    vol1, vol2 = NetworkFileSystem.new(), NetworkFileSystem.new()
+    vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
+    vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
     # Should pass flag for all the function's NetworkFileSystemMounts
     stub.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
 
@@ -497,9 +473,10 @@ def test_allow_cross_region_volumes(client, servicer):
 
 
 def test_allow_cross_region_volumes_webhook(client, servicer):
-    # TODO(erikbern): this stest seems a bit redundant
+    # TODO(erikbern): this test seems a bit redundant
     stub = Stub()
-    vol1, vol2 = NetworkFileSystem.new(), NetworkFileSystem.new()
+    vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
+    vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
     # Should pass flag for all the function's NetworkFileSystemMounts
     stub.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
         web_endpoint()(dummy)
@@ -515,7 +492,7 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
 
 def test_shared_volumes(client, servicer):
     stub = Stub()
-    vol = NetworkFileSystem.new()
+    vol = NetworkFileSystem.from_name("foo")
     with pytest.raises(DeprecationError):
         stub.function(shared_volumes={"/sv-1": vol})
 
@@ -591,8 +568,8 @@ def test_deps_explicit(client, servicer):
     stub = Stub()
 
     image = Image.debian_slim()
-    nfs_1 = NetworkFileSystem.new()
-    nfs_2 = NetworkFileSystem.new()
+    nfs_1 = NetworkFileSystem.from_name("nfs-1", create_if_missing=True)
+    nfs_2 = NetworkFileSystem.from_name("nfs-2", create_if_missing=True)
 
     stub.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
 
@@ -603,7 +580,7 @@ def test_deps_explicit(client, servicer):
     assert dep_object_ids == set([image.object_id, nfs_1.object_id, nfs_2.object_id])
 
 
-nfs = NetworkFileSystem.new()
+nfs = NetworkFileSystem.from_name("my-persisted-nfs", create_if_missing=True)
 
 
 def dummy_closurevars():
