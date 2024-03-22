@@ -267,6 +267,10 @@ class _Stub:
         # Will also keep this one after we remove [get/set][item/attr]
         return self._indexed_objects["image"]
 
+    @image.setter
+    def image(self, value):
+        self._indexed_objects["image"] = value
+
     def get_objects(self) -> List[Tuple[str, _Object]]:
         """Used by the container app to initialize objects."""
         return list(self._indexed_objects.items())
