@@ -5,6 +5,7 @@ import shlex
 import sys
 import typing
 import warnings
+from dataclasses import dataclass, field
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -20,7 +21,6 @@ from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
-from .app import is_local
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
@@ -143,6 +143,12 @@ if typing.TYPE_CHECKING:
     import modal.functions
 
 
+@dataclass
+class DockerfileSpec:
+    commands: List[str] = field(default_factory=list)
+    context_files: Dict[str, str] = field(default_factory=dict)  # TODO do pathlib types work?
+
+
 class _Image(_Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
@@ -164,15 +170,20 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def _from_args(
-        base_images={},
-        context_files={},
-        dockerfile_commands: Union[List[str], Callable[[], List[str]]] = [],
+        *,
+        base_images: Dict[str, "_Image"] = {},
+        dockerfile_function: Optional[Callable[[], DockerfileSpec]] = None,
         secrets: Sequence[_Secret] = [],
         gpu_config: Optional[api_pb2.GPUConfig] = None,
         build_function: Optional["modal.functions._Function"] = None,
         build_function_input: Optional[api_pb2.FunctionInput] = None,
-        context_mount: Optional[_Mount] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
+        context_mount: Optional[_Mount] = None,
+        # --- TODO to remove
+        # or do we need to maintain back-compat on these since extend() is still live?
+        # context_files=None,
+        # dockerfile_commands: Union[List[str], Callable[[], List[str]]] = None,
+        # ---
         force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -182,16 +193,9 @@ class _Image(_Object, type_prefix="im"):
         if image_registry_config is None:
             image_registry_config = _ImageRegistryConfig()
 
-        if not dockerfile_commands and not build_function:
-            raise InvalidError(
-                "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
-            )
         for secret in secrets:
             if not isinstance(secret, _Secret):
                 raise InvalidError("All secrets of an image needs to be modal.Secret/AioSecret instances")
-
-        if build_function and dockerfile_commands:
-            raise InvalidError("Cannot provide both a build function and Dockerfile commands!")
 
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
@@ -207,6 +211,15 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+            dockerfile = dockerfile_function() if dockerfile_function else DockerfileSpec()
+
+            if not dockerfile.commands and not build_function:
+                raise InvalidError(
+                    "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
+                )
+            if dockerfile.commands and build_function:
+                raise InvalidError("Cannot provide both a build function and Dockerfile commands!")
+
             base_images_pb2s = [
                 api_pb2.BaseImage(
                     docker_tag=docker_tag,
@@ -216,7 +229,7 @@ class _Image(_Object, type_prefix="im"):
             ]
 
             context_file_pb2s = []
-            for filename, path in context_files.items():
+            for filename, path in dockerfile.context_files.items():
                 with open(path, "rb") as f:
                     context_file_pb2s.append(api_pb2.ImageContextFile(filename=filename, data=f.read()))
 
@@ -250,16 +263,9 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id = None
                 _build_function = None
 
-            dockerfile_commands_list: List[str]
-            if callable(dockerfile_commands):
-                # It's a closure (see DockerfileImage)
-                dockerfile_commands_list = dockerfile_commands()
-            else:
-                dockerfile_commands_list = dockerfile_commands
-
             image_definition = api_pb2.Image(
                 base_images=base_images_pb2s,
-                dockerfile_commands=dockerfile_commands_list,
+                dockerfile_commands=dockerfile.commands,
                 context_files=context_file_pb2s,
                 secret_ids=[secret.object_id for secret in secrets],
                 gpu=bool(gpu_config.type),  # Note: as of 2023-01-27, server still uses this
@@ -330,7 +336,7 @@ class _Image(_Object, type_prefix="im"):
 
             self._hydrate(image_id, resolver.client, None)
 
-        rep = f"Image({dockerfile_commands})"
+        rep = "Image()"  # TODO can we update the rep when _load runs?
         obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
         return obj
@@ -360,9 +366,14 @@ class _Image(_Object, type_prefix="im"):
         """
         if not isinstance(mount, _Mount):
             raise InvalidError("The mount argument to copy has to be a Modal Mount object")
+
+        def build_dockerfile() -> DockerfileSpec:
+            commands = ["FROM base", f"COPY . {remote_path}"]  # copy everything from the supplied mount
+            return DockerfileSpec(commands=commands)
+
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=["FROM base", f"COPY . {remote_path}"],  # copy everything from the supplied mount
+            dockerfile_function=build_dockerfile,
             context_mount=mount,
         )
 
@@ -373,9 +384,13 @@ class _Image(_Object, type_prefix="im"):
         """
         basename = str(Path(local_path).name)
         mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
+
+        def build_dockerfile() -> DockerfileSpec:
+            return DockerfileSpec(commands=["FROM base", f"COPY {basename} {remote_path}"])
+
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=["FROM base", f"COPY {basename} {remote_path}"],
+            dockerfile_function=build_dockerfile,
             context_mount=mount,
         )
 
@@ -385,9 +400,13 @@ class _Image(_Object, type_prefix="im"):
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) in a `Dockerfile`.
         """
         mount = _Mount.from_local_dir(local_path, remote_path="/")
+
+        def build_dockerfile() -> DockerfileSpec:
+            return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"])
+
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=["FROM base", f"COPY . {remote_path}"],
+            dockerfile_function=build_dockerfile,
             context_mount=mount,
         )
 
@@ -414,21 +433,24 @@ class _Image(_Object, type_prefix="im"):
         if not pkgs:
             return self
 
-        extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
-        package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
+        def build_dockerfile() -> DockerfileSpec:
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+            package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
 
-        dockerfile_commands = [
-            "FROM base",
-            f"RUN python -m pip install {package_args} {extra_args}",
-            # TODO(erikbern): if extra_args is empty, we add a superfluous space at the end.
-            # However removing it at this point would cause image hashes to change.
-            # Maybe let's remove it later when/if client requirements change.
-        ]
+            commands = [
+                "FROM base",
+                f"RUN python -m pip install {package_args} {extra_args}",
+                # TODO(erikbern): if extra_args is empty, we add a superfluous space at the end.
+                # However removing it at this point would cause image hashes to change.
+                # Maybe let's remove it later when/if client requirements change.
+            ]
+            return DockerfileSpec(commands=commands)
+
         gpu_config = parse_gpu_config(gpu)
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
-            force_build=self.force_build or force_build,
+            dockerfile_function=build_dockerfile,
+            force_build=self.force_build or force_build,  # TODO shouldn't forcing upstream build always rerun this?
             gpu_config=gpu_config,
             secrets=secrets,
         )
@@ -501,26 +523,29 @@ class _Image(_Object, type_prefix="im"):
             )
 
         secret_names = ",".join([s.app_name if hasattr(s, "app_name") else str(s) for s in secrets])  # type: ignore
-        dockerfile_commands = ["FROM base"]
-        if any(r.startswith("github") for r in repositories):
-            dockerfile_commands.append(
-                f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
-            )
-        if any(r.startswith("gitlab") for r in repositories):
-            dockerfile_commands.append(
-                f"RUN bash -c \"[[ -v GITLAB_TOKEN ]] || (echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
-            )
 
-        extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+        def build_dockerfile() -> DockerfileSpec:
+            dockerfile_commands = ["FROM base"]
+            if any(r.startswith("github") for r in repositories):
+                dockerfile_commands.append(
+                    f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+                )
+            if any(r.startswith("gitlab") for r in repositories):
+                dockerfile_commands.append(
+                    f"RUN bash -c \"[[ -v GITLAB_TOKEN ]] || (echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+                )
 
-        dockerfile_commands.extend(["RUN apt-get update && apt-get install -y git"])
-        dockerfile_commands.extend([f'RUN python3 -m pip install "{url}" {extra_args}' for url in install_urls])
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+
+            dockerfile_commands.extend(["RUN apt-get update && apt-get install -y git"])
+            dockerfile_commands.extend([f'RUN python3 -m pip install "{url}" {extra_args}' for url in install_urls])
+            return DockerfileSpec(commands=dockerfile_commands)
 
         gpu_config = parse_gpu_config(gpu)
 
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
+            dockerfile_function=build_dockerfile,
             secrets=secrets,
             gpu_config=gpu_config,
             force_build=self.force_build or force_build,
@@ -540,23 +565,23 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Install a list of Python packages from a local `requirements.txt` file."""
 
-        requirements_txt = os.path.expanduser(requirements_txt)
+        def build_dockerfile() -> DockerfileSpec:
+            requirements_txt_path = os.path.expanduser(requirements_txt)
+            context_files = {"/.requirements.txt": requirements_txt_path}
 
-        find_links_arg = f"-f {find_links}" if find_links else ""
-        context_files = {"/.requirements.txt": requirements_txt}
+            find_links_arg = f"-f {find_links}" if find_links else ""
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
 
-        extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
-
-        dockerfile_commands = [
-            "FROM base",
-            "COPY /.requirements.txt /.requirements.txt",
-            f"RUN python -m pip install -r /.requirements.txt {find_links_arg} {extra_args}",
-        ]
+            dockerfile_commands = [
+                "FROM base",
+                "COPY /.requirements.txt /.requirements.txt",
+                f"RUN python -m pip install -r /.requirements.txt {find_links_arg} {extra_args}",
+            ]
+            return DockerfileSpec(commands=dockerfile_commands, context_files=context_files)
 
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
-            context_files=context_files,
+            dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             gpu_config=parse_gpu_config(gpu),
             secrets=secrets,
@@ -580,45 +605,49 @@ class _Image(_Object, type_prefix="im"):
         `optional_dependencies` is a list of the keys of the
         optional-dependencies section(s) of the `pyproject.toml` file
         (e.g. test, doc, experiment, etc). When provided,
-        all of the packages in each listed section are installed as well."""
-        from modal.app import is_local
+        all of the packages in each listed section are installed as well.
+        """
 
-        # Don't re-run inside container.
-        if not is_local():
-            return self
+        def build_dockerfile() -> DockerfileSpec:
+            # Defer toml import so we don't need it in the container runtime environment
+            import toml
 
-        # Defer toml import so we don't need it in the container runtime environment
-        import toml
+            config = toml.load(os.path.expanduser(pyproject_toml))
 
-        pyproject_toml = os.path.expanduser(pyproject_toml)
+            dependencies = []
+            if "project" not in config or "dependencies" not in config["project"]:
+                msg = (
+                    "No [project.dependencies] section in pyproject.toml file. "
+                    "If your pyproject.toml instead declares [tool.poetry.dependencies], use `Image.poetry_install_from_file()`. "
+                    "See https://packaging.python.org/en/latest/guides/writing-pyproject-toml for further file format guidelines."
+                )
+                raise ValueError(msg)
+            else:
+                dependencies.extend(config["project"]["dependencies"])
+            if optional_dependencies:
+                optionals = config["project"]["optional-dependencies"]
+                for dep_group_name in optional_dependencies:
+                    if dep_group_name in optionals:
+                        dependencies.extend(optionals[dep_group_name])
 
-        config = toml.load(pyproject_toml)
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+            package_args = " ".join(shlex.quote(pkg) for pkg in sorted(dependencies))
 
-        dependencies = []
-        if "project" not in config or "dependencies" not in config["project"]:
-            msg = (
-                "No [project.dependencies] section in pyproject.toml file. "
-                "If your pyproject.toml instead declares [tool.poetry.dependencies], use `Image.poetry_install_from_file()`. "
-                "See https://packaging.python.org/en/latest/guides/writing-pyproject-toml for further file format guidelines."
-            )
-            raise ValueError(msg)
-        else:
-            dependencies.extend(config["project"]["dependencies"])
-        if optional_dependencies:
-            optionals = config["project"]["optional-dependencies"]
-            for dep_group_name in optional_dependencies:
-                if dep_group_name in optionals:
-                    dependencies.extend(optionals[dep_group_name])
+            commands = [
+                "FROM base",
+                f"RUN python -m pip install {package_args} {extra_args}",
+                # TODO(erikbern): if extra_args is empty, we add a superfluous space at the end.
+                # However removing it at this point would cause image hashes to change.
+                # Maybe let's remove it later when/if client requirements change.
+            ]
+            return DockerfileSpec(commands=commands)
 
-        return self.pip_install(
-            *dependencies,
-            find_links=find_links,
-            index_url=index_url,
-            extra_index_url=extra_index_url,
-            pre=pre,
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             secrets=secrets,
-            gpu=gpu,
+            gpu_config=parse_gpu_config(gpu),
         )
 
     def poetry_install_from_file(
@@ -649,57 +678,54 @@ class _Image(_Object, type_prefix="im"):
         Note that the root project of the poetry project is not installed,
         only the dependencies. For including local packages see `modal.Mount.from_local_python_packages`
         """
-        if not is_local():
-            # existence checks can fail in global scope of the containers
-            return self
 
-        poetry_pyproject_toml = os.path.expanduser(poetry_pyproject_toml)
+        def build_dockerfile() -> DockerfileSpec:
+            context_files = {"/.pyproject.toml": os.path.expanduser(poetry_pyproject_toml)}
 
-        dockerfile_commands = [
-            "FROM base",
-            "RUN python -m pip install poetry~=1.7",
-        ]
+            dockerfile_commands = [
+                "FROM base",
+                "RUN python -m pip install poetry~=1.7",
+            ]
 
-        if old_installer:
-            dockerfile_commands += ["RUN poetry config experimental.new-installer false"]
+            if old_installer:
+                dockerfile_commands += ["RUN poetry config experimental.new-installer false"]
 
-        context_files = {"/.pyproject.toml": poetry_pyproject_toml}
+            if not ignore_lockfile:
+                nonlocal poetry_lockfile
+                if poetry_lockfile is None:
+                    p = Path(poetry_pyproject_toml).parent / "poetry.lock"
+                    if not p.exists():
+                        raise NotFoundError(
+                            f"poetry.lock not found at inferred location: {p.absolute()}. If a lockfile is not needed, `ignore_lockfile=True` can be used."
+                        )
+                    poetry_lockfile = p.as_posix()
+                context_files["/.poetry.lock"] = poetry_lockfile
+                dockerfile_commands += ["COPY /.poetry.lock /tmp/poetry/poetry.lock"]
 
-        if not ignore_lockfile:
-            if poetry_lockfile is None:
-                p = Path(poetry_pyproject_toml).parent / "poetry.lock"
-                if not p.exists():
-                    raise NotFoundError(
-                        f"poetry.lock not found at inferred location: {p.absolute()}. If a lockfile is not needed, `ignore_lockfile=True` can be used."
-                    )
-                poetry_lockfile = p.as_posix()
-            context_files["/.poetry.lock"] = poetry_lockfile
-            dockerfile_commands += ["COPY /.poetry.lock /tmp/poetry/poetry.lock"]
+            # Indentation for back-compat TODO: fix when we update image_builder_version
+            install_cmd = "  poetry install --no-root"
 
-        # Indentation for back-compat
-        install_cmd = "  poetry install --no-root"
+            if with_:
+                install_cmd += f" --with {','.join(with_)}"
 
-        if with_:
-            install_cmd += f" --with {','.join(with_)}"
+            if without:
+                install_cmd += f" --without {','.join(without)}"
 
-        if without:
-            install_cmd += f" --without {','.join(without)}"
+            if only:
+                install_cmd += f" --only {','.join(only)}"
+            install_cmd += " --compile"  # no .pyc compilation slows down cold-start.
 
-        if only:
-            install_cmd += f" --only {','.join(only)}"
-        install_cmd += " --compile"  # no .pyc compilation slows down cold-start.
-
-        dockerfile_commands += [
-            "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
-            "RUN cd /tmp/poetry && \\ ",
-            "  poetry config virtualenvs.create false && \\ ",
-            install_cmd,
-        ]
+            dockerfile_commands += [
+                "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
+                "RUN cd /tmp/poetry && \\ ",
+                "  poetry config virtualenvs.create false && \\ ",
+                install_cmd,
+            ]
+            return DockerfileSpec(commands=dockerfile_commands, context_files=context_files)
 
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
-            context_files=context_files,
+            dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
@@ -720,12 +746,12 @@ class _Image(_Object, type_prefix="im"):
         if not cmds:
             return self
 
-        _dockerfile_commands = ["FROM base", *cmds]
+        def build_dockerfile() -> DockerfileSpec:
+            return DockerfileSpec(commands=["FROM base", *cmds], context_files=context_files)
 
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=_dockerfile_commands,
-            context_files=context_files,
+            dockerfile_function=build_dockerfile,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu, raise_on_true=False),
             context_mount=context_mount,
@@ -744,11 +770,12 @@ class _Image(_Object, type_prefix="im"):
         if not cmds:
             return self
 
-        dockerfile_commands = ["FROM base"] + [f"RUN {cmd}" for cmd in cmds]
+        def build_dockerfile() -> DockerfileSpec:
+            return DockerfileSpec(commands=["FROM base"] + [f"RUN {cmd}" for cmd in cmds])
 
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
+            dockerfile_function=build_dockerfile,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu, raise_on_true=False),
             force_build=self.force_build or force_build,
@@ -761,47 +788,51 @@ class _Image(_Object, type_prefix="im"):
         In most cases, using [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install) is recommended over `Image.conda()`, as it leads to significantly faster image build times.
         """
         _validate_python_version(python_version)
-        requirements_path = _get_client_requirements_path(python_version)
-        # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
-        # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
-        conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
-        dockerfile_commands = [
-            "FROM debian:bullseye",  # the -slim images lack files required by Conda.
-            # Temporarily add utility packages for conda installation.
-            "RUN apt-get --quiet update && apt-get --quiet --yes install curl bzip2 \\",
-            f"&& curl --silent --show-error --location {conda_install_script} --output /tmp/miniconda.sh \\",
-            # Install miniconda to a filesystem location on the $PATH of Modal container tasks.
-            # -b = install in batch mode w/o manual intervention.
-            # -f = allow install prefix to already exist.
-            # -p = the install prefix location.
-            "&& bash /tmp/miniconda.sh -bfp /usr/local \\ ",
-            "&& rm -rf /tmp/miniconda.sh",
-            # Biggest and most stable community-led Conda channel.
-            "RUN conda config --add channels conda-forge \\ ",
-            # softlinking can put conda in a broken state, surfacing error on uninstall like:
-            # `No such device or address: '/usr/local/lib/libz.so' -> '/usr/local/lib/libz.so.c~'`
-            "&& conda config --set allow_softlinks false \\ ",
-            # Install requested Python version from conda-forge channel; base debian image has only 3.7.
-            f"&& conda install --yes --channel conda-forge python={python_version} \\ ",
-            "&& conda update conda \\ ",
-            # Remove now unneeded packages and files.
-            "&& apt-get --quiet --yes remove curl bzip2 \\ ",
-            "&& apt-get --quiet --yes autoremove \\ ",
-            "&& apt-get autoclean \\ ",
-            "&& rm -rf /var/lib/apt/lists/* /var/log/dpkg.log \\ ",
-            "&& conda clean --all --yes",
-            # Setup .bashrc for conda.
-            "RUN conda init bash --verbose",
-            "COPY /modal_requirements.txt /modal_requirements.txt",
-            # .bashrc is explicitly sourced because RUN is a non-login shell and doesn't run bash.
-            "RUN . /root/.bashrc && conda activate base \\ ",
-            "&& python -m pip install --upgrade pip \\ ",
-            "&& python -m pip install -r /modal_requirements.txt",
-        ]
+
+        def build_dockerfile() -> DockerfileSpec:
+            requirements_path = _get_client_requirements_path(python_version)
+            context_files = {"/modal_requirements.txt": requirements_path}
+
+            # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
+            # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
+            conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
+            dockerfile_commands = [
+                "FROM debian:bullseye",  # the -slim images lack files required by Conda.
+                # Temporarily add utility packages for conda installation.
+                "RUN apt-get --quiet update && apt-get --quiet --yes install curl bzip2 \\",
+                f"&& curl --silent --show-error --location {conda_install_script} --output /tmp/miniconda.sh \\",
+                # Install miniconda to a filesystem location on the $PATH of Modal container tasks.
+                # -b = install in batch mode w/o manual intervention.
+                # -f = allow install prefix to already exist.
+                # -p = the install prefix location.
+                "&& bash /tmp/miniconda.sh -bfp /usr/local \\ ",
+                "&& rm -rf /tmp/miniconda.sh",
+                # Biggest and most stable community-led Conda channel.
+                "RUN conda config --add channels conda-forge \\ ",
+                # softlinking can put conda in a broken state, surfacing error on uninstall like:
+                # `No such device or address: '/usr/local/lib/libz.so' -> '/usr/local/lib/libz.so.c~'`
+                "&& conda config --set allow_softlinks false \\ ",
+                # Install requested Python version from conda-forge channel; base debian image has only 3.7.
+                f"&& conda install --yes --channel conda-forge python={python_version} \\ ",
+                "&& conda update conda \\ ",
+                # Remove now unneeded packages and files.
+                "&& apt-get --quiet --yes remove curl bzip2 \\ ",
+                "&& apt-get --quiet --yes autoremove \\ ",
+                "&& apt-get autoclean \\ ",
+                "&& rm -rf /var/lib/apt/lists/* /var/log/dpkg.log \\ ",
+                "&& conda clean --all --yes",
+                # Setup .bashrc for conda.
+                "RUN conda init bash --verbose",
+                "COPY /modal_requirements.txt /modal_requirements.txt",
+                # .bashrc is explicitly sourced because RUN is a non-login shell and doesn't run bash.
+                "RUN . /root/.bashrc && conda activate base \\ ",
+                "&& python -m pip install --upgrade pip \\ ",
+                "&& python -m pip install -r /modal_requirements.txt",
+            ]
+            return DockerfileSpec(commands=dockerfile_commands, context_files=context_files)
 
         return _Image._from_args(
-            dockerfile_commands=dockerfile_commands,
-            context_files={"/modal_requirements.txt": requirements_path},
+            dockerfile_function=build_dockerfile,
             force_build=force_build,
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         ).dockerfile_commands(
@@ -830,22 +861,23 @@ class _Image(_Object, type_prefix="im"):
         if not pkgs:
             return self
 
-        package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
-        channel_args = "".join(f" -c {channel}" for channel in channels)
+        def build_dockerfile() -> DockerfileSpec:
+            package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
+            channel_args = "".join(f" -c {channel}" for channel in channels)
 
-        dockerfile_commands = [
-            "FROM base",
-            f"RUN conda install {package_args}{channel_args} --yes \\ ",
-            "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
-        ]
+            dockerfile_commands = [
+                "FROM base",
+                f"RUN conda install {package_args}{channel_args} --yes \\ ",
+                "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
+            ]
+            return DockerfileSpec(commands=dockerfile_commands)
 
-        gpu_config = parse_gpu_config(gpu)
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
+            dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             secrets=secrets,
-            gpu_config=gpu_config,
+            gpu_config=parse_gpu_config(gpu),
         )
 
     def conda_update_from_environment(
@@ -858,21 +890,20 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Update a Conda environment using dependencies from a given environment.yml file."""
 
-        environment_yml = os.path.expanduser(environment_yml)
+        def build_dockerfile() -> DockerfileSpec:
+            context_files = {"/environment.yml": os.path.expanduser(environment_yml)}
 
-        context_files = {"/environment.yml": environment_yml}
-
-        dockerfile_commands = [
-            "FROM base",
-            "COPY /environment.yml /environment.yml",
-            "RUN conda env update --name base -f /environment.yml \\ ",
-            "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
-        ]
+            dockerfile_commands = [
+                "FROM base",
+                "COPY /environment.yml /environment.yml",
+                "RUN conda env update --name base -f /environment.yml \\ ",
+                "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
+            ]
+            return DockerfileSpec(commands=dockerfile_commands, context_files=context_files)
 
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
-            context_files=context_files,
+            dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
@@ -916,17 +947,19 @@ class _Image(_Object, type_prefix="im"):
         if not pkgs:
             return self
 
-        package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
-        channel_args = "".join(f" -c {channel}" for channel in channels)
+        def build_dockerfile() -> DockerfileSpec:
+            package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
+            channel_args = "".join(f" -c {channel}" for channel in channels)
 
-        dockerfile_commands = [
-            "FROM base",
-            f"RUN micromamba install {package_args}{channel_args} --yes",
-        ]
+            dockerfile_commands = [
+                "FROM base",
+                f"RUN micromamba install {package_args}{channel_args} --yes",
+            ]
+            return DockerfileSpec(commands=dockerfile_commands)
 
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
+            dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
@@ -993,9 +1026,6 @@ class _Image(_Object, type_prefix="im"):
         modal.Image.from_registry("nvcr.io/nvidia/pytorch:22.12-py3")
         ```
         """
-        requirements_path = _get_client_requirements_path(add_python)
-        dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, add_python)
-
         context_mount = None
         if add_python:
             context_mount = _Mount.from_name(
@@ -1006,10 +1036,14 @@ class _Image(_Object, type_prefix="im"):
         if "image_registry_config" not in kwargs and secret is not None:
             kwargs["image_registry_config"] = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS, secret)
 
+        def build_dockerfile() -> DockerfileSpec:
+            dockerfile_commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, add_python)
+            context_files = {"/modal_requirements.txt": _get_client_requirements_path(add_python)}
+            return DockerfileSpec(commands=dockerfile_commands, context_files=context_files)
+
         return _Image._from_args(
-            dockerfile_commands=dockerfile_commands,
+            dockerfile_function=build_dockerfile,
             context_mount=context_mount,
-            context_files={"/modal_requirements.txt": requirements_path},
             force_build=force_build,
             **kwargs,
         )
@@ -1136,48 +1170,59 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
 
-        path = os.path.expanduser(path)
+        # --- Build the base dockerfile
 
-        def base_dockerfile_commands():
-            # Make it a closure so that it's only invoked locally
-            with open(path) as f:
-                return f.read().split("\n")
+        def build_base_dockerfile() -> DockerfileSpec:
+            with open(os.path.expanduser(path)) as f:
+                commands = f.read().split("\n")
+            return DockerfileSpec(commands=commands)
 
         gpu_config = parse_gpu_config(gpu)
         base_image = _Image._from_args(
-            dockerfile_commands=base_dockerfile_commands,
+            dockerfile_function=build_base_dockerfile,
             context_mount=context_mount,
             gpu_config=gpu_config,
             secrets=secrets,
         )
 
-        requirements_path = _get_client_requirements_path(add_python)
+        # --- Now add in the modal dependencies, and, optionally a Python distribution
+        # This happening in two steps is probably a vestigial consequence of previous limitations,
+        # but it will be difficult to merge them without forcing rebuilds of images.
 
-        context_mount = None
-        add_python_commands = []
         if add_python:
-            add_python_commands = [
-                "COPY /python/. /usr/local",
-                "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
-                "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
-            ]
             context_mount = _Mount.from_name(
                 python_standalone_mount_name(add_python),
                 namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
             )
+        else:
+            context_mount = None
 
-        dockerfile_commands = [
-            "FROM base",
-            *add_python_commands,
-            "COPY /modal_requirements.txt /modal_requirements.txt",
-            "RUN python -m pip install --upgrade pip",
-            "RUN python -m pip install -r /modal_requirements.txt",
-        ]
+        def enhance_dockerfile() -> DockerfileSpec:
+            requirements_path = _get_client_requirements_path(add_python)
+
+            add_python_commands = []
+            if add_python:
+                add_python_commands = [
+                    "COPY /python/. /usr/local",
+                    "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
+                    "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
+                ]
+
+            dockerfile_commands = [
+                "FROM base",
+                *add_python_commands,
+                "COPY /modal_requirements.txt /modal_requirements.txt",
+                "RUN python -m pip install --upgrade pip",
+                "RUN python -m pip install -r /modal_requirements.txt",
+            ]
+
+            context_files = {"/modal_requirements.txt": requirements_path}
+
+            return DockerfileSpec(commands=dockerfile_commands, context_files=context_files)
 
         return _Image._from_args(
             base_images={"base": base_image},
-            dockerfile_commands=dockerfile_commands,
-            context_files={"/modal_requirements.txt": requirements_path},
+            dockerfile_function=enhance_dockerfile,
             context_mount=context_mount,
             force_build=force_build,
         )
@@ -1185,24 +1230,29 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
-        python_version = _dockerhub_python_version(python_version)
 
-        requirements_path = _get_client_requirements_path(python_version)
-        dockerfile_commands = [
-            f"FROM python:{python_version}-slim-bullseye",
-            "COPY /modal_requirements.txt /modal_requirements.txt",
-            "RUN apt-get update",
-            "RUN apt-get install -y gcc gfortran build-essential",
-            "RUN pip install --upgrade pip",
-            "RUN pip install -r /modal_requirements.txt",
-            # Set debian front-end to non-interactive to avoid users getting stuck with input
-            # prompts.
-            "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
-        ]
+        def build_dockerfile() -> DockerfileSpec:
+            full_python_version = _dockerhub_python_version(python_version)
+
+            requirements_path = _get_client_requirements_path(full_python_version)
+            dockerfile_commands = [
+                f"FROM python:{full_python_version}-slim-bullseye",
+                "COPY /modal_requirements.txt /modal_requirements.txt",
+                "RUN apt-get update",
+                "RUN apt-get install -y gcc gfortran build-essential",
+                "RUN pip install --upgrade pip",
+                "RUN pip install -r /modal_requirements.txt",
+                # Set debian front-end to non-interactive to avoid users getting stuck with input
+                # prompts.
+                "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
+            ]
+            return DockerfileSpec(
+                commands=dockerfile_commands,
+                context_files={"/modal_requirements.txt": requirements_path},
+            )
 
         return _Image._from_args(
-            dockerfile_commands=dockerfile_commands,
-            context_files={"/modal_requirements.txt": requirements_path},
+            dockerfile_function=build_dockerfile,
             force_build=force_build,
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
@@ -1228,15 +1278,17 @@ class _Image(_Object, type_prefix="im"):
 
         package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
 
-        dockerfile_commands = [
-            "FROM base",
-            "RUN apt-get update",
-            f"RUN apt-get install -y {package_args}",
-        ]
+        def build_dockerfile() -> DockerfileSpec:
+            dockerfile_commands = [
+                "FROM base",
+                "RUN apt-get update",
+                f"RUN apt-get install -y {package_args}",
+            ]
+            return DockerfileSpec(commands=dockerfile_commands)
 
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=dockerfile_commands,
+            dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             gpu_config=parse_gpu_config(gpu),
             secrets=secrets,
@@ -1338,9 +1390,14 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+
+        def build_dockerfile() -> DockerfileSpec:
+            commands = ["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
+            return DockerfileSpec(commands=commands)
+
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()],
+            dockerfile_function=build_dockerfile,
         )
 
     def workdir(self, path: str) -> "_Image":
@@ -1357,9 +1414,14 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+
+        def build_dockerfile() -> DockerfileSpec:
+            commands = ["FROM base"] + [f"WORKDIR {shlex.quote(path)}"]
+            return DockerfileSpec(commands=commands)
+
         return _Image._from_args(
             base_images={"base": self},
-            dockerfile_commands=["FROM base"] + [f"WORKDIR {shlex.quote(path)}"],
+            dockerfile_function=build_dockerfile,
         )
 
     # Live handle methods
