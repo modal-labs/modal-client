@@ -1149,7 +1149,7 @@ class _Image(_Object, type_prefix="im"):
 
         **Example**
 
-        ```python
+        ```python notest
         image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.12")
         ```
         """
