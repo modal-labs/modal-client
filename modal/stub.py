@@ -236,10 +236,11 @@ class _Stub:
         self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
-        # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
+        deprecation_warning((2024, 3, 23), "stub[...] is deprecated!")
         return self._indexed_objects[tag]
 
     def __setitem__(self, tag: str, obj: _Object):
+        deprecation_warning((2024, 3, 23), "stub[...] is deprecated!")
         self._validate_blueprint_value(tag, obj)
         # Deprecated ?
         self._add_object(tag, obj)
