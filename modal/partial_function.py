@@ -193,6 +193,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
+    keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Register a basic web endpoint with this application.
 
@@ -240,6 +241,7 @@ def _web_endpoint(
                 async_mode=_response_mode,
                 custom_domains=_parse_custom_domains(custom_domains),
             ),
+            keep_warm=keep_warm,
         )
 
     return wrapper
