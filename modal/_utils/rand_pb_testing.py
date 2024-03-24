@@ -58,7 +58,7 @@ def _fill(msg, desc: Descriptor, rand: Random) -> None:
         else:
             if field.type == FieldDescriptor.TYPE_ENUM:
                 enum_values = [x.number for x in field.enum_type.values]
-                generator = lambda rand: rand.choice(enum_values)
+                generator = lambda rand: rand.choice(enum_values)  # noqa: E731
 
             else:
                 generator = _FIELD_RANDOM_GENERATOR[field.type]
