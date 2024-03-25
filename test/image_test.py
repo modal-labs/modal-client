@@ -14,6 +14,8 @@ from modal.exception import DeprecationError, InvalidError
 from modal.image import _dockerhub_python_version, _get_client_requirements_path
 from modal_proto import api_pb2
 
+from .supports.skip import skip_windows
+
 
 def test_python_version():
     assert _dockerhub_python_version("3.9.1") == "3.9.1"
@@ -584,6 +586,7 @@ def test_get_client_requirements_path(version, expected):
     assert os.path.basename(path) == expected
 
 
+@skip_windows("Different hash values for context file paths")
 def test_image_stability_on_2023_12(servicer, client, test_dir):
     def get_hash(img: Image) -> str:
         stub = Stub(image=img)
