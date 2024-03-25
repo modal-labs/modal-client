@@ -411,13 +411,13 @@ def test_image_build_with_context_mount(client, servicer, tmp_path):
     dockerfile.write("COPY . /dummy\n")
     dockerfile.close()
 
-    stub["copy"] = Image.debian_slim().copy_local_dir(tmp_path, remote_path="/dummy")
-    stub["from_dockerfile"] = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
-    stub["dockerfile_commands"] = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
+    stub.copy = Image.debian_slim().copy_local_dir(tmp_path, remote_path="/dummy")
+    stub.from_dockerfile = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
+    stub.dockerfile_commands = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
 
     with stub.run(client=client):
-        for image_name, expected_layer in [("copy", 0), ("dockerfile_commands", 1), ("from_dockerfile", 0)]:
-            layers = get_image_layers(stub[image_name].object_id, servicer)
+        for image, expected_layer in [(stub.copy, 0), (stub.dockerfile_commands, 1), (stub.from_dockerfile, 0)]:
+            layers = get_image_layers(image.object_id, servicer)
             assert "COPY . /dummy" in layers[expected_layer].dockerfile_commands
 
         files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
