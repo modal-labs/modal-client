@@ -5,7 +5,7 @@ import shlex
 import sys
 import typing
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -145,8 +145,9 @@ if typing.TYPE_CHECKING:
 
 @dataclass
 class DockerfileSpec:
-    commands: List[str] = field(default_factory=list)
-    context_files: Dict[str, str] = field(default_factory=dict)  # TODO do pathlib types work?
+    # TODO ideally we would use field() to support defaults here but it doesn't work with synchronicity type-stub gen
+    commands: List[str]
+    context_files: Dict[str, str]  # TODO do pathlib types work?
 
 
 class _Image(_Object, type_prefix="im"):
@@ -171,9 +172,9 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def _from_args(
         *,
-        base_images: Dict[str, "_Image"] = {},
+        base_images: Optional[Dict[str, "_Image"]] = None,
         dockerfile_function: Optional[Callable[[], DockerfileSpec]] = None,
-        secrets: Sequence[_Secret] = [],
+        secrets: Optional[Sequence[_Secret]] = None,
         gpu_config: Optional[api_pb2.GPUConfig] = None,
         build_function: Optional["modal.functions._Function"] = None,
         build_function_input: Optional[api_pb2.FunctionInput] = None,
@@ -188,6 +189,10 @@ class _Image(_Object, type_prefix="im"):
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     ):
+        if base_images is None:
+            base_images = {}
+        if secrets is None:
+            secrets = []
         if gpu_config is None:
             gpu_config = api_pb2.GPUConfig()
         if image_registry_config is None:
@@ -369,7 +374,7 @@ class _Image(_Object, type_prefix="im"):
 
         def build_dockerfile() -> DockerfileSpec:
             commands = ["FROM base", f"COPY . {remote_path}"]  # copy everything from the supplied mount
-            return DockerfileSpec(commands=commands)
+            return DockerfileSpec(commands=commands, context_files={})
 
         return _Image._from_args(
             base_images={"base": self},
@@ -386,7 +391,7 @@ class _Image(_Object, type_prefix="im"):
         mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
 
         def build_dockerfile() -> DockerfileSpec:
-            return DockerfileSpec(commands=["FROM base", f"COPY {basename} {remote_path}"])
+            return DockerfileSpec(commands=["FROM base", f"COPY {basename} {remote_path}"], context_files={})
 
         return _Image._from_args(
             base_images={"base": self},
@@ -402,7 +407,7 @@ class _Image(_Object, type_prefix="im"):
         mount = _Mount.from_local_dir(local_path, remote_path="/")
 
         def build_dockerfile() -> DockerfileSpec:
-            return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"])
+            return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"], context_files={})
 
         return _Image._from_args(
             base_images={"base": self},
@@ -444,7 +449,7 @@ class _Image(_Object, type_prefix="im"):
                 # However removing it at this point would cause image hashes to change.
                 # Maybe let's remove it later when/if client requirements change.
             ]
-            return DockerfileSpec(commands=commands)
+            return DockerfileSpec(commands=commands, context_files={})
 
         gpu_config = parse_gpu_config(gpu)
         return _Image._from_args(
@@ -539,7 +544,7 @@ class _Image(_Object, type_prefix="im"):
 
             dockerfile_commands.extend(["RUN apt-get update && apt-get install -y git"])
             dockerfile_commands.extend([f'RUN python3 -m pip install "{url}" {extra_args}' for url in install_urls])
-            return DockerfileSpec(commands=dockerfile_commands)
+            return DockerfileSpec(commands=dockerfile_commands, context_files={})
 
         gpu_config = parse_gpu_config(gpu)
 
@@ -640,7 +645,7 @@ class _Image(_Object, type_prefix="im"):
                 # However removing it at this point would cause image hashes to change.
                 # Maybe let's remove it later when/if client requirements change.
             ]
-            return DockerfileSpec(commands=commands)
+            return DockerfileSpec(commands=commands, context_files={})
 
         return _Image._from_args(
             base_images={"base": self},
@@ -771,7 +776,7 @@ class _Image(_Object, type_prefix="im"):
             return self
 
         def build_dockerfile() -> DockerfileSpec:
-            return DockerfileSpec(commands=["FROM base"] + [f"RUN {cmd}" for cmd in cmds])
+            return DockerfileSpec(commands=["FROM base"] + [f"RUN {cmd}" for cmd in cmds], context_files={})
 
         return _Image._from_args(
             base_images={"base": self},
@@ -870,7 +875,7 @@ class _Image(_Object, type_prefix="im"):
                 f"RUN conda install {package_args}{channel_args} --yes \\ ",
                 "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
             ]
-            return DockerfileSpec(commands=dockerfile_commands)
+            return DockerfileSpec(commands=dockerfile_commands, context_files={})
 
         return _Image._from_args(
             base_images={"base": self},
@@ -955,7 +960,7 @@ class _Image(_Object, type_prefix="im"):
                 "FROM base",
                 f"RUN micromamba install {package_args}{channel_args} --yes",
             ]
-            return DockerfileSpec(commands=dockerfile_commands)
+            return DockerfileSpec(commands=dockerfile_commands, context_files={})
 
         return _Image._from_args(
             base_images={"base": self},
@@ -1175,7 +1180,7 @@ class _Image(_Object, type_prefix="im"):
         def build_base_dockerfile() -> DockerfileSpec:
             with open(os.path.expanduser(path)) as f:
                 commands = f.read().split("\n")
-            return DockerfileSpec(commands=commands)
+            return DockerfileSpec(commands=commands, context_files={})
 
         gpu_config = parse_gpu_config(gpu)
         base_image = _Image._from_args(
@@ -1284,7 +1289,7 @@ class _Image(_Object, type_prefix="im"):
                 "RUN apt-get update",
                 f"RUN apt-get install -y {package_args}",
             ]
-            return DockerfileSpec(commands=dockerfile_commands)
+            return DockerfileSpec(commands=dockerfile_commands, context_files={})
 
         return _Image._from_args(
             base_images={"base": self},
@@ -1393,7 +1398,7 @@ class _Image(_Object, type_prefix="im"):
 
         def build_dockerfile() -> DockerfileSpec:
             commands = ["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
-            return DockerfileSpec(commands=commands)
+            return DockerfileSpec(commands=commands, context_files={})
 
         return _Image._from_args(
             base_images={"base": self},
@@ -1417,7 +1422,7 @@ class _Image(_Object, type_prefix="im"):
 
         def build_dockerfile() -> DockerfileSpec:
             commands = ["FROM base"] + [f"WORKDIR {shlex.quote(path)}"]
-            return DockerfileSpec(commands=commands)
+            return DockerfileSpec(commands=commands, context_files={})
 
         return _Image._from_args(
             base_images={"base": self},
