@@ -606,14 +606,14 @@ def test_image_stability_on_2023_12(servicer, client, test_dir):
         img = Image.from_registry("ubuntu:22.04")
         assert get_hash(img) == "b5f1cc544a412d1b23a5ebf9a8859ea9a86975ecbc7325b83defc0ce3fe956d3"
 
-    img = Image.conda()
-    assert get_hash(img) == "f69d6af66fb5f1a2372a61836e6166ce79ebe2cd628d12addea8e8e80cc98dc1"
+        img = Image.conda()
+        assert get_hash(img) == "f69d6af66fb5f1a2372a61836e6166ce79ebe2cd628d12addea8e8e80cc98dc1"
+
+        img = Image.micromamba()
+        assert get_hash(img) == "fa883741544ea191ecd197c8f83a1ffe9912575faa8c107c66b3dda761b2e401"
 
     img = Image.conda(python_version="3.12")
     assert get_hash(img) == "c4b3f7350116d323dded29c9c9b78b62593f0fc943ccf83a09b27185bfdc2a07"
-
-    img = Image.micromamba()
-    assert get_hash(img) == "fa883741544ea191ecd197c8f83a1ffe9912575faa8c107c66b3dda761b2e401"
 
     img = Image.micromamba(python_version="3.12")
     assert get_hash(img) == "a6934a197c754263fb97bc557834485ac2032480e95972618e85bd17c53c087b"
