@@ -99,7 +99,7 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
 def test_old_syntax(client, servicer):
     stub = modal.Stub()
     with pytest.raises(DeprecationError):
-        stub.vol1 = modal.SharedVolume()
+        stub.vol1 = modal.SharedVolume()  # type: ignore  # This is just a post-deprecation husk
     with pytest.raises(DeprecationError):
         stub.vol2 = modal.SharedVolume.new()
 

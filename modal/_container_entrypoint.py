@@ -17,7 +17,7 @@ import traceback
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Set, Type
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Set, Tuple, Type
 
 from grpclib import Status
 
@@ -246,7 +246,7 @@ class _FunctionIOManager:
         if self._heartbeat_loop:
             self._heartbeat_loop.cancel()
 
-    async def get_serialized_function(self) -> tuple[Optional[Any], Callable]:
+    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)
@@ -359,7 +359,7 @@ class _FunctionIOManager:
         return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
 
     @synchronizer.no_io_translation
-    async def _generate_inputs(self) -> AsyncIterator[tuple[str, str, api_pb2.FunctionInput]]:
+    async def _generate_inputs(self) -> AsyncIterator[Tuple[str, str, api_pb2.FunctionInput]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         iteration = 0
@@ -415,7 +415,7 @@ class _FunctionIOManager:
                     self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[tuple[str, str, Any, Any]]:
+    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[Tuple[str, str, Any, Any]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
@@ -465,7 +465,7 @@ class _FunctionIOManager:
             # We can't always serialize exceptions.
             return None
 
-    def serialize_traceback(self, exc: BaseException) -> tuple[Optional[bytes], Optional[bytes]]:
+    def serialize_traceback(self, exc: BaseException) -> Tuple[Optional[bytes], Optional[bytes]]:
         serialized_tb, tb_line_cache = None, None
 
         try:
@@ -615,7 +615,7 @@ class _FunctionIOManager:
         logger.debug("Checkpointing request sent. Connection closed.")
         await self.restore()
 
-    async def volume_commit(self, volume_ids: list[str]) -> None:
+    async def volume_commit(self, volume_ids: List[str]) -> None:
         """
         Perform volume commit for given `volume_ids`.
         Only used on container exit to persist uncommitted changes on behalf of user.
@@ -1014,7 +1014,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Hydrate all function dependencies.
         if imp_fun.function:
-            dep_object_ids: list[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
+            dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
 
         # Identify all "enter" methods that need to run before we checkpoint.

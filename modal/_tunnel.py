@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2023
 """Client for Modal relay servers, allowing users to expose TLS."""
 
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import AsyncIterator, Optional, Tuple
 
 from grpclib import GRPCError, Status
+from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
