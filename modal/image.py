@@ -145,9 +145,9 @@ if typing.TYPE_CHECKING:
 
 @dataclass
 class DockerfileSpec:
-    # TODO ideally we would use field() to support defaults here but it doesn't work with synchronicity type-stub gen
+    # Ideally we would use field() with default_factory=, but doesn't work with synchronicity type-stub gen
     commands: List[str]
-    context_files: Dict[str, str]  # TODO do pathlib types work?
+    context_files: Dict[str, str]
 
 
 class _Image(_Object, type_prefix="im"):
@@ -216,7 +216,10 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            dockerfile = dockerfile_function() if dockerfile_function else DockerfileSpec()
+            if dockerfile_function is None:
+                dockerfile = DockerfileSpec(commands=[], context_files={})
+            else:
+                dockerfile = dockerfile_function()
 
             if not dockerfile.commands and not build_function:
                 raise InvalidError(
@@ -341,7 +344,7 @@ class _Image(_Object, type_prefix="im"):
 
             self._hydrate(image_id, resolver.client, None)
 
-        rep = "Image()"  # TODO can we update the rep when _load runs?
+        rep = "Image()"
         obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
         return obj
