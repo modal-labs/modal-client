@@ -26,11 +26,14 @@ async def update_environment(
     new_web_suffix: Optional[str] = None,
     client: Optional[_Client] = None,
 ):
+    new_name_pb2 = None
+    new_web_suffix_pb2 = None
     if new_name is not None:
         if len(new_name) < 1:
             raise ValueError("The new environment name cannot be empty")
 
         new_name_pb2 = StringValue(value=new_name)
+
     if new_web_suffix is not None:
         new_web_suffix_pb2 = StringValue(value=new_web_suffix)
 
