@@ -929,13 +929,19 @@ class _Image(_Object, type_prefix="im"):
         """
         _validate_python_version(python_version)
 
-        return _Image.from_registry(
-            "mambaorg/micromamba:1.3.1-bullseye-slim",
-            setup_dockerfile_commands=[
+        def build_dockerfile() -> DockerfileSpec:
+            tag = "mambaorg/micromamba:1.3.1-bullseye-slim"
+            setup_commands = [
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
                 "ENV MAMBA_DOCKERFILE_ACTIVATE=1",
                 f"RUN micromamba install -n base -y python={python_version} pip -c conda-forge",
-            ],
+            ]
+            commands = _Image._registry_setup_commands(tag, setup_commands, add_python=None)
+            context_files = {"/modal_requirements.txt": _get_client_requirements_path(python_version)}
+            return DockerfileSpec(commands=commands, context_files=context_files)
+
+        return _Image._from_args(
+            dockerfile_function=build_dockerfile,
             force_build=force_build,
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
