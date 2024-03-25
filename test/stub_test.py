@@ -25,11 +25,11 @@ async def test_kwargs(servicer, client):
             q=Queue.new(),
         )
     async with stub.run(client=client):
-        # TODO: interface to get type safe objects from live apps
-        await stub["d"].put.aio("foo", "bar")  # type: ignore
-        await stub["q"].put.aio("baz")  # type: ignore
-        assert await stub["d"].get.aio("foo") == "bar"  # type: ignore
-        assert await stub["q"].get.aio() == "baz"  # type: ignore
+        with pytest.warns(DeprecationError):
+            await stub["d"].put.aio("foo", "bar")  # type: ignore
+            await stub["q"].put.aio("baz")  # type: ignore
+            assert await stub["d"].get.aio("foo") == "bar"  # type: ignore
+            assert await stub["q"].get.aio() == "baz"  # type: ignore
 
         with pytest.raises(DeprecationError):
             stub.app["d"]

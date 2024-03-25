@@ -236,10 +236,25 @@ class _Stub:
         self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
-        # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
+        """Deprecated!
+
+        The only use case for `stub[...]` assignments is in conjunction with `.new()`, which is
+        in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
+        need to assign those objects to the stub. Example:
+
+        ```python
+        d = modal.Dict.from_name("my-dict", create_if_missing=True)
+
+        @stub.function()
+        def f(x, y):
+            d[x] = y  # Refer to d in global scope
+        ```
+        """
+        deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
         return self._indexed_objects[tag]
 
     def __setitem__(self, tag: str, obj: _Object):
+        deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
         self._validate_blueprint_value(tag, obj)
         # Deprecated ?
         self._add_object(tag, obj)
