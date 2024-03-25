@@ -88,6 +88,7 @@ message CloudBucketMount {
   string mount_path = 2;
   string credentials_secret_id = 3;
   bool read_only = 4;
+  bool requester_pays = 6;
 
   enum BucketType {
     UNSPECIFIED = 0;
