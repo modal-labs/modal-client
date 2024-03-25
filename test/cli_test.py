@@ -129,7 +129,6 @@ def test_run(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["run", stub_file.as_posix()])
     _run(["run", stub_file.as_posix() + "::stub"])
-    _run(["run", stub_file.as_posix() + "::stub.foo"])
     _run(["run", stub_file.as_posix() + "::foo"])
     _run(["run", stub_file.as_posix() + "::bar"], expected_exit_code=1, expected_stderr=None)
     file_with_entrypoint = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
@@ -206,7 +205,6 @@ def test_run_custom_stub(servicer, set_env_client, test_dir):
     res = _run(["run", stub_file.as_posix() + "::stub.foo"], expected_exit_code=1, expected_stderr=None)
     assert "Could not find" in res.stderr
 
-    _run(["run", stub_file.as_posix() + "::my_stub.foo"])
     _run(["run", stub_file.as_posix() + "::foo"])
 
 
@@ -421,13 +419,13 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
 
 def test_app_descriptions(servicer, server_url_env, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "prints_desc_stub.py"
-    _run(["run", "--detach", stub_file.as_posix() + "::stub.foo"])
+    _run(["run", "--detach", stub_file.as_posix() + "::foo"])
 
     create_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppCreateRequest)]
     assert len(create_reqs) == 1
     assert create_reqs[0].app_state == api_pb2.APP_STATE_DETACHED
     description = create_reqs[0].description
-    assert "prints_desc_stub.py::stub.foo" in description
+    assert "prints_desc_stub.py::foo" in description
     assert "run --detach " not in description
 
     _run(["serve", "--timeout", "0.0", stub_file.as_posix()])
