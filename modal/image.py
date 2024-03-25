@@ -180,11 +180,6 @@ class _Image(_Object, type_prefix="im"):
         build_function_input: Optional[api_pb2.FunctionInput] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         context_mount: Optional[_Mount] = None,
-        # --- TODO to remove
-        # or do we need to maintain back-compat on these since extend() is still live?
-        # context_files=None,
-        # dockerfile_commands: Union[List[str], Callable[[], List[str]]] = None,
-        # ---
         force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -355,7 +350,14 @@ class _Image(_Object, type_prefix="im"):
             (2024, 3, 7),
             "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
         )
-        return _Image._from_args(base_images={"base": self}, **kwargs)
+
+        def build_dockerfile():
+            return DockerfileSpec(
+                commands=kwargs.pop("dockerfile_commands", []),
+                context_files=kwargs.pop("context_files", {}),
+            )
+
+        return _Image._from_args(base_images={"base": self}, dockerfile_function=build_dockerfile, **kwargs)
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
