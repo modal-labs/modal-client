@@ -590,34 +590,39 @@ def test_image_stability_on_2023_12(servicer, client):
         with stub.run(client=client):
             layers = get_image_layers(stub.image.object_id, servicer)
             commands = [layer.dockerfile_commands for layer in layers]
-            context_files = [layer.context_files for layer in layers]
+            context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
         return sha256(repr(list(zip(commands, context_files))).encode()).hexdigest()
 
-    img = Image.debian_slim()
-    assert get_hash(img) == "115f3b112951a80fee5df4a33f0dfd1ff378ccf0d6170dee3355a2864d8b5b51"
+    if sys.version_info[:2] == (3, 11):
+        # Matches my development environment — default is to match Python version from local system
+        img = Image.debian_slim()
+        assert get_hash(img) == "183b86356d9eb3bd3d78adf70f16b35b63ba9bf4e1816b0cacc549541718e555"
 
     img = Image.debian_slim(python_version="3.12")
-    assert get_hash(img) == "33dec475277d7df8e04ed30f133a9b4d6627106baa66c5d9fdcef7a0f0e11417"
+    assert get_hash(img) == "53b6205e1dc2a0ca7ebed862e4f3a5887367587be13e81f65a4ac8f8a1e9be91"
 
     img = Image.from_registry("ubuntu:22.04")
-    assert get_hash(img) == "4097233420220d5b63cc84f3806ec5e06eb8cad426abeb46c12959ffc55a0de5"
+    assert get_hash(img) == "b5f1cc544a412d1b23a5ebf9a8859ea9a86975ecbc7325b83defc0ce3fe956d3"
 
     img = Image.conda()
-    assert get_hash(img) == "7742de8b4f3a6e6036e7978536b38cf061611200324361ad9642a8ec5001d6b1"
+    assert get_hash(img) == "f69d6af66fb5f1a2372a61836e6166ce79ebe2cd628d12addea8e8e80cc98dc1"
+
+    img = Image.conda(python_version="3.12")
+    assert get_hash(img) == "c4b3f7350116d323dded29c9c9b78b62593f0fc943ccf83a09b27185bfdc2a07"
 
     img = Image.micromamba()
-    assert get_hash(img) == "0a37716b6f6d172030b404275a7282f3366ccbe341305413a18b7a29e4814cb2"
+    assert get_hash(img) == "fa883741544ea191ecd197c8f83a1ffe9912575faa8c107c66b3dda761b2e401"
 
     img = Image.micromamba(python_version="3.12")
-    assert get_hash(img) == "be8148a8adfec1927337be61fb61775f1293140f45f1f93ed71e831b7dbb5236"
+    assert get_hash(img) == "a6934a197c754263fb97bc557834485ac2032480e95972618e85bd17c53c087b"
 
-    base = Image.debian_slim()
+    base = Image.debian_slim(python_version="3.12")
 
     img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
-    assert get_hash(img) == "02ebc48ffec1c851e7ef45abffaed9ed9a9115e70a47ea4235904ad904998561"
+    assert get_hash(img) == "2a4fa8e3b32c70a41b3a3efd5416540b1953430543f6c27c984e7f969c2ca874"
 
     img = base.pip_install_from_requirements("requirements.dev.txt")
-    assert get_hash(img) == "63267c0a673e95ece845289e9b28ce16fd10c02de7aa0dc79ec0ab3992d5a459"
+    assert get_hash(img) == "3bb22ce263301c21abd3509d4a36b2cb23d2613de58717467048e76cc8b62647"
 
     img = base.run_commands("echo 'Hello Modal'", "rm /usr/local/bin/kubectl")
-    assert get_hash(img) == "5c190f40164fe31ce1f6ae24117ea7a6bbfd5a994510398561ffd4fe7ce33eca"
+    assert get_hash(img) == "4e1ac62eb33b44dd16940c9d2719eb79f945cee61cbf4641ca99b19cd9e0976d"
