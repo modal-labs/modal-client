@@ -39,9 +39,8 @@ async def test_webhook(servicer, client):
         container_app = ContainerApp()
         await ContainerApp.init.aio(client, stub.app_id)
         container_app._associate_stub_container(stub)
-        f_c = stub.f
-        assert isinstance(f_c, Function)
-        assert f_c.web_url
+        assert isinstance(f, Function)
+        assert f.web_url
 
 
 def test_webhook_cors():
