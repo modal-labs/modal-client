@@ -584,7 +584,7 @@ def test_get_client_requirements_path(version, expected):
     assert os.path.basename(path) == expected
 
 
-def test_image_stability_on_2023_12(servicer, client):
+def test_image_stability_on_2023_12(servicer, client, test_dir):
     def get_hash(img: Image) -> str:
         stub = Stub(image=img)
         with stub.run(client=client):
@@ -601,8 +601,10 @@ def test_image_stability_on_2023_12(servicer, client):
     img = Image.debian_slim(python_version="3.12")
     assert get_hash(img) == "53b6205e1dc2a0ca7ebed862e4f3a5887367587be13e81f65a4ac8f8a1e9be91"
 
-    img = Image.from_registry("ubuntu:22.04")
-    assert get_hash(img) == "b5f1cc544a412d1b23a5ebf9a8859ea9a86975ecbc7325b83defc0ce3fe956d3"
+    if sys.version_info[:2] < (3, 12):
+        # Client dependencies on 3.12 are different
+        img = Image.from_registry("ubuntu:22.04")
+        assert get_hash(img) == "b5f1cc544a412d1b23a5ebf9a8859ea9a86975ecbc7325b83defc0ce3fe956d3"
 
     img = Image.conda()
     assert get_hash(img) == "f69d6af66fb5f1a2372a61836e6166ce79ebe2cd628d12addea8e8e80cc98dc1"
@@ -616,13 +618,28 @@ def test_image_stability_on_2023_12(servicer, client):
     img = Image.micromamba(python_version="3.12")
     assert get_hash(img) == "a6934a197c754263fb97bc557834485ac2032480e95972618e85bd17c53c087b"
 
+    img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
+    assert get_hash(img) == "0aec2f66f28ee7511c1b36604214ae7b40d9bc1fa3e6b8883001e933a966ff78"
+
     base = Image.debian_slim(python_version="3.12")
+
+    img = base.run_commands("echo 'Hello Modal'", "rm /usr/local/bin/kubectl")
+    assert get_hash(img) == "4e1ac62eb33b44dd16940c9d2719eb79f945cee61cbf4641ca99b19cd9e0976d"
 
     img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
     assert get_hash(img) == "2a4fa8e3b32c70a41b3a3efd5416540b1953430543f6c27c984e7f969c2ca874"
 
-    img = base.pip_install_from_requirements("requirements.dev.txt")
-    assert get_hash(img) == "3bb22ce263301c21abd3509d4a36b2cb23d2613de58717467048e76cc8b62647"
+    img = base.conda_install("torch=2.2", "transformers<4.23.0", channels=["conda-forge", "my-channel"])
+    assert get_hash(img) == "dd6f27f636293996a64a98c250161d8092cb23d02629d9070493f00aad8d7266"
 
-    img = base.run_commands("echo 'Hello Modal'", "rm /usr/local/bin/kubectl")
-    assert get_hash(img) == "4e1ac62eb33b44dd16940c9d2719eb79f945cee61cbf4641ca99b19cd9e0976d"
+    img = base.pip_install_from_requirements(test_dir / "supports" / "test-requirements.txt")
+    assert get_hash(img) == "69d41e699d4ecef399e51e8460f8857aa0ec57f71f00eca81c8886ec062e5c2b"
+
+    img = base.conda_update_from_environment(test_dir / "supports" / "test-conda-environment.yml")
+    assert get_hash(img) == "00940e0ee2998bfe0a337f51a5fdf5f4b29bf9d42dda3635641d44bfeb42537e"
+
+    img = base.poetry_install_from_file(
+        test_dir / "supports" / "test-pyproject.toml",
+        poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
+    )
+    assert get_hash(img) == "a25dd4cc2e8d88f92bfdaf2e82b9d74144d1928926bf6be2ca1cdfbbf562189e"
