@@ -107,17 +107,18 @@ def test_old_syntax(client, servicer):
 def test_redeploy(servicer, client):
     stub = modal.Stub()
     with pytest.warns(DeprecationError):
-        stub.n1 = modal.NetworkFileSystem.new()
-        stub.n2 = modal.NetworkFileSystem.new()
-        stub.n3 = modal.NetworkFileSystem.new()
+        n1 = modal.NetworkFileSystem.new()
+        n2 = modal.NetworkFileSystem.new()
+        n3 = modal.NetworkFileSystem.new()
+        stub.n1, stub.n2, stub.n3 = n1, n2, n3
 
     # Deploy app once
     deploy_stub(stub, "my-app", client=client)
-    app1_ids = [stub.n1.object_id, stub.n2.object_id, stub.n3.object_id]
+    app1_ids = [n1.object_id, n2.object_id, n3.object_id]
 
     # Deploy app again
     deploy_stub(stub, "my-app", client=client)
-    app2_ids = [stub.n1.object_id, stub.n2.object_id, stub.n3.object_id]
+    app2_ids = [n1.object_id, n2.object_id, n3.object_id]
 
     # Make sure ids are stable
     assert app1_ids == app2_ids
@@ -128,7 +129,7 @@ def test_redeploy(servicer, client):
 
     # Deploy to a different app
     deploy_stub(stub, "my-other-app", client=client)
-    app3_ids = [stub.n1.object_id, stub.n2.object_id, stub.n3.object_id]
+    app3_ids = [n1.object_id, n2.object_id, n3.object_id]
 
     # Should be unique and different
     assert len(set(app3_ids)) == 3
