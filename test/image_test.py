@@ -400,27 +400,48 @@ def test_poetry(client, servicer):
         assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
 
 
-def test_image_build_with_context_mount(client, servicer, tmp_path):
+@pytest.fixture
+def tmp_path_with_content(tmp_path):
     (tmp_path / "data.txt").write_text("hello")
     (tmp_path / "data").mkdir()
     (tmp_path / "data" / "sub").write_text("world")
+    return tmp_path
 
-    data_mount = Mount.from_local_dir(tmp_path, remote_path="/")
 
+def test_image_copy_local_dir(client, servicer, tmp_path_with_content):
     stub = Stub()
+    stub.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy")
+
+    with stub.run(client=client):
+        layers = get_image_layers(stub.image.object_id, servicer)
+        assert "COPY . /dummy" in layers[0].dockerfile_commands
+        assert set(servicer.mount_contents["mo-1"].keys()) == {"/data.txt", "/data/sub"}
+
+
+def test_image_docker_command_copy(client, servicer, tmp_path_with_content):
+    stub = Stub()
+    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
+    stub.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
+
+    with stub.run(client=client):
+        layers = get_image_layers(stub.image.object_id, servicer)
+        assert "COPY . /dummy" in layers[0].dockerfile_commands
+        files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
+        assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
+
+
+def test_image_dockerfile_copy(client, servicer, tmp_path_with_content):
     dockerfile = NamedTemporaryFile("w", delete=False)
     dockerfile.write("COPY . /dummy\n")
     dockerfile.close()
 
-    stub.copy = Image.debian_slim().copy_local_dir(tmp_path, remote_path="/dummy")
-    stub.from_dockerfile = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
-    stub.dockerfile_commands = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
+    stub = Stub()
+    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
+    stub.image = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
 
     with stub.run(client=client):
-        for image, expected_layer in [(stub.copy, 0), (stub.dockerfile_commands, 1), (stub.from_dockerfile, 0)]:
-            layers = get_image_layers(image.object_id, servicer)
-            assert "COPY . /dummy" in layers[expected_layer].dockerfile_commands
-
+        layers = get_image_layers(stub.image.object_id, servicer)
+        assert "COPY . /dummy" in layers[1].dockerfile_commands
         files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
         assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
 
