@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import List
 
 from modal import (
     Image,
@@ -192,8 +193,21 @@ class Cls:
 class LifecycleCls:
     """Ensures that {sync,async} lifecycle hooks work with {sync,async} functions."""
 
-    def __init__(self):
-        self.events = []
+    def __init__(
+        self,
+        print_at_exit: bool = False,
+        sync_enter_duration=0,
+        async_enter_duration=0,
+        sync_exit_duration=0,
+        async_exit_duration=0,
+    ):
+        self.events: List[str] = []
+        self.sync_enter_duration = sync_enter_duration
+        self.async_enter_duration = async_enter_duration
+        self.sync_exit_duration = sync_exit_duration
+        self.async_exit_duration = async_exit_duration
+        if print_at_exit:
+            self._print_at_exit()
 
     def _print_at_exit(self):
         import atexit
@@ -203,30 +217,30 @@ class LifecycleCls:
     @enter()
     def enter_sync(self):
         self.events.append("enter_sync")
+        time.sleep(self.sync_enter_duration)
 
     @enter()
     async def enter_async(self):
         self.events.append("enter_async")
+        await asyncio.sleep(self.async_enter_duration)
 
     @exit()
     def exit_sync(self):
         self.events.append("exit_sync")
+        time.sleep(self.sync_exit_duration)
 
     @exit()
     async def exit_async(self):
         self.events.append("exit_async")
+        await asyncio.sleep(self.async_exit_duration)
 
     @method()
-    def f_sync(self, print_at_exit: bool):
-        if print_at_exit:
-            self._print_at_exit()
+    def f_sync(self):
         self.events.append("f_sync")
         return self.events
 
     @method()
-    async def f_async(self, print_at_exit: bool):
-        if print_at_exit:
-            self._print_at_exit()
+    async def f_async(self):
         self.events.append("f_async")
         return self.events
 

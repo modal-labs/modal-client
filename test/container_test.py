@@ -580,17 +580,13 @@ def test_cls_function(unix_servicer):
 
 @skip_windows_unix_socket
 def test_lifecycle_enter_sync(unix_servicer):
-    ret = _run_container(
-        unix_servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=_get_inputs(((False,), {}))
-    )
+    ret = _run_container(unix_servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=_get_inputs(((), {})))
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync"]
 
 
 @skip_windows_unix_socket
 def test_lifecycle_enter_async(unix_servicer):
-    ret = _run_container(
-        unix_servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=_get_inputs(((False,), {}))
-    )
+    ret = _run_container(unix_servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=_get_inputs(((), {})))
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async"]
 
 
@@ -1115,45 +1111,43 @@ def _run_container_process(
     module_name,
     function_name,
     *,
-    inputs: List[Tuple[Tuple[Any], Dict[str, Any]]],
+    inputs: List[Tuple[Tuple, Dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
+    cls_params: Tuple[Tuple, Dict[str, Any]] = ((), {}),
+    print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
+    env={},
 ) -> subprocess.Popen:
-    container_args = _container_args(module_name, function_name, allow_concurrent_inputs=allow_concurrent_inputs)
+    container_args = _container_args(
+        module_name,
+        function_name,
+        allow_concurrent_inputs=allow_concurrent_inputs,
+        serialized_params=serialize(cls_params),
+    )
     encoded_container_args = base64.b64encode(container_args.SerializeToString())
     servicer.container_inputs = _get_multi_inputs(inputs)
     return subprocess.Popen(
         [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args],
-        env=os.environ,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        env={**os.environ, **env},
+        stdout=subprocess.PIPE if not print else None,
+        stderr=subprocess.PIPE if not print else None,
     )
 
 
 @skip_windows_signals
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize(
-    ["function_name", "input_args", "cancelled_input_ids", "expected_container_output"],
+    ["function_name", "input_args", "cancelled_input_ids", "expected_container_output", "live_cancellations"],
     [
         # the 10 second inputs here are to be cancelled:
-        ("delay", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02]),  # cancel second input
-        ("delay_async", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02]),  # async variant
+        ("delay", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02], 1),  # cancel second input
+        ("delay_async", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02], 1),  # async variant
         # cancel first input, but it has already been processed, so all three should come through:
-        (
-            "delay",
-            [0.01, 0.5, 0.03],
-            ["in-000"],
-            [0.01, 0.5, 0.03],
-        ),
-        (
-            "delay_async",
-            [0.01, 0.5, 0.03],
-            ["in-000"],
-            [0.01, 0.5, 0.03],
-        ),
+        ("delay", [0.01, 0.5, 0.03], ["in-000"], [0.01, 0.5, 0.03], 0),
+        ("delay_async", [0.01, 0.5, 0.03], ["in-000"], [0.01, 0.5, 0.03], 0),
     ],
 )
 def test_cancellation_aborts_current_input_on_match(
-    servicer, function_name, input_args, cancelled_input_ids, expected_container_output
+    servicer, function_name, input_args, cancelled_input_ids, expected_container_output, live_cancellations
 ):
     # NOTE: for a cancellation to actually happen in this test, it needs to be
     #    triggered while the relevant input is being processed. A future input
@@ -1161,7 +1155,10 @@ def test_cancellation_aborts_current_input_on_match(
     #    the backend
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
-            servicer, "test.supports.functions", function_name, inputs=[((arg,), {}) for arg in input_args]
+            servicer,
+            "test.supports.functions",
+            function_name,
+            inputs=[((arg,), {}) for arg in input_args],
         )
         time.sleep(1)
         input_lock.wait()
@@ -1177,7 +1174,10 @@ def test_cancellation_aborts_current_input_on_match(
     servicer.container_heartbeat_return_now(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
-    assert container_process.wait() == 0  # wait for container to exit
+    stdout, stderr = container_process.communicate()
+    assert stderr.decode().count("was cancelled by a user request") == live_cancellations
+    assert "Traceback" not in stderr.decode()
+    assert container_process.returncode == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit
 
     items = _flatten_outputs(servicer.container_outputs)
@@ -1216,7 +1216,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
 def test_lifecycle_full(servicer):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
-        servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=[((True,), {})]
+        servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=[((), {})], cls_params=((True,), {})
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
@@ -1224,7 +1224,7 @@ def test_lifecycle_full(servicer):
 
     # Sync and async container lifecycle methods on an async function.
     container_process = _run_container_process(
-        servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=[((True,), {})]
+        servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=[((), {})], cls_params=((True,), {})
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
@@ -1306,17 +1306,85 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
 @skip_windows_signals
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize("method", ["delay", "delay_async"])
-def test_sigint_termination(servicer, method):
+def test_sigint_termination_input(servicer, method):
     # Sync and async container lifecycle methods on a sync function.
     with servicer.input_lockstep() as input_barrier:
         container_process = _run_container_process(
-            servicer, "test.supports.functions", f"LifecycleCls.{method}", inputs=[((5,), {})]
+            servicer,
+            "test.supports.functions",
+            f"LifecycleCls.{method}",
+            inputs=[((5,), {})],
+            cls_params=((), {"print_at_exit": True}),
         )
         input_barrier.wait()  # get input
         time.sleep(0.5)
+        signal_time = time.monotonic()
         os.kill(container_process.pid, signal.SIGINT)
 
     stdout, stderr = container_process.communicate(timeout=5)
-    assert container_process.returncode == 0
+    stop_duration = time.monotonic() - signal_time
+    assert len(servicer.container_outputs) == 0
+    assert (
+        container_process.returncode == 0
+    )  # container should catch and indicate successful termination by exiting cleanly when possible
     assert f"[events:enter_sync,enter_async,{method},exit_sync,exit_async]" in stdout.decode()
-    # assert "Traceback" not in stderr.decode()  # TODO (elias): fix sigint during an async function execution printing a long traceback from synchronicity
+    assert "Traceback" not in stderr.decode()
+    assert stop_duration < 2.0  # if this would be ~4.5s, then the input isn't getting terminated
+    assert servicer.task_result is None
+
+
+@skip_windows_signals
+@pytest.mark.usefixtures("server_url_env")
+@pytest.mark.parametrize("enter_type", ["sync_enter", "async_enter"])
+@pytest.mark.parametrize("method", ["delay", "delay_async"])
+def test_sigint_termination_enter_handler(servicer, method, enter_type):
+    # Sync and async container lifecycle methods on a sync function.
+    container_process = _run_container_process(
+        servicer,
+        "test.supports.functions",
+        f"LifecycleCls.{method}",
+        inputs=[((5,), {})],
+        cls_params=((), {"print_at_exit": True, f"{enter_type}_duration": 10}),
+    )
+    time.sleep(1)  # should be enough to start the enter method
+    signal_time = time.monotonic()
+    os.kill(container_process.pid, signal.SIGINT)
+    stdout, stderr = container_process.communicate(timeout=5)
+    stop_duration = time.monotonic() - signal_time
+    assert len(servicer.container_outputs) == 0
+    assert container_process.returncode == 0
+    if enter_type == "sync_enter":
+        assert "[events:enter_sync]" in stdout.decode()
+    else:
+        # enter_sync should run in 0s, and then we interrupt during the async enter
+        assert "[events:enter_sync,enter_async]" in stdout.decode()
+
+    assert "Traceback" not in stderr.decode()
+    assert stop_duration < 2.0  # if this would be ~4.5s, then the task isn't being terminated timely
+    assert servicer.task_result is None
+
+
+@skip_windows_signals
+@pytest.mark.usefixtures("server_url_env")
+@pytest.mark.parametrize("exit_type", ["sync_exit", "async_exit"])
+def test_sigint_termination_exit_handler(servicer, exit_type):
+    # Sync and async container lifecycle methods on a sync function.
+    with servicer.output_lockstep() as outputs:
+        container_process = _run_container_process(
+            servicer,
+            "test.supports.functions",
+            "LifecycleCls.delay",
+            inputs=[((0,), {})],
+            cls_params=((), {"print_at_exit": True, f"{exit_type}_duration": 2}),
+        )
+        outputs.wait()  # wait for first output to be emitted
+    time.sleep(1)  # give some time for container to end up in the exit handler
+    os.kill(container_process.pid, signal.SIGINT)
+
+    stdout, stderr = container_process.communicate(timeout=5)
+
+    assert len(servicer.container_outputs) == 1
+    assert container_process.returncode == 0
+    assert "[events:enter_sync,enter_async,delay,exit_sync,exit_async]" in stdout.decode()
+    assert "Traceback" not in stderr.decode()
+    assert servicer.task_result is None
