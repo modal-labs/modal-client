@@ -3,6 +3,7 @@ import os
 import pytest
 import sys
 import threading
+from hashlib import sha256
 from tempfile import NamedTemporaryFile
 from typing import List
 from unittest import mock
@@ -152,9 +153,7 @@ def test_image_pip_install_pyproject_with_optionals(servicer, client):
     pyproject_toml = os.path.join(os.path.dirname(__file__), "supports/test-pyproject.toml")
 
     stub = Stub()
-    stub.image = Image.debian_slim().pip_install_from_pyproject(
-        pyproject_toml, optional_dependencies=["dev", "test"]
-    )
+    stub.image = Image.debian_slim().pip_install_from_pyproject(pyproject_toml, optional_dependencies=["dev", "test"])
     with stub.run(client=client):
         layers = get_image_layers(stub.image.object_id, servicer)
 
@@ -453,9 +452,7 @@ def test_image_gpu(client, servicer):
 
 def test_image_force_build(client, servicer):
     stub = Stub()
-    stub.image = (
-        Image.debian_slim().run_commands("echo 1").pip_install("foo", force_build=True).run_commands("echo 2")
-    )
+    stub.image = Image.debian_slim().run_commands("echo 1").pip_install("foo", force_build=True).run_commands("echo 2")
     with stub.run(client=client):
         assert servicer.force_built_images == ["im-3", "im-4"]
 
@@ -585,3 +582,42 @@ def test_inside_ctx_hydrated(client):
 def test_get_client_requirements_path(version, expected):
     path = _get_client_requirements_path(version)
     assert os.path.basename(path) == expected
+
+
+def test_image_stability_on_2023_12(servicer, client):
+    def get_hash(img: Image) -> str:
+        stub = Stub(image=img)
+        with stub.run(client=client):
+            layers = get_image_layers(stub.image.object_id, servicer)
+            commands = [layer.dockerfile_commands for layer in layers]
+            context_files = [layer.context_files for layer in layers]
+        return sha256(repr(list(zip(commands, context_files))).encode()).hexdigest()
+
+    img = Image.debian_slim()
+    assert get_hash(img) == "115f3b112951a80fee5df4a33f0dfd1ff378ccf0d6170dee3355a2864d8b5b51"
+
+    img = Image.debian_slim(python_version="3.12")
+    assert get_hash(img) == "33dec475277d7df8e04ed30f133a9b4d6627106baa66c5d9fdcef7a0f0e11417"
+
+    img = Image.from_registry("ubuntu:22.04")
+    assert get_hash(img) == "4097233420220d5b63cc84f3806ec5e06eb8cad426abeb46c12959ffc55a0de5"
+
+    img = Image.conda()
+    assert get_hash(img) == "7742de8b4f3a6e6036e7978536b38cf061611200324361ad9642a8ec5001d6b1"
+
+    img = Image.micromamba()
+    assert get_hash(img) == "0a37716b6f6d172030b404275a7282f3366ccbe341305413a18b7a29e4814cb2"
+
+    img = Image.micromamba(python_version="3.12")
+    assert get_hash(img) == "be8148a8adfec1927337be61fb61775f1293140f45f1f93ed71e831b7dbb5236"
+
+    base = Image.debian_slim()
+
+    img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "02ebc48ffec1c851e7ef45abffaed9ed9a9115e70a47ea4235904ad904998561"
+
+    img = base.pip_install_from_requirements("requirements.dev.txt")
+    assert get_hash(img) == "63267c0a673e95ece845289e9b28ce16fd10c02de7aa0dc79ec0ab3992d5a459"
+
+    img = base.run_commands("echo 'Hello Modal'", "rm /usr/local/bin/kubectl")
+    assert get_hash(img) == "5c190f40164fe31ce1f6ae24117ea7a6bbfd5a994510398561ffd4fe7ce33eca"
