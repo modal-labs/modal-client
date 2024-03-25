@@ -3,25 +3,21 @@ import pytest
 import queue
 import time
 
-from modal import Queue, Stub
-from modal.exception import DeprecationError
+from modal import Queue
 
 from .supports.skip import skip_macos, skip_windows
 
 
 def test_queue(servicer, client):
-    stub = Stub()
-    with pytest.warns(DeprecationError):
-        stub.q = Queue.new()
-    with stub.run(client=client):
-        assert isinstance(stub.q, Queue)
-        assert stub.q.len() == 0
-        stub.q.put(42)
-        assert stub.q.len() == 1
-        assert stub.q.get() == 42
-        with pytest.raises(queue.Empty):
-            stub.q.get(timeout=0)
-        assert stub.q.len() == 0
+    q = Queue.lookup("some-random-queue", create_if_missing=True, client=client)
+    assert isinstance(q, Queue)
+    assert q.len() == 0
+    q.put(42)
+    assert q.len() == 1
+    assert q.get() == 42
+    with pytest.raises(queue.Empty):
+        q.get(timeout=0)
+    assert q.len() == 0
 
 
 def test_queue_ephemeral(servicer, client):
