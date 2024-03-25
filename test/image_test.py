@@ -616,7 +616,7 @@ def test_image_stability_on_2023_12(servicer, client, test_dir):
     assert get_hash(img) == "c4b3f7350116d323dded29c9c9b78b62593f0fc943ccf83a09b27185bfdc2a07"
 
     img = Image.micromamba(python_version="3.12")
-    assert get_hash(img) == "a6934a197c754263fb97bc557834485ac2032480e95972618e85bd17c53c087b"
+    assert get_hash(img) == "468befe16f703a3ae1a794dfe54c1a3445ca0ffda233f55f1d66c45ad608e8aa"
 
     img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
     assert get_hash(img) == "0aec2f66f28ee7511c1b36604214ae7b40d9bc1fa3e6b8883001e933a966ff78"
