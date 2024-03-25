@@ -4,11 +4,13 @@ import inspect
 import pytest
 import time
 import typing
+from contextlib import contextmanager
 
 from synchronicity.exceptions import UserCodeException
 
 import modal
 from modal import Image, Mount, NetworkFileSystem, Proxy, Stub, web_endpoint
+from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
@@ -81,6 +83,49 @@ def test_map(client, servicer, slow_put_inputs):
         assert len(servicer.cleared_function_calls) == 1
         assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
         assert len(servicer.cleared_function_calls) == 2
+
+
+def _pow2(x: int):
+    return x**2
+
+
+@contextmanager
+def synchronicity_loop_delay_tracker():
+    done = False
+
+    async def _track_eventloop_blocking():
+        max_dur = 0
+        BLOCK_TIME = 0.01
+        while not done:
+            t0 = time.perf_counter()
+            await asyncio.sleep(BLOCK_TIME)
+            max_dur = max(max_dur, time.perf_counter() - t0)
+        return max_dur - BLOCK_TIME  # if it takes exactly BLOCK_TIME we would have zero delay
+
+    track_eventloop_blocking = synchronize_api(_track_eventloop_blocking)
+    yield track_eventloop_blocking(_future=True)
+    done = True
+
+
+def test_map_blocking_iterator_blocking_synchronicity_loop(client):
+    stub = Stub()
+    SLEEP_DUR = 0.5
+
+    def blocking_iter():
+        yield 1
+        time.sleep(SLEEP_DUR)
+        yield 2
+
+    pow2 = stub.function()(_pow2)
+
+    with stub.run(client=client):
+        t0 = time.monotonic()
+        with synchronicity_loop_delay_tracker() as max_delay:
+            for _ in pow2.map(blocking_iter()):
+                pass
+        dur = time.monotonic() - t0
+    assert dur > SLEEP_DUR
+    assert max_delay.result() < 0.1  # should typically be much smaller than this
 
 
 _side_effect_count = 0
