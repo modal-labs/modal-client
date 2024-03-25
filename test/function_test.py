@@ -525,7 +525,8 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
     monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "oci")
     stub.function()(dummy)
     with stub.run(client=client):
-        f = servicer.app_functions[stub.dummy.object_id]
+        object_id: str = stub.indexed_objects["dummy"].object_id
+        f = servicer.app_functions[object_id]
 
     assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
 
@@ -574,7 +575,8 @@ def test_deps_explicit(client, servicer):
     stub.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
 
     with stub.run(client=client):
-        f = servicer.app_functions[stub.dummy.object_id]
+        object_id: str = stub.indexed_objects["dummy"].object_id
+        f = servicer.app_functions[object_id]
 
     dep_object_ids = set(d.object_id for d in f.object_dependencies)
     assert dep_object_ids == set([image.object_id, nfs_1.object_id, nfs_2.object_id])
@@ -605,22 +607,22 @@ def assert_is_wrapped_dict(some_arg):
 
 
 def test_calls_should_not_unwrap_modal_objects(servicer, client):
-    stub = Stub()
-    stub.some_modal_object = modal.Dict.from_name("blah", create_if_missing=True)
+    some_modal_object = modal.Dict.lookup("blah", create_if_missing=True, client=client)
 
+    stub = Stub()
     foo = stub.function()(assert_is_wrapped_dict)
     servicer.function_body(assert_is_wrapped_dict)
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
     with stub.run(client=client):
-        assert type(foo.remote(stub.some_modal_object)) == modal.Dict
-        fc = foo.spawn(stub.some_modal_object)
+        assert type(foo.remote(some_modal_object)) == modal.Dict
+        fc = foo.spawn(some_modal_object)
         assert type(fc.get()) == modal.Dict
-        for ret in foo.map([stub.some_modal_object]):
+        for ret in foo.map([some_modal_object]):
             assert type(ret) == modal.Dict
-        for ret in foo.starmap([[stub.some_modal_object]]):
+        for ret in foo.starmap([[some_modal_object]]):
             assert type(ret) == modal.Dict
-        foo.for_each([stub.some_modal_object])
+        foo.for_each([some_modal_object])
 
     assert len(servicer.client_calls) == 5
 
@@ -631,16 +633,16 @@ def assert_is_wrapped_dict_gen(some_arg):
 
 
 def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
-    stub = Stub()
-    stub.some_modal_object = modal.Dict.from_name("blah", create_if_missing=True)
+    some_modal_object = modal.Dict.lookup("blah", create_if_missing=True, client=client)
 
+    stub = Stub()
     foo = stub.function()(assert_is_wrapped_dict_gen)
     servicer.function_body(assert_is_wrapped_dict_gen)
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
     with stub.run(client=client):
-        assert type(next(foo.remote_gen(stub.some_modal_object))) == modal.Dict
-        foo.spawn(stub.some_modal_object)  # spawn on generator returns None, but starts the generator
+        assert type(next(foo.remote_gen(some_modal_object))) == modal.Dict
+        foo.spawn(some_modal_object)  # spawn on generator returns None, but starts the generator
 
     assert len(servicer.client_calls) == 2
 
