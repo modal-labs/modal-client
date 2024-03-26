@@ -386,12 +386,7 @@ class _Image(_Object, type_prefix="im"):
         obj.force_build = force_build
         return obj
 
-    def extend(
-        self,
-        *,
-        dockerfile_commands: Union[List[str], Callable[[], List[str]]] = None,
-        **kwargs,
-    ) -> "_Image":
+    def extend(self, **kwargs) -> "_Image":
         """Deprecated! This is a low-level method not intended to be part of the public API."""
         deprecation_warning(
             (2024, 3, 7),
