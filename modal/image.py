@@ -37,7 +37,6 @@ if typing.TYPE_CHECKING:
 
 # This is used for both type checking and runtime validation
 ImageBuilderVersion = Literal["2023.12", "PREVIEW"]
-# TODO How can we require that version-dependent parmeters specify values for *all* versions?
 
 
 def _default_image():
