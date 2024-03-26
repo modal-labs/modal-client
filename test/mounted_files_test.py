@@ -171,6 +171,7 @@ def symlinked_python_installation_venv_path(tmp_path, repo_root):
     # create a new venv
     subprocess.check_call([symlink_python_executable, "-m", "venv", venv_path, "--copies"])
     # check that a builtin module, like ast, is indeed identified to be in the non-resolved install path
+    # since this is the source of bugs that we want to assert we don't run into!
     ast_path = subprocess.check_output(
         [venv_path / "bin" / "python", "-c", "import ast; print(ast.__file__);"], encoding="utf8"
     )
@@ -181,6 +182,7 @@ def symlinked_python_installation_venv_path(tmp_path, repo_root):
     yield venv_path
 
 
+@skip_windows("venvs behave differently on Windows.")
 def test_mounted_files_symlinked_python_install(
     symlinked_python_installation_venv_path, supports_dir, server_url_env, servicer
 ):
