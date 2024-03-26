@@ -153,7 +153,7 @@ def test_missing_attr():
     an understandable error message."""
 
     stub = Stub()
-    with pytest.raises(KeyError):
+    with pytest.raises(AttributeError):
         stub.fun()  # type: ignore
 
 
@@ -359,3 +359,8 @@ def test_hydrated_other_app_object_gets_referenced(servicer, client):
             deploy_stub(stub, client=client)
             app_set_objects_req = ctx.pop_request("AppSetObjects")
             assert vol.object_id in app_set_objects_req.unindexed_object_ids
+
+
+def test_hasattr():
+    stub = Stub()
+    assert not hasattr(stub, "xyz")

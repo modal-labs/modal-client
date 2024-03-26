@@ -260,16 +260,20 @@ class _Stub:
         self._add_object(tag, obj)
 
     def __getattr__(self, tag: str) -> _Object:
+        # TODO(erikbern): remove this method later
         assert isinstance(tag, str)
         if tag.startswith("__"):
             # Hacky way to avoid certain issues, e.g. pickle will try to look this up
             raise AttributeError(f"Stub has no member {tag}")
-        # Return a reference to an object that will be created in the future
+        if tag not in self._indexed_objects:
+            # Primarily to make hasattr work
+            raise AttributeError(f"Stub has no member {tag}")
         obj: _Object = self._indexed_objects[tag]
         deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
         return obj
 
     def __setattr__(self, tag: str, obj: _Object):
+        # TODO(erikbern): remove this method later
         # Note that only attributes defined in __annotations__ are set on the object itself,
         # everything else is registered on the indexed_objects
         if tag in self.__annotations__:
