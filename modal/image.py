@@ -39,11 +39,6 @@ if typing.TYPE_CHECKING:
 ImageBuilderVersion = Literal["2023.12", "PREVIEW"]
 
 
-def _default_image() -> "_Image":
-    """Single source of truth for the default image, which we reference from a number of places."""
-    return _Image.debian_slim()
-
-
 def _validate_python_version(version: str) -> None:
     components = version.split(".")
     supported_versions = {"3.12", "3.11", "3.10", "3.9", "3.8"}
