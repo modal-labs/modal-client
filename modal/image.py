@@ -404,7 +404,7 @@ class _Image(_Object, type_prefix="im"):
             "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
         )
 
-        def build_dockerfile():
+        def build_dockerfile() -> DockerfileSpec:
             return DockerfileSpec(
                 commands=kwargs.pop("dockerfile_commands", []),
                 context_files=kwargs.pop("context_files", {}),
