@@ -22,7 +22,7 @@ from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 from .gpu import GPU_T
-from .image import _default_image, _Image
+from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
@@ -35,6 +35,8 @@ from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
+
+_default_image: _Image = _Image.debian_slim()
 
 
 class _LocalEntrypoint:
@@ -334,7 +336,7 @@ class _Stub:
         if "image" in self._indexed_objects:
             return self._indexed_objects["image"]
         else:
-            return _default_image()
+            return _default_image
 
     def _get_watch_mounts(self):
         all_mounts = [
@@ -708,8 +710,6 @@ class _Stub:
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
-        from .sandbox import _Sandbox
-
         if self._local_app:
             app_id = self._local_app.app_id
             environment_name = self._local_app._environment_name
@@ -725,7 +725,7 @@ class _Stub:
         resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
         obj = _Sandbox._new(
             entrypoint_args,
-            image=image or _default_image(),
+            image=image or _default_image,
             mounts=mounts,
             secrets=secrets,
             timeout=timeout,
