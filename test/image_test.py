@@ -48,14 +48,17 @@ def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
 
 @pytest.fixture(params=get_args(ImageBuilderVersion))
 def builder_version(request, server_url_env):
+    version = request.param
     if sys.version_info[:2] == (3, 8):
         # TODO: The patch we're doing below is breaking on Python 3.8.
         # Rather than debug that, I'm just going to skip it for now.
         # This is a hack, but we'll likely drop support for 3.8 before adding
         # any new versioned logic that would be exercised by this fixutre.
-        yield
-        return
-    version = request.param
+        if version == min(get_args(ImageBuilderVersion)):
+            yield
+            return
+        else:
+            pytest.skip("Parameterized patching not working on Py3.8")
     with (
         mock.patch("test.conftest.ImageBuilderVersion", Literal[version]),  # type: ignore
         mock.patch("modal.image._Image.builder_version", None),
