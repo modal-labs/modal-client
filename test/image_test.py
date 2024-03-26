@@ -5,13 +5,13 @@ import sys
 import threading
 from hashlib import sha256
 from tempfile import NamedTemporaryFile
-from typing import List, Literal
+from typing import List, Literal, get_args
 from unittest import mock
 
 from modal import Image, Mount, Secret, Stub, build, gpu, method
 from modal._serialization import serialize
 from modal.exception import DeprecationError, InvalidError, VersionError
-from modal.image import _dockerhub_python_version, _get_client_requirements_path
+from modal.image import ImageBuilderVersion, _dockerhub_python_version, _get_client_requirements_path
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
@@ -46,7 +46,17 @@ def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
     return result
 
 
-def test_image_python_packages(client, servicer):
+@pytest.fixture(params=get_args(ImageBuilderVersion))
+def builder_version(request, server_url_env):
+    version = request.param
+    with (
+        mock.patch("test.conftest.ImageBuilderVersion", Literal[version]),  # type: ignore
+        mock.patch("modal.image._Image.builder_version", None),
+    ):
+        yield version
+
+
+def test_image_python_packages(client, servicer, builder_version):
     stub = Stub()
     stub.image = (
         Image.debian_slim()
@@ -62,7 +72,7 @@ def test_image_python_packages(client, servicer):
         )
 
 
-def test_image_kwargs_validation(servicer, client):
+def test_image_kwargs_validation(servicer, client, builder_version):
     stub = Stub()
     stub.image = Image.debian_slim().run_commands(
         "echo hi", secrets=[Secret.from_dict({"xyz": "123"}), Secret.from_name("foo")]
@@ -85,7 +95,7 @@ def test_image_kwargs_validation(servicer, client):
         stub.image = Image.debian_slim().copy_mount(Secret.from_dict({"xyz": "123"}), remote_path="/dummy")  # type: ignore
 
 
-def test_wrong_type(servicer, client):
+def test_wrong_type(servicer, client, builder_version):
     image = Image.debian_slim()
     for m in [image.pip_install, image.apt_install, image.run_commands]:
         m(["xyz"])  # type: ignore
@@ -99,7 +109,7 @@ def test_wrong_type(servicer, client):
             m([["double-nested-package"]])  # type: ignore
 
 
-def test_image_requirements_txt(servicer, client):
+def test_image_requirements_txt(servicer, client, builder_version):
     requirements_txt = os.path.join(os.path.dirname(__file__), "supports/test-requirements.txt")
 
     stub = Stub()
@@ -112,7 +122,7 @@ def test_image_requirements_txt(servicer, client):
         assert any(b"banana" in f.data for f in layers[0].context_files)
 
 
-def test_empty_install(servicer, client):
+def test_empty_install(servicer, client, builder_version):
     # Install functions with no packages should be ignored.
     stub = Stub(
         image=Image.debian_slim()
@@ -128,7 +138,7 @@ def test_empty_install(servicer, client):
         assert len(layers) == 1
 
 
-def test_debian_slim_apt_install(servicer, client):
+def test_debian_slim_apt_install(servicer, client, builder_version):
     stub = Stub(image=Image.debian_slim().pip_install("numpy").apt_install("git", "ssh").pip_install("scikit-learn"))
 
     with stub.run(client=client):
@@ -139,7 +149,7 @@ def test_debian_slim_apt_install(servicer, client):
         assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
 
 
-def test_image_pip_install_pyproject(servicer, client):
+def test_image_pip_install_pyproject(servicer, client, builder_version):
     pyproject_toml = os.path.join(os.path.dirname(__file__), "supports/test-pyproject.toml")
 
     stub = Stub()
@@ -151,7 +161,7 @@ def test_image_pip_install_pyproject(servicer, client):
         assert any("pip install 'banana >=1.2.0' 'potato >=0.1.0'" in cmd for cmd in layers[0].dockerfile_commands)
 
 
-def test_image_pip_install_pyproject_with_optionals(servicer, client):
+def test_image_pip_install_pyproject_with_optionals(servicer, client, builder_version):
     pyproject_toml = os.path.join(os.path.dirname(__file__), "supports/test-pyproject.toml")
 
     stub = Stub()
@@ -167,7 +177,7 @@ def test_image_pip_install_pyproject_with_optionals(servicer, client):
         assert not (any("'mkdocs >=1.4.2'" in cmd for cmd in layers[0].dockerfile_commands))
 
 
-def test_image_pip_install_private_repos(servicer, client):
+def test_image_pip_install_private_repos(servicer, client, builder_version):
     stub = Stub()
     with pytest.raises(InvalidError):
         stub.image = Image.debian_slim().pip_install_private_repos(
@@ -211,7 +221,7 @@ def test_image_pip_install_private_repos(servicer, client):
         )
 
 
-def test_conda_install(servicer, client):
+def test_conda_install(servicer, client, builder_version):
     stub = Stub(image=Image.conda().pip_install("numpy").conda_install("pymc3", "theano").pip_install("scikit-learn"))
 
     with stub.run(client=client):
@@ -222,7 +232,7 @@ def test_conda_install(servicer, client):
         assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
 
 
-def test_dockerfile_image(servicer, client):
+def test_dockerfile_image(servicer, client, builder_version):
     path = os.path.join(os.path.dirname(__file__), "supports/test-dockerfile")
 
     stub = Stub(image=Image.from_dockerfile(path))
@@ -233,7 +243,7 @@ def test_dockerfile_image(servicer, client):
         assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
 
 
-def test_conda_update_from_environment(servicer, client):
+def test_conda_update_from_environment(servicer, client, builder_version):
     path = os.path.join(os.path.dirname(__file__), "supports/test-conda-environment.yml")
 
     stub = Stub(image=Image.conda().conda_update_from_environment(path))
@@ -246,7 +256,7 @@ def test_conda_update_from_environment(servicer, client):
         assert any(b"bar=2.1" in f.data for f in layers[0].context_files)
 
 
-def test_run_commands(servicer, client):
+def test_run_commands(builder_version, servicer, client):
     base = Image.debian_slim()
 
     command = "echo 'Hello Modal'"
@@ -264,7 +274,8 @@ def test_run_commands(servicer, client):
                 assert layers[0].dockerfile_commands[i] == f"RUN {cmd}"
 
 
-def test_dockerhub_install(servicer, client):
+def test_dockerhub_install(servicer, client, builder_version):
+>>>>>>> 0e3389d8 (Parameterize image tests by builder version)
     stub = Stub(image=Image.from_registry("gisops/valhalla:latest", setup_dockerfile_commands=["RUN apt-get update"]))
 
     with stub.run(client=client):
@@ -274,7 +285,7 @@ def test_dockerhub_install(servicer, client):
         assert any("RUN apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
 
 
-def test_ecr_install(servicer, client):
+def test_ecr_install(servicer, client, builder_version):
     image_tag = "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:latest"
     stub = Stub(
         image=Image.from_aws_ecr(
@@ -295,7 +306,7 @@ def run_f():
     print("foo!")
 
 
-def test_image_run_function(client, servicer):
+def test_image_run_function(client, servicer, builder_version):
     stub = Stub()
     stub.image = (
         Image.debian_slim().pip_install("pandas").run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})])
@@ -315,7 +326,7 @@ def test_image_run_function(client, servicer):
     assert len(servicer.app_functions[function_id].secret_ids) == 1
 
 
-def test_image_run_function_interactivity(client, servicer):
+def test_image_run_function_interactivity(client, servicer, builder_version):
     stub = Stub()
     stub.image = Image.debian_slim().pip_install("pandas").run_function(run_f)
 
@@ -340,7 +351,7 @@ def run_f_globals():
     print("foo!", VARIABLE_1)
 
 
-def test_image_run_function_globals(client, servicer):
+def test_image_run_function_globals(client, servicer, builder_version):
     global VARIABLE_1, VARIABLE_2
 
     stub = Stub()
@@ -371,7 +382,7 @@ def run_f_unserializable_globals():
     print("foo!", VARIABLE_3, VARIABLE_4)
 
 
-def test_image_run_unserializable_function(client, servicer):
+def test_image_run_unserializable_function(client, servicer, builder_version):
     stub = Stub()
     stub.image = Image.debian_slim().run_function(run_f_unserializable_globals)
 
@@ -385,7 +396,7 @@ def run_f_with_args(arg, *, kwarg):
     print("building!", arg, kwarg)
 
 
-def test_image_run_function_with_args(client, servicer):
+def test_image_run_function_with_args(client, servicer, builder_version):
     stub = Stub()
     stub.image = Image.debian_slim().run_function(run_f_with_args, args=("foo",), kwargs={"kwarg": "bar"})
 
@@ -395,7 +406,7 @@ def test_image_run_function_with_args(client, servicer):
         assert input.args == serialize((("foo",), {"kwarg": "bar"}))
 
 
-def test_poetry(client, servicer):
+def test_poetry(client, servicer, builder_version):
     path = os.path.join(os.path.dirname(__file__), "supports/pyproject.toml")
 
     # No lockfile provided and there's no lockfile found
@@ -427,7 +438,7 @@ def tmp_path_with_content(tmp_path):
     return tmp_path
 
 
-def test_image_copy_local_dir(client, servicer, tmp_path_with_content):
+def test_image_copy_local_dir(client, servicer, tmp_path_with_content, builder_version):
     stub = Stub()
     stub.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy")
 
@@ -437,7 +448,7 @@ def test_image_copy_local_dir(client, servicer, tmp_path_with_content):
         assert set(servicer.mount_contents["mo-1"].keys()) == {"/data.txt", "/data/sub"}
 
 
-def test_image_docker_command_copy(client, servicer, tmp_path_with_content):
+def test_image_docker_command_copy(client, servicer, tmp_path_with_content, builder_version):
     stub = Stub()
     data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
     stub.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
@@ -449,7 +460,7 @@ def test_image_docker_command_copy(client, servicer, tmp_path_with_content):
         assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
 
 
-def test_image_dockerfile_copy(client, servicer, tmp_path_with_content):
+def test_image_dockerfile_copy(client, servicer, tmp_path_with_content, builder_version):
     dockerfile = NamedTemporaryFile("w", delete=False)
     dockerfile.write("COPY . /dummy\n")
     dockerfile.close()
@@ -465,7 +476,7 @@ def test_image_dockerfile_copy(client, servicer, tmp_path_with_content):
         assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
 
 
-def test_image_env(client, servicer):
+def test_image_env(client, servicer, builder_version):
     stub = Stub(image=Image.debian_slim().env({"HELLO": "world!"}))
 
     with stub.run(client=client):
@@ -473,28 +484,7 @@ def test_image_env(client, servicer):
         assert any("ENV HELLO=" in cmd and "world!" in cmd for cmd in layers[0].dockerfile_commands)
 
 
-@mock.patch("modal.image._Image.builder_version", None)
-@mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"])
-@mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"])
-def test_image_builder_version(client, servicer, server_url_env):
-    stub = Stub(image=Image.debian_slim())
-    with stub.run(client=client):
-        assert servicer.image_builder_versions
-        for version in servicer.image_builder_versions.values():
-            assert version == "2000.01"
-
-
-@mock.patch("modal.image._Image.builder_version", None)
-@mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"])
-@mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"])
-def test_image_builder_supported_versions(client, servicer, server_url_env):
-    with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
-        stub = Stub(image=Image.debian_slim())
-        with stub.run(client=client):
-            pass
-
-
-def test_image_gpu(client, servicer):
+def test_image_gpu(client, servicer, builder_version):
     stub = Stub(image=Image.debian_slim().run_commands("echo 0"))
     with stub.run(client=client):
         layers = get_image_layers(stub.image.object_id, servicer)
@@ -512,7 +502,7 @@ def test_image_gpu(client, servicer):
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_A10G
 
 
-def test_image_force_build(client, servicer):
+def test_image_force_build(client, servicer, builder_version):
     stub = Stub()
     stub.image = Image.debian_slim().run_commands("echo 1").pip_install("foo", force_build=True).run_commands("echo 2")
     with stub.run(client=client):
@@ -528,7 +518,7 @@ def test_image_force_build(client, servicer):
         assert servicer.force_built_images == ["im-3", "im-4", "im-5", "im-6", "im-7", "im-8"]
 
 
-def test_workdir(servicer, client):
+def test_workdir(servicer, client, builder_version):
     stub = Stub(image=Image.debian_slim().workdir("/foo/bar"))
 
     with stub.run(client=client):
@@ -644,6 +634,27 @@ def test_inside_ctx_hydrated(client):
 def test_get_client_requirements_path(version, expected):
     path = _get_client_requirements_path(version)
     assert os.path.basename(path) == expected
+
+
+@mock.patch("modal.image._Image.builder_version", None)
+@mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"])
+@mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"])
+def test_image_builder_version(client, servicer, server_url_env):
+    stub = Stub(image=Image.debian_slim())
+    with stub.run(client=client):
+        assert servicer.image_builder_versions
+        for version in servicer.image_builder_versions.values():
+            assert version == "2000.01"
+
+
+@mock.patch("modal.image._Image.builder_version", None)
+@mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"])
+@mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"])
+def test_image_builder_supported_versions(client, servicer, server_url_env):
+    with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
+        stub = Stub(image=Image.debian_slim())
+        with stub.run(client=client):
+            pass
 
 
 @skip_windows("Different hash values for context file paths")

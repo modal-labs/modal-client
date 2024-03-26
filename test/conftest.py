@@ -729,7 +729,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def ImageBuilderVersionLookup(self, stream):
-        await stream.send_message(api_pb2.ImageBuilderVersionLookupResponse(version=max(get_args(ImageBuilderVersion))))
+        version = max(get_args(ImageBuilderVersion))
+        await stream.send_message(api_pb2.ImageBuilderVersionLookupResponse(version=version))
 
     ### Mount
 

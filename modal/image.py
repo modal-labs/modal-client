@@ -39,7 +39,7 @@ if typing.TYPE_CHECKING:
 ImageBuilderVersion = Literal["2023.12", "PREVIEW"]
 
 
-def _default_image():
+def _default_image() -> "_Image":
     """Single source of truth for the default image, which we reference from a number of places."""
     return _Image.debian_slim()
 
@@ -155,10 +155,9 @@ async def _get_builder_version() -> ImageBuilderVersion:
             )
         return cast(ImageBuilderVersion, version)  # Not sure why mypy can't figure this out itself
 
-    # We're mutating an attribute on the _Image object for the following reasons:
-    # - We might need to know the version for each layer of the image, and we don't want superfluous RPCs
-    # - We don't want to resolve the lookup in global scope because importing modal shouldn't require Auth
-    # - We don't mutate any state on _Image in image construction methods, we create a new object each time
+    # This is a little weird, but we're mutating an attribute on the _Image object because we want
+    # to know the version when we build each layer of the image without making a lot of superfluous RPCs.
+    # We can simplify this when we make it possible to coalesce image layers before sending to the server.
     if _Image.builder_version is None:
         if config_version := config.get("image_builder_version"):
             _Image.builder_version = check_version_is_supported(config_version)
