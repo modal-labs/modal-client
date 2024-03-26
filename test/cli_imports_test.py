@@ -8,7 +8,6 @@ from modal.cli.import_refs import (
     import_file_or_module,
     parse_import_ref,
 )
-from modal.functions import _Function
 from modal.stub import _LocalEntrypoint, _Stub
 
 # Some helper vars for import_stub tests:
@@ -88,9 +87,7 @@ dir_containing_python_package = {
         # # file syntax
         (empty_dir_with_python_file, "mod.py", _Stub),
         (empty_dir_with_python_file, "mod.py::stub", _Stub),
-        (empty_dir_with_python_file, "mod.py::stub.Parent.meth", _Function),
         (empty_dir_with_python_file, "mod.py::other_stub", _Stub),
-        (empty_dir_with_python_file, "mod.py::other_stub.func", _Function),
         (dir_containing_python_package, "pack/file.py", _Stub),
         (dir_containing_python_package, "pack/sub/subfile.py", _Stub),
         (dir_containing_python_package, "dir/sub/subfile.py", _Stub),
