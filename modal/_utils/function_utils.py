@@ -18,9 +18,8 @@ from ..exception import InvalidError, ModuleNotMountable
 from ..mount import ROOT_DIR, _Mount
 from ..object import Object
 
-# Expand symlinks in paths (homebrew Python paths are all symlinks).
-SYS_PREFIXES = set(
-    os.path.realpath(p)
+SYS_PREFIXES = {
+    Path(p)
     for p in (
         sys.prefix,
         sys.base_prefix,
@@ -30,7 +29,9 @@ SYS_PREFIXES = set(
         *site.getsitepackages(),
         site.getusersitepackages(),
     )
-)
+}
+
+SYS_PREFIXES |= {p.resolve() for p in SYS_PREFIXES}
 
 
 class FunctionInfoType(Enum):
@@ -265,7 +266,8 @@ class FunctionInfo:
                 continue
 
             for local_path, remote_path in mount_paths:
-                if any(str(local_path).startswith(p) for p in SYS_PREFIXES) or _is_modal_path(remote_path):
+                # TODO: use is_relative_to once we deprecate Python 3.8
+                if any(str(local_path).startswith(str(p)) for p in SYS_PREFIXES) or _is_modal_path(remote_path):
                     # skip any module that has paths in SYS_PREFIXES, or would overwrite the modal Package in the container
                     break
             else:

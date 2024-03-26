@@ -1365,6 +1365,11 @@ def reset_container_app():
         _ContainerApp._reset_container()
 
 
+@pytest.fixture
+def repo_root(request):
+    return Path(request.config.rootdir)
+
+
 @pytest.fixture(scope="module")
 def test_dir(request):
     """Absolute path to directory containing test file."""
