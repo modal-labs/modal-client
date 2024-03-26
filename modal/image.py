@@ -218,7 +218,7 @@ class _Image(_Object, type_prefix="im"):
     def _from_args(
         *,
         base_images: Optional[Dict[str, "_Image"]] = None,
-        dockerfile_function: Optional[Callable[[], DockerfileSpec]] = None,
+        dockerfile_function: Optional[Callable[[ImageBuilderVersion], DockerfileSpec]] = None,
         secrets: Optional[Sequence[_Secret]] = None,
         gpu_config: Optional[api_pb2.GPUConfig] = None,
         build_function: Optional["modal.functions._Function"] = None,
@@ -261,7 +261,7 @@ class _Image(_Object, type_prefix="im"):
             if dockerfile_function is None:
                 dockerfile = DockerfileSpec(commands=[], context_files={})
             else:
-                dockerfile = dockerfile_function()
+                dockerfile = dockerfile_function(builder_version)
 
             if not dockerfile.commands and not build_function:
                 raise InvalidError(
@@ -404,7 +404,7 @@ class _Image(_Object, type_prefix="im"):
             "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
         )
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(
                 commands=kwargs.pop("dockerfile_commands", []),
                 context_files=kwargs.pop("context_files", {}),
@@ -430,7 +430,7 @@ class _Image(_Object, type_prefix="im"):
         if not isinstance(mount, _Mount):
             raise InvalidError("The mount argument to copy has to be a Modal Mount object")
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = ["FROM base", f"COPY . {remote_path}"]  # copy everything from the supplied mount
             return DockerfileSpec(commands=commands, context_files={})
 
@@ -448,7 +448,7 @@ class _Image(_Object, type_prefix="im"):
         basename = str(Path(local_path).name)
         mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY {basename} {remote_path}"], context_files={})
 
         return _Image._from_args(
@@ -464,7 +464,7 @@ class _Image(_Object, type_prefix="im"):
         """
         mount = _Mount.from_local_dir(local_path, remote_path="/")
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"], context_files={})
 
         return _Image._from_args(
@@ -496,7 +496,7 @@ class _Image(_Object, type_prefix="im"):
         if not pkgs:
             return self
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
             package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
 
@@ -587,7 +587,7 @@ class _Image(_Object, type_prefix="im"):
 
         secret_names = ",".join([s.app_name if hasattr(s, "app_name") else str(s) for s in secrets])  # type: ignore
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = ["FROM base"]
             if any(r.startswith("github") for r in repositories):
                 commands.append(
@@ -627,7 +627,7 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Install a list of Python packages from a local `requirements.txt` file."""
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             requirements_txt_path = os.path.expanduser(requirements_txt)
             context_files = {"/.requirements.txt": requirements_txt_path}
 
@@ -670,7 +670,7 @@ class _Image(_Object, type_prefix="im"):
         all of the packages in each listed section are installed as well.
         """
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             # Defer toml import so we don't need it in the container runtime environment
             import toml
 
@@ -741,7 +741,7 @@ class _Image(_Object, type_prefix="im"):
         only the dependencies. For including local packages see `modal.Mount.from_local_python_packages`
         """
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             context_files = {"/.pyproject.toml": os.path.expanduser(poetry_pyproject_toml)}
 
             commands = ["FROM base", "RUN python -m pip install poetry~=1.7"]
@@ -805,7 +805,7 @@ class _Image(_Object, type_prefix="im"):
         if not cmds:
             return self
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", *cmds], context_files=context_files)
 
         return _Image._from_args(
@@ -829,7 +829,7 @@ class _Image(_Object, type_prefix="im"):
         if not cmds:
             return self
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base"] + [f"RUN {cmd}" for cmd in cmds], context_files={})
 
         return _Image._from_args(
@@ -848,7 +848,7 @@ class _Image(_Object, type_prefix="im"):
         """
         _validate_python_version(python_version)
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             requirements_path = _get_client_requirements_path(python_version)
             context_files = {"/modal_requirements.txt": requirements_path}
 
@@ -923,7 +923,7 @@ class _Image(_Object, type_prefix="im"):
         if not pkgs:
             return self
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
             channel_args = "".join(f" -c {channel}" for channel in channels)
 
@@ -952,7 +952,7 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Update a Conda environment using dependencies from a given environment.yml file."""
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             context_files = {"/environment.yml": os.path.expanduser(environment_yml)}
 
             commands = [
@@ -982,7 +982,7 @@ class _Image(_Object, type_prefix="im"):
         """
         _validate_python_version(python_version)
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             tag = "mambaorg/micromamba:1.3.1-bullseye-slim"
             setup_commands = [
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
@@ -1015,7 +1015,7 @@ class _Image(_Object, type_prefix="im"):
         if not pkgs:
             return self
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
             channel_args = "".join(f" -c {channel}" for channel in channels)
 
@@ -1102,7 +1102,7 @@ class _Image(_Object, type_prefix="im"):
         if "image_registry_config" not in kwargs and secret is not None:
             kwargs["image_registry_config"] = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS, secret)
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, add_python)
             context_files = {"/modal_requirements.txt": _get_client_requirements_path(add_python)}
             return DockerfileSpec(commands=commands, context_files=context_files)
@@ -1228,14 +1228,14 @@ class _Image(_Object, type_prefix="im"):
 
         # --- Build the base dockerfile
 
-        def build_base_dockerfile() -> DockerfileSpec:
+        def build_dockerfile_base(version: ImageBuilderVersion) -> DockerfileSpec:
             with open(os.path.expanduser(path)) as f:
                 commands = f.read().split("\n")
             return DockerfileSpec(commands=commands, context_files={})
 
         gpu_config = parse_gpu_config(gpu)
         base_image = _Image._from_args(
-            dockerfile_function=build_base_dockerfile,
+            dockerfile_function=build_dockerfile_base,
             context_mount=context_mount,
             gpu_config=gpu_config,
             secrets=secrets,
@@ -1253,7 +1253,7 @@ class _Image(_Object, type_prefix="im"):
         else:
             context_mount = None
 
-        def enhance_dockerfile() -> DockerfileSpec:
+        def build_dockerfile_python(version: ImageBuilderVersion) -> DockerfileSpec:
             requirements_path = _get_client_requirements_path(add_python)
 
             add_python_commands = []
@@ -1278,7 +1278,7 @@ class _Image(_Object, type_prefix="im"):
 
         return _Image._from_args(
             base_images={"base": base_image},
-            dockerfile_function=enhance_dockerfile,
+            dockerfile_function=build_dockerfile_python,
             context_mount=context_mount,
             force_build=force_build,
         )
@@ -1287,7 +1287,7 @@ class _Image(_Object, type_prefix="im"):
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             full_python_version = _dockerhub_python_version(python_version)
 
             requirements_path = _get_client_requirements_path(full_python_version)
@@ -1334,7 +1334,7 @@ class _Image(_Object, type_prefix="im"):
 
         package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = [
                 "FROM base",
                 "RUN apt-get update",
@@ -1447,7 +1447,7 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = ["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
             return DockerfileSpec(commands=commands, context_files={})
 
@@ -1471,7 +1471,7 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
 
-        def build_dockerfile() -> DockerfileSpec:
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = ["FROM base"] + [f"WORKDIR {shlex.quote(path)}"]
             return DockerfileSpec(commands=commands, context_files={})
 
