@@ -236,9 +236,9 @@ class _Stub:
         self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
-        """Deprecated!
+        """Stub assignments of the form `stub.x` or `stub["x"]` are deprecated!
 
-        The only use case for `stub[...]` assignments is in conjunction with `.new()`, which is
+        The only use cases for these assignments is in conjunction with `.new()`, which is now
         in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
         need to assign those objects to the stub. Example:
 
@@ -265,15 +265,20 @@ class _Stub:
             # Hacky way to avoid certain issues, e.g. pickle will try to look this up
             raise AttributeError(f"Stub has no member {tag}")
         # Return a reference to an object that will be created in the future
-        return self._indexed_objects[tag]
+        obj: _Object = self._indexed_objects[tag]
+        deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
+        return obj
 
     def __setattr__(self, tag: str, obj: _Object):
         # Note that only attributes defined in __annotations__ are set on the object itself,
         # everything else is registered on the indexed_objects
         if tag in self.__annotations__:
             object.__setattr__(self, tag, obj)
+        elif tag == "image":
+            self._indexed_objects["image"] = obj
         else:
             self._validate_blueprint_value(tag, obj)
+            deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
             self._add_object(tag, obj)
 
     @property
