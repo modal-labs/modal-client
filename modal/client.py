@@ -2,7 +2,7 @@
 import asyncio
 import platform
 import warnings
-from typing import Awaitable, Callable, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
@@ -11,7 +11,6 @@ from grpclib import GRPCError, Status
 from modal_proto import api_grpc, api_pb2
 from modal_version import __version__
 
-from ._utils import async_utils
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
 from ._utils.http_utils import http_client_with_tls
@@ -99,7 +98,6 @@ class _Client:
         self.credentials = credentials
         self.version = version
         self.no_verify = no_verify
-        self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel = None
         self._stub: Optional[api_grpc.ModalClientStub] = None
 
@@ -118,25 +116,11 @@ class _Client:
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 
     async def _close(self):
-        if self._pre_stop is not None:
-            logger.debug("Client: running pre-stop coroutine before shutting down")
-            await self._pre_stop()  # type: ignore
-
         if self._channel is not None:
             self._channel.close()
 
         # Remove cached client.
         self.set_env_client(None)
-
-    def set_pre_stop(self, pre_stop: Callable[[], Awaitable[None]]):
-        """mdmd:hidden"""
-        # hack: stub.serve() gets into a losing race with the `on_shutdown` client
-        # teardown when an interrupt signal is received (eg. KeyboardInterrupt).
-        # By registering a pre-stop fn stub.serve() can have its teardown
-        # performed before the client is disconnected.
-        #
-        # ref: github.com/modal-labs/modal-client/pull/108
-        self._pre_stop = pre_stop
 
     async def _verify(self):
         logger.debug("Client: Starting")
@@ -227,7 +211,6 @@ class _Client:
             else:
                 client = _Client(server_url, client_type, credentials)
                 await client._open()
-                async_utils.on_shutdown(client._close())
                 try:
                     await client._verify()
                 except AuthError:
@@ -252,7 +235,6 @@ class _Client:
 
         client = _Client(server_url, client_type, credentials)
         await client._open()
-        async_utils.on_shutdown(client._close())
         return client
 
     @classmethod
