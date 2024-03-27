@@ -129,9 +129,8 @@ def _make_pip_install_args(
     return args
 
 
-async def _get_builder_version() -> ImageBuilderVersion:
+async def _get_builder_version(client: _Client) -> ImageBuilderVersion:
     async def lookup_version() -> str:
-        client = await _Client.from_env()
         resp = await client.stub.ImageBuilderVersionLookup(Empty())
         return resp.version
 
@@ -250,7 +249,7 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            builder_version = await _get_builder_version()
+            builder_version = await _get_builder_version(resolver.client)
 
             if dockerfile_function is None:
                 dockerfile = DockerfileSpec(commands=[], context_files={})
