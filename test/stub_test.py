@@ -31,9 +31,6 @@ async def test_kwargs(servicer, client):
             assert await stub["d"].get.aio("foo") == "bar"  # type: ignore
             assert await stub["q"].get.aio() == "baz"  # type: ignore
 
-        with pytest.raises(DeprecationError):
-            stub.app["d"]
-
 
 @pytest.mark.asyncio
 async def test_attrs(servicer, client):
@@ -47,9 +44,6 @@ async def test_attrs(servicer, client):
             await stub.q.put.aio("baz")  # type: ignore
             assert await stub.d.get.aio("foo") == "bar"  # type: ignore
             assert await stub.q.get.aio() == "baz"  # type: ignore
-
-        with pytest.raises(DeprecationError):
-            stub.app.d
 
 
 @pytest.mark.asyncio

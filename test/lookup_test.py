@@ -2,7 +2,7 @@
 import pytest
 
 from modal import Function, Stub, Volume, web_endpoint
-from modal.exception import DeprecationError, ExecutionError, NotFoundError
+from modal.exception import ExecutionError, NotFoundError
 from modal.runner import deploy_stub
 
 
@@ -44,10 +44,6 @@ def test_lookup_function(servicer, client):
     # Make sure the new-style local calls raise an error
     with pytest.raises(ExecutionError):
         assert f.local(2, 4) == 20
-
-    # Make sure the old-style local calls raise an error
-    with pytest.raises(DeprecationError):
-        assert f(2, 4)
 
 
 def test_webhook_lookup(servicer, client):
