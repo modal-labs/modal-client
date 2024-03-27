@@ -10,7 +10,7 @@ from synchronicity.exceptions import UserCodeException
 import modal
 from modal import Image, Mount, NetworkFileSystem, Proxy, Stub, web_endpoint
 from modal._vendor import cloudpickle
-from modal.exception import DeprecationError, ExecutionError, InvalidError
+from modal.exception import ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_stub
 from modal_proto import api_pb2
@@ -35,34 +35,17 @@ def dummy():
 def test_run_function(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with stub.run(client=client):
-        # Old-style remote calls
-        with pytest.raises(DeprecationError):
-            foo.call(2, 4)
-
-        # New-style remote calls
         assert foo.remote(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
 
 
 @pytest.mark.asyncio
 async def test_call_function_locally(client, servicer):
-    # Old-style local calls
-    with pytest.raises(DeprecationError):
-        foo(22, 44)
-
-    with pytest.raises(DeprecationError):
-        await async_foo(22, 44)
-
-    # New-style local calls
     assert foo.local(22, 44) == 77  # call it locally
     assert await async_foo.local(22, 44) == 78
 
     with stub.run(client=client):
         assert foo.remote(2, 4) == 20
-        with pytest.raises(DeprecationError):
-            foo(22, 55)
-        with pytest.raises(DeprecationError):
-            await async_foo(22, 44)
         assert async_foo.remote(2, 4) == 20
         assert await async_foo.remote.aio(2, 4) == 20
 
@@ -216,10 +199,6 @@ async def test_generator(client, servicer):
         assert next(res) == "bar"
         assert list(res) == ["baz", "boo"]
         assert len(servicer.cleared_function_calls) == 1
-
-        # Check deprecated interface
-        with pytest.raises(DeprecationError):
-            later_gen_modal.call()
 
 
 @pytest.mark.asyncio
@@ -488,13 +467,6 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
             assert len(func.shared_volume_mounts) == 2
             for svm in func.shared_volume_mounts:
                 assert svm.allow_cross_region
-
-
-def test_shared_volumes(client, servicer):
-    stub = Stub()
-    vol = NetworkFileSystem.from_name("foo")
-    with pytest.raises(DeprecationError):
-        stub.function(shared_volumes={"/sv-1": vol})
 
 
 def test_serialize_deserialize_function_handle(servicer, client):

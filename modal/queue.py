@@ -14,7 +14,7 @@ from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
-from .exception import deprecation_error, deprecation_warning
+from .exception import deprecation_warning
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method
 
 
@@ -66,7 +66,7 @@ class _Queue(_Object, type_prefix="qu"):
 
     def __init__(self):
         """mdmd:hidden"""
-        deprecation_error((2023, 6, 27), "`Queue()` is deprecated. Please use `Queue.ephemeral()` instead.")
+        raise RuntimeError("Queue() is not allowed. Please use `Queue.from_name(...)` or `Queue.ephemeral()` instead.")
 
     @classmethod
     @asynccontextmanager

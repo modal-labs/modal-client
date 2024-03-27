@@ -22,7 +22,7 @@ from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -1060,16 +1060,6 @@ class _Image(_Object, type_prefix="im"):
             force_build=force_build,
             **kwargs,
         )
-
-    @staticmethod
-    def from_dockerhub(
-        tag: str,
-        setup_dockerfile_commands: List[str] = [],
-        force_build: bool = False,
-        **kwargs,
-    ):
-        """`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."""
-        deprecation_error((2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead.")
 
     @staticmethod
     def from_gcp_artifact_registry(

@@ -11,4 +11,4 @@ def square(x):
 
 # This should fail in a container
 with stub.run():
-    print(square(42))
+    print(square.remote(42))

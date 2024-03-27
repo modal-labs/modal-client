@@ -198,13 +198,6 @@ class _Stub:
             return False
 
     @property
-    def app(self):
-        """`stub.app` is deprecated: use e.g. `stub.obj` instead of `stub.app.obj`
-        if you need to access objects on the running app.
-        """
-        deprecation_error((2023, 9, 11), _Stub.app.__doc__)
-
-    @property
     def app_id(self) -> Optional[str]:
         """Return the app_id, if the stub is running."""
         if self._container_app:
@@ -507,9 +500,6 @@ class _Stub:
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
-        shared_volumes: Dict[
-            Union[str, PurePosixPath], _NetworkFileSystem
-        ] = {},  # Deprecated, use `network_file_systems` instead
         # Parameters below here are experimental. Use with caution!
         _allow_background_volume_commits: bool = False,  # Experimental flag
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
@@ -534,12 +524,6 @@ class _Stub:
             image = self._get_default_image()
 
         secrets = [*self._secrets, *secrets]
-
-        if shared_volumes:
-            deprecation_error(
-                (2023, 7, 5),
-                "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
-            )
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any]],
@@ -645,9 +629,6 @@ class _Stub:
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
-        shared_volumes: Dict[
-            Union[str, PurePosixPath], _NetworkFileSystem
-        ] = {},  # Deprecated, use `network_file_systems` instead
         # Parameters below here are experimental. Use with caution!
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
@@ -665,7 +646,6 @@ class _Stub:
             gpu=gpu,
             serialized=serialized,
             mounts=mounts,
-            shared_volumes=shared_volumes,
             network_file_systems=network_file_systems,
             allow_cross_region_volumes=allow_cross_region_volumes,
             volumes=volumes,
