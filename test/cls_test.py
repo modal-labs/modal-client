@@ -9,7 +9,6 @@ from typing_extensions import assert_type
 from modal import Cls, Function, Image, Queue, Stub, build, enter, exit, method
 from modal._serialization import deserialize
 from modal.app import ContainerApp
-from modal.cls import ClsMixin
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.partial_function import (
     _find_callables_for_obj,
@@ -244,13 +243,6 @@ def test_call_cls_remote_no_args(client):
         # Check old method syntax
         with pytest.raises(DeprecationError):
             foo_remote.baz(8)
-
-
-def test_deprecated_mixin():
-    with pytest.raises(DeprecationError):
-
-        class FooRemote(ClsMixin):
-            pass
 
 
 if TYPE_CHECKING:

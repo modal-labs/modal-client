@@ -72,7 +72,7 @@ class _Dict(_Object, type_prefix="di"):
 
     def __init__(self, data={}):
         """mdmd:hidden"""
-        deprecation_error((2023, 6, 27), "`Dict({...})` is deprecated. Please use `Dict.new({...})` instead.")
+        raise RuntimError("`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead")
 
     @classmethod
     @asynccontextmanager

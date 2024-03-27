@@ -66,7 +66,7 @@ class _Queue(_Object, type_prefix="qu"):
 
     def __init__(self):
         """mdmd:hidden"""
-        deprecation_error((2023, 6, 27), "`Queue()` is deprecated. Please use `Queue.ephemeral()` instead.")
+        raise RuntimeError("Queue() is not allowed. Please use `Queue.from_name(...)` or `Queue.ephemeral()` instead.")
 
     @classmethod
     @asynccontextmanager

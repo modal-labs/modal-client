@@ -168,9 +168,6 @@ def _check_config() -> None:
         deprecation_warning((2024, 2, 6), message, show_source=False)
 
 
-if "MODAL_ENV" in os.environ:
-    deprecation_error((2023, 5, 24), "MODAL_ENV has been replaced with MODAL_PROFILE")
-
 _profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
 
 # Define settings

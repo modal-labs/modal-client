@@ -1062,16 +1062,6 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    def from_dockerhub(
-        tag: str,
-        setup_dockerfile_commands: List[str] = [],
-        force_build: bool = False,
-        **kwargs,
-    ):
-        """`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead."""
-        deprecation_error((2023, 8, 25), "`Image.from_dockerhub` is deprecated. Use `Image.from_registry` instead.")
-
-    @staticmethod
     def from_gcp_artifact_registry(
         tag: str,
         secret: Optional[_Secret] = None,

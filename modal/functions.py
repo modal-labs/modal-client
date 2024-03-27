@@ -1360,14 +1360,6 @@ class _Function(_Object, type_prefix="fu"):
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
 
-    def call(self, *args, **kwargs) -> None:
-        """Deprecated. Use `f.remote` or `f.remote_gen` instead."""
-        # TODO: Generics/TypeVars
-        if self._is_generator:
-            deprecation_error((2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote_gen(...)`")
-        else:
-            deprecation_error((2023, 8, 16), "`f.call(...)` is deprecated. It has been renamed to `f.remote(...)`")
-
     @synchronizer.no_io_translation
     @live_method
     async def shell(self, *args, **kwargs) -> None:
@@ -1427,22 +1419,6 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 obj.enter()
                 return fun(*args, **kwargs)
-
-    @synchronizer.nowrap
-    def __call__(self, *args, **kwargs) -> Any:  # TODO: Generics/TypeVars
-        if self._get_is_remote_cls_method():
-            deprecation_error(
-                (2023, 9, 1),
-                "Calling remote class methods like `obj.f(...)` is deprecated. Use `obj.f.remote(...)` for remote calls"
-                " and `obj.f.local(...)` for local calls",
-            )
-        else:
-            deprecation_error(
-                (2023, 8, 16),
-                "Calling Modal functions like `f(...)` is deprecated. Use `f.local(...)` if you want to call the"
-                " function in the same Python process. Use `f.remote(...)` if you want to call the function in"
-                " a Modal container in the cloud",
-            )
 
     @synchronizer.no_input_translation
     @live_method
