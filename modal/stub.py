@@ -198,13 +198,6 @@ class _Stub:
             return False
 
     @property
-    def app(self):
-        """`stub.app` is deprecated: use e.g. `stub.obj` instead of `stub.app.obj`
-        if you need to access objects on the running app.
-        """
-        deprecation_error((2023, 9, 11), _Stub.app.__doc__)
-
-    @property
     def app_id(self) -> Optional[str]:
         """Return the app_id, if the stub is running."""
         if self._container_app:
@@ -236,9 +229,9 @@ class _Stub:
         self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
-        """Deprecated!
+        """Stub assignments of the form `stub.x` or `stub["x"]` are deprecated!
 
-        The only use case for `stub[...]` assignments is in conjunction with `.new()`, which is
+        The only use cases for these assignments is in conjunction with `.new()`, which is now
         in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
         need to assign those objects to the stub. Example:
 
@@ -260,20 +253,29 @@ class _Stub:
         self._add_object(tag, obj)
 
     def __getattr__(self, tag: str) -> _Object:
+        # TODO(erikbern): remove this method later
         assert isinstance(tag, str)
         if tag.startswith("__"):
             # Hacky way to avoid certain issues, e.g. pickle will try to look this up
             raise AttributeError(f"Stub has no member {tag}")
-        # Return a reference to an object that will be created in the future
-        return self._indexed_objects[tag]
+        if tag not in self._indexed_objects:
+            # Primarily to make hasattr work
+            raise AttributeError(f"Stub has no member {tag}")
+        obj: _Object = self._indexed_objects[tag]
+        deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
+        return obj
 
     def __setattr__(self, tag: str, obj: _Object):
+        # TODO(erikbern): remove this method later
         # Note that only attributes defined in __annotations__ are set on the object itself,
         # everything else is registered on the indexed_objects
         if tag in self.__annotations__:
             object.__setattr__(self, tag, obj)
+        elif tag == "image":
+            self._indexed_objects["image"] = obj
         else:
             self._validate_blueprint_value(tag, obj)
+            deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
             self._add_object(tag, obj)
 
     @property
@@ -498,9 +500,6 @@ class _Stub:
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
-        shared_volumes: Dict[
-            Union[str, PurePosixPath], _NetworkFileSystem
-        ] = {},  # Deprecated, use `network_file_systems` instead
         # Parameters below here are experimental. Use with caution!
         _allow_background_volume_commits: bool = False,  # Experimental flag
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
@@ -525,12 +524,6 @@ class _Stub:
             image = self._get_default_image()
 
         secrets = [*self._secrets, *secrets]
-
-        if shared_volumes:
-            deprecation_error(
-                (2023, 7, 5),
-                "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
-            )
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any]],
@@ -636,9 +629,6 @@ class _Stub:
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
-        shared_volumes: Dict[
-            Union[str, PurePosixPath], _NetworkFileSystem
-        ] = {},  # Deprecated, use `network_file_systems` instead
         # Parameters below here are experimental. Use with caution!
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
@@ -656,7 +646,6 @@ class _Stub:
             gpu=gpu,
             serialized=serialized,
             mounts=mounts,
-            shared_volumes=shared_volumes,
             network_file_systems=network_file_systems,
             allow_cross_region_volumes=allow_cross_region_volumes,
             volumes=volumes,

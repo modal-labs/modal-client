@@ -16,11 +16,11 @@ from .supports.skip import skip_windows
 
 
 @pytest.fixture
-def venv_path(tmp_path):
+def venv_path(tmp_path, repo_root):
     venv_path = tmp_path
     subprocess.run([sys.executable, "-m", "venv", venv_path, "--copies", "--system-site-packages"], check=True)
     # Install Modal and a tiny package in the venv.
-    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", "."], check=True)
+    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", repo_root], check=True)
     subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "--force-reinstall", "six"], check=True)
     yield venv_path
 
@@ -148,6 +148,48 @@ def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_f
         "/root/pkg_b/f.py",
         "/root/pkg_b/g/h.py",
     }
+
+
+@pytest.fixture
+def symlinked_python_installation_venv_path(tmp_path, repo_root):
+    # sets up a symlink to the python *installation* (not just the python binary)
+    # and initialize the virtualenv using a path via that symlink
+    # This makes the file paths of any stdlib modules use the symlinked path
+    # instead of the original, which is similar to what some tools do (e.g. mise)
+    # and has the potential to break automounting behavior, so we keep this
+    # test as a regression test for that
+    venv_path = tmp_path / "venv"
+    actual_executable = Path(sys.executable).resolve()
+    assert actual_executable.parent.name == "bin"
+    python_install_dir = actual_executable.parent.parent
+    # create a symlink to the python install *root*
+    symlink_python_install = tmp_path / "python-install"
+    symlink_python_install.symlink_to(python_install_dir)
+
+    # use a python executable specified via the above symlink
+    symlink_python_executable = symlink_python_install / "bin" / "python"
+    # create a new venv
+    subprocess.check_call([symlink_python_executable, "-m", "venv", venv_path, "--copies"])
+    # check that a builtin module, like ast, is indeed identified to be in the non-resolved install path
+    # since this is the source of bugs that we want to assert we don't run into!
+    ast_path = subprocess.check_output(
+        [venv_path / "bin" / "python", "-c", "import ast; print(ast.__file__);"], encoding="utf8"
+    )
+    assert ast_path != Path(ast_path).resolve()
+
+    # install modal from current dir
+    subprocess.check_call([venv_path / "bin" / "pip", "install", repo_root])
+    yield venv_path
+
+
+@skip_windows("venvs behave differently on Windows.")
+def test_mounted_files_symlinked_python_install(
+    symlinked_python_installation_venv_path, supports_dir, server_url_env, servicer
+):
+    subprocess.check_call(
+        [symlinked_python_installation_venv_path / "bin" / "modal", "run", supports_dir / "imports_ast.py"]
+    )
+    assert "/root/ast.py" not in servicer.files_name2sha
 
 
 def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_url_env):

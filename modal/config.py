@@ -82,7 +82,7 @@ from google.protobuf.empty_pb2 import Empty
 from modal_proto import api_pb2
 
 from ._utils.logger import configure_logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import InvalidError, deprecation_warning
 
 # Locate config file and read it
 
@@ -167,9 +167,6 @@ def _check_config() -> None:
         )
         deprecation_warning((2024, 2, 6), message, show_source=False)
 
-
-if "MODAL_ENV" in os.environ:
-    deprecation_error((2023, 5, 24), "MODAL_ENV has been replaced with MODAL_PROFILE")
 
 _profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
 
