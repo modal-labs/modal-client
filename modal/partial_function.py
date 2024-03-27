@@ -387,8 +387,8 @@ def _web_server(
     """
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError("First argument of `@web_server` must be a local port, such as `@web_server(8000)`.")
-    if startup_timeout < 0:
-        raise InvalidError("The `startup_timeout` argument of `@web_server` must be non-negative.")
+    if startup_timeout <= 0:
+        raise InvalidError("The `startup_timeout` argument of `@web_server` must be positive.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         return _PartialFunction(
