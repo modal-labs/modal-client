@@ -4,6 +4,7 @@ import asyncio
 import base64
 import dataclasses
 import json
+import logging
 import os
 import pathlib
 import pickle
@@ -20,8 +21,9 @@ from unittest.mock import MagicMock
 
 from grpclib import Status
 from grpclib.exceptions import GRPCError
+from synchronicity.synchronizer import SYNCHRONIZER_ATTR
 
-from modal import Client
+from modal import Client, _container_entrypoint
 from modal._container_entrypoint import UserException, main
 from modal._serialization import (
     deserialize,
@@ -401,8 +403,8 @@ def _get_web_inputs(path="/"):
     return _get_inputs(((scope,), {}))
 
 
-@async_utils.synchronize_api  # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
 async def _put_web_body(servicer, body: bytes):
+    # this needs to run on the servicer's event loop!
     asgi = {"type": "http.request", "body": body, "more_body": False}
     data = serialize_data_format(asgi, api_pb2.DATA_FORMAT_ASGI)
 
@@ -411,9 +413,10 @@ async def _put_web_body(servicer, body: bytes):
 
 
 @skip_windows_unix_socket
-def test_webhook(unix_servicer):
+def test_webhook(unix_servicer, servicer_synchronizer):
     inputs = _get_web_inputs()
-    _put_web_body(unix_servicer, b"")
+    put_web_body = servicer_synchronizer.create_blocking(_put_web_body)  # run in the servicer's event loop
+    put_web_body(unix_servicer, b"")
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
@@ -1388,3 +1391,27 @@ def test_sigint_termination_exit_handler(servicer, exit_type):
     assert "[events:enter_sync,enter_async,delay,exit_sync,exit_async]" in stdout.decode()
     assert "Traceback" not in stderr.decode()
     assert servicer.task_result is None
+
+
+def test_container_warns_on_synchronicity_delays(unix_servicer, monkeypatch, caplog, capsys):
+    # inject artificial broken async code into the synchronicity loop of the container
+    original_heartbeat = _container_entrypoint._FunctionIOManager._heartbeat_handle_cancellations
+    synchronizer = getattr(_container_entrypoint.FunctionIOManager, SYNCHRONIZER_ATTR)
+    synchronizer.loop_delay_monitor_period = 0.1
+    synchronizer.loop_delay_monitor_threshold = 0.1
+
+    async def broken_heartbeat(*args, **kwargs):
+        time.sleep(0.2)
+        return await original_heartbeat(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "modal._container_entrypoint._FunctionIOManager._heartbeat_handle_cancellations", broken_heartbeat
+    )
+    with caplog.at_level(logging.WARNING):
+        # note that it would be better if we could assert that the logs actually
+        # appears in stderr (to ensure that the logger is properly configured as well)
+        # but that is poorly supported by pytest at the moment due to its built in log capture (https://github.com/pytest-dev/pytest/issues/9018)
+        _run_container(unix_servicer, "test.supports.functions", "square")
+        time.sleep(0.25)  # make sure loop monitor has a chance to trigger
+        assert len(caplog.messages) >= 1
+        assert "event loop delay" in caplog.messages[0]

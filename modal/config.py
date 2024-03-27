@@ -261,6 +261,8 @@ config = Config()
 logger = logging.getLogger("modal-client")
 configure_logger(logger, config["loglevel"], config["log_format"])
 
+# configure synchronicity's logger as well
+configure_logger(logging.getLogger("synchronicity"), config["loglevel"], config["log_format"])
 # Utils to write config
 
 

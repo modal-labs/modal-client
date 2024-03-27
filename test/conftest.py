@@ -23,13 +23,14 @@ import aiohttp.web_runner
 import grpclib.server
 import pkg_resources
 import pytest_asyncio
+import synchronicity
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 import modal._serialization
 from modal import __version__, config
 from modal._serialization import serialize_data_format
-from modal._utils.async_utils import asyncify, synchronize_api
+from modal._utils.async_utils import asyncify
 from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import find_free_port
 from modal._utils.http_utils import run_temporary_http_server
@@ -1230,8 +1231,15 @@ async def blob_server():
         yield host, blobs
 
 
+@pytest.fixture
+def servicer_synchronizer():
+    # give the test servicer its own synchronicity thread, so it doesnt
+    # interact with Modal client's synchronicity thread
+    return synchronicity.Synchronizer()
+
+
 @pytest_asyncio.fixture(scope="function")
-async def servicer_factory(blob_server):
+async def servicer_factory(blob_server, servicer_synchronizer):
     @contextlib.asynccontextmanager
     async def create_server(host=None, port=None, path=None):
         blob_host, blobs = blob_server
@@ -1253,8 +1261,8 @@ async def servicer_factory(blob_server):
             # refactor the way that _Client cleanup happens.
             # await server.wait_closed()
 
-        start_servicer = synchronize_api(_start_servicer)
-        stop_servicer = synchronize_api(_stop_servicer)
+        start_servicer = servicer_synchronizer.create_blocking(_start_servicer)
+        stop_servicer = servicer_synchronizer.create_blocking(_stop_servicer)
 
         await start_servicer.aio()
         try:
