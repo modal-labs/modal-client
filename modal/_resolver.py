@@ -2,26 +2,21 @@
 import asyncio
 import contextlib
 from asyncio import Future
-from typing import TYPE_CHECKING, Dict, Hashable, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
 
 from grpclib import GRPCError, Status
 
+from modal.exception import ExecutionError, NotFoundError
 from modal_proto import api_pb2
 
 if TYPE_CHECKING:
-    from rich.spinner import Spinner
     from rich.tree import Tree
 
     from modal.object import _Object
-else:
-    Spinner = TypeVar("Spinner")
-    Tree = TypeVar("Tree")
-
-from modal.exception import ExecutionError, NotFoundError
 
 
 class StatusRow:
-    def __init__(self, progress: Optional[Tree]):
+    def __init__(self, progress: "Optional[Tree]"):
         from ._output import (
             step_progress,
         )
@@ -47,7 +42,6 @@ class StatusRow:
 
 
 class Resolver:
-    _tree: Tree
     _local_uuid_to_future: Dict[str, Future]
     _environment_name: Optional[str]
     _app_id: Optional[str]
