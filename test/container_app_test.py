@@ -24,6 +24,9 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
     await container_app.init.aio(container_client, "ap-123")
     stub = Stub()
 
+    # This is normally done in _container_entrypoint
+    container_app.associate_stub_container(stub)
+
     # Now, let's create my_f after the app started running and make sure it works
     my_f_container = stub.function()(my_f_1)
     assert await my_f_container.remote.aio(42) == 1764  # type: ignore

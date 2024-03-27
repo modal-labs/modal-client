@@ -38,7 +38,7 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
 from ._utils.grpc_utils import retry_transient_errors
-from .app import _container_app, _ContainerApp, interact
+from .app import ContainerApp, _container_app, _ContainerApp, interact
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
@@ -875,16 +875,21 @@ def import_function(
             raise InvalidError(f"Invalid function qualname {qual_name}")
 
     # If the cls/function decorator was applied in local scope, but the stub is global, we can look it up
-    if active_stub is None and function_def.stub_name:
+    if active_stub is None:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated stubs - if there is only one with the indicated name, use that one
-        matching_stubs = _Stub._all_stubs.get(function_def.stub_name, [])
+        stub_name: Optional[str] = function_def.stub_name or None  # coalesce protobuf field to None
+        matching_stubs = _Stub._all_stubs.get(stub_name, [])
         if len(matching_stubs) > 1:
+            if stub_name is not None:
+                warning_sub_message = f"stub with the same name ('{stub_name}')"
+            else:
+                warning_sub_message = "unnamed stub"
             logger.warning(
-                "You have multiple stubs with the same name which may prevent you from calling into other functions or using stub.is_inside(). It's recommended to name all your Stubs uniquely."
+                f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
             )
         elif len(matching_stubs) == 1:
-            active_stub = matching_stubs[0]
+            active_stub, = matching_stubs
         # there could also technically be zero found stubs, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
@@ -992,7 +997,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     function_io_manager = FunctionIOManager(container_args, client)
 
     # Define a global app (need to do this before imports).
-    container_app = function_io_manager.initialize_app()
+    container_app: ContainerApp = function_io_manager.initialize_app()
 
     with function_io_manager.heartbeats(), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
@@ -1012,7 +1017,14 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 client,
             )
 
+        # Initialize objects on the stub.
+        if imp_fun.stub is not None:
+            container_app.associate_stub_container(imp_fun.stub)
+
         # Hydrate all function dependencies.
+        # TODO(erikbern): we an remove this once we
+        # 1. Enable lazy hydration for all objects
+        # 2. Fully deprecate .new() objects
         if imp_fun.function:
             dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
