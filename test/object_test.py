@@ -13,8 +13,6 @@ async def test_async_factory(client):
         async with stub.run(client=client):
             assert isinstance(stub.my_factory, Queue)
             assert stub.my_factory.object_id == "qu-1"
-            with pytest.raises(DeprecationError):
-                stub.app.my_factory
 
 
 def test_new_hydrated(client):

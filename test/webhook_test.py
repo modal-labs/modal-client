@@ -107,7 +107,7 @@ async def test_webhook_decorator_in_wrong_order(servicer, client):
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @web_endpoint()
+        @web_endpoint()  # type: ignore
         @stub.function(serialized=True)
         async def g(x):
             pass
