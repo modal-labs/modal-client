@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.1 (2024-03-27)
+
+- Raise an error on `@web_server(startup_timeout=0)`, which is an invalid configuration.
+
+
+
 ### 0.62.0 (2024-03-26)
 
 - The `.new()` method has now been deprecated on all Modal objects. It should typically be replaced with `.from_name(...)` in Modal app code, or `.ephemeral()` in scripts that use Modal
