@@ -2,7 +2,7 @@
 import asyncio
 import contextlib
 from asyncio import Future
-from typing import TYPE_CHECKING, Dict, Hashable, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
 
 from grpclib import GRPCError, Status
 
