@@ -65,7 +65,6 @@ from .exception import (
     InvalidError,
     NotFoundError,
     RemoteError,
-    deprecation_error,
     deprecation_warning,
 )
 from .gpu import GPU_T, parse_gpu_config

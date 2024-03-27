@@ -22,7 +22,7 @@ from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 from .config import config, logger
-from .exception import InvalidError, NotFoundError, RemoteError, deprecation_error, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem

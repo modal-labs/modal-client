@@ -7,7 +7,7 @@ import os
 import time
 import typing
 from pathlib import Path, PurePosixPath
-from typing import AsyncGenerator, Callable, List, Optional, Sequence, Tuple, Type, Union
+from typing import AsyncGenerator, Callable, List, Optional, Tuple, Type, Union
 
 import aiostream
 from google.protobuf.message import Message

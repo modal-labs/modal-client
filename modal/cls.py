@@ -15,7 +15,7 @@ from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import InvalidError, NotFoundError, deprecation_error
+from .exception import InvalidError, NotFoundError
 from .functions import (
     _parse_retries,
 )

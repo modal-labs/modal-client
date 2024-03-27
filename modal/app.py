@@ -13,7 +13,7 @@ from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
 from .client import _Client
 from .config import logger
-from .exception import ExecutionError, InvalidError, deprecation_error
+from .exception import ExecutionError, InvalidError
 from .object import _Object
 
 if TYPE_CHECKING:
