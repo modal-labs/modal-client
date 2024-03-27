@@ -71,6 +71,9 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
         else:
             bucket_type = mount.bucket_type
 
+        if mount.requester_pays and not mount.secret:
+            raise ValueError("Credentials required in order to use Requester Pays.")
+    
         cloud_bucket_mount = api_pb2.CloudBucketMount(
             bucket_name=mount.bucket_name,
             mount_path=path,
