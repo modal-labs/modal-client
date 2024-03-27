@@ -55,6 +55,7 @@ class _CloudBucketMount:
     secret: Optional[_Secret] = None
 
     read_only: bool = False
+    requester_pays: bool = False
     bucket_type: Union[
         BucketType, str
     ] = BucketType.S3.value  # S3 is the default bucket type until other cloud buckets are supported
@@ -70,12 +71,16 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
         else:
             bucket_type = mount.bucket_type
 
+        if mount.requester_pays and not mount.secret:
+            raise ValueError("Credentials required in order to use Requester Pays.")
+
         cloud_bucket_mount = api_pb2.CloudBucketMount(
             bucket_name=mount.bucket_name,
             mount_path=path,
             credentials_secret_id=mount.secret.object_id if mount.secret else "",
             read_only=mount.read_only,
             bucket_type=bucket_type.proto,
+            requester_pays=mount.requester_pays,
         )
         cloud_bucket_mounts.append(cloud_bucket_mount)
 
