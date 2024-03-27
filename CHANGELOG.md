@@ -10,6 +10,11 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.3 (2024-03-27)
+
+- User can now mount S3 buckets using [Requester Pays](https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html). This can be done with `CloudBucketMount(..., requester_pays=True)`.
+
+
 ### 0.62.1 (2024-03-27)
 
 - Raise an error on `@web_server(startup_timeout=0)`, which is an invalid configuration.
