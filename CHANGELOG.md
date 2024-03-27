@@ -28,6 +28,10 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 
 
+
+## 0.61
+
+
 ### 0.61.104 (2024-03-25)
 
 - Fixed a bug where images based on `micromamba` could fail to build if requesting Python 3.12 when a different version of Python was being used locally.
@@ -170,6 +174,9 @@ def my_fn(x):
     breakpoint()
 ```
 
+
+
+## 0.60
 
 
 ### 0.60.0 (2024-02-29)
