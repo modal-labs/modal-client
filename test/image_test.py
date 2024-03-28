@@ -59,10 +59,7 @@ def builder_version(request, server_url_env):
             return
         else:
             pytest.skip("Parameterized patching not working on Py3.8")
-    with (
-        mock.patch("test.conftest.ImageBuilderVersion", Literal[version]),  # type: ignore
-        mock.patch("modal.image._Image.builder_version", None),
-    ):
+    with mock.patch("test.conftest.ImageBuilderVersion", Literal[version]):  # type: ignore
         yield version
 
 

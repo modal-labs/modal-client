@@ -10,7 +10,6 @@ from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, cast, get_args
 
-from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -22,7 +21,6 @@ from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
-from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
@@ -129,36 +127,20 @@ def _make_pip_install_args(
     return args
 
 
-async def _get_builder_version(client: _Client) -> ImageBuilderVersion:
-    async def lookup_version() -> str:
-        resp = await client.stub.ImageBuilderVersionLookup(Empty())
-        return resp.version
-
-    def check_version_is_supported(version: str) -> ImageBuilderVersion:
-        # Special case "PREVIEW": we allow, but don't advertise it, as it's intended for development
-        supported_versions: Set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
-        if version not in supported_versions:
-            if version < min(supported_versions):
-                remedy = "client library"
-            else:
-                remedy = "image builder version using the Modal dashboard"
-            raise VersionError(
-                "This version of the modal client supports the following image builder versions:"
-                f" {supported_versions - {'PREVIEW'}!r}"
-                f" You are using image builder {version!r}. Please update your {remedy}."
-            )
-        return cast(ImageBuilderVersion, version)  # Not sure why mypy can't figure this out itself
-
-    # This is a little weird, but we're mutating an attribute on the _Image object because we want
-    # to know the version when we build each layer of the image without making a lot of superfluous RPCs.
-    # We can simplify this when we make it possible to coalesce image layers before sending to the server.
-    if _Image.builder_version is None:
-        if config_version := config.get("image_builder_version"):
-            _Image.builder_version = check_version_is_supported(config_version)
+def _check_image_builder_version(version: str) -> ImageBuilderVersion:
+    # Special case "PREVIEW": we allow, but don't advertise it, as it's intended for development
+    supported_versions: Set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
+    if version not in supported_versions:
+        if version < min(supported_versions):
+            remedy = "client library"
         else:
-            _Image.builder_version = check_version_is_supported(await lookup_version())
-
-    return _Image.builder_version
+            remedy = "image builder version using the Modal dashboard"
+        raise VersionError(
+            "This version of the modal client supports the following image builder versions:"
+            f" {supported_versions - {'PREVIEW'}!r}"
+            f" You are using image builder {version!r}. Please update your {remedy}."
+        )
+    return cast(ImageBuilderVersion, version)  # Not sure why mypy can't figure this out itself
 
 
 class _ImageRegistryConfig:
@@ -196,7 +178,6 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
-    builder_version: Optional[ImageBuilderVersion] = None
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
@@ -249,7 +230,7 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            builder_version = await _get_builder_version(resolver.client)
+            builder_version = _check_image_builder_version(resolver.client.image_builder_version)
 
             if dockerfile_function is None:
                 dockerfile = DockerfileSpec(commands=[], context_files={})

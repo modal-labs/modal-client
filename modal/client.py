@@ -2,7 +2,7 @@
 import asyncio
 import platform
 import warnings
-from typing import AsyncIterator, Awaitable, Callable, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Dict, Optional, Tuple
 
 import grpclib.client
 from aiohttp import ClientConnectorError, ClientResponseError
@@ -19,6 +19,9 @@ from ._utils.grpc_utils import create_channel, retry_transient_errors
 from ._utils.http_utils import http_client_with_tls
 from .config import _check_config, config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
+
+if TYPE_CHECKING:
+    from .image import ImageBuilderVersion
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -97,6 +100,7 @@ class _Client:
         self.credentials = credentials
         self.version = version
         self._authenticated = False
+        self.image_builder_version: Optional["ImageBuilderVersion"] = None
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[api_grpc.ModalClientStub] = None
@@ -154,6 +158,7 @@ class _Client:
                 ALARM_EMOJI = chr(0x1F6A8)
                 warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
             self._authenticated = True
+            self.image_builder_version = resp.image_builder_version
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
