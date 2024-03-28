@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -37,7 +37,6 @@ class _LocalApp:
         app_id: str,
         app_page_url: str,
         tag_to_object_id: Optional[Dict[str, str]] = None,
-        stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
         interactive: bool = False,
     ):
@@ -46,7 +45,6 @@ class _LocalApp:
         self._app_page_url = app_page_url
         self._client = client
         self._tag_to_object_id = tag_to_object_id or {}
-        self._stub_name = stub_name
         self._environment_name = environment_name
         self._interactive = interactive
 
@@ -224,11 +222,9 @@ class _LocalApp:
 class _ContainerApp:
     _client: Optional[_Client]
     _app_id: Optional[str]
-    _associated_stub: Optional[Any]  # TODO(erikbern): type
     _environment_name: Optional[str]
     _tag_to_object_id: Dict[str, str]
     _object_handle_metadata: Dict[str, Optional[Message]]
-    _stub_name: Optional[str]
     # if true, there's an active PTY shell session connected to this process.
     _is_interactivity_enabled: bool
     _function_def: Optional[api_pb2.Function]
@@ -237,8 +233,6 @@ class _ContainerApp:
     def __init__(self):
         self._client = None
         self._app_id = None
-        self._associated_stub = None
-        self._stub_name = None
         self._environment_name = None
         self._tag_to_object_id = {}
         self._object_handle_metadata = {}
@@ -260,9 +254,6 @@ class _ContainerApp:
         return self._fetching_inputs
 
     def associate_stub_container(self, stub):
-        # TODO(erikbern): the fact that we need to set two-way references strongly indicate that
-        # we should just merge these two objects!
-        self._associated_stub = stub
         stub._container_app = self
 
         # Initialize objects on stub
@@ -296,7 +287,6 @@ class _ContainerApp:
         self,
         client: _Client,
         app_id: str,
-        stub_name: str = "",
         environment_name: str = "",
         function_def: Optional[api_pb2.Function] = None,
     ):
@@ -306,7 +296,6 @@ class _ContainerApp:
 
         self._client = client
         self._app_id = app_id
-        self._stub_name = stub_name
         self._environment_name = environment_name
         self._function_def = function_def
         self._tag_to_object_id = {}
