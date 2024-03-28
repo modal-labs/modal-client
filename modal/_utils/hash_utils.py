@@ -12,6 +12,7 @@ def _update(hashers, data: Union[bytes, IO[bytes]]):
         for hasher in hashers:
             hasher.update(data)
     else:
+        assert isinstance(data, IO)
         pos = data.tell()
         while 1:
             chunk = data.read(HASH_CHUNK_SIZE)

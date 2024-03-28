@@ -50,9 +50,13 @@ def type_check(ctx):
         "modal/_utils/app_utils.py",
         "modal/_utils/async_utils.py",
         "modal/_utils/grpc_testing.py",
+        "modal/_utils/hash_utils.py",
         "modal/_utils/http_utils.py",
         "modal/_utils/logger.py",
+        "modal/_utils/mount_utils.py",
         "modal/_utils/package_utils.py",
+        "modal/_utils/rand_pb_testing.py",
+        "modal/_utils/shell_utils.py",
     ]
 
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
