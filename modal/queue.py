@@ -14,7 +14,7 @@ from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
-from .exception import deprecation_warning
+from .exception import InvalidError, deprecation_warning
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method
 
 
@@ -67,6 +67,13 @@ class _Queue(_Object, type_prefix="qu"):
     def __init__(self):
         """mdmd:hidden"""
         raise RuntimeError("Queue() is not allowed. Please use `Queue.from_name(...)` or `Queue.ephemeral()` instead.")
+
+    @staticmethod
+    def validate_partition(partition: str) -> None:
+        partition_key = partition.encode("utf-8")
+        if len(partition_key) > 64:
+            raise InvalidError("Partition names must be 64 characters or fewer.")
+        return partition_key
 
     @classmethod
     @asynccontextmanager
@@ -166,7 +173,7 @@ class _Queue(_Object, type_prefix="qu"):
     async def _get_nonblocking(self, partition: str, n_values: int) -> List[Any]:
         request = api_pb2.QueueGetRequest(
             queue_id=self.object_id,
-            partition_key=partition.encode("utf-8"),
+            partition_key=self.validate_partition(partition),
             timeout=0,
             n_values=n_values,
         )
@@ -191,7 +198,7 @@ class _Queue(_Object, type_prefix="qu"):
 
             request = api_pb2.QueueGetRequest(
                 queue_id=self.object_id,
-                partition_key=partition.encode("utf-8"),
+                partition_key=self.validate_partition(partition),
                 timeout=request_timeout,
                 n_values=n_values,
             )
@@ -289,7 +296,7 @@ class _Queue(_Object, type_prefix="qu"):
 
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
-            partition_key=partition.encode("utf-8"),
+            partition_key=self.validate_partition(partition),
             values=vs_encoded,
         )
         try:
@@ -308,7 +315,7 @@ class _Queue(_Object, type_prefix="qu"):
         vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
-            partition_key=partition.encode("utf-8"),
+            partition_key=self.validate_partition(partition),
             values=vs_encoded,
         )
         try:
@@ -321,7 +328,7 @@ class _Queue(_Object, type_prefix="qu"):
         """Return the number of objects in the queue partition."""
         request = api_pb2.QueueLenRequest(
             queue_id=self.object_id,
-            partition_key=partition.encode("utf-8"),
+            partition_key=self.validate_partition(partition),
         )
         response = await retry_transient_errors(self._client.stub.QueueLen, request)
         return response.len
