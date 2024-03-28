@@ -222,7 +222,6 @@ class _LocalApp:
 class _ContainerApp:
     _client: Optional[_Client]
     _app_id: Optional[str]
-    _environment_name: Optional[str]
     _tag_to_object_id: Dict[str, str]
     _object_handle_metadata: Dict[str, Optional[Message]]
     # if true, there's an active PTY shell session connected to this process.
@@ -233,7 +232,6 @@ class _ContainerApp:
     def __init__(self):
         self._client = None
         self._app_id = None
-        self._environment_name = None
         self._tag_to_object_id = {}
         self._object_handle_metadata = {}
         self._is_interactivity_enabled = False
@@ -287,7 +285,6 @@ class _ContainerApp:
         self,
         client: _Client,
         app_id: str,
-        environment_name: str = "",
         function_def: Optional[api_pb2.Function] = None,
     ):
         """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
@@ -296,7 +293,6 @@ class _ContainerApp:
 
         self._client = client
         self._app_id = app_id
-        self._environment_name = environment_name
         self._function_def = function_def
         self._tag_to_object_id = {}
         self._object_handle_metadata = {}
