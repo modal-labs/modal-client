@@ -389,22 +389,20 @@ async def _map_invocation(
 
     input_queue: asyncio.Queue = asyncio.Queue()
 
-    async def input_stream():
-        idx = 0
+    async def create_input(args):
+        (args, kwargs, idx) = args
+        return await _create_input(args, kwargs, client, idx)
+
+    async def input_iter():
         while 1:
             raw_input = await raw_input_queue.get()
             if raw_input is None:  # end of input sentinel
                 return
-            args, kwargs = raw_input
-            yield (args, kwargs, client, idx)
-            idx += 1
-
-    async def create_input(args):
-        return await _create_input(*args)
+            yield raw_input  # args, kwargs
 
     async def drain_input_generator():
         # Parallelize uploading blobs
-        proto_input_stream = stream.iterate(input_stream()) | pipe.map(
+        proto_input_stream = stream.iterate(input_iter()) | pipe.map(
             create_input,  # type: ignore[reportArgumentType]
             ordered=True,
             task_limit=BLOB_MAX_PARALLELISM,
@@ -1209,7 +1207,17 @@ class _Function(_Object, type_prefix="fu"):
         assert self._is_generator is not None
         return self._is_generator
 
-    async def _map(self, raw_input_queue: _SynchronizedQueue, order_outputs: bool, return_exceptions: bool):
+    async def _map(
+        self, input_queue: _SynchronizedQueue, order_outputs: bool, return_exceptions: bool
+    ) -> AsyncIterator[Any]:
+        """mdmd:hidden
+
+        Synchronicity-wrapped map implementation. To be safe against invocations of user code in the synchronicity thread
+        it doesn't accept an [async]iterator, and instead takes a _SynchronizedQueue instance.
+
+        _SynchronizedQueue is used instead of asyncio.Queue so that the main thread can put
+        items in the queue safely.
+        """
         if self._web_url:
             raise InvalidError(
                 "A web endpoint function cannot be directly invoked for parallel remote execution. "
@@ -1225,7 +1233,7 @@ class _Function(_Object, type_prefix="fu"):
 
         async for item in _map_invocation(
             self.object_id,
-            raw_input_queue,
+            input_queue,
             self._client,
             order_outputs,
             return_exceptions,
@@ -1257,6 +1265,9 @@ class _Function(_Object, type_prefix="fu"):
     async def _call_generator_nowait(self, args, kwargs):
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
+    # note that `map()` is not synchronicity-wrapped, since it accepts executable code in the form of
+    # iterators that we don't want to run inside the synchronicity thread. We delegate to `._map()` with
+    # a safer Queue as input
     def map(
         self,
         *input_iterators,  # one input iterator per argument in the mapped-over function/generator
@@ -1303,14 +1314,21 @@ class _Function(_Object, type_prefix="fu"):
         raw_input_queue = SynchronizedQueue()
 
         async def feed_queue():
-            # note that this will block the local event loop, but not the synchronicity one
-            for args in zip(*input_iterators):
-                raw_input_queue.put((args, kwargs))
-            raw_input_queue.put(None)  # end-of-input sentinel
+            # This runs in a main thread event loop, so it doesn't block the synchronizer loop
+            for idx, args in enumerate(zip(*input_iterators)):
+                await raw_input_queue.put.aio((args, kwargs, idx))
+            await raw_input_queue.put.aio(None)  # end-of-input sentinel
 
         sync_self: Function = synchronizer._translate_out(self, Interface.BLOCKING)
 
         async def aio_map():
+            # This runs in an event loop on the main thread
+            # It concurrently feeds new input to the input queue and yields available outputs
+            # to the caller.
+            # Note that since the iterator(s) can block, it's a bit opaque how often the event
+            # loop decides to get a new input vs how often it will emit a new output.
+            # We could make this explicit as an improvement or even let users decide what they
+            # prefer: throughput (prioritize queueing inputs) or latency (prioritize yielding results)
             t = asyncio.create_task(feed_queue())
             async for output in sync_self._map.aio(raw_input_queue, order_outputs, return_exceptions):
                 yield output
