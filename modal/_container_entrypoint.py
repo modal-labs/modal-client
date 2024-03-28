@@ -827,8 +827,28 @@ def import_function(
     function_io_manager,
     client: Client,
 ) -> ImportedFunction:
-    # This is not in function_io_manager, so that any global scope code that runs during import
-    # runs on the main thread.
+    """Imports a function dynamically, and locates the stub.
+
+    This is somewhat complex because we're dealing with 3 quite different type of functions:
+    1. Functions defined in global scope and decorated in global scope (Function objects)
+    2. Functions defined in global scope but decorated elsewhere (these will be raw callables)
+    3. Serialized functions
+
+    In addition, we also need to handle
+    * Normal functions
+    * Methods on classes (in which case we need to instantiate the object)
+
+    This helper also handles web endpoints, ASGI/WSGI servers, and HTTP servers.
+
+    In order to locate the stub, we try two things:
+    * If the function is a Function, we can get the stub directly from it
+    * Otherwise, use the stub name and look it up from a global list of stubs: this
+      typically only happens in case 2 above, or in sometimes for case 3
+
+    Note that `import_function` is *not* synchronized, becase we need it to run on the main
+    thread. This is so that any user code running in global scope (which executes as a part of
+    the import) runs on the right thread.
+    """
     module: Optional[ModuleType] = None
     cls: Optional[Type] = None
     fun: Callable
@@ -889,7 +909,7 @@ def import_function(
                 f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
             )
         elif len(matching_stubs) == 1:
-            active_stub, = matching_stubs
+            (active_stub,) = matching_stubs
         # there could also technically be zero found stubs, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
