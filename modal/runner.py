@@ -274,7 +274,22 @@ async def _deploy_stub(
 
             # Deploy app
             # TODO(erikbern): not needed if the app already existed
-            url = await app.deploy(name, namespace, public)
+            deploy_req = api_pb2.AppDeployRequest(
+                app_id=app.app_id,
+                name=name,
+                namespace=namespace,
+                object_entity="ap",
+                visibility=(api_pb2.APP_DEPLOY_VISIBILITY_PUBLIC if public else api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE),
+            )
+            try:
+                deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)
+            except GRPCError as exc:
+                if exc.status == Status.INVALID_ARGUMENT:
+                    raise InvalidError(exc.message)
+                if exc.status == Status.FAILED_PRECONDITION:
+                    raise InvalidError(exc.message)
+                raise
+            url = deploy_response.url
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
             await app.disconnect(reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
