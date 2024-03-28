@@ -25,6 +25,7 @@ class InputInfo:
     """Simple data structure storing information about a function input."""
 
     input_id: str
+    function_call_id: str
     task_id: str
     status: InputStatus
     function_name: str
@@ -57,6 +58,7 @@ def _reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> 
         function_call = function_calls_by_id[input.function_call_id]
         input_info_by_id[input_id] = InputInfo(
             input_id,
+            input.function_call_id,
             input.task_id,
             InputStatus(input.status),
             function_call.function_name,
