@@ -61,8 +61,8 @@ class _Volume(_Object, type_prefix="vo"):
     As a result, volumes are typically not a good fit for use cases where you need to make concurrent modifications to
     the same file (nor is distributed file locking supported).
 
-    Volumes can only be committed and reloaded if there are no open files for the volume - attempting to reload or
-    commit with open files will result in an error.
+    Volumes can only be reloaded if there are no open files for the volume - attempting to reload with open files
+    will result in an error.
 
     **Usage**
 
@@ -248,13 +248,10 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def commit(self):
-        """Commit changes to the volume and fetch any other changes made to the volume by other containers.
+        """Commit changes to the volume.
 
-        Unless background commits are enabled, committing always triggers a reload after saving changes.
-
-        If successful, the changes made are now persisted in durable storage and available to other containers accessing the volume.
-
-        Committing will fail if there are open files for the volume.
+        If successful, the changes made are now persisted in durable storage and available to other containers accessing
+        the volume.
         """
         async with self._lock:
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
@@ -271,9 +268,8 @@ class _Volume(_Object, type_prefix="vo"):
     async def reload(self):
         """Make latest committed state of volume available in the running container.
 
-        Uncommitted changes to the volume, such as new or modified files, will be preserved during reload. Uncommitted
-        changes will shadow any changes made by other writers - e.g. if you have an uncommitted modified a file that was
-        also updated by another writer you will not see the other change.
+        Any uncommitted changes to the volume, such as new or modified files, may implicitly be committed when
+        reloading.
 
         Reloading will fail if there are open files for the volume.
         """
@@ -454,7 +450,9 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def delete(self):
-        await retry_transient_errors(self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id))
+        await retry_transient_errors(
+            self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id)
+        )
 
 
 class _VolumeUploadContextManager:
