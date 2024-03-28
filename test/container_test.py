@@ -736,10 +736,9 @@ def test_multistub(unix_servicer, caplog):
     deploy_stub_externally(unix_servicer, "test.supports.multistub", "a")
     ret = _run_container(unix_servicer, "test.supports.multistub", "a_func")
     assert _unwrap_scalar(ret) is None
-    assert (
-        len(caplog.messages) == 1
-    )  # warns in case the user would use is_inside checks... Hydration should work regardless
-    assert "You have more than one unnamed stub" in caplog.messages[0]
+    assert len(caplog.messages) == 0
+    # Note that the stub can be inferred from the function, even though there are multiple
+    # stubs present in the file
 
 
 @skip_windows_unix_socket
