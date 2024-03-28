@@ -128,6 +128,28 @@ def test_map_blocking_iterator_blocking_synchronicity_loop(client):
     assert max_delay.result() < 0.1  # should typically be much smaller than this
 
 
+@pytest.mark.asyncio
+async def test_map_blocking_iterator_blocking_synchronicity_loop_async(client):
+    stub = Stub()
+    SLEEP_DUR = 0.5
+
+    def blocking_iter():
+        yield 1
+        time.sleep(SLEEP_DUR)
+        yield 2
+
+    pow2 = stub.function()(_pow2)
+
+    async with stub.run(client=client):
+        t0 = time.monotonic()
+        with synchronicity_loop_delay_tracker() as max_delay:
+            async for _ in pow2.map.aio(blocking_iter()):
+                pass
+        dur = time.monotonic() - t0
+    assert dur > SLEEP_DUR
+    assert max_delay.result() < 0.1  # should typically be much smaller than this
+
+
 _side_effect_count = 0
 
 

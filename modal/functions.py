@@ -15,6 +15,7 @@ from typing import (
     Collection,
     Dict,
     Generator,
+    Iterator,
     List,
     Literal,
     Optional,
@@ -42,6 +43,7 @@ from ._resolver import Resolver
 from ._serialization import deserialize, deserialize_data_format, serialize
 from ._traceback import append_modal_tb
 from ._utils.async_utils import (
+    MethodWithAio,
     queue_batch_iterator,
     run_generator_sync,
     synchronize_api,
@@ -1268,12 +1270,12 @@ class _Function(_Object, type_prefix="fu"):
     # note that `map()` is not synchronicity-wrapped, since it accepts executable code in the form of
     # iterators that we don't want to run inside the synchronicity thread. We delegate to `._map()` with
     # a safer Queue as input
-    def map(
+    def _map_sync(
         self,
-        *input_iterators,  # one input iterator per argument in the mapped-over function/generator
+        *input_iterators: Iterator[Any],  # one input iterator per argument in the mapped-over function/generator
         kwargs={},  # any extra keyword arguments for the function
         order_outputs: bool = True,  # return outputs in order
-        return_exceptions: bool = False,  # propogate exceptions (False) or aggregate them in the results list (True)
+        return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
     ) -> Generator[Any, None, None]:
         """Parallel map over a set of inputs.
 
@@ -1311,6 +1313,32 @@ class _Function(_Object, type_prefix="fu"):
             print(list(my_func.map(range(3), return_exceptions=True)))
         ```
         """
+        return run_generator_sync(
+            self._map_async(
+                *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+            )
+        )
+
+    @synchronizer.nowrap
+    async def _map_async(
+        self,
+        *input_iterators: Union[
+            Iterator[Any], AsyncIterator[Any]
+        ],  # one input iterator per argument in the mapped-over function/generator
+        kwargs={},  # any extra keyword arguments for the function
+        order_outputs: bool = True,  # return outputs in order
+        return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
+    ) -> AsyncGenerator[Any, None]:
+        """mdmd:hidden
+        This runs in an event loop on the main thread
+
+        It concurrently feeds new input to the input queue and yields available outputs
+        to the caller.
+        Note that since the iterator(s) can block, it's a bit opaque how often the event
+        loop decides to get a new input vs how often it will emit a new output.
+        We could make this explicit as an improvement or even let users decide what they
+        prefer: throughput (prioritize queueing inputs) or latency (prioritize yielding results)
+        """
         raw_input_queue = SynchronizedQueue()
 
         async def feed_queue():
@@ -1321,20 +1349,12 @@ class _Function(_Object, type_prefix="fu"):
 
         sync_self: Function = synchronizer._translate_out(self, Interface.BLOCKING)
 
-        async def aio_map():
-            # This runs in an event loop on the main thread
-            # It concurrently feeds new input to the input queue and yields available outputs
-            # to the caller.
-            # Note that since the iterator(s) can block, it's a bit opaque how often the event
-            # loop decides to get a new input vs how often it will emit a new output.
-            # We could make this explicit as an improvement or even let users decide what they
-            # prefer: throughput (prioritize queueing inputs) or latency (prioritize yielding results)
-            t = asyncio.create_task(feed_queue())
+        feed_input_task = asyncio.create_task(feed_queue())
+        try:
             async for output in sync_self._map.aio(raw_input_queue, order_outputs, return_exceptions):
                 yield output
-            await t  # this should stop immediately
-
-        return run_generator_sync(aio_map())
+        finally:
+            feed_input_task.cancel()  # should only be needed in case of exceptions
 
     @synchronizer.no_input_translation
     async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
@@ -1537,6 +1557,7 @@ class _Function(_Object, type_prefix="fu"):
 
 
 Function = synchronize_api(_Function)
+Function.map = MethodWithAio(_Function._map_sync, _Function._map_async)
 
 
 class _FunctionCall(_Object, type_prefix="fc"):
