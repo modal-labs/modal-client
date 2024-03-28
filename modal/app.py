@@ -130,10 +130,6 @@ class _LocalApp:
         req_disconnect = api_pb2.AppStopRequest(app_id=self.app_id, source=api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT)
         await retry_transient_errors(self.client.stub.AppStop, req_disconnect)
 
-    def log_url(self):
-        """URL link to a running app's logs page in the Modal dashboard."""
-        return self.app_page_url
-
 
 class _ContainerApp:
     client: Optional[_Client]
