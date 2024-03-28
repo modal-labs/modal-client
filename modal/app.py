@@ -37,7 +37,6 @@ class _LocalApp:
         app_id: str,
         app_page_url: str,
         tag_to_object_id: Optional[Dict[str, str]] = None,
-        stub_name: Optional[str] = None,
         environment_name: Optional[str] = None,
         interactive: bool = False,
     ):
@@ -46,7 +45,6 @@ class _LocalApp:
         self._app_page_url = app_page_url
         self._client = client
         self._tag_to_object_id = tag_to_object_id or {}
-        self._stub_name = stub_name
         self._environment_name = environment_name
         self._interactive = interactive
 
@@ -228,7 +226,6 @@ class _ContainerApp:
     _environment_name: Optional[str]
     _tag_to_object_id: Dict[str, str]
     _object_handle_metadata: Dict[str, Optional[Message]]
-    _stub_name: Optional[str]
     # if true, there's an active PTY shell session connected to this process.
     _is_interactivity_enabled: bool
     _function_def: Optional[api_pb2.Function]
@@ -238,7 +235,6 @@ class _ContainerApp:
         self._client = None
         self._app_id = None
         self._associated_stub = None
-        self._stub_name = None
         self._environment_name = None
         self._tag_to_object_id = {}
         self._object_handle_metadata = {}
@@ -296,7 +292,6 @@ class _ContainerApp:
         self,
         client: _Client,
         app_id: str,
-        stub_name: str = "",
         environment_name: str = "",
         function_def: Optional[api_pb2.Function] = None,
     ):
@@ -306,7 +301,6 @@ class _ContainerApp:
 
         self._client = client
         self._app_id = app_id
-        self._stub_name = stub_name
         self._environment_name = environment_name
         self._function_def = function_def
         self._tag_to_object_id = {}
