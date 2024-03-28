@@ -234,6 +234,8 @@ def run_coro_blocking(coro):
 async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_time=0.015):
     """
     Read from a queue but return lists of items when queue is large
+
+    Treats a None value as end of queue items
     """
     item_list: List[Any] = []
 
@@ -384,3 +386,33 @@ async def asyncnullcontext(*args, **kwargs):
         pass
     """
     yield
+
+
+def run_function_sync(coro: typing.Awaitable[T]) -> T:
+    loop = asyncio.get_event_loop()
+    res = loop.run_until_complete(coro)
+    return res
+
+
+YIELD_TYPE = typing.TypeVar("YIELD_TYPE")
+SEND_TYPE = typing.TypeVar("SEND_TYPE")
+
+
+def run_generator_sync(
+    gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE],
+) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
+    value, is_exc = None, False
+    while True:
+        try:
+            if is_exc:
+                value = run_function_sync(gen.athrow(value))
+            else:
+                value = run_function_sync(gen.asend(value))
+        except StopAsyncIteration:
+            break
+        try:
+            value = yield value
+            is_exc = False
+        except BaseException as exc:
+            value = exc
+            is_exc = True
