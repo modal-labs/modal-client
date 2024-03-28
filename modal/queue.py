@@ -71,8 +71,10 @@ class _Queue(_Object, type_prefix="qu"):
     @staticmethod
     def validate_partition(partition: str) -> None:
         partition_key = partition.encode("utf-8")
+
         if len(partition_key) > 64:
             raise InvalidError("Partition names must be 64 characters or fewer.")
+
         return partition_key
 
     @classmethod
