@@ -399,7 +399,7 @@ def test_rehydrate(client, servicer):
 
     # Initialize a container
     app = ContainerApp()
-    app.init(client, app_id, "stub")
+    app.init(client, app_id)
 
     # Associate app with stub
     app.associate_stub_container(stub)
