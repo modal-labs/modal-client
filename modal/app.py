@@ -222,7 +222,6 @@ class _LocalApp:
 class _ContainerApp:
     _client: Optional[_Client]
     _app_id: Optional[str]
-    _associated_stub: Optional[Any]  # TODO(erikbern): type
     _environment_name: Optional[str]
     _tag_to_object_id: Dict[str, str]
     _object_handle_metadata: Dict[str, Optional[Message]]
@@ -234,7 +233,6 @@ class _ContainerApp:
     def __init__(self):
         self._client = None
         self._app_id = None
-        self._associated_stub = None
         self._environment_name = None
         self._tag_to_object_id = {}
         self._object_handle_metadata = {}
@@ -256,9 +254,6 @@ class _ContainerApp:
         return self._fetching_inputs
 
     def associate_stub_container(self, stub):
-        # TODO(erikbern): the fact that we need to set two-way references strongly indicate that
-        # we should just merge these two objects!
-        self._associated_stub = stub
         stub._container_app = self
 
         # Initialize objects on stub
