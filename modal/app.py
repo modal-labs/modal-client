@@ -259,25 +259,19 @@ class _ContainerApp:
     def fetching_inputs(self) -> bool:
         return self._fetching_inputs
 
-    def _associate_stub_container(self, stub):
-        if self._associated_stub:
-            if self._stub_name:
-                warning_sub_message = f"stub with the same name ('{self._stub_name}')"
-            else:
-                warning_sub_message = "unnamed stub"
-            logger.warning(
-                f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
-            )
+    def associate_stub_container(self, stub):
+        # TODO(erikbern): the fact that we need to set two-way references strongly indicate that
+        # we should just merge these two objects!
         self._associated_stub = stub
+        stub._container_app = self
 
-        if stub:
-            # Initialize objects on stub
-            stub_objects: dict[str, _Object] = dict(stub.get_objects())
-            for tag, object_id in self._tag_to_object_id.items():
-                obj = stub_objects.get(tag)
-                if obj is not None:
-                    handle_metadata = self._object_handle_metadata[object_id]
-                    obj._hydrate(object_id, self._client, handle_metadata)
+        # Initialize objects on stub
+        stub_objects: dict[str, _Object] = dict(stub.get_objects())
+        for tag, object_id in self._tag_to_object_id.items():
+            obj = stub_objects.get(tag)
+            if obj is not None:
+                handle_metadata = self._object_handle_metadata[object_id]
+                obj._hydrate(object_id, self._client, handle_metadata)
 
     def _has_object(self, tag: str) -> bool:
         return tag in self._tag_to_object_id
