@@ -773,11 +773,11 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Extend an image with a list of shell commands to run."""
         cmds = _flatten_str_args("run_commands", "commands", commands)
-        if not cmds:
+        if not cmds or not any(cmds):
             return self
 
         def build_dockerfile() -> DockerfileSpec:
-            return DockerfileSpec(commands=["FROM base"] + [f"RUN {cmd}" for cmd in cmds], context_files={})
+            return DockerfileSpec(commands=["FROM base"] + [f"RUN {cmd}" for cmd in cmds if cmd], context_files={})
 
         return _Image._from_args(
             base_images={"base": self},

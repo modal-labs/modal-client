@@ -233,6 +233,35 @@ def test_dockerfile_image(servicer, client):
         assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
 
 
+def test_run_commands(servicer, client):
+    base = Image.debian_slim()
+
+    command = "echo 'Hello Modal'"
+    stub = Stub(image=base.run_commands(command))
+    with stub.run(client=client):
+        layers = get_image_layers(stub.image.object_id, servicer)
+        assert layers[0].dockerfile_commands[1] == f"RUN {command}"
+
+    commands = ["echo 'Hello world'", "touch agi.yaml"]
+    stub = Stub(image=base.run_commands(commands))
+    with stub.run(client=client):
+        layers = get_image_layers(stub.image.object_id, servicer)
+        for i, cmd in enumerate(commands, 1):
+            assert layers[0].dockerfile_commands[i] == f"RUN {cmd}"
+
+    base = Image.debian_slim()
+    commands = ["echo 'oops!'", ""]
+    stub = Stub(image=base.run_commands(commands))
+    with stub.run(client=client):
+        layers = get_image_layers(stub.image.object_id, servicer)
+        assert len(layers[0].dockerfile_commands) == 2
+        assert commands[0] in layers[0].dockerfile_commands[1]
+
+    # Should be a no-op
+    assert base.run_commands("") is base
+    assert base.run_commands([""]) is base
+
+
 def test_conda_update_from_environment(servicer, client):
     path = os.path.join(os.path.dirname(__file__), "supports/test-conda-environment.yml")
 
