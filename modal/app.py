@@ -134,59 +134,6 @@ class _LocalApp:
         """URL link to a running app's logs page in the Modal dashboard."""
         return self.app_page_url
 
-    @staticmethod
-    async def _init_existing(client: _Client, existing_app_id: str) -> "_LocalApp":
-        # Get all the objects first
-        obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
-        obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
-        app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
-        object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
-        return _LocalApp(client, existing_app_id, app_page_url, tag_to_object_id=object_ids)
-
-    @staticmethod
-    async def _init_new(
-        client: _Client,
-        description: str,
-        app_state: int,
-        environment_name: str = "",
-        interactive=False,
-    ) -> "_LocalApp":
-        app_req = api_pb2.AppCreateRequest(
-            description=description,
-            environment_name=environment_name,
-            app_state=app_state,
-        )
-        app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
-        app_page_url = app_resp.app_logs_url
-        logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _LocalApp(
-            client, app_resp.app_id, app_page_url, environment_name=environment_name, interactive=interactive
-        )
-
-    @staticmethod
-    async def _init_from_name(
-        client: _Client,
-        name: str,
-        namespace,
-        environment_name: str = "",
-    ):
-        # Look up any existing deployment
-        app_req = api_pb2.AppGetByDeploymentNameRequest(
-            name=name,
-            namespace=namespace,
-            environment_name=environment_name,
-        )
-        app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
-        existing_app_id = app_resp.app_id or None
-
-        # Grab the app
-        if existing_app_id is not None:
-            return await _LocalApp._init_existing(client, existing_app_id)
-        else:
-            return await _LocalApp._init_new(
-                client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
-            )
-
 
 class _ContainerApp:
     client: Optional[_Client]
