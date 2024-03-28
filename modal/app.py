@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
