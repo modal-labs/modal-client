@@ -19,7 +19,7 @@ launch_cli = Typer(
 
 def _launch_program(name: str, args) -> None:
     contents = (Path(__file__).parent / "programs" / name).read_text()
-    contents = contents.replace("args: Any = {}", f"args: Any = {repr(args)}")
+    contents = contents.replace("args: Dict[str, Any] = {}", f"args: Any = {repr(args)}")
 
     # TODO: This is a big hack and can break for unexpected $PATH reasons. Make an actual code path
     # for correctly setting up and running a program in the CLI.
