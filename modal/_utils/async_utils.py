@@ -275,6 +275,10 @@ class _WarnIfGeneratorIsNotConsumed:
         self.iterated = True
         return await self.gen.__anext__()
 
+    async def asend(self, value):
+        self.iterated = True
+        return await self.gen.asend(value)
+
     def __repr__(self):
         return repr(self.gen)
 

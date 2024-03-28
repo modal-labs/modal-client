@@ -290,7 +290,7 @@ async def test_generator(client, servicer):
 
 
 @pytest.mark.asyncio
-async def test_generator_map_invalid(client, servicer):
+def test_generator_map_invalid(client, servicer):
     stub = Stub()
 
     later_gen_modal = stub.function()(later_gen)
@@ -301,11 +301,12 @@ async def test_generator_map_invalid(client, servicer):
     servicer.function_body(dummy)
 
     with stub.run(client=client):
-        with pytest.raises(InvalidError):
+        with pytest.raises(InvalidError, match="A generator function cannot be called with"):
             # Support for .map() on generators was removed in version 0.57
             for _ in later_gen_modal.map([1, 2, 3]):
                 pass
-        with pytest.raises(InvalidError):
+
+        with pytest.raises(InvalidError, match="A generator function cannot be called with"):
             later_gen_modal.for_each([1, 2, 3])
 
 

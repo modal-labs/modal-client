@@ -97,9 +97,11 @@ class _SynchronizedQueue:
     def __init__(self):
         self.q = asyncio.Queue()
 
+    @synchronizer.no_io_translation
     async def put(self, item):
         await self.q.put(item)
 
+    @synchronizer.no_io_translation
     async def get(self):
         return await self.q.get()
 
@@ -1209,9 +1211,10 @@ class _Function(_Object, type_prefix="fu"):
         assert self._is_generator is not None
         return self._is_generator
 
+    @live_method_gen
     async def _map(
         self, input_queue: _SynchronizedQueue, order_outputs: bool, return_exceptions: bool
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncGenerator[Any, None]:
         """mdmd:hidden
 
         Synchronicity-wrapped map implementation. To be safe against invocations of user code in the synchronicity thread
@@ -1320,6 +1323,7 @@ class _Function(_Object, type_prefix="fu"):
         )
 
     @synchronizer.nowrap
+    @warn_if_generator_is_not_consumed
     async def _map_async(
         self,
         *input_iterators: Union[
@@ -1356,8 +1360,7 @@ class _Function(_Object, type_prefix="fu"):
         finally:
             feed_input_task.cancel()  # should only be needed in case of exceptions
 
-    @synchronizer.no_input_translation
-    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
+    def _for_each_sync(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
         """Execute function for all inputs, ignoring outputs.
 
         Convenient alias for `.map()` in cases where the function just needs to be called.
@@ -1365,14 +1368,16 @@ class _Function(_Object, type_prefix="fu"):
         """
         # TODO(erikbern): it would be better if this is more like a map_spawn that immediately exits
         # rather than iterating over the result
-        async for _ in self.map(
+        for _ in self.map(*input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions):
+            pass
+
+    @synchronizer.nowrap
+    async def _for_each_async(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
+        async for _ in self.map.aio(
             *input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions
         ):
             pass
 
-    @warn_if_generator_is_not_consumed
-    @live_method_gen
-    @synchronizer.no_input_translation
     async def starmap(
         self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
     ) -> AsyncGenerator[Any, None]:
@@ -1395,6 +1400,36 @@ class _Function(_Object, type_prefix="fu"):
         input_stream = stream.iterate(input_iterator)
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
+
+    @synchronizer.nowrap
+    async def _starmap_async(
+        self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
+    ):
+        raw_input_queue = SynchronizedQueue()
+
+        async def feed_queue():
+            # This runs in a main thread event loop, so it doesn't block the synchronizer loop
+            for idx, args in enumerate(input_iterator):
+                await raw_input_queue.put.aio((args, kwargs, idx))
+            await raw_input_queue.put.aio(None)  # end-of-input sentinel
+
+        sync_self: Function = synchronizer._translate_out(self, Interface.BLOCKING)
+        feed_input_task = asyncio.create_task(feed_queue())
+        try:
+            async for output in sync_self._map.aio(raw_input_queue, order_outputs, return_exceptions):
+                yield output
+        finally:
+            feed_input_task.cancel()  # should only be needed in case of exceptions
+
+    @synchronizer.nowrap
+    def _starmap_sync(
+        self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
+    ) -> Iterator[Any]:
+        return run_generator_sync(
+            self._starmap_async(
+                input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+            )
+        )
 
     @synchronizer.no_io_translation
     @live_method
@@ -1558,6 +1593,8 @@ class _Function(_Object, type_prefix="fu"):
 
 Function = synchronize_api(_Function)
 Function.map = MethodWithAio(_Function._map_sync, _Function._map_async)
+Function.starmap = MethodWithAio(_Function._starmap_sync, _Function._starmap_async)
+Function.for_each = MethodWithAio(_Function._for_each_sync, _Function._for_each_async)
 
 
 class _FunctionCall(_Object, type_prefix="fc"):
