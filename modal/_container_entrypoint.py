@@ -144,7 +144,6 @@ class _FunctionIOManager:
         self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
 
-        self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
 
         self._semaphore: Optional[asyncio.Semaphore] = None
@@ -156,7 +155,7 @@ class _FunctionIOManager:
         assert isinstance(self._client, _Client)
 
     async def initialize_app(self) -> _ContainerApp:
-        await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name, self.function_def)
+        await _container_app.init(self._client, self.app_id, self.function_def)
         return _container_app
 
     async def _run_heartbeat_loop(self):
