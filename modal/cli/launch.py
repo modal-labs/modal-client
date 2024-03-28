@@ -8,8 +8,7 @@ from typing import Any, Dict, Optional
 
 from typer import Typer
 
-from modal.exception import _CliUserExecutionError
-
+from ..exception import _CliUserExecutionError
 from ..runner import run_stub
 from ..stub import Stub
 from .import_refs import import_function
