@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 

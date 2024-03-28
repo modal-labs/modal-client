@@ -5,6 +5,7 @@ import os
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, TypeVar
 
+from grpclib import GRPCError, Status
 from rich.console import Console
 from synchronicity.async_wrap import asynccontextmanager
 
