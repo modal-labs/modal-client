@@ -10,11 +10,12 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
-    AsyncIterable,
     AsyncIterator,
     Callable,
     Collection,
     Dict,
+    Generator,
+    Iterator,
     List,
     Literal,
     Optional,
@@ -30,6 +31,7 @@ from aiostream import pipe, stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
+from synchronicity import Interface
 from synchronicity.exceptions import UserCodeException
 
 from modal import _pty, is_local
@@ -41,7 +43,9 @@ from ._resolver import Resolver
 from ._serialization import deserialize, deserialize_data_format, serialize
 from ._traceback import append_modal_tb
 from ._utils.async_utils import (
+    MethodWithAio,
     queue_batch_iterator,
+    run_generator_sync,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -85,6 +89,23 @@ ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
 
 if TYPE_CHECKING:
     import modal.stub
+
+
+class _SynchronizedQueue:
+    # small wrapper around asyncio.Queue to make it cross-thread compatible through synchronicity
+    def __init__(self):
+        self.q = asyncio.Queue()
+
+    @synchronizer.no_io_translation
+    async def put(self, item):
+        await self.q.put(item)
+
+    @synchronizer.no_io_translation
+    async def get(self):
+        return await self.q.get()
+
+
+SynchronizedQueue = synchronize_api(_SynchronizedQueue)
 
 
 def exc_with_hints(exc: BaseException):
@@ -341,8 +362,7 @@ MAP_INVOCATION_CHUNK_SIZE = 49
 
 async def _map_invocation(
     function_id: str,
-    input_stream: AsyncIterable[Any],
-    kwargs: Dict[str, Any],
+    raw_input_queue: _SynchronizedQueue,
     client: _Client,
     order_outputs: bool,
     return_exceptions: bool,
@@ -362,21 +382,30 @@ async def _map_invocation(
     have_all_inputs = False
     num_inputs = 0
     num_outputs = 0
+
+    def count_update():
+        if count_update_callback is not None:
+            count_update_callback(num_outputs, num_inputs)
+
     pending_outputs: Dict[str, int] = {}  # Map input_id -> next expected gen_index value
     completed_outputs: Set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
 
     input_queue: asyncio.Queue = asyncio.Queue()
 
-    async def create_input(arg: Any) -> api_pb2.FunctionPutInputsItem:
-        nonlocal num_inputs
-        idx = num_inputs
-        num_inputs += 1
-        item = await _create_input(arg, kwargs, client, idx=idx)
-        return item
+    async def create_input(args):
+        (args, kwargs, idx) = args
+        return await _create_input(args, kwargs, client, idx)
+
+    async def input_iter():
+        while 1:
+            raw_input = await raw_input_queue.get()
+            if raw_input is None:  # end of input sentinel
+                return
+            yield raw_input  # args, kwargs
 
     async def drain_input_generator():
         # Parallelize uploading blobs
-        proto_input_stream = stream.iterate(input_stream) | pipe.map(
+        proto_input_stream = stream.iterate(input_iter()) | pipe.map(
             create_input,  # type: ignore[reportArgumentType]
             ordered=True,
             task_limit=BLOB_MAX_PARALLELISM,
@@ -391,7 +420,7 @@ async def _map_invocation(
 
     async def pump_inputs():
         assert client.stub
-        nonlocal have_all_inputs
+        nonlocal have_all_inputs, num_inputs
         async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
             request = api_pb2.FunctionPutInputsRequest(
                 function_id=function_id, inputs=items, function_call_id=function_call_id
@@ -406,6 +435,8 @@ async def _map_invocation(
                 max_delay=10,
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             )
+            num_inputs += len(items)
+            count_update()
             for item in resp.inputs:
                 pending_outputs.setdefault(item.input_id, 0)
             logger.debug(
@@ -482,8 +513,7 @@ async def _map_invocation(
 
         async with outputs_fetched.stream() as streamer:
             async for idx, output in streamer:
-                if count_update_callback is not None:
-                    count_update_callback(num_outputs, num_inputs)
+                count_update()
                 if not order_outputs:
                     yield _OutputValue(output)
                 else:
@@ -1180,7 +1210,18 @@ class _Function(_Object, type_prefix="fu"):
         assert self._is_generator is not None
         return self._is_generator
 
-    async def _map(self, input_stream: AsyncIterable[Any], order_outputs: bool, return_exceptions: bool, kwargs={}):
+    @live_method_gen
+    async def _map(
+        self, input_queue: _SynchronizedQueue, order_outputs: bool, return_exceptions: bool
+    ) -> AsyncGenerator[Any, None]:
+        """mdmd:hidden
+
+        Synchronicity-wrapped map implementation. To be safe against invocations of user code in the synchronicity thread
+        it doesn't accept an [async]iterator, and instead takes a _SynchronizedQueue instance.
+
+        _SynchronizedQueue is used instead of asyncio.Queue so that the main thread can put
+        items in the queue safely.
+        """
         if self._web_url:
             raise InvalidError(
                 "A web endpoint function cannot be directly invoked for parallel remote execution. "
@@ -1196,8 +1237,7 @@ class _Function(_Object, type_prefix="fu"):
 
         async for item in _map_invocation(
             self.object_id,
-            input_stream,
-            kwargs,
+            input_queue,
             self._client,
             order_outputs,
             return_exceptions,
@@ -1229,16 +1269,16 @@ class _Function(_Object, type_prefix="fu"):
     async def _call_generator_nowait(self, args, kwargs):
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
-    @warn_if_generator_is_not_consumed
-    @live_method_gen
-    @synchronizer.no_input_translation
-    async def map(
+    # note that `map()` is not synchronicity-wrapped, since it accepts executable code in the form of
+    # iterators that we don't want to run inside the synchronicity thread. We delegate to `._map()` with
+    # a safer Queue as input
+    def _map_sync(
         self,
-        *input_iterators,  # one input iterator per argument in the mapped-over function/generator
+        *input_iterators: Iterator[Any],  # one input iterator per argument in the mapped-over function/generator
         kwargs={},  # any extra keyword arguments for the function
         order_outputs: bool = True,  # return outputs in order
-        return_exceptions: bool = False,  # propogate exceptions (False) or aggregate them in the results list (True)
-    ) -> AsyncGenerator[Any, None]:
+        return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
+    ) -> Generator[Any, None, None]:
         """Parallel map over a set of inputs.
 
         Takes one iterator argument per argument in the function being mapped over.
@@ -1275,13 +1315,51 @@ class _Function(_Object, type_prefix="fu"):
             print(list(my_func.map(range(3), return_exceptions=True)))
         ```
         """
+        return run_generator_sync(
+            self._map_async(
+                *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+            )
+        )
 
-        input_stream = stream.zip(*(stream.iterate(it) for it in input_iterators))
-        async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
-            yield item
+    @synchronizer.nowrap
+    @warn_if_generator_is_not_consumed
+    async def _map_async(
+        self,
+        *input_iterators: Union[
+            Iterator[Any], AsyncIterator[Any]
+        ],  # one input iterator per argument in the mapped-over function/generator
+        kwargs={},  # any extra keyword arguments for the function
+        order_outputs: bool = True,  # return outputs in order
+        return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
+    ) -> AsyncGenerator[Any, None]:
+        """mdmd:hidden
+        This runs in an event loop on the main thread
 
-    @synchronizer.no_input_translation
-    async def for_each(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
+        It concurrently feeds new input to the input queue and yields available outputs
+        to the caller.
+        Note that since the iterator(s) can block, it's a bit opaque how often the event
+        loop decides to get a new input vs how often it will emit a new output.
+        We could make this explicit as an improvement or even let users decide what they
+        prefer: throughput (prioritize queueing inputs) or latency (prioritize yielding results)
+        """
+        raw_input_queue = SynchronizedQueue()
+
+        async def feed_queue():
+            # This runs in a main thread event loop, so it doesn't block the synchronizer loop
+            for idx, args in enumerate(zip(*input_iterators)):
+                await raw_input_queue.put.aio((args, kwargs, idx))
+            await raw_input_queue.put.aio(None)  # end-of-input sentinel
+
+        sync_self: Function = synchronizer._translate_out(self, Interface.BLOCKING)
+
+        feed_input_task = asyncio.create_task(feed_queue())
+        try:
+            async for output in sync_self._map.aio(raw_input_queue, order_outputs, return_exceptions):
+                yield output
+        finally:
+            feed_input_task.cancel()  # should only be needed in case of exceptions
+
+    def _for_each_sync(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
         """Execute function for all inputs, ignoring outputs.
 
         Convenient alias for `.map()` in cases where the function just needs to be called.
@@ -1289,14 +1367,16 @@ class _Function(_Object, type_prefix="fu"):
         """
         # TODO(erikbern): it would be better if this is more like a map_spawn that immediately exits
         # rather than iterating over the result
-        async for _ in self.map(
+        for _ in self.map(*input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions):
+            pass
+
+    @synchronizer.nowrap
+    async def _for_each_async(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
+        async for _ in self.map.aio(
             *input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions
         ):
             pass
 
-    @warn_if_generator_is_not_consumed
-    @live_method_gen
-    @synchronizer.no_input_translation
     async def starmap(
         self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
     ) -> AsyncGenerator[Any, None]:
@@ -1319,6 +1399,36 @@ class _Function(_Object, type_prefix="fu"):
         input_stream = stream.iterate(input_iterator)
         async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
             yield item
+
+    @synchronizer.nowrap
+    async def _starmap_async(
+        self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
+    ):
+        raw_input_queue = SynchronizedQueue()
+
+        async def feed_queue():
+            # This runs in a main thread event loop, so it doesn't block the synchronizer loop
+            for idx, args in enumerate(input_iterator):
+                await raw_input_queue.put.aio((args, kwargs, idx))
+            await raw_input_queue.put.aio(None)  # end-of-input sentinel
+
+        sync_self: Function = synchronizer._translate_out(self, Interface.BLOCKING)
+        feed_input_task = asyncio.create_task(feed_queue())
+        try:
+            async for output in sync_self._map.aio(raw_input_queue, order_outputs, return_exceptions):
+                yield output
+        finally:
+            feed_input_task.cancel()  # should only be needed in case of exceptions
+
+    @synchronizer.nowrap
+    def _starmap_sync(
+        self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
+    ) -> Iterator[Any]:
+        return run_generator_sync(
+            self._starmap_async(
+                input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+            )
+        )
 
     @synchronizer.no_io_translation
     @live_method
@@ -1457,6 +1567,9 @@ class _Function(_Object, type_prefix="fu"):
 
 
 Function = synchronize_api(_Function)
+Function.map = MethodWithAio(_Function._map_sync, _Function._map_async)
+Function.starmap = MethodWithAio(_Function._starmap_sync, _Function._starmap_async)
+Function.for_each = MethodWithAio(_Function._for_each_sync, _Function._for_each_async)
 
 
 class _FunctionCall(_Object, type_prefix="fc"):

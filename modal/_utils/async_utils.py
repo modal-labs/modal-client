@@ -10,6 +10,8 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Callable, Iterator, List, Optional, Set, TypeVar, cast
 
 import synchronicity
+from synchronicity import Interface
+from synchronicity.async_wrap import wraps_by_interface
 from typing_extensions import ParamSpec
 
 from .logger import logger
@@ -234,6 +236,8 @@ def run_coro_blocking(coro):
 async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_time=0.015):
     """
     Read from a queue but return lists of items when queue is large
+
+    Treats a None value as end of queue items
     """
     item_list: List[Any] = []
 
@@ -270,6 +274,10 @@ class _WarnIfGeneratorIsNotConsumed:
     async def __anext__(self):
         self.iterated = True
         return await self.gen.__anext__()
+
+    async def asend(self, value):
+        self.iterated = True
+        return await self.gen.asend(value)
 
     def __repr__(self):
         return repr(self.gen)
@@ -384,3 +392,58 @@ async def asyncnullcontext(*args, **kwargs):
         pass
     """
     yield
+
+
+def run_function_sync(coro: typing.Awaitable[T]) -> T:
+    loop = asyncio.get_event_loop()
+    res = loop.run_until_complete(coro)
+    return res
+
+
+YIELD_TYPE = typing.TypeVar("YIELD_TYPE")
+SEND_TYPE = typing.TypeVar("SEND_TYPE")
+
+
+def run_generator_sync(
+    self, gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]
+) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
+    # more or less copied from synchronicity's implementation, but with types
+    next_send: typing.Union[SEND_TYPE, None] = None
+    next_yield: YIELD_TYPE
+    exc: Optional[BaseException] = None
+    while True:
+        try:
+            if exc:
+                next_yield = self.run_coro_blocking(gen.athrow(exc))
+            else:
+                next_yield = self.run_coro_blocking(gen.asend(next_send))  # type: ignore[arg-type]
+        except StopAsyncIteration:
+            break
+        try:
+            next_send = yield next_yield
+            exc = None
+        except BaseException as exc:
+            exc = exc
+
+
+class MethodWithAio:
+    """Creates a bound method that has a callable .aio ƒunction on the method itself
+
+    The .aio method-method is also bound to the parent object.
+
+    Useful to re-create a synchronicity-like method that isn't tied to the synchronicity event loop/thread
+    """
+
+    def __init__(self, func, aio_func):
+        self._func = func
+        self._aio_func = aio_func
+
+    def __get__(self, instance, owner=None):
+        assert instance is not None  # only supporting instance methods for now, not class methods
+        bind_var = instance if instance is not None else owner
+
+        bound_func = functools.wraps(self._func)(functools.partial(self._func, bind_var))
+        bound_func.aio = wraps_by_interface(Interface._ASYNC_WITH_BLOCKING_TYPES, self._aio_func)(  # type: ignore[attr-defined]
+            functools.partial(self._aio_func, bind_var)
+        )
+        return bound_func
