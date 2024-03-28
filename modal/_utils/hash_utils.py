@@ -52,7 +52,7 @@ class UploadHashes:
 async def get_upload_hashes(data: Union[bytes, IO[bytes]]) -> UploadHashes:
     md5 = hashlib.md5()
     sha256 = hashlib.sha256()
-    await asyncio.get_running_loop().run_in_executor(None, _update([md5, sha256], data))
+    await asyncio.get_running_loop().run_in_executor(None, _update, [md5, sha256], data)
     return UploadHashes(
         md5_base64=base64.b64encode(md5.digest()).decode("ascii"),
         sha256_base64=base64.b64encode(sha256.digest()).decode("ascii"),

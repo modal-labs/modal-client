@@ -94,7 +94,7 @@ def synchronicity_loop_delay_tracker():
     done = False
 
     async def _track_eventloop_blocking():
-        max_dur = 0
+        max_dur = 0.0
         BLOCK_TIME = 0.01
         while not done:
             t0 = time.perf_counter()

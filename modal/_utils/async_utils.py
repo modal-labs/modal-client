@@ -405,23 +405,25 @@ SEND_TYPE = typing.TypeVar("SEND_TYPE")
 
 
 def run_generator_sync(
-    gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE],
+    self, gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]
 ) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
-    value, is_exc = None, False
+    # more or less copied from synchronicity's implementation, but with types
+    next_send: typing.Union[SEND_TYPE, None] = None
+    next_yield: YIELD_TYPE
+    exc: Optional[BaseException] = None
     while True:
         try:
-            if is_exc:
-                value = run_function_sync(gen.athrow(value))
+            if exc:
+                next_yield = self.run_coro_blocking(gen.athrow(exc))
             else:
-                value = run_function_sync(gen.asend(value))
+                next_yield = self.run_coro_blocking(gen.asend(next_send))  # type: ignore[arg-type]
         except StopAsyncIteration:
             break
         try:
-            value = yield value
-            is_exc = False
+            next_send = yield next_yield
+            exc = None
         except BaseException as exc:
-            value = exc
-            is_exc = True
+            exc = exc
 
 
 class MethodWithAio:
@@ -441,7 +443,7 @@ class MethodWithAio:
         bind_var = instance if instance is not None else owner
 
         bound_func = functools.wraps(self._func)(functools.partial(self._func, bind_var))
-        bound_func.aio = wraps_by_interface(Interface._ASYNC_WITH_BLOCKING_TYPES, self._aio_func)(
+        bound_func.aio = wraps_by_interface(Interface._ASYNC_WITH_BLOCKING_TYPES, self._aio_func)(  # type: ignore[attr-defined]
             functools.partial(self._aio_func, bind_var)
         )
         return bound_func
