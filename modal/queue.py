@@ -69,7 +69,7 @@ class _Queue(_Object, type_prefix="qu"):
         raise RuntimeError("Queue() is not allowed. Please use `Queue.from_name(...)` or `Queue.ephemeral()` instead.")
 
     @staticmethod
-    def validate_partition(partition: Optional[str]) -> bytes:
+    def validate_partition_key(partition: Optional[str]) -> bytes:
         if partition is not None:
             partition_key = partition.encode("utf-8")
             if len(partition_key) == 0 or len(partition_key) > 64:
@@ -177,7 +177,7 @@ class _Queue(_Object, type_prefix="qu"):
     async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> List[Any]:
         request = api_pb2.QueueGetRequest(
             queue_id=self.object_id,
-            partition_key=self.validate_partition(partition),
+            partition_key=self.validate_partition_key(partition),
             timeout=0,
             n_values=n_values,
         )
@@ -202,7 +202,7 @@ class _Queue(_Object, type_prefix="qu"):
 
             request = api_pb2.QueueGetRequest(
                 queue_id=self.object_id,
-                partition_key=self.validate_partition(partition),
+                partition_key=self.validate_partition_key(partition),
                 timeout=request_timeout,
                 n_values=n_values,
             )
@@ -304,7 +304,7 @@ class _Queue(_Object, type_prefix="qu"):
 
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
-            partition_key=self.validate_partition(partition),
+            partition_key=self.validate_partition_key(partition),
             values=vs_encoded,
         )
         try:
@@ -323,7 +323,7 @@ class _Queue(_Object, type_prefix="qu"):
         vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
-            partition_key=self.validate_partition(partition),
+            partition_key=self.validate_partition_key(partition),
             values=vs_encoded,
         )
         try:
@@ -336,7 +336,7 @@ class _Queue(_Object, type_prefix="qu"):
         """Return the number of objects in the queue partition."""
         request = api_pb2.QueueLenRequest(
             queue_id=self.object_id,
-            partition_key=self.validate_partition(partition),
+            partition_key=self.validate_partition_key(partition),
         )
         response = await retry_transient_errors(self._client.stub.QueueLen, request)
         return response.len
