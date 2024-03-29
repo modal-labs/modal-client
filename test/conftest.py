@@ -389,12 +389,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
             raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
         elif client_version == "unauthenticated":
             raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
-        elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
-            raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
         elif client_version == "deprecated":
             warning = "SUPER OLD"
         elif client_version == "timeout":
             await asyncio.sleep(60)
+        elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
+            raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
         resp = api_pb2.ClientHelloResponse(warning=warning, image_builder_version=image_builder_version)
         await stream.send_message(resp)
 
