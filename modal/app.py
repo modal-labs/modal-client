@@ -70,6 +70,9 @@ class _LocalApp:
         output_mgr: Optional[OutputManager] = None,
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
+        if not self._client.authenticated:
+            raise ExecutionError("Objects cannot be created with an unauthenticated client")
+
         resolver = Resolver(
             self._client,
             output_mgr=output_mgr,
