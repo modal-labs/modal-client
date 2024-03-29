@@ -2,7 +2,7 @@
 import asyncio
 import platform
 import warnings
-from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Dict, Optional, Tuple
+from typing import AsyncIterator, Awaitable, Callable, Dict, Optional, Tuple
 
 import grpclib.client
 from aiohttp import ClientConnectorError, ClientResponseError
@@ -19,9 +19,6 @@ from ._utils.grpc_utils import create_channel, retry_transient_errors
 from ._utils.http_utils import http_client_with_tls
 from .config import _check_config, config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
-
-if TYPE_CHECKING:
-    from .image import ImageBuilderVersion
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -100,7 +97,7 @@ class _Client:
         self.credentials = credentials
         self.version = version
         self._authenticated = False
-        self.image_builder_version: Optional["ImageBuilderVersion"] = None
+        self.image_builder_version: Optional[str] = None
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[api_grpc.ModalClientStub] = None

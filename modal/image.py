@@ -127,7 +127,7 @@ def _make_pip_install_args(
     return args
 
 
-def _get_image_builder_version(client_version: ImageBuilderVersion) -> ImageBuilderVersion:
+def _get_image_builder_version(client_version: str) -> ImageBuilderVersion:
     if config_version := config.get("image_builder_version"):
         version = config_version
         if (env_var := "MODAL_IMAGE_BUILDER_VERSION") in os.environ:
