@@ -130,29 +130,28 @@ def _make_pip_install_args(
 def _get_image_builder_version(client_version: ImageBuilderVersion) -> ImageBuilderVersion:
     if config_version := config.get("image_builder_version"):
         version = config_version
+        if (env_var := "MODAL_IMAGE_BUILDER_VERSION") in os.environ:
+            version_source = f" (based on your `{env_var}` environment variable)"
+        else:
+            version_source = f" (based on your local config file at `{user_config_path}`)"
     else:
         version = client_version
+        version_source = ""
 
     supported_versions: Set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
-    version_source, remedy = "", ""
     if version not in supported_versions:
-        if version < min(supported_versions):
-            if config.get("image_builder_version"):
-                if "MODAL_IMAGE_BUILDER_VERSION" in os.environ:
-                    version_source = " (based on your local environment variables)"
-                else:
-                    version_source = f" (based on your local config file at `{user_config_path}`)"
-                remedy = " or remove your local configuration"
-            else:
-                remedy = " your image builder version using the Modal dashboard"
+        if config_version is not None:
+            update_suggestion = "or remove your local configuration"
+        elif version < min(supported_versions):
+            update_suggestion = "your image builder version using the Modal dashboard"
         else:
-            remedy = " your client library"
+            update_suggestion = "your client library (pip install --upgrade modal)"
         # Special case "PREVIEW": we allow, but don't advertise it, as it's intended for development
         raise VersionError(
             "This version of the modal client supports the following image builder versions:"
             f" {supported_versions - {'PREVIEW'}!r}."
             f"\n\nYou are using {version!r}{version_source}."
-            f" Please update{remedy}."
+            f" Please update {update_suggestion}."
         )
 
     return version

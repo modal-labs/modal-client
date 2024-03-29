@@ -162,7 +162,7 @@ class _Client:
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
-                    f"The client version ({self.version}) is too old. Please update (pip install --update modal)."
+                    f"The client version ({self.version}) is too old. Please update (pip install --upgrade modal)."
                 )
             elif exc.status == Status.UNAUTHENTICATED:
                 raise AuthError(exc.message)
