@@ -14,6 +14,8 @@ from synchronicity import Interface
 from synchronicity.async_wrap import wraps_by_interface
 from typing_extensions import ParamSpec
 
+import modal
+
 from .logger import logger
 
 synchronizer = synchronicity.Synchronizer()
@@ -394,8 +396,12 @@ async def asyncnullcontext(*args, **kwargs):
     yield
 
 
-def run_function_sync(coro: typing.Awaitable[T]) -> T:
+def run_coro_sync(coro: typing.Awaitable[T]) -> T:
     loop = asyncio.get_event_loop()
+    if loop.is_running():
+        # nested event looping, this would cause a RuntimeError since we are inside a blocking
+        # call that can't yield back to the event loop to complete the submitted coroutine
+        raise modal.exception.InvalidError(f"Can't run {coro} from an async function - try using .aio instead")
     res = loop.run_until_complete(coro)
     return res
 
@@ -405,7 +411,7 @@ SEND_TYPE = typing.TypeVar("SEND_TYPE")
 
 
 def run_generator_sync(
-    self, gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE]
+    gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE],
 ) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
     # more or less copied from synchronicity's implementation, but with types
     next_send: typing.Union[SEND_TYPE, None] = None
@@ -414,9 +420,9 @@ def run_generator_sync(
     while True:
         try:
             if exc:
-                next_yield = self.run_coro_blocking(gen.athrow(exc))
+                next_yield = run_coro_sync(gen.athrow(exc))
             else:
-                next_yield = self.run_coro_blocking(gen.asend(next_send))  # type: ignore[arg-type]
+                next_yield = run_coro_sync(gen.asend(next_send))  # type: ignore[arg-type]
         except StopAsyncIteration:
             break
         try:

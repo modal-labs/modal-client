@@ -745,3 +745,13 @@ def test_no_state_reuse(client, servicer, supports_dir):
 
     # mount ids should not overlap between first and second deploy
     assert not (first_deploy & second_deploy)
+
+
+@pytest.mark.asyncio
+async def test_non_aio_map_in_async_caller_error(client):
+    dummy_function = stub.function()(dummy)
+
+    with stub.run(client=client):
+        with pytest.raises(InvalidError, match="try using .aio instead"):
+            for _ in dummy_function.map([1, 2, 3]):
+                pass
