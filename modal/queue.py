@@ -278,7 +278,7 @@ class _Queue(_Object, type_prefix="qu"):
 
         If `block` is `False`, this method raises `queue.Full` immediately if the queue is full. The `timeout` is
         ignored in this case."""
-        await self.put_many([v], block, timeout, partition)
+        await self.put_many([v], block, timeout, partition=partition)
 
     @live_method
     async def put_many(
