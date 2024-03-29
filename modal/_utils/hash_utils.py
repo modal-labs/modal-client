@@ -2,44 +2,44 @@
 import base64
 import dataclasses
 import hashlib
-from typing import IO, Union
+from typing import BinaryIO, Callable, List, Union
 
 HASH_CHUNK_SIZE = 4096
 
 
-def _update(hashers, data: Union[bytes, IO[bytes]]):
+def _update(hashers: List[Callable[[bytes], None]], data: Union[bytes, BinaryIO]) -> None:
     if isinstance(data, bytes):
         for hasher in hashers:
-            hasher.update(data)
+            hasher(data)
     else:
-        assert isinstance(data, IO)
+        assert not isinstance(data, (bytearray, memoryview))  # https://github.com/microsoft/pyright/issues/5697
         pos = data.tell()
-        while 1:
+        while True:
             chunk = data.read(HASH_CHUNK_SIZE)
             if not isinstance(chunk, bytes):
                 raise ValueError(f"Only accepts bytes or byte buffer objects, not {type(chunk)} buffers")
             if not chunk:
                 break
             for hasher in hashers:
-                hasher.update(chunk)
+                hasher(chunk)
         data.seek(pos)
 
 
-def get_sha256_hex(data: Union[bytes, IO[bytes]]) -> str:
+def get_sha256_hex(data: Union[bytes, BinaryIO]) -> str:
     hasher = hashlib.sha256()
-    _update([hasher], data)
+    _update([hasher.update], data)
     return hasher.hexdigest()
 
 
-def get_sha256_base64(data: Union[bytes, IO[bytes]]) -> str:
+def get_sha256_base64(data: Union[bytes, BinaryIO]) -> str:
     hasher = hashlib.sha256()
-    _update([hasher], data)
+    _update([hasher.update], data)
     return base64.b64encode(hasher.digest()).decode("ascii")
 
 
-def get_md5_base64(data: Union[bytes, IO[bytes]]) -> str:
+def get_md5_base64(data: Union[bytes, BinaryIO]) -> str:
     hasher = hashlib.md5()
-    _update([hasher], data)
+    _update([hasher.update], data)
     return base64.b64encode(hasher.digest()).decode("utf-8")
 
 
@@ -49,10 +49,10 @@ class UploadHashes:
     sha256_base64: str
 
 
-def get_upload_hashes(data: Union[bytes, IO[bytes]]) -> UploadHashes:
+def get_upload_hashes(data: Union[bytes, BinaryIO]) -> UploadHashes:
     md5 = hashlib.md5()
     sha256 = hashlib.sha256()
-    _update([md5, sha256], data)
+    _update([md5.update, sha256.update], data)
     return UploadHashes(
         md5_base64=base64.b64encode(md5.digest()).decode("ascii"),
         sha256_base64=base64.b64encode(sha256.digest()).decode("ascii"),
