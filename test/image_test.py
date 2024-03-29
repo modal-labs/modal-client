@@ -246,6 +246,24 @@ def test_conda_update_from_environment(servicer, client):
         assert any(b"bar=2.1" in f.data for f in layers[0].context_files)
 
 
+def test_run_commands(servicer, client):
+    base = Image.debian_slim()
+
+    command = "echo 'Hello Modal'"
+    stub = Stub(image=base.run_commands(command))
+    with stub.run(client=client):
+        layers = get_image_layers(stub.image.object_id, servicer)
+        assert layers[0].dockerfile_commands[1] == f"RUN {command}"
+
+    commands = ["echo 'Hello world'", "touch agi.yaml"]
+    for image in [base.run_commands(commands), base.run_commands(*commands)]:
+        stub = Stub(image=image)
+        with stub.run(client=client):
+            layers = get_image_layers(stub.image.object_id, servicer)
+            for i, cmd in enumerate(commands, 1):
+                assert layers[0].dockerfile_commands[i] == f"RUN {cmd}"
+
+
 def test_dockerhub_install(servicer, client):
     stub = Stub(image=Image.from_registry("gisops/valhalla:latest", setup_dockerfile_commands=["RUN apt-get update"]))
 
