@@ -134,16 +134,21 @@ def _get_image_builder_version(client_version: ImageBuilderVersion) -> ImageBuil
         version = client_version
 
     supported_versions: Set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
+    version_source, remedy = "", ""
     if version not in supported_versions:
         if version < min(supported_versions):
-            remedy = "image builder version using the Modal dashboard"
+            if config.get("image_builder_version"):
+                version_source = " (based on your local Modal config)"
+            else:
+                remedy = " your image builder version using the Modal dashboard"
         else:
-            remedy = "client library"
+            remedy = " your client library"
         # Special case "PREVIEW": we allow, but don't advertise it, as it's intended for development
         raise VersionError(
             "This version of the modal client supports the following image builder versions:"
-            f" {supported_versions - {'PREVIEW'}!r}"
-            f" You are using image builder {version!r}. Please update your {remedy}."
+            f" {supported_versions - {'PREVIEW'}!r}."
+            f"\n\nYou are using image builder {version!r}{version_source}."
+            f" Please update{remedy}."
         )
 
     return version
