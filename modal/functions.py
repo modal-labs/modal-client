@@ -93,6 +93,8 @@ if TYPE_CHECKING:
 
 
 class _SynchronizedQueue:
+    """mdmd:hidden"""
+
     # small wrapper around asyncio.Queue to make it cross-thread compatible through synchronicity
     def __init__(self):
         self.q = asyncio.Queue()
@@ -1378,29 +1380,6 @@ class _Function(_Object, type_prefix="fu"):
         ):
             pass
 
-    async def starmap(
-        self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
-    ) -> AsyncGenerator[Any, None]:
-        """Like `map`, but spreads arguments over multiple function arguments.
-
-        Assumes every input is a sequence (e.g. a tuple).
-
-        Example:
-        ```python
-        @stub.function()
-        def my_func(a, b):
-            return a + b
-
-
-        @stub.local_entrypoint()
-        def main():
-            assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
-        ```
-        """
-        input_stream = stream.iterate(input_iterator)
-        async for item in self._map(input_stream, order_outputs, return_exceptions, kwargs):
-            yield item
-
     @synchronizer.nowrap
     async def _starmap_async(
         self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
@@ -1425,6 +1404,22 @@ class _Function(_Object, type_prefix="fu"):
     def _starmap_sync(
         self, input_iterator, kwargs={}, order_outputs: bool = True, return_exceptions: bool = False
     ) -> Iterator[Any]:
+        """Like `map`, but spreads arguments over multiple function arguments.
+
+        Assumes every input is a sequence (e.g. a tuple).
+
+        Example:
+        ```python
+        @stub.function()
+        def my_func(a, b):
+            return a + b
+
+
+        @stub.local_entrypoint()
+        def main():
+            assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
+        ```
+        """
         return run_generator_sync(
             self._starmap_async(
                 input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
