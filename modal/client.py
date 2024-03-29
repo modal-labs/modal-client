@@ -97,6 +97,7 @@ class _Client:
         self.credentials = credentials
         self.version = version
         self._authenticated = False
+        self.image_builder_version: Optional[str] = None
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[api_grpc.ModalClientStub] = None
@@ -154,10 +155,11 @@ class _Client:
                 ALARM_EMOJI = chr(0x1F6A8)
                 warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
             self._authenticated = True
+            self.image_builder_version = resp.image_builder_version
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
-                    f"The client version ({self.version}) is too old. Please update (pip install --update modal)."
+                    f"The client version ({self.version}) is too old. Please update (pip install --upgrade modal)."
                 )
             elif exc.status == Status.UNAUTHENTICATED:
                 raise AuthError(exc.message)

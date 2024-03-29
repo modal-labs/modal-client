@@ -710,9 +710,6 @@ class _Stub:
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
-        from .sandbox import _Sandbox
-        from .stub import _default_image
-
         if self._local_app:
             app_id = self._local_app.app_id
             environment_name = self._local_app._environment_name
