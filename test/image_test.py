@@ -445,7 +445,7 @@ def tmp_path_with_content(tmp_path):
     return tmp_path
 
 
-def test_image_copy_local_dir(builder_verison, servicer, client, tmp_path_with_content):
+def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_content):
     stub = Stub()
     stub.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy")
 
