@@ -136,9 +136,9 @@ def _get_image_builder_version(client_version: ImageBuilderVersion) -> ImageBuil
     supported_versions: Set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
     if version not in supported_versions:
         if version < min(supported_versions):
-            remedy = "client library"
-        else:
             remedy = "image builder version using the Modal dashboard"
+        else:
+            remedy = "client library"
         # Special case "PREVIEW": we allow, but don't advertise it, as it's intended for development
         raise VersionError(
             "This version of the modal client supports the following image builder versions:"
