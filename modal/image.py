@@ -21,7 +21,7 @@ from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
-from .config import config, logger
+from .config import config, logger, user_config_path
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
@@ -138,7 +138,11 @@ def _get_image_builder_version(client_version: ImageBuilderVersion) -> ImageBuil
     if version not in supported_versions:
         if version < min(supported_versions):
             if config.get("image_builder_version"):
-                version_source = " (based on your local Modal config)"
+                if "MODAL_IMAGE_BUILDER_VERSION" in os.environ:
+                    version_source = " (based on your local environment variables)"
+                else:
+                    version_source = f" (based on your local config file at `{user_config_path}`)"
+                remedy = " or remove your local configuration"
             else:
                 remedy = " your image builder version using the Modal dashboard"
         else:
@@ -147,7 +151,7 @@ def _get_image_builder_version(client_version: ImageBuilderVersion) -> ImageBuil
         raise VersionError(
             "This version of the modal client supports the following image builder versions:"
             f" {supported_versions - {'PREVIEW'}!r}."
-            f"\n\nYou are using image builder {version!r}{version_source}."
+            f"\n\nYou are using {version!r}{version_source}."
             f" Please update{remedy}."
         )
 
