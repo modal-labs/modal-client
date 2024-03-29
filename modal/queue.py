@@ -69,11 +69,13 @@ class _Queue(_Object, type_prefix="qu"):
         raise RuntimeError("Queue() is not allowed. Please use `Queue.from_name(...)` or `Queue.ephemeral()` instead.")
 
     @staticmethod
-    def validate_partition(partition: str) -> None:
-        partition_key = partition.encode("utf-8")
-
-        if len(partition_key) > 64:
-            raise InvalidError("Partition names must be 64 characters or fewer.")
+    def validate_partition(partition: Optional[str]) -> bytes:
+        if partition is not None:
+            partition_key = partition.encode("utf-8")
+            if len(partition_key) == 0 or len(partition_key) > 64:
+                raise InvalidError("Queue partition key must be between 1 and 64 characters.")
+        else:
+            partition_key = b""
 
         return partition_key
 
@@ -172,7 +174,7 @@ class _Queue(_Object, type_prefix="qu"):
         await resolver.load(obj)
         return obj
 
-    async def _get_nonblocking(self, partition: str, n_values: int) -> List[Any]:
+    async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> List[Any]:
         request = api_pb2.QueueGetRequest(
             queue_id=self.object_id,
             partition_key=self.validate_partition(partition),
@@ -186,7 +188,7 @@ class _Queue(_Object, type_prefix="qu"):
         else:
             return []
 
-    async def _get_blocking(self, partition: str, timeout: Optional[float], n_values: int) -> List[Any]:
+    async def _get_blocking(self, partition: Optional[str], timeout: Optional[float], n_values: int) -> List[Any]:
         if timeout is not None:
             deadline = time.time() + timeout
         else:
@@ -216,7 +218,9 @@ class _Queue(_Object, type_prefix="qu"):
         raise queue.Empty()
 
     @live_method
-    async def get(self, block: bool = True, timeout: Optional[float] = None, partition: str = "") -> Optional[Any]:
+    async def get(
+        self, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
+    ) -> Optional[Any]:
         """Remove and return the next object in the queue.
 
         If `block` is `True` (the default) and the queue is empty, `get` will wait indefinitely for
@@ -241,7 +245,7 @@ class _Queue(_Object, type_prefix="qu"):
 
     @live_method
     async def get_many(
-        self, n_values: int, block: bool = True, timeout: Optional[float] = None, partition: str = ""
+        self, n_values: int, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
     ) -> List[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
@@ -256,14 +260,16 @@ class _Queue(_Object, type_prefix="qu"):
         """
 
         if block:
-            return await self._get_blocking(timeout, n_values)
+            return await self._get_blocking(partition, timeout, n_values)
         else:
             if timeout is not None:
                 warnings.warn("Timeout is ignored for non-blocking get.")
-            return await self._get_nonblocking(n_values)
+            return await self._get_nonblocking(partition, n_values)
 
     @live_method
-    async def put(self, v: Any, block: bool = True, timeout: Optional[float] = None, partition: str = "") -> None:
+    async def put(
+        self, v: Any, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
+    ) -> None:
         """Add an object to the end of the queue.
 
         If `block` is `True` and the queue is full, this method will retry indefinitely or
@@ -272,11 +278,11 @@ class _Queue(_Object, type_prefix="qu"):
 
         If `block` is `False`, this method raises `queue.Full` immediately if the queue is full. The `timeout` is
         ignored in this case."""
-        await self.put_many([v], block, timeout)
+        await self.put_many([v], block, timeout, partition)
 
     @live_method
     async def put_many(
-        self, vs: List[Any], block: bool = True, timeout: Optional[float] = None, partition: str = ""
+        self, vs: List[Any], block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
     ) -> None:
         """Add several objects to the end of the queue.
 
@@ -293,7 +299,7 @@ class _Queue(_Object, type_prefix="qu"):
                 warnings.warn("`timeout` argument is ignored for non-blocking put.")
             await self._put_many_nonblocking(partition, vs)
 
-    async def _put_many_blocking(self, partition: str, vs: List[Any], timeout: Optional[float] = None):
+    async def _put_many_blocking(self, partition: Optional[str], vs: List[Any], timeout: Optional[float] = None):
         vs_encoded = [serialize(v) for v in vs]
 
         request = api_pb2.QueuePutRequest(
@@ -313,7 +319,7 @@ class _Queue(_Object, type_prefix="qu"):
         except GRPCError as exc:
             raise queue.Full(str(exc)) if exc.status == Status.RESOURCE_EXHAUSTED else exc
 
-    async def _put_many_nonblocking(self, partition: str, vs: List[Any]):
+    async def _put_many_nonblocking(self, partition: Optional[str], vs: List[Any]):
         vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
@@ -326,7 +332,7 @@ class _Queue(_Object, type_prefix="qu"):
             raise queue.Full(exc.message) if exc.status == Status.RESOURCE_EXHAUSTED else exc
 
     @live_method
-    async def len(self, partition: str = "") -> int:
+    async def len(self, *, partition: Optional[str] = None) -> int:
         """Return the number of objects in the queue partition."""
         request = api_pb2.QueueLenRequest(
             queue_id=self.object_id,
