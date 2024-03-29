@@ -382,20 +382,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.requests.append(request)
         self.client_create_metadata = stream.metadata
         client_version = stream.metadata["x-modal-client-version"]
+        image_builder_version = max(get_args(ImageBuilderVersion))
+        warning = ""
         assert stream.user_agent.startswith(f"modal-client/{__version__} ")
         if stream.metadata.get("x-modal-token-id") == "bad":
             raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
-        elif client_version == "timeout":
-            await asyncio.sleep(60)
-            await stream.send_message(api_pb2.ClientHelloResponse())
         elif client_version == "unauthenticated":
             raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
-        elif client_version == "deprecated":
-            await stream.send_message(api_pb2.ClientHelloResponse(warning="SUPER OLD"))
         elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
             raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
-        else:
-            await stream.send_message(api_pb2.ClientHelloResponse())
+        elif client_version == "deprecated":
+            warning = "SUPER OLD"
+        elif client_version == "timeout":
+            await asyncio.sleep(60)
+        resp = api_pb2.ClientHelloResponse(warning=warning, image_builder_version=image_builder_version)
+        await stream.send_message(resp)
 
     # Container
 
@@ -727,10 +728,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
             )
         )
-
-    async def ImageBuilderVersionLookup(self, stream):
-        version = max(get_args(ImageBuilderVersion))
-        await stream.send_message(api_pb2.ImageBuilderVersionLookupResponse(version=version))
 
     ### Mount
 

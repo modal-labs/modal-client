@@ -643,9 +643,8 @@ def test_get_client_requirements_path(version, expected):
     assert os.path.basename(path) == expected
 
 
-@mock.patch("modal.image._Image.builder_version", None)
-@mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"])
 @mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"])
+@mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"])
 def test_image_builder_version(client, servicer, server_url_env):
     stub = Stub(image=Image.debian_slim())
     with stub.run(client=client):
@@ -654,7 +653,6 @@ def test_image_builder_version(client, servicer, server_url_env):
             assert version == "2000.01"
 
 
-@mock.patch("modal.image._Image.builder_version", None)
 @mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"])
 @mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"])
 def test_image_builder_supported_versions(client, servicer, server_url_env):
