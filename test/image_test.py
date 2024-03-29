@@ -645,27 +645,25 @@ def test_get_client_requirements_path(version, expected):
 
 def test_image_builder_version(servicer):
     stub = Stub(image=Image.debian_slim())
-    with (
-        mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]),
-        mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]),
-    ):
-        with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")) as client:
-            with stub.run(client=client):
-                assert servicer.image_builder_versions
-                for version in servicer.image_builder_versions.values():
-                    assert version == "2000.01"
+    # TODO use a single with statement and tuple of managers when we drop Py3.8
+    with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
+        with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
+            with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")) as client:
+                with stub.run(client=client):
+                    assert servicer.image_builder_versions
+                    for version in servicer.image_builder_versions.values():
+                        assert version == "2000.01"
 
 
 def test_image_builder_supported_versions(servicer):
     stub = Stub(image=Image.debian_slim())
-    with (
-        pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"),
-        mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]),
-        mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"]),
-    ):
-        with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")) as client:
-            with stub.run(client=client):
-                pass
+    # TODO use a single with statement and tuple of managers when we drop Py3.8
+    with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
+        with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
+            with mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"]):
+                with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")) as client:
+                    with stub.run(client=client):
+                        pass
 
 
 @skip_windows("Different hash values for context file paths")
