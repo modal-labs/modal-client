@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 
@@ -24,12 +23,12 @@ else:
 
 
 class _LocalApp:
-    _tag_to_object_id: Dict[str, str]
-    _client: _Client
-    _app_id: str
-    _app_page_url: str
-    _environment_name: str
-    _interactive: bool
+    tag_to_object_id: Dict[str, str]
+    client: _Client
+    app_id: str
+    app_page_url: str
+    environment_name: str
+    interactive: bool
 
     def __init__(
         self,
@@ -41,26 +40,12 @@ class _LocalApp:
         interactive: bool = False,
     ):
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
-        self._app_id = app_id
-        self._app_page_url = app_page_url
-        self._client = client
-        self._tag_to_object_id = tag_to_object_id or {}
-        self._environment_name = environment_name
-        self._interactive = interactive
-
-    @property
-    def client(self) -> _Client:
-        """A reference to the running App's server client."""
-        return self._client
-
-    @property
-    def app_id(self) -> str:
-        """A unique identifier for this running App."""
-        return self._app_id
-
-    @property
-    def is_interactive(self) -> bool:
-        return self._interactive
+        self.app_id = app_id
+        self.app_page_url = app_page_url
+        self.client = client
+        self.tag_to_object_id = tag_to_object_id or {}
+        self.environment_name = environment_name
+        self.interactive = interactive
 
     async def _create_all_objects(
         self,
@@ -70,19 +55,19 @@ class _LocalApp:
         output_mgr: Optional[OutputManager] = None,
     ):  # api_pb2.AppState.V
         """Create objects that have been defined but not created on the server."""
-        if not self._client.authenticated:
+        if not self.client.authenticated:
             raise ExecutionError("Objects cannot be created with an unauthenticated client")
 
         resolver = Resolver(
-            self._client,
+            self.client,
             output_mgr=output_mgr,
             environment_name=environment_name,
             app_id=self.app_id,
         )
         with resolver.display():
             # Get current objects, and reset all objects
-            tag_to_object_id = self._tag_to_object_id
-            self._tag_to_object_id = {}
+            tag_to_object_id = self.tag_to_object_id
+            self.tag_to_object_id = {}
 
             # Assign all objects
             for tag, obj in indexed_objects.items():
@@ -107,23 +92,23 @@ class _LocalApp:
             for tag, obj in indexed_objects.items():
                 existing_object_id = tag_to_object_id.get(tag)
                 await resolver.load(obj, existing_object_id)
-                self._tag_to_object_id[tag] = obj.object_id
+                self.tag_to_object_id[tag] = obj.object_id
 
         # Create the app (and send a list of all tagged obs)
         # TODO(erikbern): we should delete objects from a previous version that are no longer needed
         # We just delete them from the app, but the actual objects will stay around
-        indexed_object_ids = self._tag_to_object_id
-        assert indexed_object_ids == self._tag_to_object_id
+        indexed_object_ids = self.tag_to_object_id
+        assert indexed_object_ids == self.tag_to_object_id
         all_objects = resolver.objects()
 
-        unindexed_object_ids = list(set(obj.object_id for obj in all_objects) - set(self._tag_to_object_id.values()))
+        unindexed_object_ids = list(set(obj.object_id for obj in all_objects) - set(self.tag_to_object_id.values()))
         req_set = api_pb2.AppSetObjectsRequest(
-            app_id=self._app_id,
+            app_id=self.app_id,
             indexed_object_ids=indexed_object_ids,
             unindexed_object_ids=unindexed_object_ids,
             new_app_state=new_app_state,  # type: ignore
         )
-        await retry_transient_errors(self._client.stub.AppSetObjects, req_set)
+        await retry_transient_errors(self.client.stub.AppSetObjects, req_set)
 
     async def disconnect(
         self, reason: "Optional[api_pb2.AppDisconnectReason.ValueType]" = None, exc_str: Optional[str] = None
@@ -135,145 +120,54 @@ class _LocalApp:
             exc_str = exc_str[:1000]  # Truncate to 1000 chars
 
         logger.debug("Sending app disconnect/stop request")
-        req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self._app_id, reason=reason, exception=exc_str)
-        await retry_transient_errors(self._client.stub.AppClientDisconnect, req_disconnect)
+        req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self.app_id, reason=reason, exception=exc_str)
+        await retry_transient_errors(self.client.stub.AppClientDisconnect, req_disconnect)
         logger.debug("App disconnected")
 
     async def stop(self):
         """Tell the server to stop this app, terminating all running tasks."""
-        req_disconnect = api_pb2.AppStopRequest(app_id=self._app_id, source=api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT)
-        await retry_transient_errors(self._client.stub.AppStop, req_disconnect)
-
-    def log_url(self):
-        """URL link to a running app's logs page in the Modal dashboard."""
-        return self._app_page_url
-
-    @staticmethod
-    async def _init_existing(client: _Client, existing_app_id: str) -> "_LocalApp":
-        # Get all the objects first
-        obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
-        obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
-        app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
-        object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
-        return _LocalApp(client, existing_app_id, app_page_url, tag_to_object_id=object_ids)
-
-    @staticmethod
-    async def _init_new(
-        client: _Client,
-        description: str,
-        app_state: int,
-        environment_name: str = "",
-        interactive=False,
-    ) -> "_LocalApp":
-        app_req = api_pb2.AppCreateRequest(
-            description=description,
-            environment_name=environment_name,
-            app_state=app_state,
-        )
-        app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
-        app_page_url = app_resp.app_logs_url
-        logger.debug(f"Created new app with id {app_resp.app_id}")
-        return _LocalApp(
-            client, app_resp.app_id, app_page_url, environment_name=environment_name, interactive=interactive
-        )
-
-    @staticmethod
-    async def _init_from_name(
-        client: _Client,
-        name: str,
-        namespace,
-        environment_name: str = "",
-    ):
-        # Look up any existing deployment
-        app_req = api_pb2.AppGetByDeploymentNameRequest(
-            name=name,
-            namespace=namespace,
-            environment_name=environment_name,
-        )
-        app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
-        existing_app_id = app_resp.app_id or None
-
-        # Grab the app
-        if existing_app_id is not None:
-            return await _LocalApp._init_existing(client, existing_app_id)
-        else:
-            return await _LocalApp._init_new(
-                client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
-            )
-
-    async def deploy(self, name: str, namespace, public: bool) -> str:
-        """`App.deploy` is deprecated in favor of `modal.runner.deploy_stub`."""
-
-        deploy_req = api_pb2.AppDeployRequest(
-            app_id=self.app_id,
-            name=name,
-            namespace=namespace,
-            object_entity="ap",
-            visibility=(api_pb2.APP_DEPLOY_VISIBILITY_PUBLIC if public else api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE),
-        )
-        try:
-            deploy_response = await retry_transient_errors(self._client.stub.AppDeploy, deploy_req)
-        except GRPCError as exc:
-            if exc.status == Status.INVALID_ARGUMENT:
-                raise InvalidError(exc.message)
-            if exc.status == Status.FAILED_PRECONDITION:
-                raise InvalidError(exc.message)
-            raise
-        return deploy_response.url
+        req_disconnect = api_pb2.AppStopRequest(app_id=self.app_id, source=api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT)
+        await retry_transient_errors(self.client.stub.AppStop, req_disconnect)
 
 
 class _ContainerApp:
-    _client: Optional[_Client]
-    _app_id: Optional[str]
-    _environment_name: Optional[str]
-    _tag_to_object_id: Dict[str, str]
-    _object_handle_metadata: Dict[str, Optional[Message]]
+    client: Optional[_Client]
+    app_id: Optional[str]
+    environment_name: Optional[str]
+    tag_to_object_id: Dict[str, str]
+    object_handle_metadata: Dict[str, Optional[Message]]
     # if true, there's an active PTY shell session connected to this process.
-    _is_interactivity_enabled: bool
-    _function_def: Optional[api_pb2.Function]
-    _fetching_inputs: bool
+    is_interactivity_enabled: bool
+    function_def: Optional[api_pb2.Function]
+    fetching_inputs: bool
 
     def __init__(self):
-        self._client = None
-        self._app_id = None
-        self._environment_name = None
-        self._tag_to_object_id = {}
-        self._object_handle_metadata = {}
-        self._is_interactivity_enabled = False
-        self._fetching_inputs = True
-
-    @property
-    def client(self) -> Optional[_Client]:
-        """A reference to the running App's server client."""
-        return self._client
-
-    @property
-    def app_id(self) -> Optional[str]:
-        """A unique identifier for this running App."""
-        return self._app_id
-
-    @property
-    def fetching_inputs(self) -> bool:
-        return self._fetching_inputs
+        self.client = None
+        self.app_id = None
+        self.environment_name = None
+        self.tag_to_object_id = {}
+        self.object_handle_metadata = {}
+        self.is_interactivity_enabled = False
+        self.fetching_inputs = True
 
     def associate_stub_container(self, stub):
         stub._container_app = self
 
         # Initialize objects on stub
         stub_objects: dict[str, _Object] = dict(stub.get_objects())
-        for tag, object_id in self._tag_to_object_id.items():
+        for tag, object_id in self.tag_to_object_id.items():
             obj = stub_objects.get(tag)
             if obj is not None:
-                handle_metadata = self._object_handle_metadata[object_id]
-                obj._hydrate(object_id, self._client, handle_metadata)
+                handle_metadata = self.object_handle_metadata[object_id]
+                obj._hydrate(object_id, self.client, handle_metadata)
 
     def _has_object(self, tag: str) -> bool:
-        return tag in self._tag_to_object_id
+        return tag in self.tag_to_object_id
 
     def _hydrate_object(self, obj, tag: str):
-        object_id: str = self._tag_to_object_id[tag]
-        metadata: Message = self._object_handle_metadata[object_id]
-        obj._hydrate(object_id, self._client, metadata)
+        object_id: str = self.tag_to_object_id[tag]
+        metadata: Message = self.object_handle_metadata[object_id]
+        obj._hydrate(object_id, self.client, metadata)
 
     def hydrate_function_deps(self, function: _Function, dep_object_ids: List[str]):
         function_deps = function.deps(only_explicit_mounts=True)
@@ -283,8 +177,8 @@ class _ContainerApp:
                 f" but container got {len(dep_object_ids)} object ids."
             )
         for object_id, obj in zip(dep_object_ids, function_deps):
-            metadata: Message = self._object_handle_metadata[object_id]
-            obj._hydrate(object_id, self._client, metadata)
+            metadata: Message = self.object_handle_metadata[object_id]
+            obj._hydrate(object_id, self.client, metadata)
 
     async def init(
         self,
@@ -297,21 +191,21 @@ class _ContainerApp:
         global _is_container_app
         _is_container_app = True
 
-        self._client = client
-        self._app_id = app_id
-        self._environment_name = environment_name
-        self._function_def = function_def
-        self._tag_to_object_id = {}
-        self._object_handle_metadata = {}
+        self.client = client
+        self.app_id = app_id
+        self.environment_name = environment_name
+        self.function_def = function_def
+        self.tag_to_object_id = {}
+        self.object_handle_metadata = {}
         req = api_pb2.AppGetObjectsRequest(app_id=app_id, include_unindexed=True)
         resp = await retry_transient_errors(client.stub.AppGetObjects, req)
         logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {app_id}")
         for item in resp.items:
             handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-            self._object_handle_metadata[item.object.object_id] = handle_metadata
+            self.object_handle_metadata[item.object.object_id] = handle_metadata
             logger.debug(f"Setting metadata for {item.object.object_id} ({item.tag})")
             if item.tag:
-                self._tag_to_object_id[item.tag] = item.object.object_id
+                self.tag_to_object_id[item.tag] = item.object.object_id
 
     @staticmethod
     def _reset_container():
@@ -321,7 +215,7 @@ class _ContainerApp:
         _container_app.__init__()  # type: ignore
 
     def stop_fetching_inputs(self):
-        self._fetching_inputs = False
+        self.fetching_inputs = False
 
 
 LocalApp = synchronize_api(_LocalApp)

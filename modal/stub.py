@@ -187,7 +187,7 @@ class _Stub:
         """Whether the current app for the stub is running in interactive mode."""
         # return self._name
         if self._local_app:
-            return self._local_app.is_interactive
+            return self._local_app.interactive
         else:
             return False
 
@@ -195,9 +195,9 @@ class _Stub:
     def app_id(self) -> Optional[str]:
         """Return the app_id, if the stub is running."""
         if self._container_app:
-            return self._container_app._app_id
+            return self._container_app.app_id
         elif self._local_app:
-            return self._local_app._app_id
+            return self._local_app.app_id
         else:
             return None
 
@@ -712,11 +712,11 @@ class _Stub:
         """
         if self._local_app:
             app_id = self._local_app.app_id
-            environment_name = self._local_app._environment_name
+            environment_name = self._local_app.environment_name
             client = self._local_app.client
         elif self._container_app:
             app_id = self._container_app.app_id
-            environment_name = self._container_app._environment_name
+            environment_name = self._container_app.environment_name
             client = self._container_app.client
         else:
             raise InvalidError("`stub.spawn_sandbox` requires a running app.")
