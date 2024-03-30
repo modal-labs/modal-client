@@ -25,7 +25,7 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
     stub = Stub()
 
     # This is normally done in _container_entrypoint
-    container_app.associate_stub_container(stub)
+    stub._init_container(container_app)
 
     # Now, let's create my_f after the app started running and make sure it works
     my_f_container = stub.function()(my_f_1)

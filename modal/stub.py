@@ -3,8 +3,9 @@ import inspect
 import os
 import typing
 from pathlib import PurePosixPath
-from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Union
 
+from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
@@ -217,8 +218,10 @@ class _Stub:
         if self._container_app:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the stub.
-            if self._container_app._has_object(tag):
-                self._container_app._hydrate_object(obj, tag)
+            if tag in self._container_app.tag_to_object_id:
+                object_id: str = self._container_app.tag_to_object_id[tag]
+                metadata: Message = self._container_app.object_handle_metadata[object_id]
+                obj._hydrate(object_id, self._container_app.client, metadata)
 
         self._indexed_objects[tag] = obj
 
@@ -281,10 +284,6 @@ class _Stub:
     @image.setter
     def image(self, value):
         self._indexed_objects["image"] = value
-
-    def get_objects(self) -> List[Tuple[str, _Object]]:
-        """Used by the container app to initialize objects."""
-        return list(self._indexed_objects.items())
 
     def _uncreate_all_objects(self):
         # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
@@ -361,6 +360,16 @@ class _Stub:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
 
         self._add_object(function.tag, function)
+
+    def _init_container(self, container_app: _ContainerApp):
+        self._container_app = container_app
+
+        # Hydrate objects on stub
+        for tag, object_id in container_app.tag_to_object_id.items():
+            if tag in self._indexed_objects:
+                obj = self._indexed_objects[tag]
+                handle_metadata = container_app.object_handle_metadata[object_id]
+                obj._hydrate(object_id, container_app.client, handle_metadata)
 
     @property
     def registered_functions(self) -> Dict[str, _Function]:
