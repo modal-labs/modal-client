@@ -6,8 +6,6 @@ from google.protobuf.message import Message
 
 from modal_proto import api_pb2
 
-from ._output import OutputManager
-from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
 from .client import _Client
@@ -46,69 +44,6 @@ class _LocalApp:
         self.tag_to_object_id = tag_to_object_id or {}
         self.environment_name = environment_name
         self.interactive = interactive
-
-    async def _create_all_objects(
-        self,
-        indexed_objects: Dict[str, _Object],
-        new_app_state: int,
-        environment_name: str,
-        output_mgr: Optional[OutputManager] = None,
-    ):  # api_pb2.AppState.V
-        """Create objects that have been defined but not created on the server."""
-        if not self.client.authenticated:
-            raise ExecutionError("Objects cannot be created with an unauthenticated client")
-
-        resolver = Resolver(
-            self.client,
-            output_mgr=output_mgr,
-            environment_name=environment_name,
-            app_id=self.app_id,
-        )
-        with resolver.display():
-            # Get current objects, and reset all objects
-            tag_to_object_id = self.tag_to_object_id
-            self.tag_to_object_id = {}
-
-            # Assign all objects
-            for tag, obj in indexed_objects.items():
-                # Reset object_id in case the app runs twice
-                # TODO(erikbern): clean up the interface
-                obj._unhydrate()
-
-            # Preload all functions to make sure they have ids assigned before they are loaded.
-            # This is important to make sure any enclosed function handle references in serialized
-            # functions have ids assigned to them when the function is serialized.
-            # Note: when handles/objs are merged, all objects will need to get ids pre-assigned
-            # like this in order to be referrable within serialized functions
-            for tag, obj in indexed_objects.items():
-                existing_object_id = tag_to_object_id.get(tag)
-                # Note: preload only currently implemented for Functions, returns None otherwise
-                # this is to ensure that directly referenced functions from the global scope has
-                # ids associated with them when they are serialized into other functions
-                await resolver.preload(obj, existing_object_id)
-                if obj.object_id is not None:
-                    tag_to_object_id[tag] = obj.object_id
-
-            for tag, obj in indexed_objects.items():
-                existing_object_id = tag_to_object_id.get(tag)
-                await resolver.load(obj, existing_object_id)
-                self.tag_to_object_id[tag] = obj.object_id
-
-        # Create the app (and send a list of all tagged obs)
-        # TODO(erikbern): we should delete objects from a previous version that are no longer needed
-        # We just delete them from the app, but the actual objects will stay around
-        indexed_object_ids = self.tag_to_object_id
-        assert indexed_object_ids == self.tag_to_object_id
-        all_objects = resolver.objects()
-
-        unindexed_object_ids = list(set(obj.object_id for obj in all_objects) - set(self.tag_to_object_id.values()))
-        req_set = api_pb2.AppSetObjectsRequest(
-            app_id=self.app_id,
-            indexed_object_ids=indexed_object_ids,
-            unindexed_object_ids=unindexed_object_ids,
-            new_app_state=new_app_state,  # type: ignore
-        )
-        await retry_transient_errors(self.client.stub.AppSetObjects, req_set)
 
     async def disconnect(
         self, reason: "Optional[api_pb2.AppDisconnectReason.ValueType]" = None, exc_str: Optional[str] = None
