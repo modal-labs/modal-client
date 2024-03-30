@@ -124,11 +124,6 @@ class _LocalApp:
         await retry_transient_errors(self.client.stub.AppClientDisconnect, req_disconnect)
         logger.debug("App disconnected")
 
-    async def stop(self):
-        """Tell the server to stop this app, terminating all running tasks."""
-        req_disconnect = api_pb2.AppStopRequest(app_id=self.app_id, source=api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT)
-        await retry_transient_errors(self.client.stub.AppStop, req_disconnect)
-
 
 class _ContainerApp:
     client: Optional[_Client]
