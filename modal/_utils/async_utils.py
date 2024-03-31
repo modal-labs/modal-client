@@ -10,8 +10,6 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Callable, Iterator, List, Optional, Set, TypeVar, cast
 
 import synchronicity
-from synchronicity import Interface
-from synchronicity.async_wrap import wraps_by_interface
 from typing_extensions import ParamSpec
 
 import modal
@@ -397,6 +395,7 @@ async def asyncnullcontext(*args, **kwargs):
 
 
 def run_coro_sync(coro: typing.Awaitable[T]) -> T:
+    # more or less copied from synchronicity's implementation, but using current thread's event loop
     loop = asyncio.get_event_loop()
     if loop.is_running():
         # nested event looping, this would cause a RuntimeError since we are inside a blocking
@@ -413,7 +412,7 @@ SEND_TYPE = typing.TypeVar("SEND_TYPE")
 def run_generator_sync(
     gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE],
 ) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
-    # more or less copied from synchronicity's implementation, but with types
+    # more or less copied from synchronicity's implementation, but using current thread's event loop
     next_send: typing.Union[SEND_TYPE, None] = None
     next_yield: YIELD_TYPE
     exc: Optional[BaseException] = None
@@ -430,26 +429,3 @@ def run_generator_sync(
             exc = None
         except BaseException as exc:
             exc = exc
-
-
-class MethodWithAio:
-    """Creates a bound method that has a callable .aio ƒunction on the method itself
-
-    The .aio method-method is also bound to the parent object.
-
-    Useful to re-create a synchronicity-like method that isn't tied to the synchronicity event loop/thread
-    """
-
-    def __init__(self, func, aio_func):
-        self._func = func
-        self._aio_func = aio_func
-
-    def __get__(self, instance, owner=None):
-        assert instance is not None  # only supporting instance methods for now, not class methods
-        bind_var = instance if instance is not None else owner
-
-        bound_func = functools.wraps(self._func)(functools.partial(self._func, bind_var))
-        bound_func.aio = wraps_by_interface(Interface._ASYNC_WITH_BLOCKING_TYPES, self._aio_func)(  # type: ignore[attr-defined]
-            functools.partial(self._aio_func, bind_var)
-        )
-        return bound_func

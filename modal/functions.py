@@ -32,6 +32,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from synchronicity import Interface
+from synchronicity.combined_types import MethodWithAio
 from synchronicity.exceptions import UserCodeException
 
 from modal import _pty, is_local
@@ -43,7 +44,6 @@ from ._resolver import Resolver
 from ._serialization import deserialize, deserialize_data_format, serialize
 from ._traceback import append_modal_tb
 from ._utils.async_utils import (
-    MethodWithAio,
     queue_batch_iterator,
     run_generator_sync,
     synchronize_api,
@@ -1587,9 +1587,14 @@ class _Function(_Object, type_prefix="fu"):
 
 
 Function = synchronize_api(_Function)
-Function.map = MethodWithAio(_Function._map_sync, _Function._map_async)
-Function.starmap = MethodWithAio(_Function._starmap_sync, _Function._starmap_async)
-Function.for_each = MethodWithAio(_Function._for_each_sync, _Function._for_each_async)
+
+# A bit hacky - but the map-style functions need to not be synchronicity-wrapped
+# in order to not execute their input iterators on the synchronicity event loop.
+# We still need to wrap them using MethodWithAio to maintain a synchronicity-like
+# api with `.aio` and get working type-stubs and reference docs generation:
+Function.map = MethodWithAio(_Function._map_sync, _Function._map_async, synchronizer)
+Function.starmap = MethodWithAio(_Function._starmap_sync, _Function._starmap_async, synchronizer)
+Function.for_each = MethodWithAio(_Function._for_each_sync, _Function._for_each_async, synchronizer)
 
 
 class _FunctionCall(_Object, type_prefix="fc"):
