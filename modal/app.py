@@ -145,25 +145,6 @@ class _ContainerApp:
         self.is_interactivity_enabled = False
         self.fetching_inputs = True
 
-    def associate_stub_container(self, stub):
-        stub._container_app = self
-
-        # Initialize objects on stub
-        stub_objects: dict[str, _Object] = dict(stub.get_objects())
-        for tag, object_id in self.tag_to_object_id.items():
-            obj = stub_objects.get(tag)
-            if obj is not None:
-                handle_metadata = self.object_handle_metadata[object_id]
-                obj._hydrate(object_id, self.client, handle_metadata)
-
-    def _has_object(self, tag: str) -> bool:
-        return tag in self.tag_to_object_id
-
-    def _hydrate_object(self, obj, tag: str):
-        object_id: str = self.tag_to_object_id[tag]
-        metadata: Message = self.object_handle_metadata[object_id]
-        obj._hydrate(object_id, self.client, metadata)
-
     def hydrate_function_deps(self, function: _Function, dep_object_ids: List[str]):
         function_deps = function.deps(only_explicit_mounts=True)
         if len(function_deps) != len(dep_object_ids):
