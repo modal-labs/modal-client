@@ -274,12 +274,12 @@ async def blob_upload(payload: bytes, stub) -> str:
     if isinstance(payload, str):
         logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
-    upload_hashes = await get_upload_hashes(payload)
+    upload_hashes = get_upload_hashes(payload)
     return await _blob_upload(upload_hashes, payload, stub)
 
 
 async def blob_upload_file(file_obj: BinaryIO, stub) -> str:
-    upload_hashes = await get_upload_hashes(file_obj)
+    upload_hashes = get_upload_hashes(file_obj)
     return await _blob_upload(upload_hashes, file_obj, stub)
 
 
