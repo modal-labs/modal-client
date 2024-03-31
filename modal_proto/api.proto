@@ -1433,6 +1433,22 @@ message QueueLenResponse {
   int32 len = 1;
 }
 
+message QueueNextItemsRequest {
+  string queue_id = 1;
+  bytes partition_key = 2;
+  string last_entry_id = 3;
+  float item_poll_timeout = 4; // seconds
+}
+
+message QueueItem {
+  bytes value = 1;
+  string entry_id = 2;
+}
+
+message QueueNextItemsResponse {
+  repeated QueueItem items = 1;
+}
+
 message RateLimit {
   int32 limit = 1;
   RateLimitInterval interval = 2;
@@ -2085,6 +2101,7 @@ service ModalClient {
   rpc QueueHeartbeat(QueueHeartbeatRequest) returns (google.protobuf.Empty);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
   rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
+  rpc QueueNextItems(QueueNextItemsRequest) returns (QueueNextItemsResponse);
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
