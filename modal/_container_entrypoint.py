@@ -1017,6 +1017,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
     # Define a global app (need to do this before imports).
     container_app: ContainerApp = function_io_manager.initialize_app()
+    _container_app = synchronizer._translate_in(container_app)  # TODO(erikbern): hacky
 
     with function_io_manager.heartbeats(), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
@@ -1038,7 +1039,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize objects on the stub.
         if imp_fun.stub is not None:
-            container_app.associate_stub_container(imp_fun.stub)
+            imp_fun.stub._init_container(_container_app)
 
         # Hydrate all function dependencies.
         # TODO(erikbern): we an remove this once we
