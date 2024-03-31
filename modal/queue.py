@@ -343,16 +343,21 @@ class _Queue(_Object, type_prefix="qu"):
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
-    async def iterate(self, *, partition: Optional[str] = None, item_poll_timeout: float) -> AsyncGenerator[Any, None]:
+    async def iterate(
+        self, *, partition: Optional[str] = None, item_poll_timeout: float = 0.0
+    ) -> AsyncGenerator[Any, None]:
         last_entry_id: Optional[str] = None
         validated_partition_key = self.validate_partition_key(partition)
+        fetch_deadline = time.time() + item_poll_timeout
 
+        MAX_POLL_DURATION = 30.0
         while True:
+            poll_duration = max(0.0, min(MAX_POLL_DURATION, fetch_deadline - time.time()))
             request = api_pb2.QueueNextItemsRequest(
                 queue_id=self.object_id,
                 partition_key=validated_partition_key,
                 last_entry_id=last_entry_id,
-                item_poll_timeout=item_poll_timeout,
+                item_poll_timeout=poll_duration,
             )
 
             response: api_pb2.QueueNextItemsResponse = await retry_transient_errors(
@@ -362,7 +367,8 @@ class _Queue(_Object, type_prefix="qu"):
                 for item in response.items:
                     yield deserialize(item.value, self._client)
                     last_entry_id = item.entry_id
-            else:
+                fetch_deadline = time.time() + item_poll_timeout
+            elif time.time() > fetch_deadline:
                 break
 
 

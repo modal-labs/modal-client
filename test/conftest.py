@@ -832,7 +832,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             item = api_pb2.QueueItem(value=self.queue[next_item_idx], entry_id=f"{next_item_idx}")
             await stream.send_message(api_pb2.QueueNextItemsResponse(items=[item]))
         else:
-            await asyncio.sleep(0.1)
+            if request.item_poll_timeout > 0:
+                await asyncio.sleep(0.1)
             await stream.send_message(api_pb2.QueueNextItemsResponse(items=[]))
 
     ### Sandbox
