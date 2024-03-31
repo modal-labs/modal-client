@@ -1422,6 +1422,7 @@ message QueuePutRequest {
   string queue_id = 1;
   repeated bytes values = 4;
   bytes partition_key = 5;
+  int32 partition_ttl_seconds = 6;
 }
 
 message QueueLenRequest {
