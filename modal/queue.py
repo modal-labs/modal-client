@@ -70,9 +70,13 @@ class _Queue(_Object, type_prefix="qu"):
         # Default and "foo" partition are ignored by the get operation.
         assert my_queue.get(partition_key="bar") == 2
 
-        # Iterate through items (does not mutate the queue)
+        # Set custom 10s expiration time on "foo" partition.
+        my_queue.put(3, partition_key="foo", partition_ttl=10)
+
+        # (beta feature) Iterate through items in place (read immutably)
         my_queue.put(1)
         assert [v for v in my_queue.iterate()] == [0, 1]
+
     ```
 
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
@@ -350,7 +354,7 @@ class _Queue(_Object, type_prefix="qu"):
             queue_id=self.object_id,
             partition_key=self.validate_partition_key(partition),
             values=vs_encoded,
-            partition_ttl=partition_ttl,
+            partition_ttl_seconds=partition_ttl,
         )
         try:
             await retry_transient_errors(
@@ -370,7 +374,7 @@ class _Queue(_Object, type_prefix="qu"):
             queue_id=self.object_id,
             partition_key=self.validate_partition_key(partition),
             values=vs_encoded,
-            partition_ttl=partition_ttl,
+            partition_ttl_seconds=partition_ttl,
         )
         try:
             await retry_transient_errors(self._client.stub.QueuePut, request)
