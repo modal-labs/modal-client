@@ -19,6 +19,12 @@ def test_queue(servicer, client):
         q.get(timeout=0)
     assert q.len() == 0
 
+    # test iter
+    q.put_many([1, 2, 3])
+    t0 = time.time()
+    assert [v for v in q.iterate(item_poll_timeout=1.0)] == [1, 2, 3]
+    assert 1.0 < time.time() - t0 < 2.0
+
 
 def test_queue_ephemeral(servicer, client):
     with Queue.ephemeral(client=client, _heartbeat_sleep=1) as q:

@@ -825,6 +825,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.recv_message()
         await stream.send_message(api_pb2.QueueLenResponse(len=len(self.queue)))
 
+    async def QueueNextItems(self, stream):
+        request: api_pb2.QueueNextItemsRequest = await stream.recv_message()
+        next_item_idx = int(request.last_entry_id) + 1 if request.last_entry_id else 0
+        if next_item_idx < len(self.queue):
+            item = api_pb2.QueueItem(value=self.queue[next_item_idx], entry_id=f"{next_item_idx}")
+            await stream.send_message(api_pb2.QueueNextItemsResponse(items=[item]))
+        else:
+            await asyncio.sleep(0.1)
+            await stream.send_message(api_pb2.QueueNextItemsResponse(items=[]))
+
     ### Sandbox
 
     async def SandboxCreate(self, stream):

@@ -2,7 +2,7 @@
 import queue  # The system library
 import time
 import warnings
-from typing import Any, AsyncIterator, List, Optional, Type
+from typing import Any, AsyncGenerator, AsyncIterator, List, Optional, Type
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -11,11 +11,11 @@ from modal_proto import api_pb2
 
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
-from ._utils.async_utils import TaskContext, synchronize_api
+from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
 from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
 from .exception import InvalidError, deprecation_warning
-from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method
+from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
 class _Queue(_Object, type_prefix="qu"):
@@ -340,6 +340,32 @@ class _Queue(_Object, type_prefix="qu"):
         )
         response = await retry_transient_errors(self._client.stub.QueueLen, request)
         return response.len
+
+    @warn_if_generator_is_not_consumed
+    @live_method_gen
+    async def iterate(self, *, partition: Optional[str] = None, item_poll_timeout: float) -> AsyncGenerator[Any, None]:
+        last_entry_id: Optional[str] = None
+        deadline = time.time() + item_poll_timeout
+        validated_partition_key = self.validate_partition_key(partition)
+
+        while time.time() < deadline:
+            request = api_pb2.QueueNextItemsRequest(
+                queue_id=self.object_id,
+                partition_key=validated_partition_key,
+                last_entry_id=last_entry_id,
+                item_poll_timeout=deadline - time.time(),
+            )
+
+            response: api_pb2.QueueNextItemsResponse = await retry_transient_errors(
+                self._client.stub.QueueNextItems, request
+            )
+            if response.items:
+                for item in response.items:
+                    yield deserialize(item.value, self._client)
+                    last_entry_id = item.entry_id
+
+                # Extend the deadline since we received items.
+                deadline = time.time() + item_poll_timeout
 
 
 Queue = synchronize_api(_Queue)
