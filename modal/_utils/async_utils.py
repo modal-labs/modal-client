@@ -427,5 +427,5 @@ def run_generator_sync(
         try:
             next_send = yield next_yield
             exc = None
-        except BaseException as exc:
-            exc = exc
+        except BaseException as err:
+            exc = err
