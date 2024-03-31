@@ -69,6 +69,18 @@ def test_map(client, servicer, slow_put_inputs):
 
 
 # TODO(elias) add map test using async iterator as input
+@pytest.mark.asyncio
+async def test_map_async_generator(client):
+    stub = Stub()
+    dummy_modal = stub.function()(dummy)
+
+    async def gen_num():
+        yield 2
+        yield 3
+
+    async with stub.run(client=client):
+        res = [num async for num in dummy_modal.map.aio(gen_num())]
+        assert res == [4, 9]
 
 
 def _pow2(x: int):
