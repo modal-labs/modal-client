@@ -21,6 +21,7 @@ def test_queue(servicer, client):
 
     # test iter
     q.put_many([1, 2, 3])
+    assert [v for v in q.iterate()] == [1, 2, 3]
     t0 = time.time()
     assert [v for v in q.iterate(item_poll_timeout=1.0)] == [1, 2, 3]
     assert 1.0 < time.time() - t0 < 2.0

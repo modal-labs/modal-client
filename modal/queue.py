@@ -23,11 +23,29 @@ class _Queue(_Object, type_prefix="qu"):
 
     The queue can contain any object serializable by `cloudpickle`, including Modal objects.
 
+    **Queue partitions**
+
+    By default, users may use the `Queue` object as a single FIFO queue which supports puts and gets.
+
+    Optionally, users may split `Queue` object into multiple independent FIFO partitions, by specifying a string key.
+    Across partitions, puts and gets are completely independent. For example, a put in one partition does not affect
+    a get in any other partition.
+
+    When no partition key is specified (by default), puts and gets will operate on a default partition in isolation from all other partitions.
+    Please see the Usage section below for clarification.
+
     **Lifetime of a queue and its contents**
 
-    A `Queue`'s lifetime matches the lifetime of the app it's attached to, but the contents expire after 30 days.
-    Because of this, `Queues`s are best used for communication between active functions and not relied on for
-    persistent storage. On app completion or after stopping an app any associated `Queue` objects are cleaned up.
+    By default, each partition is cleared 24 hours after the last `put` operation. A lower TTL can be specified by the `partition_ttl`
+    argument in the `put` or `put_many` methods. Each partition's expiry is handled independently.
+
+    As such, `Queue`s are best used for communication between active functions and not relied on for persistent storage.
+
+    On app completion or after stopping an app any associated `Queue` objects are cleaned up. All its partitions will be cleared.
+
+    **Limits**
+
+    A single `Queue` can contain up to 100,000 partitions, each with up to 5,000 items. Each item can be up to 256 KiB.
 
     **Usage**
 
@@ -44,6 +62,17 @@ class _Queue(_Object, type_prefix="qu"):
 
         assert my_queue.get() == "some value"
         assert my_queue.get() == 123
+
+        my_queue.put(0)
+        my_queue.put(1, partition_key="foo")
+        my_queue.put(2, partition_key="bar")
+
+        # Default and "foo" partition are ignored by the get operation.
+        assert my_queue.get(partition_key="bar") == 2
+
+        # Iterate through items (does not mutate the queue)
+        my_queue.put(1)
+        assert [v for v in my_queue.iterate()] == [0, 1]
     ```
 
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
@@ -268,7 +297,13 @@ class _Queue(_Object, type_prefix="qu"):
 
     @live_method
     async def put(
-        self, v: Any, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
+        self,
+        v: Any,
+        block: bool = True,
+        timeout: Optional[float] = None,
+        *,
+        partition: Optional[str] = None,
+        partition_ttl: int = 24 * 3600,  # After 24 hours of no activity, this partition will be deletd.
     ) -> None:
         """Add an object to the end of the queue.
 
@@ -278,11 +313,17 @@ class _Queue(_Object, type_prefix="qu"):
 
         If `block` is `False`, this method raises `queue.Full` immediately if the queue is full. The `timeout` is
         ignored in this case."""
-        await self.put_many([v], block, timeout, partition=partition)
+        await self.put_many([v], block, timeout, partition=partition, partition_ttl=partition_ttl)
 
     @live_method
     async def put_many(
-        self, vs: List[Any], block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
+        self,
+        vs: List[Any],
+        block: bool = True,
+        timeout: Optional[float] = None,
+        *,
+        partition: Optional[str] = None,
+        partition_ttl: int = 24 * 3600,  # After 24 hours of no activity, this partition will be deletd.
     ) -> None:
         """Add several objects to the end of the queue.
 
@@ -291,21 +332,25 @@ class _Queue(_Object, type_prefix="qu"):
         If blocking it is not recommended to omit the `timeout`, as the operation could wait indefinitely.
 
         If `block` is `False`, this method raises `queue.Full` immediately if the queue is full. The `timeout` is
-        ignored in this case."""
+        ignored in this case.
+        """
         if block:
-            await self._put_many_blocking(partition, vs, timeout)
+            await self._put_many_blocking(partition, partition_ttl, vs, timeout)
         else:
             if timeout is not None:
                 warnings.warn("`timeout` argument is ignored for non-blocking put.")
-            await self._put_many_nonblocking(partition, vs)
+            await self._put_many_nonblocking(partition, partition_ttl, vs)
 
-    async def _put_many_blocking(self, partition: Optional[str], vs: List[Any], timeout: Optional[float] = None):
+    async def _put_many_blocking(
+        self, partition: Optional[str], partition_ttl: int, vs: List[Any], timeout: Optional[float] = None
+    ):
         vs_encoded = [serialize(v) for v in vs]
 
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
             partition_key=self.validate_partition_key(partition),
             values=vs_encoded,
+            partition_ttl=partition_ttl,
         )
         try:
             await retry_transient_errors(
@@ -319,12 +364,13 @@ class _Queue(_Object, type_prefix="qu"):
         except GRPCError as exc:
             raise queue.Full(str(exc)) if exc.status == Status.RESOURCE_EXHAUSTED else exc
 
-    async def _put_many_nonblocking(self, partition: Optional[str], vs: List[Any]):
+    async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: List[Any]):
         vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
             partition_key=self.validate_partition_key(partition),
             values=vs_encoded,
+            partition_ttl=partition_ttl,
         )
         try:
             await retry_transient_errors(self._client.stub.QueuePut, request)
@@ -343,12 +389,17 @@ class _Queue(_Object, type_prefix="qu"):
 
     @warn_if_generator_is_not_consumed
     @live_method_gen
-    async def iterate(self, *, partition: Optional[str] = None, item_poll_timeout: float) -> AsyncGenerator[Any, None]:
+    async def iterate(
+        self,
+        *,
+        partition: Optional[str] = None,
+        item_poll_timeout: float = 0.0,  # Exit if next item not available after this many seconds.
+    ) -> AsyncGenerator[Any, None]:
         last_entry_id: Optional[str] = None
         deadline = time.time() + item_poll_timeout
         validated_partition_key = self.validate_partition_key(partition)
 
-        while time.time() < deadline:
+        while time.time() <= deadline:
             request = api_pb2.QueueNextItemsRequest(
                 queue_id=self.object_id,
                 partition_key=validated_partition_key,
