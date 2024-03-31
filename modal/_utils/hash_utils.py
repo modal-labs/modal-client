@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import asyncio
 import base64
 import dataclasses
 import hashlib
@@ -50,10 +49,10 @@ class UploadHashes:
     sha256_base64: str
 
 
-async def get_upload_hashes(data: Union[bytes, BinaryIO]) -> UploadHashes:
+def get_upload_hashes(data: Union[bytes, BinaryIO]) -> UploadHashes:
     md5 = hashlib.md5()
     sha256 = hashlib.sha256()
-    await asyncio.get_running_loop().run_in_executor(None, _update, [md5.update, sha256.update], data)
+    _update([md5.update, sha256.update], data)
     return UploadHashes(
         md5_base64=base64.b64encode(md5.digest()).decode("ascii"),
         sha256_base64=base64.b64encode(sha256.digest()).decode("ascii"),
