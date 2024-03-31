@@ -24,6 +24,7 @@ def test_queue(servicer, client):
     t0 = time.time()
     assert [v for v in q.iterate(item_poll_timeout=1.0)] == [1, 2, 3]
     assert 1.0 < time.time() - t0 < 2.0
+    assert [v for v in q.iterate(item_poll_timeout=0.0)] == [1, 2, 3]
 
 
 def test_queue_ephemeral(servicer, client):

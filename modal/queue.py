@@ -346,6 +346,10 @@ class _Queue(_Object, type_prefix="qu"):
     async def iterate(
         self, *, partition: Optional[str] = None, item_poll_timeout: float = 0.0
     ) -> AsyncGenerator[Any, None]:
+        """(Beta feature) Iterate through items in the queue without mutation.
+
+        Specify `item_poll_timeout` to control how long the iterator should wait for the next time before giving up.
+        """
         last_entry_id: Optional[str] = None
         validated_partition_key = self.validate_partition_key(partition)
         fetch_deadline = time.time() + item_poll_timeout
