@@ -2,35 +2,24 @@
 import pytest
 import time
 
-from modal import Dict, Stub
-from modal.exception import DeprecationError
+from modal import Dict
 
 
 def test_dict_app(servicer, client):
-    stub = Stub()
-    with pytest.warns(DeprecationError):
-        stub.d = Dict.new()
-    with stub.run(client=client):
-        stub.d["foo"] = 42
-        stub.d["foo"] += 5
-        assert stub.d["foo"] == 47
-        assert stub.d.len() == 1
-
-        stub.d.clear()
-        assert stub.d.len() == 0
-        with pytest.raises(KeyError):
-            _ = stub.d["foo"]
-
-        assert stub.d.get("foo", default=True)
-        stub.d["foo"] = None
-        assert stub.d["foo"] is None
-
-
-def test_dict_lookup(servicer, client):
-    d = Dict.lookup("xyz", {"foo": "bar"}, create_if_missing=True, client=client)
-    d["xyz"] = 123
+    d = Dict.lookup("my-amazing-dict", {"xyz": 123}, create_if_missing=True, client=client)
+    d["foo"] = 42
+    d["foo"] += 5
+    assert d["foo"] == 47
     assert d.len() == 2
-    assert d["foo"] == "bar"
+
+    d.clear()
+    assert d.len() == 0
+    with pytest.raises(KeyError):
+        _ = d["foo"]
+
+    assert d.get("foo", default=True)
+    d["foo"] = None
+    assert d["foo"] is None
 
 
 def test_dict_ephemeral(servicer, client):

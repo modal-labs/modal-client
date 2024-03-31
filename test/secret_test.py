@@ -10,11 +10,16 @@ from modal.exception import InvalidError
 from .supports.skip import skip_old_py
 
 
+def dummy():
+    ...
+
+
 def test_secret_from_dict(servicer, client):
     stub = Stub()
-    stub.secret = Secret.from_dict({"FOO": "hello, world"})
+    secret = Secret.from_dict({"FOO": "hello, world"})
+    stub.function(secrets=[secret])(dummy)
     with stub.run(client=client):
-        assert stub.secret.object_id == "st-0"
+        assert secret.object_id == "st-0"
         assert servicer.secrets["st-0"] == {"FOO": "hello, world"}
 
 
@@ -24,22 +29,23 @@ def test_secret_from_dotenv(servicer, client):
         with open(os.path.join(tmpdirname, ".env"), "w") as f:
             f.write("# My settings\nUSER=user\nPASSWORD=abc123\n")
         stub = Stub()
-        stub.secret = Secret.from_dotenv(tmpdirname)
+        secret = Secret.from_dotenv(tmpdirname)
+        stub.function(secrets=[secret])(dummy)
         with stub.run(client=client):
-            assert stub.secret.object_id == "st-0"
+            assert secret.object_id == "st-0"
             assert servicer.secrets["st-0"] == {"USER": "user", "PASSWORD": "abc123"}
 
 @mock.patch.dict(os.environ, {"FOO": "easy", "BAR": "1234"})
 def test_secret_from_local_environ(servicer, client):
     stub = Stub()
-    stub.secret = Secret.from_local_environ(["FOO", "BAR"])
+    secret = Secret.from_local_environ(["FOO", "BAR"])
+    stub.function(secrets=[secret])(dummy)
     with stub.run(client=client):
-        assert stub.secret.object_id == "st-0"
+        assert secret.object_id == "st-0"
         assert servicer.secrets["st-0"] == {"FOO": "easy", "BAR": "1234"}
 
-    stub2 = Stub()
     with pytest.raises(InvalidError, match="NOTFOUND"):
-        stub2.secret = Secret.from_local_environ(["FOO", "NOTFOUND"])
+        Secret.from_local_environ(["FOO", "NOTFOUND"])
 
 
 
@@ -50,7 +56,8 @@ def test_init_types():
 
 def test_secret_from_dict_none(servicer, client):
     stub = Stub()
-    stub.secret = Secret.from_dict({"FOO": os.getenv("xyz"), "BAR": os.environ.get("abc"), "BAZ": "baz"})
+    secret = Secret.from_dict({"FOO": os.getenv("xyz"), "BAR": os.environ.get("abc"), "BAZ": "baz"})
+    stub.function(secrets=[secret])(dummy)
     with stub.run(client=client):
         assert servicer.secrets["st-0"] == {"BAZ": "baz"}
 
@@ -65,6 +72,7 @@ def test_secret_from_name(servicer, client):
 
     # Look up secret through app
     stub = Stub()
-    stub.secret = Secret.from_name("my-secret")
+    secret = Secret.from_name("my-secret")
+    stub.function(secrets=[secret])(dummy)
     with stub.run(client=client):
-        assert stub.secret.object_id == secret_id
+        assert secret.object_id == secret_id

@@ -18,7 +18,7 @@ try:
     from .exception import Error
     from .functions import Function, current_function_call_id, current_input_id
     from .image import Image
-    from .mount import Mount, create_package_mounts
+    from .mount import Mount
     from .network_file_system import NetworkFileSystem
     from .partial_function import asgi_app, build, enter, exit, method, web_endpoint, web_server, wsgi_app
     from .proxy import Proxy
@@ -66,7 +66,6 @@ __all__ = [
     "asgi_app",
     "build",
     "container_app",
-    "create_package_mounts",
     "current_function_call_id",
     "current_input_id",
     "enter",

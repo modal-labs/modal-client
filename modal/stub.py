@@ -15,7 +15,7 @@ from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo
 from ._utils.mount_utils import validate_volumes
-from .app import _container_app, _ContainerApp, _LocalApp, is_local
+from .app import _ContainerApp, _LocalApp
 from .client import _Client
 from .cls import _Cls
 from .config import logger
@@ -117,7 +117,7 @@ class _Stub:
     _local_entrypoints: Dict[str, _LocalEntrypoint]
     _container_app: Optional[_ContainerApp]
     _local_app: Optional[_LocalApp]
-    _all_stubs: ClassVar[Dict[str, List["_Stub"]]] = {}
+    _all_stubs: ClassVar[Dict[Optional[str], List["_Stub"]]] = {}
 
     def __init__(
         self,
@@ -174,14 +174,8 @@ class _Stub:
         self._local_app = None  # when this is the launcher process
         self._container_app = None  # when this is inside a container
 
-        string_name = self._name or ""
-
-        if not is_local() and _container_app._stub_name == string_name:
-            _container_app._associate_stub_container(self)
-            # note that all stubs with the correct name will get the container app assigned
-            self._container_app = _container_app
-
-        _Stub._all_stubs.setdefault(string_name, []).append(self)
+        # Register this stub. This is used to look up the stub in the container, when we can't get it from the function
+        _Stub._all_stubs.setdefault(self._name, []).append(self)
 
     @property
     def name(self) -> Optional[str]:
@@ -193,24 +187,17 @@ class _Stub:
         """Whether the current app for the stub is running in interactive mode."""
         # return self._name
         if self._local_app:
-            return self._local_app.is_interactive
+            return self._local_app.interactive
         else:
             return False
-
-    @property
-    def app(self):
-        """`stub.app` is deprecated: use e.g. `stub.obj` instead of `stub.app.obj`
-        if you need to access objects on the running app.
-        """
-        deprecation_error((2023, 9, 11), _Stub.app.__doc__)
 
     @property
     def app_id(self) -> Optional[str]:
         """Return the app_id, if the stub is running."""
         if self._container_app:
-            return self._container_app._app_id
+            return self._container_app.app_id
         elif self._local_app:
-            return self._local_app._app_id
+            return self._local_app.app_id
         else:
             return None
 
@@ -236,29 +223,53 @@ class _Stub:
         self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
-        # Deprecated? Note: this is currently the only way to refer to lifecycled methods on the stub, since they have . in the tag
+        """Stub assignments of the form `stub.x` or `stub["x"]` are deprecated!
+
+        The only use cases for these assignments is in conjunction with `.new()`, which is now
+        in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
+        need to assign those objects to the stub. Example:
+
+        ```python
+        d = modal.Dict.from_name("my-dict", create_if_missing=True)
+
+        @stub.function()
+        def f(x, y):
+            d[x] = y  # Refer to d in global scope
+        ```
+        """
+        deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
         return self._indexed_objects[tag]
 
     def __setitem__(self, tag: str, obj: _Object):
+        deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
         self._validate_blueprint_value(tag, obj)
         # Deprecated ?
         self._add_object(tag, obj)
 
     def __getattr__(self, tag: str) -> _Object:
+        # TODO(erikbern): remove this method later
         assert isinstance(tag, str)
         if tag.startswith("__"):
             # Hacky way to avoid certain issues, e.g. pickle will try to look this up
             raise AttributeError(f"Stub has no member {tag}")
-        # Return a reference to an object that will be created in the future
-        return self._indexed_objects[tag]
+        if tag not in self._indexed_objects:
+            # Primarily to make hasattr work
+            raise AttributeError(f"Stub has no member {tag}")
+        obj: _Object = self._indexed_objects[tag]
+        deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
+        return obj
 
     def __setattr__(self, tag: str, obj: _Object):
+        # TODO(erikbern): remove this method later
         # Note that only attributes defined in __annotations__ are set on the object itself,
         # everything else is registered on the indexed_objects
         if tag in self.__annotations__:
             object.__setattr__(self, tag, obj)
+        elif tag == "image":
+            self._indexed_objects["image"] = obj
         else:
             self._validate_blueprint_value(tag, obj)
+            deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
             self._add_object(tag, obj)
 
     @property
@@ -483,9 +494,6 @@ class _Stub:
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
-        shared_volumes: Dict[
-            Union[str, PurePosixPath], _NetworkFileSystem
-        ] = {},  # Deprecated, use `network_file_systems` instead
         # Parameters below here are experimental. Use with caution!
         _allow_background_volume_commits: bool = False,  # Experimental flag
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
@@ -510,12 +518,6 @@ class _Stub:
             image = self._get_default_image()
 
         secrets = [*self._secrets, *secrets]
-
-        if shared_volumes:
-            deprecation_error(
-                (2023, 7, 5),
-                "`shared_volumes` is deprecated. Use the argument `network_file_systems` instead.",
-            )
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any]],
@@ -621,9 +623,6 @@ class _Stub:
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
-        shared_volumes: Dict[
-            Union[str, PurePosixPath], _NetworkFileSystem
-        ] = {},  # Deprecated, use `network_file_systems` instead
         # Parameters below here are experimental. Use with caution!
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
@@ -641,7 +640,6 @@ class _Stub:
             gpu=gpu,
             serialized=serialized,
             mounts=mounts,
-            shared_volumes=shared_volumes,
             network_file_systems=network_file_systems,
             allow_cross_region_volumes=allow_cross_region_volumes,
             volumes=volumes,
@@ -712,16 +710,13 @@ class _Stub:
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
-        from .sandbox import _Sandbox
-        from .stub import _default_image
-
         if self._local_app:
             app_id = self._local_app.app_id
-            environment_name = self._local_app._environment_name
+            environment_name = self._local_app.environment_name
             client = self._local_app.client
         elif self._container_app:
             app_id = self._container_app.app_id
-            environment_name = self._container_app._environment_name
+            environment_name = self._container_app.environment_name
             client = self._container_app.client
         else:
             raise InvalidError("`stub.spawn_sandbox` requires a running app.")

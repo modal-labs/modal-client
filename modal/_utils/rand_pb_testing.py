@@ -58,12 +58,10 @@ def _fill(msg, desc: Descriptor, rand: Random) -> None:
         else:
             if field.type == FieldDescriptor.TYPE_ENUM:
                 enum_values = [x.number for x in field.enum_type.values]
-
-                def generator(rand):
-                    return rand.choice(enum_values)
+                generator = lambda rand: rand.choice(enum_values)  # noqa: E731
 
             else:
-                generator = _FIELD_RANDOM_GENERATOR.get(field.type)
+                generator = _FIELD_RANDOM_GENERATOR[field.type]
             if is_repeated:
                 num = rand.randint(0, 2)
                 msg_field = getattr(msg, field.name)

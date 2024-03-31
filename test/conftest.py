@@ -16,7 +16,7 @@ import threading
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Iterator, Optional
+from typing import Dict, Iterator, Optional, get_args
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -36,6 +36,7 @@ from modal._utils.http_utils import run_temporary_http_server
 from modal._vendor import cloudpickle
 from modal.app import _ContainerApp
 from modal.client import Client
+from modal.image import ImageBuilderVersion
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
 
@@ -121,6 +122,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_files: Dict[str, Dict[str, VolumeFile]] = defaultdict(dict)
         self.images = {}
         self.image_build_function_ids = {}
+        self.image_builder_versions = {}
         self.force_built_images = []
         self.fail_blob_create = []
         self.blob_create_metadata = None
@@ -380,20 +382,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.requests.append(request)
         self.client_create_metadata = stream.metadata
         client_version = stream.metadata["x-modal-client-version"]
+        image_builder_version = max(get_args(ImageBuilderVersion))
+        warning = ""
         assert stream.user_agent.startswith(f"modal-client/{__version__} ")
         if stream.metadata.get("x-modal-token-id") == "bad":
             raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
-        elif client_version == "timeout":
-            await asyncio.sleep(60)
-            await stream.send_message(api_pb2.ClientHelloResponse())
         elif client_version == "unauthenticated":
             raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
         elif client_version == "deprecated":
-            await stream.send_message(api_pb2.ClientHelloResponse(warning="SUPER OLD"))
+            warning = "SUPER OLD"
+        elif client_version == "timeout":
+            await asyncio.sleep(60)
         elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
             raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
-        else:
-            await stream.send_message(api_pb2.ClientHelloResponse())
+        resp = api_pb2.ClientHelloResponse(warning=warning, image_builder_version=image_builder_version)
+        await stream.send_message(resp)
 
     # Container
 
@@ -706,6 +709,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.images[image_id] = request.image
         self.image_build_function_ids[image_id] = request.build_function_id
+        self.image_builder_versions[image_id] = request.builder_version
         if request.force_build:
             self.force_built_images.append(image_id)
         await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=image_id))
@@ -1363,6 +1367,11 @@ def reset_container_app():
         yield
     finally:
         _ContainerApp._reset_container()
+
+
+@pytest.fixture
+def repo_root(request):
+    return Path(request.config.rootdir)
 
 
 @pytest.fixture(scope="module")

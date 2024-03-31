@@ -10,6 +10,40 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.15 (2024-03-29)
+
+- Queue methods `put`, `put_many`, `get`, `get_many` and `len` now support an optional `partition` argument (must be specified as a `kwarg`). When specified, users read and write from new partitions of the queue independently. `partition=None` corresponds to the default partition of the queue.
+
+
+
+### 0.62.3 (2024-03-27)
+
+- User can now mount S3 buckets using [Requester Pays](https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html). This can be done with `CloudBucketMount(..., requester_pays=True)`.
+
+
+### 0.62.1 (2024-03-27)
+
+- Raise an error on `@web_server(startup_timeout=0)`, which is an invalid configuration.
+
+
+
+### 0.62.0 (2024-03-26)
+
+- The `.new()` method has now been deprecated on all Modal objects. It should typically be replaced with `.from_name(...)` in Modal app code, or `.ephemeral()` in scripts that use Modal
+- Assignment of Modal objects to a `Stub` via subscription (`stub["object"]`) or attribute (`stub.object`) syntax is now deprecated. This syntax was only necessary when using `.new()`.
+
+
+
+
+## 0.61
+
+
+### 0.61.104 (2024-03-25)
+
+- Fixed a bug where images based on `micromamba` could fail to build if requesting Python 3.12 when a different version of Python was being used locally.
+
+
+
 ### 0.61.76 (2024-03-19)
 
 - The `Sandbox`'s `LogsReader` is now an asynchronous iterable. It supports the `async for` statement to stream data from the sandbox's `stdout/stderr`.
@@ -146,6 +180,9 @@ def my_fn(x):
     breakpoint()
 ```
 
+
+
+## 0.60
 
 
 ### 0.60.0 (2024-02-29)

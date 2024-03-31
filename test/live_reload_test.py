@@ -45,8 +45,9 @@ def test_file_changes_trigger_reloads(stub_ref, server_url_env, servicer):
     assert servicer.app_set_objects_count > 1
     assert servicer.app_client_disconnect_count == 1
     assert servicer.app_get_logs_initial_count == 1
-    assert isinstance(stub.foo, Function)
-    assert stub.foo.web_url.startswith("http://")
+    foo = stub.indexed_objects["foo"]
+    assert isinstance(foo, Function)
+    assert foo.web_url.startswith("http://")
 
 
 @pytest.mark.asyncio

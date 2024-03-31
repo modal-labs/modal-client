@@ -5,6 +5,7 @@ import os
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, TypeVar
 
+from grpclib import GRPCError, Status
 from rich.console import Console
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -18,7 +19,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from .app import _LocalApp, is_local
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
-from .config import config
+from .config import config, logger
 from .exception import InteractiveTimeoutError, InvalidError, _CliUserExecutionError
 
 if TYPE_CHECKING:
@@ -33,6 +34,58 @@ async def _heartbeat(client, app_id):
     # * if request fails: destroy the client
     # * if server says the app is gone: print a helpful warning about detaching
     await retry_transient_errors(client.stub.AppHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
+
+
+async def _init_local_app_existing(client: _Client, existing_app_id: str) -> "_LocalApp":
+    # Get all the objects first
+    obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
+    obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
+    app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
+    object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
+    return _LocalApp(client, existing_app_id, app_page_url, tag_to_object_id=object_ids)
+
+
+async def _init_local_app_new(
+    client: _Client,
+    description: str,
+    app_state: int,
+    environment_name: str = "",
+    interactive=False,
+) -> "_LocalApp":
+    app_req = api_pb2.AppCreateRequest(
+        description=description,
+        environment_name=environment_name,
+        app_state=app_state,
+    )
+    app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
+    app_page_url = app_resp.app_logs_url
+    logger.debug(f"Created new app with id {app_resp.app_id}")
+    return _LocalApp(
+        client, app_resp.app_id, app_page_url, environment_name=environment_name, interactive=interactive
+    )
+
+async def _init_local_app_from_name(
+    client: _Client,
+    name: str,
+    namespace,
+    environment_name: str = "",
+):
+    # Look up any existing deployment
+    app_req = api_pb2.AppGetByDeploymentNameRequest(
+        name=name,
+        namespace=namespace,
+        environment_name=environment_name,
+    )
+    app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
+    existing_app_id = app_resp.app_id or None
+
+    # Grab the app
+    if existing_app_id is not None:
+        return await _init_local_app_existing(client, existing_app_id)
+    else:
+        return await _init_local_app_new(
+            client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
+        )
 
 
 @asynccontextmanager
@@ -80,7 +133,7 @@ async def _run_stub(
     if shell:
         output_mgr._visible_progress = False
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
-    app = await _LocalApp._init_new(
+    app = await _init_local_app_new(
         client,
         stub.description,
         environment_name=environment_name,
@@ -92,9 +145,9 @@ async def _run_stub(
         tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
         with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-            initialized_msg = f"Initialized. [grey70]View run at [underline]{app.log_url()}[/underline][/grey70]"
+            initialized_msg = f"Initialized. [grey70]View run at [underline]{app.app_page_url}[/underline][/grey70]"
             output_mgr.print_if_visible(step_completed(initialized_msg))
-            output_mgr.update_app_page_url(app.log_url())
+            output_mgr.update_app_page_url(app.app_page_url)
 
         # Start logs loop
         if not shell:
@@ -132,13 +185,13 @@ async def _run_stub(
             if detach:
                 output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
                 output_mgr.print_if_visible(
-                    f"""The detached app keeps running. You can track its progress at: [magenta]{app.log_url()}[/magenta]"""
+                    f"""The detached app keeps running. You can track its progress at: [magenta]{app.app_page_url}[/magenta]"""
                 )
                 if not shell:
                     logs_loop.cancel()
             else:
                 output_mgr.print_if_visible(
-                    step_completed(f"App aborted. [grey70]View run at [underline]{app.log_url()}[/underline][/grey70]")
+                    step_completed(f"App aborted. [grey70]View run at [underline]{app.app_page_url}[/underline][/grey70]")
                 )
                 output_mgr.print_if_visible(
                     "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
@@ -165,7 +218,7 @@ async def _run_stub(
             stub._uncreate_all_objects()
 
     output_mgr.print_if_visible(
-        step_completed(f"App completed. [grey70]View run at [underline]{app.log_url()}[/underline][/grey70]")
+        step_completed(f"App completed. [grey70]View run at [underline]{app.app_page_url}[/underline][/grey70]")
     )
 
 
@@ -179,7 +232,7 @@ async def _serve_update(
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        app = await _LocalApp._init_existing(client, existing_app_id)
+        app = await _init_local_app_existing(client, existing_app_id)
 
         # Create objects
         output_mgr = OutputManager(None, True)
@@ -257,7 +310,7 @@ async def _deploy_stub(
 
     output_mgr = OutputManager(stdout, show_progress)
 
-    app = await _LocalApp._init_from_name(client, name, namespace, environment_name=environment_name)
+    app = await _init_local_app_from_name(client, name, namespace, environment_name=environment_name)
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
@@ -274,7 +327,22 @@ async def _deploy_stub(
 
             # Deploy app
             # TODO(erikbern): not needed if the app already existed
-            url = await app.deploy(name, namespace, public)
+            deploy_req = api_pb2.AppDeployRequest(
+                app_id=app.app_id,
+                name=name,
+                namespace=namespace,
+                object_entity="ap",
+                visibility=(api_pb2.APP_DEPLOY_VISIBILITY_PUBLIC if public else api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE),
+            )
+            try:
+                deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)
+            except GRPCError as exc:
+                if exc.status == Status.INVALID_ARGUMENT:
+                    raise InvalidError(exc.message)
+                if exc.status == Status.FAILED_PRECONDITION:
+                    raise InvalidError(exc.message)
+                raise
+            url = deploy_response.url
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
             await app.disconnect(reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)

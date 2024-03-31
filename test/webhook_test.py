@@ -38,10 +38,9 @@ async def test_webhook(servicer, client):
         # Make sure the container gets the app id as well
         container_app = ContainerApp()
         await ContainerApp.init.aio(client, stub.app_id)
-        container_app._associate_stub_container(stub)
-        f_c = stub["f"]
-        assert isinstance(f_c, Function)
-        assert f_c.web_url
+        container_app.associate_stub_container(stub)
+        assert isinstance(f, Function)
+        assert f.web_url
 
 
 def test_webhook_cors():
@@ -108,7 +107,7 @@ async def test_webhook_decorator_in_wrong_order(servicer, client):
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @web_endpoint()
+        @web_endpoint()  # type: ignore
         @stub.function(serialized=True)
         async def g(x):
             pass

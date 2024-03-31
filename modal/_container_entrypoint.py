@@ -38,7 +38,7 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
 from ._utils.grpc_utils import retry_transient_errors
-from .app import _container_app, _ContainerApp, interact
+from .app import ContainerApp, _container_app, _ContainerApp, interact
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
@@ -60,14 +60,18 @@ class UserException(Exception):
     pass
 
 
-class SignalHandlingEventLoop:
+class UserCodeEventLoop:
     """Run an async event loop as a context manager and handle signals.
+
+    This will run all *user supplied* async code, i.e. async functions, as well as async enter/exit managers
 
     The following signals are handled while a coroutine is running on the event loop until
     completion (and then handlers are deregistered):
 
     - `SIGUSR1`: converted to an async task cancellation. Note that this only affects the event
       loop, and the signal handler defined here doesn't run for sync functions.
+    - `SIGINT`: Unless the global signal handler has been set to SIGIGN, the loop's signal handler
+        is set to cancel the current task and raise KeyboardInterrupt to the caller.
     """
 
     def __enter__(self):
@@ -82,6 +86,24 @@ class SignalHandlingEventLoop:
 
     def run(self, coro):
         task = asyncio.ensure_future(coro, loop=self.loop)
+        self._sigints = 0
+
+        def _sigint_handler():
+            # cancel the task in order to have run_until_complete return soon and
+            # prevent a bunch of unwanted tracebacks when shutting down the
+            # event loop.
+
+            # this basically replicates the sigint handler installed by asyncio.run()
+            self._sigints += 1
+            if self._sigints == 1:
+                # first sigint is graceful
+                task.cancel()
+                return
+            raise KeyboardInterrupt()  # this should normally not happen, but the second sigint would "hard kill" the event loop!
+
+        ignore_sigint = signal.getsignal(signal.SIGINT) == signal.SIG_IGN
+        if not ignore_sigint:
+            self.loop.add_signal_handler(signal.SIGINT, _sigint_handler)
 
         # Before Python 3.9 there is no argument to Task.cancel
         if sys.version_info[:2] >= (3, 9):
@@ -91,8 +113,13 @@ class SignalHandlingEventLoop:
 
         try:
             return self.loop.run_until_complete(task)
+        except asyncio.CancelledError:
+            if self._sigints > 0:
+                raise KeyboardInterrupt()
         finally:
             self.loop.remove_signal_handler(signal.SIGUSR1)
+            if not ignore_sigint:
+                self.loop.remove_signal_handler(signal.SIGINT)
 
 
 class _FunctionIOManager:
@@ -117,7 +144,6 @@ class _FunctionIOManager:
         self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
 
-        self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
 
         self._semaphore: Optional[asyncio.Semaphore] = None
@@ -129,7 +155,7 @@ class _FunctionIOManager:
         assert isinstance(self._client, _Client)
 
     async def initialize_app(self) -> _ContainerApp:
-        await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name, self.function_def)
+        await _container_app.init(self._client, self.app_id, self._environment_name, self.function_def)
         return _container_app
 
     async def _run_heartbeat_loop(self):
@@ -460,6 +486,8 @@ class _FunctionIOManager:
         try:
             yield
         except KeyboardInterrupt:
+            # Send no task result in case we get sigint:ed by the runner
+            # The status of the input should have been handled externally already in that case
             raise
         except BaseException as exc:
             # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
@@ -493,7 +521,7 @@ class _FunctionIOManager:
             # just skip creating any output for this input and keep going with the next instead
             # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
-            logger.info(f"The current input ({input_id=}) was cancelled by a user request")
+            logger.warning(f"The current input ({input_id=}) was cancelled by a user request")
             await self.complete_call(started_at)
             return
         except BaseException as exc:
@@ -683,6 +711,8 @@ def call_function_sync(
                 try:
                     run_input(*args)
                 except BaseException:
+                    # This should basically never happen, since only KeyboardInterrupt is the only error that can
+                    # bubble out of from handle_input_exception and those wouldn't be raised outside the main thread
                     pass
                 inputs.task_done()
 
@@ -701,7 +731,10 @@ def call_function_sync(
         for input_id, function_call_id, args, kwargs in function_io_manager.run_inputs_outputs(
             imp_fun.input_concurrency
         ):
-            run_input(input_id, function_call_id, args, kwargs)
+            try:
+                run_input(input_id, function_call_id, args, kwargs)
+            except:
+                raise
 
 
 async def call_function_async(
@@ -793,8 +826,28 @@ def import_function(
     function_io_manager,
     client: Client,
 ) -> ImportedFunction:
-    # This is not in function_io_manager, so that any global scope code that runs during import
-    # runs on the main thread.
+    """Imports a function dynamically, and locates the stub.
+
+    This is somewhat complex because we're dealing with 3 quite different type of functions:
+    1. Functions defined in global scope and decorated in global scope (Function objects)
+    2. Functions defined in global scope but decorated elsewhere (these will be raw callables)
+    3. Serialized functions
+
+    In addition, we also need to handle
+    * Normal functions
+    * Methods on classes (in which case we need to instantiate the object)
+
+    This helper also handles web endpoints, ASGI/WSGI servers, and HTTP servers.
+
+    In order to locate the stub, we try two things:
+    * If the function is a Function, we can get the stub directly from it
+    * Otherwise, use the stub name and look it up from a global list of stubs: this
+      typically only happens in case 2 above, or in sometimes for case 3
+
+    Note that `import_function` is *not* synchronized, becase we need it to run on the main
+    thread. This is so that any user code running in global scope (which executes as a part of
+    the import) runs on the right thread.
+    """
     module: Optional[ModuleType] = None
     cls: Optional[Type] = None
     fun: Callable
@@ -841,16 +894,21 @@ def import_function(
             raise InvalidError(f"Invalid function qualname {qual_name}")
 
     # If the cls/function decorator was applied in local scope, but the stub is global, we can look it up
-    if active_stub is None and function_def.stub_name:
+    if active_stub is None:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated stubs - if there is only one with the indicated name, use that one
-        matching_stubs = _Stub._all_stubs.get(function_def.stub_name, [])
+        stub_name: Optional[str] = function_def.stub_name or None  # coalesce protobuf field to None
+        matching_stubs = _Stub._all_stubs.get(stub_name, [])
         if len(matching_stubs) > 1:
+            if stub_name is not None:
+                warning_sub_message = f"stub with the same name ('{stub_name}')"
+            else:
+                warning_sub_message = "unnamed stub"
             logger.warning(
-                "You have multiple stubs with the same name which may prevent you from calling into other functions or using stub.is_inside(). It's recommended to name all your Stubs uniquely."
+                f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
             )
         elif len(matching_stubs) == 1:
-            active_stub = matching_stubs[0]
+            (active_stub,) = matching_stubs
         # there could also technically be zero found stubs, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
@@ -933,7 +991,8 @@ def import_function(
     )
 
 
-async def call_lifecycle_functions(
+def call_lifecycle_functions(
+    event_loop: UserCodeEventLoop,
     function_io_manager,  #: FunctionIOManager,  TODO: this type is generated at runtime
     funcs: Iterable[Callable],
 ) -> None:
@@ -943,9 +1002,12 @@ async def call_lifecycle_functions(
             # We are deprecating parameterized exit methods but want to gracefully handle old code.
             # We can remove this once the deprecation in the actual @exit decorator is enforced.
             args = (None, None, None) if method_has_params(func) else ()
-            res = func(*args)
+            res = func(
+                *args
+            )  # in case func is non-async, it's executed here and sigint will by default interrupt it using a KeyboardInterrupt exception
             if inspect.iscoroutine(res):
-                await res
+                # if however func is async, we have to jump through some hoops
+                event_loop.run(res)
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
@@ -954,9 +1016,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     function_io_manager = FunctionIOManager(container_args, client)
 
     # Define a global app (need to do this before imports).
-    container_app = function_io_manager.initialize_app()
+    container_app: ContainerApp = function_io_manager.initialize_app()
 
-    with function_io_manager.heartbeats(), SignalHandlingEventLoop() as event_loop:
+    with function_io_manager.heartbeats(), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = function_io_manager.get_serialized_function()
@@ -974,7 +1036,14 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 client,
             )
 
+        # Initialize objects on the stub.
+        if imp_fun.stub is not None:
+            container_app.associate_stub_container(imp_fun.stub)
+
         # Hydrate all function dependencies.
+        # TODO(erikbern): we an remove this once we
+        # 1. Enable lazy hydration for all objects
+        # 2. Fully deprecate .new() objects
         if imp_fun.function:
             dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
@@ -982,7 +1051,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify all "enter" methods that need to run before we checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
-            event_loop.run(call_lifecycle_functions(function_io_manager, pre_checkpoint_methods.values()))
+            call_lifecycle_functions(event_loop, function_io_manager, pre_checkpoint_methods.values())
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and innitialization. Checkpointed containers run from this point onwards.
@@ -1004,7 +1073,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify the "enter" methods to run after resuming from a checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
-            event_loop.run(call_lifecycle_functions(function_io_manager, post_checkpoint_methods.values()))
+            call_lifecycle_functions(event_loop, function_io_manager, post_checkpoint_methods.values())
 
         # Execute the function.
         try:
@@ -1030,7 +1099,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 # Identify "exit" methods and run them.
                 if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
                     exit_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
-                    event_loop.run(call_lifecycle_functions(function_io_manager, exit_methods.values()))
+                    call_lifecycle_functions(event_loop, function_io_manager, exit_methods.values())
 
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
                 # commit errors.

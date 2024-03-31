@@ -25,14 +25,11 @@ async def test_kwargs(servicer, client):
             q=Queue.new(),
         )
     async with stub.run(client=client):
-        # TODO: interface to get type safe objects from live apps
-        await stub["d"].put.aio("foo", "bar")  # type: ignore
-        await stub["q"].put.aio("baz")  # type: ignore
-        assert await stub["d"].get.aio("foo") == "bar"  # type: ignore
-        assert await stub["q"].get.aio() == "baz"  # type: ignore
-
-        with pytest.raises(DeprecationError):
-            stub.app["d"]
+        with pytest.warns(DeprecationError):
+            await stub["d"].put.aio("foo", "bar")  # type: ignore
+            await stub["q"].put.aio("baz")  # type: ignore
+            assert await stub["d"].get.aio("foo") == "bar"  # type: ignore
+            assert await stub["q"].get.aio() == "baz"  # type: ignore
 
 
 @pytest.mark.asyncio
@@ -42,13 +39,11 @@ async def test_attrs(servicer, client):
         stub.d = Dict.new()
         stub.q = Queue.new()
     async with stub.run(client=client):
-        await stub.d.put.aio("foo", "bar")  # type: ignore
-        await stub.q.put.aio("baz")  # type: ignore
-        assert await stub.d.get.aio("foo") == "bar"  # type: ignore
-        assert await stub.q.get.aio() == "baz"  # type: ignore
-
-        with pytest.raises(DeprecationError):
-            stub.app.d
+        with pytest.warns(DeprecationError):
+            await stub.d.put.aio("foo", "bar")  # type: ignore
+            await stub.q.put.aio("baz")  # type: ignore
+            assert await stub.d.get.aio("foo") == "bar"  # type: ignore
+            assert await stub.q.get.aio() == "baz"  # type: ignore
 
 
 @pytest.mark.asyncio
@@ -152,7 +147,7 @@ def test_missing_attr():
     an understandable error message."""
 
     stub = Stub()
-    with pytest.raises(KeyError):
+    with pytest.raises(AttributeError):
         stub.fun()  # type: ignore
 
 
@@ -329,7 +324,8 @@ def test_redeploy_from_name_change(servicer, client):
 
     # Use it from stub
     stub = Stub()
-    stub.q = modal.Queue.from_name("foo-queue")
+    with pytest.warns(DeprecationError):
+        stub.q = modal.Queue.from_name("foo-queue")
     deploy_stub(stub, "my-app", client=client)
 
     # Change the object id of foo-queue
@@ -357,3 +353,8 @@ def test_hydrated_other_app_object_gets_referenced(servicer, client):
             deploy_stub(stub, client=client)
             app_set_objects_req = ctx.pop_request("AppSetObjects")
             assert vol.object_id in app_set_objects_req.unindexed_object_ids
+
+
+def test_hasattr():
+    stub = Stub()
+    assert not hasattr(stub, "xyz")

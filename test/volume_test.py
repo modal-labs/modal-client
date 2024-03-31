@@ -104,18 +104,20 @@ def test_volume_reload(client, servicer):
 
 def test_redeploy(servicer, client):
     stub = modal.Stub()
+
     with pytest.warns(DeprecationError):
-        stub.v1 = modal.Volume.new()
-        stub.v2 = modal.Volume.new()
-        stub.v3 = modal.Volume.new()
+        v1 = modal.Volume.new()
+        v2 = modal.Volume.new()
+        v3 = modal.Volume.new()
+        stub.v1, stub.v2, stub.v3 = v1, v2, v3
 
     # Deploy app once
     deploy_stub(stub, "my-app", client=client)
-    app1_ids = [stub.v1.object_id, stub.v2.object_id, stub.v3.object_id]
+    app1_ids = [v1.object_id, v2.object_id, v3.object_id]
 
     # Deploy app again
     deploy_stub(stub, "my-app", client=client)
-    app2_ids = [stub.v1.object_id, stub.v2.object_id, stub.v3.object_id]
+    app2_ids = [v1.object_id, v2.object_id, v3.object_id]
 
     # Make sure ids are stable
     assert app1_ids == app2_ids
@@ -126,7 +128,7 @@ def test_redeploy(servicer, client):
 
     # Deploy to a different app
     deploy_stub(stub, "my-other-app", client=client)
-    app3_ids = [stub.v1.object_id, stub.v2.object_id, stub.v3.object_id]
+    app3_ids = [v1.object_id, v2.object_id, v3.object_id]
 
     # Should be unique and different
     assert len(set(app3_ids)) == 3
