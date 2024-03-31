@@ -345,15 +345,14 @@ class _Queue(_Object, type_prefix="qu"):
     @live_method_gen
     async def iterate(self, *, partition: Optional[str] = None, item_poll_timeout: float) -> AsyncGenerator[Any, None]:
         last_entry_id: Optional[str] = None
-        deadline = time.time() + item_poll_timeout
         validated_partition_key = self.validate_partition_key(partition)
 
-        while time.time() < deadline:
+        while True:
             request = api_pb2.QueueNextItemsRequest(
                 queue_id=self.object_id,
                 partition_key=validated_partition_key,
                 last_entry_id=last_entry_id,
-                item_poll_timeout=deadline - time.time(),
+                item_poll_timeout=item_poll_timeout,
             )
 
             response: api_pb2.QueueNextItemsResponse = await retry_transient_errors(
@@ -363,9 +362,8 @@ class _Queue(_Object, type_prefix="qu"):
                 for item in response.items:
                     yield deserialize(item.value, self._client)
                     last_entry_id = item.entry_id
-
-                # Extend the deadline since we received items.
-                deadline = time.time() + item_poll_timeout
+            else:
+                break
 
 
 Queue = synchronize_api(_Queue)
