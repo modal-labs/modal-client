@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
 
 from grpclib import GRPCError, Status
 
-from modal.exception import ExecutionError, NotFoundError
 from modal_proto import api_pb2
+
+from .exception import ExecutionError, NotFoundError
 
 if TYPE_CHECKING:
     from rich.tree import Tree
