@@ -12,7 +12,7 @@ from modal import Image, Mount, Secret, Stub, build, gpu, method
 from modal._serialization import serialize
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, VersionError
-from modal.image import ImageBuilderVersion, _dockerhub_python_version, _get_client_requirements_path
+from modal.image import ImageBuilderVersion, _dockerhub_python_version, _get_modal_requirements_path
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
@@ -62,6 +62,29 @@ def builder_version(request, server_url_env):
             pytest.skip("Parameterized patching not working on Py3.8")
     with mock.patch("test.conftest.ImageBuilderVersion", Literal[version]):  # type: ignore
         yield version
+
+
+def test_image_base(builder_version, servicer, client, test_dir):
+    stub = Stub()
+    constructors = [
+        (Image.debian_slim, ()),
+        (Image.from_registry, ("ubuntu",)),
+        (Image.from_dockerfile, (test_dir / "supports" / "test-dockerfile",)),
+        (Image.conda, ()),
+        (Image.micromamba, ()),
+    ]
+    for meth, args in constructors:
+        stub.image = meth(*args)  # type: ignore
+        with stub.run(client=client):
+            layers = get_image_layers(stub.image.object_id, servicer)
+            commands = "\n".join([cmd for layer in layers for cmd in layer.dockerfile_commands])
+            if builder_version == "2023.12":
+                assert "COPY /modal_requirements.txt /modal_requirements.txt" in commands
+                assert "pip install -r /modal_requirements.txt" in commands
+            elif builder_version == "PREVIEW":
+                print(commands)
+                assert "/modal_requirements.txt" not in commands
+                assert "pip install --no-cache aiohttp==3.9.3 aiosignal==1.3.1" in commands
 
 
 def test_image_python_packages(builder_version, servicer, client):
@@ -434,7 +457,10 @@ def test_poetry(builder_version, servicer, client):
     with stub.run(client=client):
         layers = get_image_layers(stub.image.object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
-        assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
+        expected_context_files = {"/.poetry.lock", "/.pyproject.toml"}
+        if builder_version == "2023.12":
+            expected_context_files.add("/modal_requirements.txt")
+        assert context_files == expected_context_files
 
 
 @pytest.fixture
@@ -638,8 +664,8 @@ def test_inside_ctx_hydrated(client):
         ("3.12.1-gnu", "requirements.312.txt"),
     ],
 )
-def test_get_client_requirements_path(version, expected):
-    path = _get_client_requirements_path(version)
+def test_get_modal_requirements_path(version, expected):
+    path = _get_modal_requirements_path(version)
     assert os.path.basename(path) == expected
 
 
@@ -666,9 +692,14 @@ def test_image_builder_supported_versions(servicer):
                         pass
 
 
+@pytest.fixture
+def force_2023_12():
+    with mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.12"]):
+        yield
+
+
 @skip_windows("Different hash values for context file paths")
-@mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.12"])
-def test_image_stability_on_2023_12(servicer, client, test_dir):
+def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     def get_hash(img: Image) -> str:
         stub = Stub(image=img)
         with stub.run(client=client):
