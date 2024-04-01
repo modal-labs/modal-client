@@ -920,7 +920,8 @@ def test_call_function_that_calls_function(unix_servicer):
 
 
 @skip_windows_unix_socket
-def test_call_function_that_calls_method(unix_servicer):
+def test_call_function_that_calls_method(unix_servicer, set_env_client):
+    # TODO (elias): Remove set_env_client fixture dependency - shouldn't need an env client here?
     deploy_stub_externally(unix_servicer, "test.supports.functions", "stub")
     ret = _run_container(
         unix_servicer,
