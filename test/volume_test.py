@@ -339,3 +339,8 @@ def test_ephemeral(servicer, client):
         # TODO(erikbern): perform some operations
         time.sleep(1.5)  # Make time for 2 heartbeats
     assert servicer.n_vol_heartbeats == 2
+
+
+def test_lazy_hydration_from_named(set_env_client):
+    vol = modal.Volume.from_name("my-vol", create_if_missing=True)
+    assert vol.listdir("**") == []

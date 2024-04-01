@@ -14,10 +14,8 @@ from unittest import mock
 
 import click
 import click.testing
-import pytest_asyncio
 import toml
 
-from modal import Client
 from modal.cli.entry_point import entrypoint_cli
 from modal_proto import api_pb2
 
@@ -37,15 +35,6 @@ assert mod.stub == stub
 """
 
 dummy_other_module_file = "x = 42"
-
-
-@pytest_asyncio.fixture
-async def set_env_client(client):
-    try:
-        Client.set_env_client(client)
-        yield
-    finally:
-        Client.set_env_client(None)
 
 
 def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: Optional[str] = ""):

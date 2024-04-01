@@ -142,7 +142,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
             self._hydrate(response.shared_volume_id, resolver.client, None)
 
-        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
+        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()", hydrate_lazily=True)
 
     @classmethod
     @asynccontextmanager
