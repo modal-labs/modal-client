@@ -204,10 +204,10 @@ assert isinstance(container_app, ContainerApp)
 
 
 async def _interact(client: Optional[_Client] = None) -> None:
-    if _container_app._is_interactivity_enabled:
+    if _container_app.is_interactivity_enabled:
         # Currently, interactivity is enabled forever
         return
-    _container_app._is_interactivity_enabled = True
+    _container_app.is_interactivity_enabled = True
 
     if not client:
         client = await _Client.from_env()
@@ -215,13 +215,13 @@ async def _interact(client: Optional[_Client] = None) -> None:
     if client.client_type != api_pb2.CLIENT_TYPE_CONTAINER:
         raise InvalidError("Interactivity only works inside a Modal Container.")
 
-    if _container_app._function_def is not None:
-        if not _container_app._function_def.pty_info:
+    if _container_app.function_def is not None:
+        if not _container_app.function_def.pty_info:
             raise InvalidError(
                 "Interactivity is not enabled in this function. Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
             )
 
-        if _container_app._function_def.concurrency_limit > 1:
+        if _container_app.function_def.concurrency_limit > 1:
             print(
                 "Warning: Interactivity is not supported on functions with concurrency > 1. You may experience unexpected behavior."
             )
