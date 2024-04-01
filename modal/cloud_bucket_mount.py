@@ -24,7 +24,7 @@ class _CloudBucketMount:
 
     S3 buckets are mounted using [AWS' S3 Mountpoint](https://github.com/awslabs/mountpoint-s3).
     S3 mounts are optimized for reading large files sequentially. It does not support every file operation; consult
-    [the AWS S3 Mountpoin documentation](https://github.com/awslabs/mountpoint-s3/blob/main/doc/SEMANTICS.md) for more information.
+    [the AWS S3 Mountpoint documentation](https://github.com/awslabs/mountpoint-s3/blob/main/doc/SEMANTICS.md) for more information.
 
     **Usage**
 
