@@ -10,7 +10,7 @@ from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
 from .client import _Client
 from .config import logger
-from .exception import ExecutionError, InvalidError
+from .exception import InvalidError
 
 if TYPE_CHECKING:
     from .functions import _Function
@@ -78,17 +78,6 @@ class _ContainerApp:
         self.object_handle_metadata = {}
         self.is_interactivity_enabled = False
         self.fetching_inputs = True
-
-    def hydrate_function_deps(self, function: _Function, dep_object_ids: List[str]):
-        function_deps = function.deps(only_explicit_mounts=True)
-        if len(function_deps) != len(dep_object_ids):
-            raise ExecutionError(
-                f"Function has {len(function_deps)} dependencies"
-                f" but container got {len(dep_object_ids)} object ids."
-            )
-        for object_id, obj in zip(dep_object_ids, function_deps):
-            metadata: Message = self.object_handle_metadata[object_id]
-            obj._hydrate(object_id, self.client, metadata)
 
     async def init(
         self,
