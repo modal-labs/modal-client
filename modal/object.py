@@ -211,7 +211,8 @@ class _Object:
                 " wasn't defined in global scope."
             )
         else:
-            resolver = Resolver()  # TODO: this resolver has no attached Client!
+            # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
+            resolver = Resolver(await _Client.from_env())
             await resolver.load(self)
 
 

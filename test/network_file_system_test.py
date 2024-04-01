@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 import time
+from io import BytesIO
 from unittest import mock
 
 import modal
@@ -179,3 +180,9 @@ def test_nfs_ephemeral(servicer, client, tmp_path):
 
         time.sleep(1.5)  # Make time for 2 heartbeats
     assert servicer.n_nfs_heartbeats == 2
+
+
+def test_nfs_lazy_hydration_from_name(set_env_client):
+    nfs = modal.NetworkFileSystem.from_name("nfs", create_if_missing=True)
+    bio = BytesIO(b"content")
+    nfs.write_file("blah", bio)

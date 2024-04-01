@@ -1433,3 +1433,12 @@ def modal_config():
 @pytest.fixture
 def supports_dir(test_dir):
     return test_dir / Path("supports")
+
+
+@pytest_asyncio.fixture
+async def set_env_client(client):
+    try:
+        Client.set_env_client(client)
+        yield
+    finally:
+        Client.set_env_client(None)

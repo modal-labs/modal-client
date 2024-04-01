@@ -31,3 +31,12 @@ def test_dict_ephemeral(servicer, client):
         assert d["bar"] == 123
         time.sleep(1.5)  # Make time for 2 heartbeats
     assert servicer.n_dict_heartbeats == 2
+
+
+def test_dict_lazy_hydrate_named(set_env_client, servicer):
+    with servicer.intercept() as ctx:
+        d = Dict.from_name("foo", create_if_missing=True)
+        assert len(ctx.get_requests("DictGetOrCreate")) == 0  # sanity check that the get request is lazy
+        d["foo"] = 42
+        assert d["foo"] == 42
+        assert len(ctx.get_requests("DictGetOrCreate")) == 1  # just sanity check that object is only hydrated once...

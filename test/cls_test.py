@@ -23,6 +23,14 @@ from .supports.base_class import BaseCls2
 stub = Stub("stub")
 
 
+@pytest.fixture(autouse=True)
+def auto_use_set_env_client(set_env_client):
+    # TODO(elias): remove set_env_client fixture here if/when possible - this is required only since
+    #  Client.from_env happens to inject an unused client when loading the
+    #  parameterized function
+    return
+
+
 @stub.cls(cpu=42)
 class Foo:
     @method()
@@ -92,7 +100,6 @@ def test_call_cls_remote_modal_type(client):
     with stub_remote.run(client=client):
         with Queue.ephemeral(client) as q:
             FooRemote(42, q)  # type: ignore
-
 
 
 stub_2 = Stub()
