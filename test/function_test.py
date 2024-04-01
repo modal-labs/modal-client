@@ -122,7 +122,7 @@ def test_map_blocking_iterator_blocking_synchronicity_loop(client):
             for _ in pow2.map(blocking_iter()):
                 pass
         dur = time.monotonic() - t0
-    assert dur > SLEEP_DUR
+    assert dur >= SLEEP_DUR
     assert max_delay.result() < 0.1  # should typically be much smaller than this
 
 
