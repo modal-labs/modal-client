@@ -102,3 +102,9 @@ def test_queue_nonblocking_put(servicer, client):
 def test_queue_deploy(servicer, client):
     d = Queue.lookup("xyz", create_if_missing=True, client=client)
     d.put(123)
+
+
+def test_queue_lazy_hydrate_from_name(set_env_client):
+    q = Queue.from_name("foo", create_if_missing=True)
+    q.put(123)
+    assert q.get() == 123

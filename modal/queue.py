@@ -175,7 +175,7 @@ class _Queue(_Object, type_prefix="qu"):
             response = await resolver.client.stub.QueueGetOrCreate(req)
             self._hydrate(response.queue_id, resolver.client, None)
 
-        return _Queue._from_loader(_load, "Queue()", is_another_app=True)
+        return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
     def persisted(
