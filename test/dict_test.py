@@ -31,3 +31,9 @@ def test_dict_ephemeral(servicer, client):
         assert d["bar"] == 123
         time.sleep(1.5)  # Make time for 2 heartbeats
     assert servicer.n_dict_heartbeats == 2
+
+
+def test_dict_lazy_hydrate_named(servicer, client):
+    d = Dict.from_name("foo", create_if_missing=True)
+    d["foo"] = 42
+    assert d["foo"] == 42
