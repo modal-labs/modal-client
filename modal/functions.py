@@ -96,7 +96,9 @@ class _SynchronizedQueue:
     """mdmd:hidden"""
 
     # small wrapper around asyncio.Queue to make it cross-thread compatible through synchronicity
-    def __init__(self):
+    async def init(self):
+        # in Python 3.8 the asyncio.Queue is bound to the event loop on creation
+        # so it needs to be created in a synchronicity-wrapped init method
         self.q = asyncio.Queue()
 
     @synchronizer.no_io_translation
@@ -1349,6 +1351,7 @@ class _Function(_Object, type_prefix="fu"):
         """
         raw_input_queue: Any
         raw_input_queue = SynchronizedQueue()  # type: ignore
+        raw_input_queue.init()
 
         # from typing_extensions import reveal_type
         # reveal_type(SynchronizedQueue)
@@ -1395,6 +1398,7 @@ class _Function(_Object, type_prefix="fu"):
         return_exceptions: bool = False,
     ):
         raw_input_queue: Any = SynchronizedQueue()  # type: ignore
+        raw_input_queue.init()
 
         async def feed_queue():
             # This runs in a main thread event loop, so it doesn't block the synchronizer loop
