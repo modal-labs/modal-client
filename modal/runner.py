@@ -153,6 +153,21 @@ async def _create_all_objects(
     await retry_transient_errors(app.client.stub.AppSetObjects, req_set)
 
 
+async def _disconnect(
+    app: _LocalApp, reason: "Optional[api_pb2.AppDisconnectReason.ValueType]" = None, exc_str: Optional[str] = None
+):
+    """Tell the server the client has disconnected for this app. Terminates all running tasks
+    for ephemeral apps."""
+
+    if exc_str:
+        exc_str = exc_str[:1000]  # Truncate to 1000 chars
+
+    logger.debug("Sending app disconnect/stop request")
+    req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=app.app_id, reason=reason, exception=exc_str)
+    await retry_transient_errors(app.client.stub.AppClientDisconnect, req_disconnect)
+    logger.debug("App disconnected")
+
+
 @asynccontextmanager
 async def _run_stub(
     stub: _Stub,
@@ -281,7 +296,7 @@ async def _run_stub(
             else:
                 exc_str = ""
 
-            await app.disconnect(reason, exc_str)
+            await _disconnect(app, reason, exc_str)
             stub._uncreate_all_objects()
 
     output_mgr.print_if_visible(
@@ -414,7 +429,7 @@ async def _deploy_stub(
             url = deploy_response.url
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
-            await app.disconnect(reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
+            await _disconnect(app, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
