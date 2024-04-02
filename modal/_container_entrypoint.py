@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Set, Tuple, Type
 
+from google.protobuf.message import Message
 from grpclib import Status
 
 from modal_proto import api_pb2
@@ -42,7 +43,7 @@ from .app import ContainerApp, _container_app, _ContainerApp, interact
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
-from .exception import InputCancellation, InvalidError
+from .exception import ExecutionError, InputCancellation, InvalidError
 from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 from .stub import _Stub
@@ -1047,7 +1048,15 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # 2. Fully deprecate .new() objects
         if imp_fun.function:
             dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
-            container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
+            function_deps = imp_fun.function.deps(only_explicit_mounts=True)
+            if len(function_deps) != len(dep_object_ids):
+                raise ExecutionError(
+                    f"Function has {len(function_deps)} dependencies"
+                    f" but container got {len(dep_object_ids)} object ids."
+                )
+            for object_id, obj in zip(dep_object_ids, function_deps):
+                metadata: Message = _container_app.object_handle_metadata[object_id]
+                obj._hydrate(object_id, client, metadata)
 
         # Identify all "enter" methods that need to run before we checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
