@@ -12,7 +12,7 @@ from modal import Image, Mount, Secret, Stub, build, gpu, method
 from modal._serialization import serialize
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, VersionError
-from modal.image import ImageBuilderVersion, _dockerhub_python_version, _get_client_requirements_path
+from modal.image import ImageBuilderVersion, _dockerhub_python_version, _get_modal_requirements_path
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
@@ -62,6 +62,28 @@ def builder_version(request, server_url_env):
             pytest.skip("Parameterized patching not working on Py3.8")
     with mock.patch("test.conftest.ImageBuilderVersion", Literal[version]):  # type: ignore
         yield version
+
+
+def test_image_base(builder_version, servicer, client, test_dir):
+    stub = Stub()
+    constructors = [
+        (Image.debian_slim, ()),
+        (Image.from_registry, ("ubuntu",)),
+        (Image.from_dockerfile, (test_dir / "supports" / "test-dockerfile",)),
+        (Image.conda, ()),
+        (Image.micromamba, ()),
+    ]
+    for meth, args in constructors:
+        stub.image = meth(*args)  # type: ignore
+        with stub.run(client=client):
+            layers = get_image_layers(stub.image.object_id, servicer)
+            commands = "\n".join([cmd for layer in layers for cmd in layer.dockerfile_commands])
+            assert "COPY /modal_requirements.txt /modal_requirements.txt" in commands
+            if builder_version == "2023.12":
+                assert "pip install -r /modal_requirements.txt" in commands
+            else:
+                assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
+                assert "rm /modal_requirements.txt" in commands
 
 
 def test_image_python_packages(builder_version, servicer, client):
@@ -630,29 +652,29 @@ def test_inside_ctx_hydrated(client):
             raise ImportError("bar")
 
 
-@pytest.mark.parametrize(
-    "version,expected",
-    [
-        ("3.12", "requirements.312.txt"),
-        ("3.12.1", "requirements.312.txt"),
-        ("3.12.1-gnu", "requirements.312.txt"),
-    ],
-)
-def test_get_client_requirements_path(version, expected):
-    path = _get_client_requirements_path(version)
-    assert os.path.basename(path) == expected
+@pytest.mark.parametrize("python_version", ["3.11", "3.12", "3.12.1", "3.12.1-gnu"])
+def test_get_modal_requirements_path(builder_version, python_version):
+    path = _get_modal_requirements_path(builder_version, python_version)
+    if builder_version == "2023.12" and python_version.startswith("3.12"):
+        assert path.endswith("2023.12.312.txt")
+    else:
+        assert path.endswith(f"{builder_version}.txt")
 
 
-def test_image_builder_version(servicer):
+def test_image_builder_version(servicer, test_dir):
     stub = Stub(image=Image.debian_slim())
     # TODO use a single with statement and tuple of managers when we drop Py3.8
-    with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
-        with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-            with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")) as client:
-                with stub.run(client=client):
-                    assert servicer.image_builder_versions
-                    for version in servicer.image_builder_versions.values():
-                        assert version == "2000.01"
+    with mock.patch(
+        "modal.image._get_modal_requirements_path",
+        lambda *_, **__: str(test_dir / "supports" / "test-requirements.txt"),
+    ):
+        with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
+            with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
+                with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")) as client:
+                    with stub.run(client=client):
+                        assert servicer.image_builder_versions
+                        for version in servicer.image_builder_versions.values():
+                            assert version == "2000.01"
 
 
 def test_image_builder_supported_versions(servicer):
@@ -666,9 +688,14 @@ def test_image_builder_supported_versions(servicer):
                         pass
 
 
+@pytest.fixture
+def force_2023_12():
+    with mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.12"]):
+        yield
+
+
 @skip_windows("Different hash values for context file paths")
-@mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.12"])
-def test_image_stability_on_2023_12(servicer, client, test_dir):
+def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     def get_hash(img: Image) -> str:
         stub = Stub(image=img)
         with stub.run(client=client):
