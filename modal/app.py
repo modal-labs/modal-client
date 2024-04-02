@@ -44,20 +44,6 @@ class _LocalApp:
         self.environment_name = environment_name
         self.interactive = interactive
 
-    async def disconnect(
-        self, reason: "Optional[api_pb2.AppDisconnectReason.ValueType]" = None, exc_str: Optional[str] = None
-    ):
-        """Tell the server the client has disconnected for this app. Terminates all running tasks
-        for ephemeral apps."""
-
-        if exc_str:
-            exc_str = exc_str[:1000]  # Truncate to 1000 chars
-
-        logger.debug("Sending app disconnect/stop request")
-        req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=self.app_id, reason=reason, exception=exc_str)
-        await retry_transient_errors(self.client.stub.AppClientDisconnect, req_disconnect)
-        logger.debug("App disconnected")
-
 
 class _ContainerApp:
     client: Optional[_Client]
