@@ -1589,13 +1589,6 @@ class _Function(_Object, type_prefix="fu"):
 
 Function = synchronize_api(_Function)
 
-# TODO (elias): These are needed since synchronicity doesn't "transfer" the custom MethodWithAio from within the class
-#   to the wrapped type at the moment. The class-inlined versions of the same methods (above) are still needed
-#   in order for static checks of `self.map()` etc. to work
-Function.map = MethodWithAio(_Function._map_sync, _Function._map_async, synchronizer)  # type: ignore
-Function.starmap = MethodWithAio(_Function._starmap_sync, _Function._starmap_async, synchronizer)  # type: ignore
-Function.for_each = MethodWithAio(_Function._for_each_sync, _Function._for_each_async, synchronizer)  # type: ignore
-
 
 class _FunctionCall(_Object, type_prefix="fc"):
     """A reference to an executed function call.
