@@ -34,7 +34,9 @@ if typing.TYPE_CHECKING:
 
 
 # This is used for both type checking and runtime validation
-ImageBuilderVersion = Literal["2023.12", "PREVIEW"]
+ImageBuilderVersion = Literal["2023.12", "2024.04"]
+
+CONTAINER_REQUIREMENTS_PATH = "/modal_requirements.txt"
 
 
 def _validate_python_version(version: str) -> None:
@@ -72,17 +74,31 @@ def _dockerhub_python_version(python_version=None):
     return python_version
 
 
-def _get_client_requirements_path(python_version: Optional[str] = None) -> str:
+def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
     # Locate Modal client requirements.txt
     import modal
 
-    modal_path = modal.__path__[0]
-    if python_version is None:
-        major, minor, *_ = sys.version_info
+    modal_path = Path(modal.__path__[0])
+
+    # When we added Python 3.12 support, we needed to update a few dependencies but did not yet
+    # support versioned builds, so we put them in a separate 3.12-specific requirements file.
+    # When the python_version is not specified in the Image API, we fall back to the local version.
+    # Note that this is buggy if you're using a registry or dockerfile Image that (implicitly) contains 3.12
+    # and have a different local version. We can't really fix that; but users can update their image builder.
+    # We can get rid of this complexity entirely when we drop support for 2023.12.
+    python_version = python_version or sys.version
+    suffix = ".312" if builder_version == "2023.12" and python_version.startswith("3.12") else ""
+
+    return str(modal_path / "requirements" / f"{builder_version}{suffix}.txt")
+
+
+def _get_modal_requirements_command(version: ImageBuilderVersion) -> str:
+    command = "pip install"
+    if version <= "2023.12":
+        args = f"-r {CONTAINER_REQUIREMENTS_PATH}"
     else:
-        major, minor = python_version.split("-")[0].split(".")[:2]
-    suffix = {(3, 12): ".312"}.get((int(major), int(minor)), "")
-    return os.path.join(modal_path, f"requirements{suffix}.txt")
+        args = f"--no-cache --no-deps -r {CONTAINER_REQUIREMENTS_PATH}"
+    return f"{command} {args}"
 
 
 def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, List[str]], ...]) -> List[str]:
@@ -146,10 +162,9 @@ def _get_image_builder_version(client_version: str) -> ImageBuilderVersion:
             update_suggestion = "your image builder version using the Modal dashboard"
         else:
             update_suggestion = "your client library (pip install --upgrade modal)"
-        # Special case "PREVIEW": we allow, but don't advertise it, as it's intended for development
         raise VersionError(
             "This version of the modal client supports the following image builder versions:"
-            f" {supported_versions - {'PREVIEW'}!r}."
+            f" {supported_versions!r}."
             f"\n\nYou are using {version!r}{version_source}."
             f" Please update {update_suggestion}."
         )
@@ -832,8 +847,8 @@ class _Image(_Object, type_prefix="im"):
         _validate_python_version(python_version)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            requirements_path = _get_client_requirements_path(python_version)
-            context_files = {"/modal_requirements.txt": requirements_path}
+            requirements_path = _get_modal_requirements_path(version, python_version)
+            context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
 
             # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
             # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
@@ -865,12 +880,15 @@ class _Image(_Object, type_prefix="im"):
                 "&& conda clean --all --yes",
                 # Setup .bashrc for conda.
                 "RUN conda init bash --verbose",
-                "COPY /modal_requirements.txt /modal_requirements.txt",
+                f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
                 # .bashrc is explicitly sourced because RUN is a non-login shell and doesn't run bash.
                 "RUN . /root/.bashrc && conda activate base \\ ",
-                "&& python -m pip install --upgrade pip \\ ",
-                "&& python -m pip install -r /modal_requirements.txt",
+                # Ensure that packaging tools are up to date and install client dependenices
+                f"&& python -m pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel'} \\ ",
+                f"&& python -m {_get_modal_requirements_command(version)}",
             ]
+            if version > "2023.12":
+                commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         base = _Image._from_args(
@@ -972,8 +990,8 @@ class _Image(_Object, type_prefix="im"):
                 "ENV MAMBA_DOCKERFILE_ACTIVATE=1",
                 f"RUN micromamba install -n base -y python={python_version} pip -c conda-forge",
             ]
-            commands = _Image._registry_setup_commands(tag, setup_commands, add_python=None)
-            context_files = {"/modal_requirements.txt": _get_client_requirements_path(python_version)}
+            commands = _Image._registry_setup_commands(tag, version, setup_commands, add_python=None)
+            context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, python_version)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
@@ -1017,7 +1035,12 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    def _registry_setup_commands(tag: str, setup_commands: List[str], add_python: Optional[str]) -> List[str]:
+    def _registry_setup_commands(
+        tag: str,
+        builder_version: ImageBuilderVersion,
+        setup_commands: List[str],
+        add_python: Optional[str],
+    ) -> List[str]:
         add_python_commands: List[str] = []
         if add_python:
             add_python_commands = [
@@ -1025,17 +1048,20 @@ class _Image(_Object, type_prefix="im"):
                 "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
                 "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
             ]
+
+        modal_requirements_commands = [
+            f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
+            f"RUN python -m pip install --upgrade {'pip' if builder_version == '2023.12' else 'pip wheel'}",
+            f"RUN python -m {_get_modal_requirements_command(builder_version)}",
+        ]
+        if builder_version > "2023.12":
+            modal_requirements_commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
+
         return [
             f"FROM {tag}",
             *add_python_commands,
             *setup_commands,
-            "COPY /modal_requirements.txt /modal_requirements.txt",
-            "RUN python -m pip install --upgrade pip",
-            "RUN python -m pip install -r /modal_requirements.txt",
-            # TODO: We should add this next line at some point to clean up the image, but it would
-            # trigger a hash change, so batch it with the next rebuild-triggering change.
-            #
-            # "RUN rm /modal_requirements.txt",
+            *modal_requirements_commands,
         ]
 
     @staticmethod
@@ -1086,8 +1112,8 @@ class _Image(_Object, type_prefix="im"):
             kwargs["image_registry_config"] = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS, secret)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = _Image._registry_setup_commands(tag, setup_dockerfile_commands, add_python)
-            context_files = {"/modal_requirements.txt": _get_client_requirements_path(add_python)}
+            commands = _Image._registry_setup_commands(tag, version, setup_dockerfile_commands, add_python)
+            context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, add_python)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
@@ -1237,26 +1263,9 @@ class _Image(_Object, type_prefix="im"):
             context_mount = None
 
         def build_dockerfile_python(version: ImageBuilderVersion) -> DockerfileSpec:
-            requirements_path = _get_client_requirements_path(add_python)
-
-            add_python_commands = []
-            if add_python:
-                add_python_commands = [
-                    "COPY /python/. /usr/local",
-                    "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
-                    "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
-                ]
-
-            commands = [
-                "FROM base",
-                *add_python_commands,
-                "COPY /modal_requirements.txt /modal_requirements.txt",
-                "RUN python -m pip install --upgrade pip",
-                "RUN python -m pip install -r /modal_requirements.txt",
-            ]
-
-            context_files = {"/modal_requirements.txt": requirements_path}
-
+            commands = _Image._registry_setup_commands("base", version, [], add_python)
+            requirements_path = _get_modal_requirements_path(version, add_python)
+            context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
@@ -1271,24 +1280,23 @@ class _Image(_Object, type_prefix="im"):
         """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            requirements_path = _get_modal_requirements_path(version, python_version)
+            context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
             full_python_version = _dockerhub_python_version(python_version)
 
-            requirements_path = _get_client_requirements_path(full_python_version)
             commands = [
                 f"FROM python:{full_python_version}-slim-bullseye",
-                "COPY /modal_requirements.txt /modal_requirements.txt",
+                f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
                 "RUN apt-get update",
                 "RUN apt-get install -y gcc gfortran build-essential",
-                "RUN pip install --upgrade pip",
-                "RUN pip install -r /modal_requirements.txt",
-                # Set debian front-end to non-interactive to avoid users getting stuck with input
-                # prompts.
+                f"RUN pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel'}",
+                f"RUN {_get_modal_requirements_command(version)}",
+                # Set debian front-end to non-interactive to avoid users getting stuck with input prompts.
                 "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
             ]
-            return DockerfileSpec(
-                commands=commands,
-                context_files={"/modal_requirements.txt": requirements_path},
-            )
+            if version > "2023.12":
+                commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
+            return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
             dockerfile_function=build_dockerfile,
