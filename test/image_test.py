@@ -78,13 +78,12 @@ def test_image_base(builder_version, servicer, client, test_dir):
         with stub.run(client=client):
             layers = get_image_layers(stub.image.object_id, servicer)
             commands = "\n".join([cmd for layer in layers for cmd in layer.dockerfile_commands])
+            assert "COPY /modal_requirements.txt /modal_requirements.txt" in commands
             if builder_version == "2023.12":
-                assert "COPY /modal_requirements.txt /modal_requirements.txt" in commands
                 assert "pip install -r /modal_requirements.txt" in commands
-            elif builder_version == "PREVIEW":
-                print(commands)
-                assert "/modal_requirements.txt" not in commands
-                assert "pip install --no-cache aiohttp==3.9.3 aiosignal==1.3.1" in commands
+            else:
+                assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
+                assert "rm /modal_requirements.txt" in commands
 
 
 def test_image_python_packages(builder_version, servicer, client):
@@ -457,10 +456,7 @@ def test_poetry(builder_version, servicer, client):
     with stub.run(client=client):
         layers = get_image_layers(stub.image.object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
-        expected_context_files = {"/.poetry.lock", "/.pyproject.toml"}
-        if builder_version == "2023.12":
-            expected_context_files.add("/modal_requirements.txt")
-        assert context_files == expected_context_files
+        assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
 
 
 @pytest.fixture
@@ -656,29 +652,29 @@ def test_inside_ctx_hydrated(client):
             raise ImportError("bar")
 
 
-@pytest.mark.parametrize(
-    "version,expected",
-    [
-        ("3.12", "requirements.312.txt"),
-        ("3.12.1", "requirements.312.txt"),
-        ("3.12.1-gnu", "requirements.312.txt"),
-    ],
-)
-def test_get_modal_requirements_path(version, expected):
-    path = _get_modal_requirements_path(version)
-    assert os.path.basename(path) == expected
+@pytest.mark.parametrize("python_version", ["3.11", "3.12", "3.12.1", "3.12.1-gnu"])
+def test_get_modal_requirements_path(builder_version, python_version):
+    path = _get_modal_requirements_path(builder_version, python_version)
+    if builder_version == "2023.12" and python_version.startswith("3.12"):
+        assert path.endswith("2023.12.312.txt")
+    else:
+        assert path.endswith(f"{builder_version}.txt")
 
 
-def test_image_builder_version(servicer):
+def test_image_builder_version(servicer, test_dir):
     stub = Stub(image=Image.debian_slim())
     # TODO use a single with statement and tuple of managers when we drop Py3.8
-    with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
-        with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-            with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")) as client:
-                with stub.run(client=client):
-                    assert servicer.image_builder_versions
-                    for version in servicer.image_builder_versions.values():
-                        assert version == "2000.01"
+    with mock.patch(
+        "modal.image._get_modal_requirements_path",
+        lambda *_, **__: str(test_dir / "supports" / "test-requirements.txt"),
+    ):
+        with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
+            with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
+                with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")) as client:
+                    with stub.run(client=client):
+                        assert servicer.image_builder_versions
+                        for version in servicer.image_builder_versions.values():
+                            assert version == "2000.01"
 
 
 def test_image_builder_supported_versions(servicer):
