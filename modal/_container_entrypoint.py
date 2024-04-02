@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Set, Tuple, Type
 
+from google.protobuf.message import Message
 from grpclib import Status
 
 from modal_proto import api_pb2
@@ -38,11 +39,11 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
 from ._utils.grpc_utils import retry_transient_errors
-from .app import _container_app, _ContainerApp, interact
+from .app import ContainerApp, _container_app, _ContainerApp, interact
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
-from .exception import InputCancellation, InvalidError
+from .exception import ExecutionError, InputCancellation, InvalidError
 from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 from .stub import _Stub
@@ -144,7 +145,6 @@ class _FunctionIOManager:
         self.current_input_id: Optional[str] = None
         self.current_input_started_at: Optional[float] = None
 
-        self._stub_name = self.function_def.stub_name
         self._input_concurrency: Optional[int] = None
 
         self._semaphore: Optional[asyncio.Semaphore] = None
@@ -156,7 +156,7 @@ class _FunctionIOManager:
         assert isinstance(self._client, _Client)
 
     async def initialize_app(self) -> _ContainerApp:
-        await _container_app.init(self._client, self.app_id, self._stub_name, self._environment_name, self.function_def)
+        await _container_app.init(self._client, self.app_id, self._environment_name, self.function_def)
         return _container_app
 
     async def _run_heartbeat_loop(self):
@@ -827,8 +827,28 @@ def import_function(
     function_io_manager,
     client: Client,
 ) -> ImportedFunction:
-    # This is not in function_io_manager, so that any global scope code that runs during import
-    # runs on the main thread.
+    """Imports a function dynamically, and locates the stub.
+
+    This is somewhat complex because we're dealing with 3 quite different type of functions:
+    1. Functions defined in global scope and decorated in global scope (Function objects)
+    2. Functions defined in global scope but decorated elsewhere (these will be raw callables)
+    3. Serialized functions
+
+    In addition, we also need to handle
+    * Normal functions
+    * Methods on classes (in which case we need to instantiate the object)
+
+    This helper also handles web endpoints, ASGI/WSGI servers, and HTTP servers.
+
+    In order to locate the stub, we try two things:
+    * If the function is a Function, we can get the stub directly from it
+    * Otherwise, use the stub name and look it up from a global list of stubs: this
+      typically only happens in case 2 above, or in sometimes for case 3
+
+    Note that `import_function` is *not* synchronized, becase we need it to run on the main
+    thread. This is so that any user code running in global scope (which executes as a part of
+    the import) runs on the right thread.
+    """
     module: Optional[ModuleType] = None
     cls: Optional[Type] = None
     fun: Callable
@@ -875,16 +895,21 @@ def import_function(
             raise InvalidError(f"Invalid function qualname {qual_name}")
 
     # If the cls/function decorator was applied in local scope, but the stub is global, we can look it up
-    if active_stub is None and function_def.stub_name:
+    if active_stub is None:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated stubs - if there is only one with the indicated name, use that one
-        matching_stubs = _Stub._all_stubs.get(function_def.stub_name, [])
+        stub_name: Optional[str] = function_def.stub_name or None  # coalesce protobuf field to None
+        matching_stubs = _Stub._all_stubs.get(stub_name, [])
         if len(matching_stubs) > 1:
+            if stub_name is not None:
+                warning_sub_message = f"stub with the same name ('{stub_name}')"
+            else:
+                warning_sub_message = "unnamed stub"
             logger.warning(
-                "You have multiple stubs with the same name which may prevent you from calling into other functions or using stub.is_inside(). It's recommended to name all your Stubs uniquely."
+                f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
             )
         elif len(matching_stubs) == 1:
-            active_stub = matching_stubs[0]
+            (active_stub,) = matching_stubs
         # there could also technically be zero found stubs, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
@@ -992,7 +1017,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     function_io_manager = FunctionIOManager(container_args, client)
 
     # Define a global app (need to do this before imports).
-    container_app = function_io_manager.initialize_app()
+    container_app: ContainerApp = function_io_manager.initialize_app()
+    _container_app = synchronizer._translate_in(container_app)  # TODO(erikbern): hacky
 
     with function_io_manager.heartbeats(), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
@@ -1012,10 +1038,25 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 client,
             )
 
+        # Initialize objects on the stub.
+        if imp_fun.stub is not None:
+            imp_fun.stub._init_container(_container_app)
+
         # Hydrate all function dependencies.
+        # TODO(erikbern): we an remove this once we
+        # 1. Enable lazy hydration for all objects
+        # 2. Fully deprecate .new() objects
         if imp_fun.function:
             dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
-            container_app.hydrate_function_deps(imp_fun.function, dep_object_ids)
+            function_deps = imp_fun.function.deps(only_explicit_mounts=True)
+            if len(function_deps) != len(dep_object_ids):
+                raise ExecutionError(
+                    f"Function has {len(function_deps)} dependencies"
+                    f" but container got {len(dep_object_ids)} object ids."
+                )
+            for object_id, obj in zip(dep_object_ids, function_deps):
+                metadata: Message = _container_app.object_handle_metadata[object_id]
+                obj._hydrate(object_id, client, metadata)
 
         # Identify all "enter" methods that need to run before we checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:

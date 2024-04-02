@@ -19,6 +19,13 @@ def test_queue(servicer, client):
         q.get(timeout=0)
     assert q.len() == 0
 
+    # test iter
+    q.put_many([1, 2, 3])
+    t0 = time.time()
+    assert [v for v in q.iterate(item_poll_timeout=1.0)] == [1, 2, 3]
+    assert 1.0 < time.time() - t0 < 2.0
+    assert [v for v in q.iterate(item_poll_timeout=0.0)] == [1, 2, 3]
+
 
 def test_queue_ephemeral(servicer, client):
     with Queue.ephemeral(client=client, _heartbeat_sleep=1) as q:
@@ -95,3 +102,9 @@ def test_queue_nonblocking_put(servicer, client):
 def test_queue_deploy(servicer, client):
     d = Queue.lookup("xyz", create_if_missing=True, client=client)
     d.put(123)
+
+
+def test_queue_lazy_hydrate_from_name(set_env_client):
+    q = Queue.from_name("foo", create_if_missing=True)
+    q.put(123)
+    assert q.get() == 123

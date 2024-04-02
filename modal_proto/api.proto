@@ -547,6 +547,7 @@ message ClientCreateResponse {
 
 message ClientHelloResponse {
   string warning = 1;
+  string image_builder_version = 2;
 }
 
 message ClientHeartbeatRequest {
@@ -1227,10 +1228,6 @@ message Image {
   BuildFunction build_function = 21;
 }
 
-message ImageBuilderVersionLookupResponse {
-  string version = 1;
-}
-
 message ImageContextFile {
   string filename = 1;
   bytes data = 2;
@@ -1410,6 +1407,7 @@ message QueueGetRequest {
   string queue_id = 1;
   float timeout = 3;
   int32 n_values = 4;
+  bytes partition_key = 5;
 }
 
 message QueueGetResponse {
@@ -1423,14 +1421,33 @@ message QueueHeartbeatRequest {
 message QueuePutRequest {
   string queue_id = 1;
   repeated bytes values = 4;
+  bytes partition_key = 5;
+  int32 partition_ttl_seconds = 6;
 }
 
 message QueueLenRequest {
   string queue_id = 1;
+  bytes partition_key = 2;
 }
 
 message QueueLenResponse {
   int32 len = 1;
+}
+
+message QueueNextItemsRequest {
+  string queue_id = 1;
+  bytes partition_key = 2;
+  string last_entry_id = 3;
+  float item_poll_timeout = 4; // seconds
+}
+
+message QueueItem {
+  bytes value = 1;
+  string entry_id = 2;
+}
+
+message QueueNextItemsResponse {
+  repeated QueueItem items = 1;
 }
 
 message RateLimit {
@@ -2069,7 +2086,6 @@ service ModalClient {
   // Images
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
-  rpc ImageBuilderVersionLookup(google.protobuf.Empty) returns (ImageBuilderVersionLookupResponse);
 
   // Mounts
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
@@ -2086,6 +2102,7 @@ service ModalClient {
   rpc QueueHeartbeat(QueueHeartbeatRequest) returns (google.protobuf.Empty);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
   rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
+  rpc QueueNextItems(QueueNextItemsRequest) returns (QueueNextItemsResponse);
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);

@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import inspect
 import pytest
 import threading
 from typing import TYPE_CHECKING, Callable, Dict
@@ -9,7 +8,6 @@ from typing_extensions import assert_type
 from modal import Cls, Function, Image, Queue, Stub, build, enter, exit, method
 from modal._serialization import deserialize
 from modal.app import ContainerApp
-from modal.cls import ClsMixin
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.partial_function import (
     _find_callables_for_obj,
@@ -23,6 +21,14 @@ from modal_proto import api_pb2
 from .supports.base_class import BaseCls2
 
 stub = Stub("stub")
+
+
+@pytest.fixture(autouse=True)
+def auto_use_set_env_client(set_env_client):
+    # TODO(elias): remove set_env_client fixture here if/when possible - this is required only since
+    #  Client.from_env happens to inject an unused client when loading the
+    #  parameterized function
+    return
 
 
 @stub.cls(cpu=42)
@@ -72,19 +78,9 @@ class FooRemote:
 
 def test_call_cls_remote_sync(client):
     with stub_remote.run(client=client):
-        # Check old cls syntax
-        with pytest.raises(DeprecationError):
-            FooRemote.remote(3, "hello")  # type: ignore
-
-        # Check new syntax
         foo_remote: FooRemote = FooRemote(3, "hello")
         ret: float = foo_remote.bar.remote(8)
         assert ret == 64  # Mock servicer just squares the argument
-
-        # Check old method syntax
-        assert foo_remote.bar.remote(8) == 64
-        with pytest.raises(DeprecationError):
-            foo_remote.bar(8)
 
 
 def test_call_cls_remote_invalid_type(client):
@@ -106,7 +102,6 @@ def test_call_cls_remote_modal_type(client):
             FooRemote(42, q)  # type: ignore
 
 
-
 stub_2 = Stub()
 
 
@@ -122,9 +117,6 @@ async def test_call_class_async(client, servicer):
     async with stub_2.run(client=client):
         bar = Bar()
         assert await bar.baz.remote.aio(42) == 1764
-
-        with pytest.raises(DeprecationError):
-            await Bar.remote.aio()  # type: ignore
 
 
 def test_run_class_serialized(client, servicer):
@@ -176,16 +168,6 @@ async def test_call_cls_remote_async(client):
         bar_remote = BarRemote(3, "hello")
         assert await bar_remote.baz.remote.aio(8) == 64  # Mock servicer just squares the argument
 
-        # Check deprecated method syntax
-        with pytest.raises(DeprecationError):
-            bar_remote.baz(8)
-
-        # Check deprecated cls syntax
-        coro = BarRemote.remote.aio(3, "hello")  # type: ignore
-        assert inspect.iscoroutine(coro)
-        with pytest.raises(DeprecationError):
-            await coro
-
 
 stub_local = Stub()
 
@@ -233,24 +215,8 @@ class NoArgRemote:
 
 def test_call_cls_remote_no_args(client):
     with stub_remote_3.run(client=client):
-        # Check new cls syntax
         foo_remote = NoArgRemote()
         assert foo_remote.baz.remote(8) == 64  # Mock servicer just squares the argument
-
-        # Check old cls syntax
-        with pytest.raises(DeprecationError):
-            NoArgRemote.remote()  # type: ignore
-
-        # Check old method syntax
-        with pytest.raises(DeprecationError):
-            foo_remote.baz(8)
-
-
-def test_deprecated_mixin():
-    with pytest.raises(DeprecationError):
-
-        class FooRemote(ClsMixin):
-            pass
 
 
 if TYPE_CHECKING:
@@ -440,10 +406,10 @@ def test_rehydrate(client, servicer):
 
     # Initialize a container
     app = ContainerApp()
-    app.init(client, app_id, "stub")
+    app.init(client, app_id)
 
     # Associate app with stub
-    app._associate_stub_container(stub)
+    stub._init_container(app)
 
     # Hydration shouldn't overwrite local function definition
     obj = Foo()

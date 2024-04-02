@@ -15,7 +15,7 @@ from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import InvalidError, NotFoundError, deprecation_error
+from .exception import InvalidError, NotFoundError
 from .functions import (
     _parse_retries,
 )
@@ -37,11 +37,6 @@ T = TypeVar("T")
 
 if typing.TYPE_CHECKING:
     import modal.stub
-
-
-class ClsMixin:
-    def __init_subclass__(cls):
-        deprecation_error((2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
 
 
 class _Obj:
@@ -353,10 +348,6 @@ class _Cls(_Object, type_prefix="cs"):
         return _Obj(
             self._user_cls, self._output_mgr, self._functions, self._from_other_workspace, self._options, args, kwargs
         )
-
-    async def remote(self, *args, **kwargs):
-        """`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`."""
-        deprecation_error((2023, 9, 1), "`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`.")
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint

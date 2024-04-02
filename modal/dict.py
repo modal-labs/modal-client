@@ -11,7 +11,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
 from .config import logger
-from .exception import deprecation_error, deprecation_warning
+from .exception import deprecation_warning
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method
 
 
@@ -72,7 +72,9 @@ class _Dict(_Object, type_prefix="di"):
 
     def __init__(self, data={}):
         """mdmd:hidden"""
-        deprecation_error((2023, 6, 27), "`Dict({...})` is deprecated. Please use `Dict.new({...})` instead.")
+        raise RuntimeError(
+            "`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead"
+        )
 
     @classmethod
     @asynccontextmanager
@@ -142,7 +144,7 @@ class _Dict(_Object, type_prefix="di"):
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, resolver.client, None)
 
-        return _Dict._from_loader(_load, "Dict()", is_another_app=True)
+        return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
     def persisted(

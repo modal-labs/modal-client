@@ -3,6 +3,8 @@ import pytest
 import typing
 
 import modal
+from modal.client import Client
+from modal.exception import ExecutionError
 from modal.runner import run_stub
 from modal_proto import api_pb2
 
@@ -18,6 +20,14 @@ def test_run_stub(servicer, client):
     ctx.pop_request("AppCreate")
     ctx.pop_request("AppSetObjects")
     ctx.pop_request("AppClientDisconnect")
+
+
+def test_run_stub_unauthenticated(servicer):
+    dummy_stub = modal.Stub()
+    with Client.anonymous(servicer.remote_addr) as client:
+        with pytest.raises(ExecutionError, match=".+unauthenticated client"):
+            with run_stub(dummy_stub, client=client):
+                pass
 
 
 def dummy():
@@ -52,9 +62,7 @@ def test_run_stub_custom_env_with_refs(servicer, client, monkeypatch):
     monkeypatch.setenv("MODAL_ENVIRONMENT", "profile_env")
     dummy_stub = modal.Stub()
     own_env_secret = modal.Secret.from_name("own_env_secret")
-    other_env_secret = modal.Secret.from_name(
-        "other_env_secret", environment_name="third"
-    )  # explicit lookup
+    other_env_secret = modal.Secret.from_name("other_env_secret", environment_name="third")  # explicit lookup
 
     dummy_stub.function(secrets=[own_env_secret, other_env_secret])(dummy)
 

@@ -175,7 +175,10 @@ class InterceptionContext:
                 self.calls = self.calls[i + 1 :]
                 return msg
 
-        raise Exception(f"No message of that type in call list: {self.calls}")
+        raise KeyError(f"No message of that type in call list: {self.calls}")
+
+    def get_requests(self, method_name: str) -> List[Any]:
+        return [msg for _method_name, msg in self.calls if _method_name == method_name]
 
 
 class InterceptedStream:
