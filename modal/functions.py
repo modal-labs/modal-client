@@ -1349,13 +1349,9 @@ class _Function(_Object, type_prefix="fu"):
         We could make this explicit as an improvement or even let users decide what they
         prefer: throughput (prioritize queueing inputs) or latency (prioritize yielding results)
         """
-        raw_input_queue: Any
-        raw_input_queue = SynchronizedQueue()  # type: ignore
+        raw_input_queue: Any = SynchronizedQueue()  # type: ignore
         raw_input_queue.init()
 
-        # from typing_extensions import reveal_type
-        # reveal_type(SynchronizedQueue)
-        # reveal_type(raw_input_queue)
         async def feed_queue():
             # This runs in a main thread event loop, so it doesn't block the synchronizer loop
             async for args in stream.zip(*[stream.iterate(it) for it in input_iterators]):
