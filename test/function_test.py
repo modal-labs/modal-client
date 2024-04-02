@@ -68,7 +68,6 @@ def test_map(client, servicer, slow_put_inputs):
         assert len(servicer.cleared_function_calls) == 2
 
 
-# TODO(elias) add map test using async iterator as input
 @pytest.mark.asyncio
 async def test_map_async_generator(client):
     stub = Stub()

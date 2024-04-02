@@ -1578,6 +1578,10 @@ class _Function(_Object, type_prefix="fu"):
             backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
         )
 
+    # A bit hacky - but the map-style functions need to not be synchronicity-wrapped
+    # in order to not execute their input iterators on the synchronicity event loop.
+    # We still need to wrap them using MethodWithAio to maintain a synchronicity-like
+    # api with `.aio` and get working type-stubs and reference docs generation:
     map = MethodWithAio(_map_sync, _map_async, synchronizer)
     starmap = MethodWithAio(_starmap_sync, _starmap_async, synchronizer)
     for_each = MethodWithAio(_for_each_sync, _for_each_async, synchronizer)
@@ -1585,10 +1589,9 @@ class _Function(_Object, type_prefix="fu"):
 
 Function = synchronize_api(_Function)
 
-# A bit hacky - but the map-style functions need to not be synchronicity-wrapped
-# in order to not execute their input iterators on the synchronicity event loop.
-# We still need to wrap them using MethodWithAio to maintain a synchronicity-like
-# api with `.aio` and get working type-stubs and reference docs generation:
+# TODO (elias): These are needed since synchronicity doesn't "transfer" the custom MethodWithAio from within the class
+#   to the wrapped type at the moment. The class-inlined versions of the same methods (above) are still needed
+#   in order for static checks of `self.map()` etc. to work
 Function.map = MethodWithAio(_Function._map_sync, _Function._map_async, synchronizer)  # type: ignore
 Function.starmap = MethodWithAio(_Function._starmap_sync, _Function._starmap_async, synchronizer)  # type: ignore
 Function.for_each = MethodWithAio(_Function._for_each_sync, _Function._for_each_async, synchronizer)  # type: ignore

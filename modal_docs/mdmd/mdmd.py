@@ -6,6 +6,8 @@ from enum import Enum, EnumMeta
 from types import ModuleType
 from typing import Callable
 
+import synchronicity.synchronizer
+
 from .signatures import get_signature
 
 
@@ -79,7 +81,7 @@ class {name}{bases_str}
             member = getattr(obj, member_name)
         elif isinstance(member, property):
             member = member.fget
-        elif hasattr(member, "_func"):  # FunctionWithAio/MethodWithAio
+        elif isinstance(member, (synchronicity.synchronizer.FunctionWithAio, synchronicity.synchronizer.MethodWithAio)):
             member = member._func
 
         if object_is_private(member_name, member):
