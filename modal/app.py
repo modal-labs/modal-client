@@ -85,6 +85,11 @@ container_app = synchronize_api(_container_app)
 assert isinstance(container_app, ContainerApp)
 
 
+def _set_is_container_app():
+    global _is_container_app
+    _is_container_app = True
+
+
 async def _init_container_app(
     client: _Client,
     app_id: str,
@@ -92,8 +97,7 @@ async def _init_container_app(
     function_def: Optional[api_pb2.Function] = None,
 ):
     """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
-    global _is_container_app, _container_app
-    _is_container_app = True
+    global _container_app
 
     _container_app.client = client
     _container_app.app_id = app_id
