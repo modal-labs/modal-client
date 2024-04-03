@@ -39,7 +39,7 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
 from ._utils.grpc_utils import retry_transient_errors
-from .app import ContainerApp, _container_app, _ContainerApp, interact
+from .app import ContainerApp, _container_app, _init_container_app, _ContainerApp, interact
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
@@ -156,8 +156,7 @@ class _FunctionIOManager:
         assert isinstance(self._client, _Client)
 
     async def initialize_app(self) -> _ContainerApp:
-        await _container_app.init(self._client, self.app_id, self._environment_name, self.function_def)
-        return _container_app
+        return await _init_container_app(self._client, self.app_id, self._environment_name, self.function_def)
 
     async def _run_heartbeat_loop(self):
         while 1:
