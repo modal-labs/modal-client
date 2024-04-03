@@ -2,7 +2,7 @@
 import pytest
 
 from modal import Stub
-from modal.app import container_app
+from modal.app import container_app, init_container_app
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -21,7 +21,7 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
     }
     unix_servicer.app_functions["fu-123"] = api_pb2.Function()
 
-    await container_app.init.aio(container_client, "ap-123")
+    await init_container_app.aio(container_client, "ap-123")
     stub = Stub()
 
     # This is normally done in _container_entrypoint
