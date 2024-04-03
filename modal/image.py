@@ -66,7 +66,7 @@ def _validate_python_version(version: Optional[str], allow_micro_granularity: bo
     if series_version not in SUPPORTED_PYTHON_SERIES:
         raise InvalidError(
             f"Unsupported Python version: {version!r}."
-            " Modal supports versions in the following series: {supported_series!r}"
+            f" Modal supports versions in the following series: {SUPPORTED_PYTHON_SERIES!r}."
         )
     return version
 
