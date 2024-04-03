@@ -7,7 +7,7 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 import modal.app
-from modal import Dict, Image, Queue, Stub, web_endpoint
+from modal import App, Dict, Image, Queue, Stub, web_endpoint
 from modal.config import config
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
@@ -358,3 +358,11 @@ def test_hydrated_other_app_object_gets_referenced(servicer, client):
 def test_hasattr():
     stub = Stub()
     assert not hasattr(stub, "xyz")
+
+
+def test_app(client):
+    app = App()
+    square_modal = app.function()(square)
+
+    with app.run(client=client):
+        square_modal.remote(42)

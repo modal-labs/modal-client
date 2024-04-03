@@ -787,3 +787,15 @@ class _Stub:
 
 
 Stub = synchronize_api(_Stub)
+
+
+class _App(_Stub):
+    """This enables using an "App" class instead of "Stub".
+
+    We haven't announced this and started deprecating stubs yet, so this is for
+    forward compatibility reasons.
+    """
+    pass
+
+
+App = synchronize_api(_App)

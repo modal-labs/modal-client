@@ -126,6 +126,13 @@ def test_run(servicer, set_env_client, test_dir):
     _run(["run", file_with_entrypoint.as_posix() + "::stub.main"])
 
 
+def test_run_app(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "stub_is_now_app.py"
+    _run(["run", stub_file.as_posix()])
+    _run(["run", stub_file.as_posix() + "::app"])
+    _run(["run", stub_file.as_posix() + "::foo"])
+
+
 def test_run_async(servicer, set_env_client, test_dir):
     sync_fn = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     res = _run(["run", sync_fn.as_posix()])
