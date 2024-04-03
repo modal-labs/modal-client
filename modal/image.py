@@ -103,8 +103,12 @@ def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_versi
     return python_version
 
 
+def _dockerhub_debian_codename(builder_version: ImageBuilderVersion) -> str:
+    return {"2023.12": "bullseye", "2024.04": "bookworm"}[builder_version]
+
+
 def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
-    # Locate Modal client requirements.txt
+    # Locate Modal client requirements data
     import modal
 
     modal_path = Path(modal.__path__[0])
@@ -879,6 +883,7 @@ class _Image(_Object, type_prefix="im"):
             if version == "2023.12" and python_version is None:
                 python_version = "3.9"  # Backcompat for old hardcoded default param
             validated_python_version = _validate_python_version(python_version)
+            debian_codename = _dockerhub_debian_codename(version)
             requirements_path = _get_modal_requirements_path(version, python_version)
             context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
 
@@ -886,7 +891,7 @@ class _Image(_Object, type_prefix="im"):
             # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
             conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
             commands = [
-                "FROM debian:bullseye",  # the -slim images lack files required by Conda.
+                f"FROM debian:{debian_codename}",  # the -slim images lack files required by Conda.
                 # Temporarily add utility packages for conda installation.
                 "RUN apt-get --quiet update && apt-get --quiet --yes install curl bzip2 \\",
                 f"&& curl --silent --show-error --location {conda_install_script} --output /tmp/miniconda.sh \\",
@@ -1019,7 +1024,9 @@ class _Image(_Object, type_prefix="im"):
             if version == "2023.12" and python_version is None:
                 python_version = "3.9"  # Backcompat for old hardcoded default param
             validated_python_version = _validate_python_version(python_version)
-            tag = "mambaorg/micromamba:1.3.1-bullseye-slim"
+            micromamba_version = {"2023.12": "1.3.1", "2024.04": "1.5.8"}[version]
+            debian_codename = _dockerhub_debian_codename(version)
+            tag = f"mambaorg/micromamba:{micromamba_version}-{debian_codename}-slim"
             setup_commands = [
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
                 "ENV MAMBA_DOCKERFILE_ACTIVATE=1",
@@ -1313,15 +1320,16 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
-        """Default image, based on the official `python:X.Y.Z-slim-bullseye` Docker images."""
+        """Default image, based on the official `python` Docker images."""
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             requirements_path = _get_modal_requirements_path(version, python_version)
             context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
             full_python_version = _dockerhub_python_version(version, python_version)
+            debian_codename = _dockerhub_debian_codename(version)
 
             commands = [
-                f"FROM python:{full_python_version}-slim-bullseye",
+                f"FROM python:{full_python_version}-slim-{debian_codename}",
                 f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
                 "RUN apt-get update",
                 "RUN apt-get install -y gcc gfortran build-essential",
