@@ -16,6 +16,7 @@ from modal.exception import DeprecationError, InvalidError, VersionError
 from modal.image import (
     SUPPORTED_PYTHON_SERIES,
     ImageBuilderVersion,
+    _dockerhub_debian_codename,
     _dockerhub_python_version,
     _get_modal_requirements_path,
     _validate_python_version,
@@ -124,10 +125,11 @@ def test_python_version(builder_version, servicer, client, python_version):
     stub = Stub()
     stub.image = Image.debian_slim() if python_version is None else Image.debian_slim(python_version)
     expected_dockerhub_python = _dockerhub_python_version(builder_version, expected_python)
+    expected_dockerhub_debian = _dockerhub_debian_codename(builder_version)
     assert expected_dockerhub_python.startswith(expected_python)
     with stub.run(client):
         commands = get_all_dockerfile_commands(stub.image.object_id, servicer)
-        assert re.match(rf"FROM python:{expected_dockerhub_python}-slim-bullseye", commands)
+        assert re.match(rf"FROM python:{expected_dockerhub_python}-slim-{expected_dockerhub_debian}", commands)
 
     for constructor in [Image.conda, Image.micromamba]:
         stub.image = constructor() if python_version is None else constructor(python_version)
@@ -719,13 +721,16 @@ def test_image_builder_version(servicer, test_dir):
     test_requirements = str(test_dir / "supports" / "test-requirements.txt")
     with mock.patch("modal.image._get_modal_requirements_path", lambda *_, **__: test_requirements):
         with mock.patch("modal.image._dockerhub_python_version", lambda *_, **__: "3.11.0"):
-            with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
-                with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-                    with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")) as client:
-                        with stub.run(client=client):
-                            assert servicer.image_builder_versions
-                            for version in servicer.image_builder_versions.values():
-                                assert version == "2000.01"
+            with mock.patch("modal.image._dockerhub_debian_codename", lambda *_, **__: "bullseye"):
+                with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
+                    with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
+                        with Client(
+                            servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")
+                        ) as client:
+                            with stub.run(client=client):
+                                assert servicer.image_builder_versions
+                                for version in servicer.image_builder_versions.values():
+                                    assert version == "2000.01"
 
 
 def test_image_builder_supported_versions(servicer):
