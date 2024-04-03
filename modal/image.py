@@ -528,9 +528,8 @@ class _Image(_Object, type_prefix="im"):
             package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
 
-            if version == "2023.12":
-                # Backwards compatability: we used to have a space in the string template
-                extra_args = " " + extra_args
+            if extra_args or version == "2023.12":  # Back-compat for old formatting
+                package_args += " "
 
             commands = ["FROM base", f"RUN python -m pip install {package_args}{extra_args}"]
             return DockerfileSpec(commands=commands, context_files={})
@@ -721,9 +720,8 @@ class _Image(_Object, type_prefix="im"):
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
             package_args = " ".join(shlex.quote(pkg) for pkg in sorted(dependencies))
 
-            if version == "2023.12":
-                # Backwards compatability: we used to have a space in the string template
-                extra_args = " " + extra_args
+            if extra_args or version == "2023.12":  # Back-compat for old formatting
+                package_args += " "
 
             commands = ["FROM base", f"RUN python -m pip install {package_args}{extra_args}"]
             return DockerfileSpec(commands=commands, context_files={})
