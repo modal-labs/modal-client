@@ -90,7 +90,7 @@ async def _init_container_app(
     app_id: str,
     environment_name: str = "",
     function_def: Optional[api_pb2.Function] = None,
-) -> _ContainerApp:
+):
     """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
     global _is_container_app, _container_app
     _is_container_app = True
@@ -110,8 +110,6 @@ async def _init_container_app(
         logger.debug(f"Setting metadata for {item.object.object_id} ({item.tag})")
         if item.tag:
             _container_app.tag_to_object_id[item.tag] = item.object.object_id
-
-    return _container_app
 
 
 async def _interact(client: Optional[_Client] = None) -> None:
