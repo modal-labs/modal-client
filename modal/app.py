@@ -65,33 +65,6 @@ class _ContainerApp:
         self.is_interactivity_enabled = False
         self.fetching_inputs = True
 
-    async def init(
-        self,
-        client: _Client,
-        app_id: str,
-        environment_name: str = "",
-        function_def: Optional[api_pb2.Function] = None,
-    ):
-        """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
-        global _is_container_app
-        _is_container_app = True
-
-        self.client = client
-        self.app_id = app_id
-        self.environment_name = environment_name
-        self.function_def = function_def
-        self.tag_to_object_id = {}
-        self.object_handle_metadata = {}
-        req = api_pb2.AppGetObjectsRequest(app_id=app_id, include_unindexed=True)
-        resp = await retry_transient_errors(client.stub.AppGetObjects, req)
-        logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {app_id}")
-        for item in resp.items:
-            handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-            self.object_handle_metadata[item.object.object_id] = handle_metadata
-            logger.debug(f"Setting metadata for {item.object.object_id} ({item.tag})")
-            if item.tag:
-                self.tag_to_object_id[item.tag] = item.object.object_id
-
     @staticmethod
     def _reset_container():
         # Just used for tests
@@ -110,6 +83,36 @@ _is_container_app = False
 _container_app = _ContainerApp()
 container_app = synchronize_api(_container_app)
 assert isinstance(container_app, ContainerApp)
+
+
+async def _init_container_app(
+    client: _Client,
+    app_id: str,
+    environment_name: str = "",
+    function_def: Optional[api_pb2.Function] = None,
+):
+    """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
+    global _container_app, _is_container_app
+
+    _is_container_app = True
+    _container_app.client = client
+    _container_app.app_id = app_id
+    _container_app.environment_name = environment_name
+    _container_app.function_def = function_def
+    _container_app.tag_to_object_id = {}
+    _container_app.object_handle_metadata = {}
+    req = api_pb2.AppGetObjectsRequest(app_id=app_id, include_unindexed=True)
+    resp = await retry_transient_errors(client.stub.AppGetObjects, req)
+    logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {app_id}")
+    for item in resp.items:
+        handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
+        _container_app.object_handle_metadata[item.object.object_id] = handle_metadata
+        logger.debug(f"Setting metadata for {item.object.object_id} ({item.tag})")
+        if item.tag:
+            _container_app.tag_to_object_id[item.tag] = item.object.object_id
+
+
+init_container_app = synchronize_api(_init_container_app)
 
 
 async def _interact(client: Optional[_Client] = None) -> None:

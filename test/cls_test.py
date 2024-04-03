@@ -7,7 +7,7 @@ from typing_extensions import assert_type
 
 from modal import Cls, Function, Image, Queue, Stub, build, enter, exit, method
 from modal._serialization import deserialize
-from modal.app import ContainerApp
+from modal.app import container_app, init_container_app
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.partial_function import (
     _find_callables_for_obj,
@@ -394,7 +394,7 @@ def test_derived_cls_external_file(client, servicer):
         assert DerivedCls2().run.remote(3) == 9
 
 
-def test_rehydrate(client, servicer):
+def test_rehydrate(client, servicer, reset_container_app):
     # Issue introduced in #922 - brief description in #931
 
     # Sanity check that local calls work
@@ -405,11 +405,10 @@ def test_rehydrate(client, servicer):
     app_id = deploy_stub(stub, "my-cls-app", client=client).app_id
 
     # Initialize a container
-    app = ContainerApp()
-    app.init(client, app_id)
+    init_container_app(client, app_id)
 
     # Associate app with stub
-    stub._init_container(app)
+    stub._init_container(container_app)
 
     # Hydration shouldn't overwrite local function definition
     obj = Foo()
