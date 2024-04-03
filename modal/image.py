@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import contextlib
 import os
+import re
 import shlex
 import sys
 import typing
@@ -36,41 +37,69 @@ if typing.TYPE_CHECKING:
 # This is used for both type checking and runtime validation
 ImageBuilderVersion = Literal["2023.12", "2024.04"]
 
+# Note: we also define supported Python versions via logic at the top of the package __init__.py
+# so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
+# Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
+# Consider consolidating these multiple sources of truth?
+SUPPORTED_PYTHON_SERIES: Set[str] = {"3.8", "3.9", "3.10", "3.11", "3.12"}
+
 CONTAINER_REQUIREMENTS_PATH = "/modal_requirements.txt"
 
 
-def _validate_python_version(version: str) -> None:
-    components = version.split(".")
-    supported_versions = {"3.12", "3.11", "3.10", "3.9", "3.8"}
-    if len(components) == 2 and version in supported_versions:
-        return
-    elif len(components) == 3:
+def _validate_python_version(version: Optional[str], allow_micro_granularity: bool = True) -> str:
+    if version is None:
+        # If Python version is unspecified, match the local version, up to the minor component
+        version = series_version = "{0}.{1}".format(*sys.version_info)
+    elif not isinstance(version, str):
+        raise InvalidError(f"Python version must be specified as a string, not {type(version).__name__}")
+    elif not re.match(r"^3(?:\.\d{1,2}){1,2}$", version):
+        raise InvalidError(f"Invalid Python version: {version!r}")
+    else:
+        components = version.split(".")
+        if len(components) == 3 and not allow_micro_granularity:
+            raise InvalidError(
+                "Python version must be specified as 'major.minor' for this interface;"
+                f" micro-level specification ({version!r}) is not valid."
+            )
+        series_version = "{0}.{1}".format(*components)
+
+    if series_version not in SUPPORTED_PYTHON_SERIES:
         raise InvalidError(
-            f"major.minor.patch version specification not valid. Supported major.minor versions are {supported_versions}."
+            f"Unsupported Python version: {version!r}."
+            f" Modal supports versions in the following series: {SUPPORTED_PYTHON_SERIES!r}."
         )
-    raise InvalidError(f"Unsupported version {version}. Supported versions are {supported_versions}.")
+    return version
 
 
-def _dockerhub_python_version(python_version=None):
-    if python_version is None:
-        python_version = "%d.%d" % sys.version_info[:2]
+def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
+    python_version = _validate_python_version(python_version)
+    components = python_version.split(".")
 
-    parts = python_version.split(".")
-
-    if len(parts) > 2:
+    # When user specifies a full Python version, use that
+    if len(components) > 2:
         return python_version
 
-    # We use the same major/minor version, but the highest micro version
-    # See https://hub.docker.com/_/python
+    # Otherwise, use the same series, but a specific micro version, corresponding to the latest
+    # available from https://hub.docker.com/_/python at the time of each image builder release.
     latest_micro_version = {
-        "3.12": "1",
-        "3.11": "0",
-        "3.10": "8",
-        "3.9": "15",
-        "3.8": "15",
+        "2023.12": {
+            "3.12": "1",
+            "3.11": "0",
+            "3.10": "8",
+            "3.9": "15",
+            "3.8": "15",
+        },
+        "2024.04": {
+            "3.12": "2",
+            "3.11": "8",
+            "3.10": "14",
+            "3.9": "19",
+            "3.8": "19",
+        },
     }
-    major_minor_version = ".".join(parts[:2])
-    python_version = major_minor_version + "." + latest_micro_version[major_minor_version]
+    python_series = "{0}.{1}".format(*components)
+    micro_version = latest_micro_version[builder_version][python_series]
+    python_version = f"{python_series}.{micro_version}"
     return python_version
 
 
@@ -839,14 +868,17 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    def conda(python_version: str = "3.9", force_build: bool = False) -> "_Image":
+    def conda(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """
         A Conda base image, using miniconda3 and derived from the official Docker Hub image.
         In most cases, using [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install) is recommended over `Image.conda()`, as it leads to significantly faster image build times.
         """
-        _validate_python_version(python_version)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            nonlocal python_version
+            if version == "2023.12" and python_version is None:
+                python_version = "3.9"  # Backcompat for old hardcoded default param
+            validated_python_version = _validate_python_version(python_version)
             requirements_path = _get_modal_requirements_path(version, python_version)
             context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
 
@@ -870,7 +902,7 @@ class _Image(_Object, type_prefix="im"):
                 # `No such device or address: '/usr/local/lib/libz.so' -> '/usr/local/lib/libz.so.c~'`
                 "&& conda config --set allow_softlinks false \\ ",
                 # Install requested Python version from conda-forge channel; base debian image has only 3.7.
-                f"&& conda install --yes --channel conda-forge python={python_version} \\ ",
+                f"&& conda install --yes --channel conda-forge python={validated_python_version} \\ ",
                 "&& conda update conda \\ ",
                 # Remove now unneeded packages and files.
                 "&& apt-get --quiet --yes remove curl bzip2 \\ ",
@@ -974,23 +1006,26 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def micromamba(
-        python_version: str = "3.9",
+        python_version: Optional[str] = None,
         force_build: bool = False,
     ) -> "_Image":
         """
         A Micromamba base image. Micromamba allows for fast building of small Conda-based containers.
         In most cases it will be faster than using [`Image.conda()`](/docs/reference/modal.Image#conda).
         """
-        _validate_python_version(python_version)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            nonlocal python_version
+            if version == "2023.12" and python_version is None:
+                python_version = "3.9"  # Backcompat for old hardcoded default param
+            validated_python_version = _validate_python_version(python_version)
             tag = "mambaorg/micromamba:1.3.1-bullseye-slim"
             setup_commands = [
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
                 "ENV MAMBA_DOCKERFILE_ACTIVATE=1",
-                f"RUN micromamba install -n base -y python={python_version} pip -c conda-forge",
+                f"RUN micromamba install -n base -y python={validated_python_version} pip -c conda-forge",
             ]
-            commands = _Image._registry_setup_commands(tag, version, setup_commands, add_python=None)
+            commands = _Image._registry_setup_commands(tag, version, setup_commands)
             context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, python_version)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
@@ -1039,10 +1074,11 @@ class _Image(_Object, type_prefix="im"):
         tag: str,
         builder_version: ImageBuilderVersion,
         setup_commands: List[str],
-        add_python: Optional[str],
+        add_python: Optional[str] = None,
     ) -> List[str]:
         add_python_commands: List[str] = []
         if add_python:
+            _validate_python_version(add_python, allow_micro_granularity=False)
             add_python_commands = [
                 "COPY /python/. /usr/local",
                 "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
@@ -1282,7 +1318,7 @@ class _Image(_Object, type_prefix="im"):
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             requirements_path = _get_modal_requirements_path(version, python_version)
             context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
-            full_python_version = _dockerhub_python_version(python_version)
+            full_python_version = _dockerhub_python_version(version, python_version)
 
             commands = [
                 f"FROM python:{full_python_version}-slim-bullseye",

@@ -54,7 +54,7 @@ def python_standalone_mount_name(version: str) -> str:
         libc = "gnu"
     if version not in PYTHON_STANDALONE_VERSIONS:
         raise modal.exception.InvalidError(
-            f"Unsupported standalone python version: {version}, supported values are {list(PYTHON_STANDALONE_VERSIONS.keys())}"
+            f"Unsupported standalone python version: {version!r}, supported values are {list(PYTHON_STANDALONE_VERSIONS)}"
         )
     if libc != "gnu":
         raise modal.exception.InvalidError(f"Unsupported libc identifier: {libc}")
