@@ -64,6 +64,7 @@ def builder_version(request, server_url_env):
 
 
 def test_python_version_validation():
+    assert _validate_python_version(None) == "{0}.{1}".format(*sys.version_info)
     assert _validate_python_version("3.12") == "3.12"
     assert _validate_python_version("3.12.0") == "3.12.0"
 
@@ -121,18 +122,17 @@ def test_python_version(builder_version, servicer, client, python_version):
     expected_python = local_python if python_version is None else python_version
 
     stub = Stub()
-    stub.image = Image.debian_slim(python_version)
+    stub.image = Image.debian_slim() if python_version is None else Image.debian_slim(python_version)
     expected_dockerhub_python = _dockerhub_python_version(builder_version, expected_python)
     assert expected_dockerhub_python.startswith(expected_python)
     with stub.run(client):
         commands = get_all_dockerfile_commands(stub.image.object_id, servicer)
         assert re.match(rf"FROM python:{expected_dockerhub_python}-slim-bullseye", commands)
 
-    if python_version is None and builder_version == "2023.12":
-        python_version = expected_python = "3.9"
-
     for constructor in [Image.conda, Image.micromamba]:
-        stub.image = constructor(python_version)
+        stub.image = constructor() if python_version is None else constructor(python_version)
+        if python_version is None and builder_version == "2023.12":
+            expected_python = "3.9"
         with stub.run(client):
             commands = get_all_dockerfile_commands(stub.image.object_id, servicer)
             assert re.search(rf"install.* python={expected_python}", commands)
