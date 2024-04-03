@@ -14,7 +14,7 @@ from typing_extensions import ParamSpec
 
 from .logger import logger
 
-synchronizer = synchronicity.Synchronizer()
+synchronizer = synchronicity.Synchronizer(loop_delay_monitor_threshold=1.0, loop_delay_monitor_period=1.0)
 # atexit.register(synchronizer.close)
 
 

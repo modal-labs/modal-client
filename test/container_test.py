@@ -1397,8 +1397,8 @@ def test_container_warns_on_synchronicity_delays(unix_servicer, monkeypatch, cap
     # inject artificial broken async code into the synchronicity loop of the container
     original_heartbeat = _container_entrypoint._FunctionIOManager._heartbeat_handle_cancellations
     synchronizer = getattr(_container_entrypoint.FunctionIOManager, SYNCHRONIZER_ATTR)
-    synchronizer.loop_delay_monitor_period = 0.1
-    synchronizer.loop_delay_monitor_threshold = 0.1
+    synchronizer._loop_delay_monitor_period = 0.1
+    synchronizer._loop_delay_monitor_threshold = 0.1
 
     async def broken_heartbeat(*args, **kwargs):
         time.sleep(0.2)
