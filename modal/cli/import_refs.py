@@ -42,6 +42,7 @@ def parse_import_ref(object_ref: str) -> ImportRef:
 
 
 DEFAULT_STUB_NAME = "stub"
+POSSIBLE_STUB_NAMES = ["stub", "app"]
 
 
 def import_file_or_module(file_or_module: str):
@@ -74,7 +75,7 @@ def import_file_or_module(file_or_module: str):
     return module
 
 
-def get_by_object_path(obj: Any, obj_path: str) -> Optional[Any]:
+def get_by_object_path(obj: Any, obj_path: Optional[str]) -> Optional[Any]:
     # Try to evaluate a `.`-delimited object path in a Modal context
     # With the caveat that some object names can actually have `.` in their name (lifecycled methods' tags)
 
@@ -100,6 +101,20 @@ def get_by_object_path(obj: Any, obj_path: str) -> Optional[Any]:
         return None
 
     return obj
+
+
+def get_by_object_path_try_possible_stub_names(obj: Any, obj_path: Optional[str]) -> Optional[Any]:
+    """This just exists as a dumb workaround to support both "stub" and "app" """
+
+    if obj_path:
+        return get_by_object_path(obj, obj_path)
+    else:
+        for obj_path in POSSIBLE_STUB_NAMES:
+            stub = get_by_object_path(obj, obj_path)
+            if stub is not None:
+                return stub
+        else:
+            return None
 
 
 def _infer_function_or_help(
@@ -175,8 +190,7 @@ def import_stub(stub_ref: str) -> Stub:
     import_ref = parse_import_ref(stub_ref)
 
     module = import_file_or_module(import_ref.file_or_module)
-    obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
-    stub = get_by_object_path(module, obj_path)
+    stub = get_by_object_path_try_possible_stub_names(module, import_ref.object_path)
 
     if stub is None:
         _show_no_auto_detectable_stub(import_ref)
@@ -222,8 +236,7 @@ def import_function(
     import_ref = parse_import_ref(func_ref)
 
     module = import_file_or_module(import_ref.file_or_module)
-    obj_path = import_ref.object_path or DEFAULT_STUB_NAME  # get variable named "stub" by default
-    stub_or_function = get_by_object_path(module, obj_path)
+    stub_or_function = get_by_object_path_try_possible_stub_names(module, import_ref.object_path)
 
     if stub_or_function is None:
         _show_function_ref_help(import_ref, base_cmd)
