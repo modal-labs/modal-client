@@ -29,7 +29,7 @@ try:
     from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
     from .shared_volume import SharedVolume
-    from .stub import Stub
+    from .stub import App, Stub
     from .volume import Volume
 except Exception:
     print()
@@ -42,6 +42,7 @@ except Exception:
 
 __all__ = [
     "__version__",
+    "App",
     "Client",
     "Cls",
     "Cron",
