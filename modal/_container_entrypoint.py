@@ -39,7 +39,7 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
 from ._utils.grpc_utils import retry_transient_errors
-from .app import _container_app, _init_container_app, _set_is_container_app, interact
+from .app import _container_app, _set_is_container_app, init_container_app, interact
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, Client, _Client
 from .cls import Cls
 from .config import config, logger
@@ -154,10 +154,6 @@ class _FunctionIOManager:
 
         self._client = client
         assert isinstance(self._client, _Client)
-
-    async def initialize_container_app(self):
-        _set_is_container_app()
-        await _init_container_app(self._client, self.app_id, self._environment_name, self.function_def)
 
     async def _run_heartbeat_loop(self):
         while 1:
@@ -1017,7 +1013,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     function_io_manager = FunctionIOManager(container_args, client)
 
     # Need to set up the container app before imports (since user may check it in global scope)
-    function_io_manager.initialize_container_app()
+    _set_is_container_app()
+    init_container_app(client, container_args.app_id, container_args.environment_name, container_args.function_def)
 
     with function_io_manager.heartbeats(), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server

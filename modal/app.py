@@ -116,6 +116,9 @@ async def _init_container_app(
             _container_app.tag_to_object_id[item.tag] = item.object.object_id
 
 
+init_container_app = synchronize_api(_init_container_app)
+
+
 async def _interact(client: Optional[_Client] = None) -> None:
     if _container_app.is_interactivity_enabled:
         # Currently, interactivity is enabled forever
