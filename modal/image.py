@@ -527,11 +527,9 @@ class _Image(_Object, type_prefix="im"):
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
-
-            if extra_args or version == "2023.12":  # Back-compat for old formatting
-                package_args += " "
-
-            commands = ["FROM base", f"RUN python -m pip install {package_args}{extra_args}"]
+            commands = ["FROM base", f"RUN python -m pip install {package_args} {extra_args}"]
+            if version > "2023.12":  # Back-compat for legacy trailing space
+                commands = [cmd.strip() for cmd in commands]
             return DockerfileSpec(commands=commands, context_files={})
 
         gpu_config = parse_gpu_config(gpu)
@@ -626,6 +624,8 @@ class _Image(_Object, type_prefix="im"):
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
             commands.extend(["RUN apt-get update && apt-get install -y git"])
             commands.extend([f'RUN python3 -m pip install "{url}" {extra_args}' for url in install_urls])
+            if version > "2023.12":  # Back-compat for legacy trailing space
+                commands = [cmd.strip() for cmd in commands]
             return DockerfileSpec(commands=commands, context_files={})
 
         gpu_config = parse_gpu_config(gpu)
@@ -664,6 +664,8 @@ class _Image(_Object, type_prefix="im"):
                 "COPY /.requirements.txt /.requirements.txt",
                 f"RUN python -m pip install -r /.requirements.txt {find_links_arg} {extra_args}",
             ]
+            if version > "2023.12":  # Back-compat for legacy trailing space
+                commands = [cmd.strip() for cmd in commands]
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
@@ -719,11 +721,10 @@ class _Image(_Object, type_prefix="im"):
 
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
             package_args = " ".join(shlex.quote(pkg) for pkg in sorted(dependencies))
-
-            if extra_args or version == "2023.12":  # Back-compat for old formatting
-                package_args += " "
-
             commands = ["FROM base", f"RUN python -m pip install {package_args}{extra_args}"]
+            if version > "2023.12":  # Back-compat for legacy trailing space
+                commands = [cmd.strip() for cmd in commands]
+
             return DockerfileSpec(commands=commands, context_files={})
 
         return _Image._from_args(

@@ -150,7 +150,6 @@ def test_image_python_packages(builder_version, servicer, client):
     with stub.run(client=client):
         layers = get_image_layers(stub.image.object_id, servicer)
         assert any("pip install 'sklearn[xyz]'" in cmd for cmd in layers[1].dockerfile_commands)
-        print(*layers[0].dockerfile_commands, sep="\n")
         assert any(
             "pip install numpy scipy --find-links 'https://abc?q=123' --extra-index-url https://xyz --pre" in cmd
             for cmd in layers[0].dockerfile_commands
