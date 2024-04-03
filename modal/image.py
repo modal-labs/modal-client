@@ -52,6 +52,8 @@ def _validate_python_version(version: Optional[str], allow_micro_granularity: bo
         version = series_version = "{0}.{1}".format(*sys.version_info)
     elif not isinstance(version, str):
         raise InvalidError(f"Python version must be specified as a string, not {type(version).__name__}")
+    elif not re.match(r"^3(?:\.\d{1,2}){1,2}$", version):
+        raise InvalidError(f"Invalid Python version: {version!r}")
     else:
         components = version.split(".")
         if len(components) == 3 and not allow_micro_granularity:
@@ -59,8 +61,6 @@ def _validate_python_version(version: Optional[str], allow_micro_granularity: bo
                 "Python version must be specified as 'major.minor' for this interface;"
                 f" micro-level specification ({version!r}) is not valid."
             )
-        if not re.match(r"^3(?:\.\d{1,2}){1,2}$", version):
-            raise InvalidError(f"Invalid Python version: {version!r}")
         series_version = "{0}.{1}".format(*components)
 
     if series_version not in SUPPORTED_PYTHON_SERIES:
