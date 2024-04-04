@@ -1386,7 +1386,9 @@ class _Function(_Object, type_prefix="fu"):
     def local(self, *args, **kwargs) -> Any:
         """
         Calls the function locally, executing it with the given arguments and returning the execution's result.
-        This method allows a caller to execute the standard Python function wrapped by Modal.
+
+        The function will execute in the same environment as the caller, just like calling the underlying function
+        directly in Python. In particular, secrets will not be available through environment variables.
         """
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
