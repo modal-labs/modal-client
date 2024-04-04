@@ -45,6 +45,7 @@ from ._resolver import Resolver
 from ._serialization import deserialize, deserialize_data_format, serialize
 from ._traceback import append_modal_tb
 from ._utils.async_utils import (
+    NestedAsyncCalls,
     queue_batch_iterator,
     run_generator_sync,
     synchronize_api,
@@ -1322,11 +1323,17 @@ class _Function(_Object, type_prefix="fu"):
             print(list(my_func.map(range(3), return_exceptions=True)))
         ```
         """
-        return run_generator_sync(
-            self._map_async(
-                *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+        try:
+            for output in run_generator_sync(
+                self._map_async(
+                    *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+                )
+            ):
+                yield output
+        except NestedAsyncCalls:
+            raise InvalidError(
+                "You can't run Function.map() or Function.for_each() from an async function. Use Function.map.aio()/Function.for_each.aio() instead."
             )
-        )
 
     @synchronizer.nowrap
     @warn_if_generator_is_not_consumed
@@ -1433,11 +1440,17 @@ class _Function(_Object, type_prefix="fu"):
             assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
         ```
         """
-        return run_generator_sync(
-            self._starmap_async(
-                input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+        try:
+            for output in run_generator_sync(
+                self._starmap_async(
+                    input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+                )
+            ):
+                yield output
+        except NestedAsyncCalls:
+            raise InvalidError(
+                "You can't run Function.starmap() from an async function. Use Function.starmap.aio(...) instead."
             )
-        )
 
     @synchronizer.no_io_translation
     @live_method
