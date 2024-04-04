@@ -1361,8 +1361,9 @@ class _Function(_Object, type_prefix="fu"):
 
         async def feed_queue():
             # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-            async for args in stream.zip(*[stream.iterate(it) for it in input_iterators]):
-                await raw_input_queue.put.aio((args, kwargs))
+            async with stream.zip(*[stream.iterate(it) for it in input_iterators]).stream() as streamer:
+                async for args in streamer:
+                    await raw_input_queue.put.aio((args, kwargs))
             await raw_input_queue.put.aio(None)  # end-of-input sentinel
 
         feed_input_task = asyncio.create_task(feed_queue())
@@ -1405,8 +1406,9 @@ class _Function(_Object, type_prefix="fu"):
 
         async def feed_queue():
             # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-            async for args in stream.iterate(input_iterator):
-                await raw_input_queue.put.aio((args, kwargs))
+            async with stream.iterate(input_iterator).stream() as streamer:
+                async for args in streamer:
+                    await raw_input_queue.put.aio((args, kwargs))
             await raw_input_queue.put.aio(None)  # end-of-input sentinel
 
         feed_input_task = asyncio.create_task(feed_queue())

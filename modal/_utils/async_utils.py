@@ -403,10 +403,16 @@ class NestedAsyncCalls(Exception):
 def run_generator_sync(
     gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE],
 ) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        pass  # no event loop - this is what we expect!
+    else:
         raise NestedAsyncCalls()
-    # more or less copied from synchronicity's implementation, but using current thread's event loop
+
+    loop = asyncio.new_event_loop()  # set up new event loop for the map so we can use async logic
+
+    # more or less copied from synchronicity's implementation:
     next_send: typing.Union[SEND_TYPE, None] = None
     next_yield: YIELD_TYPE
     exc: Optional[BaseException] = None
@@ -423,3 +429,4 @@ def run_generator_sync(
             exc = None
         except BaseException as err:
             exc = err
+    loop.close()

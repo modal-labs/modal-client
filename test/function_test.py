@@ -282,7 +282,6 @@ async def test_generator(client, servicer):
         assert len(servicer.cleared_function_calls) == 1
 
 
-@pytest.mark.asyncio
 def test_generator_map_invalid(client, servicer):
     stub = Stub()
 
