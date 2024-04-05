@@ -309,7 +309,7 @@ class _Stub:
         try:
             yield
         finally:
-            self._client = client
+            self._client = None
             self._local_app = None
 
     @asynccontextmanager
