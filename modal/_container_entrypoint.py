@@ -1035,7 +1035,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize objects on the stub.
         if imp_fun.stub is not None:
-            imp_fun.stub._init_container(_container_app)
+            imp_fun.stub._init_container(client, _container_app)
 
         # Hydrate all function dependencies.
         # TODO(erikbern): we an remove this once we
