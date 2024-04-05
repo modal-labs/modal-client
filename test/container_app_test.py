@@ -2,7 +2,7 @@
 import pytest
 
 from modal import Stub
-from modal.app import container_app, init_container_app
+from modal.app import _container_app, init_container_app
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -25,7 +25,7 @@ async def test_container_function_lazily_imported(unix_servicer, container_clien
     stub = Stub()
 
     # This is normally done in _container_entrypoint
-    stub._init_container(container_client, container_app)
+    stub._init_container(container_client, _container_app)
 
     # Now, let's create my_f after the app started running and make sure it works
     my_f_container = stub.function()(my_f_1)

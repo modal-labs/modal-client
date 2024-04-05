@@ -7,7 +7,7 @@ from typing_extensions import assert_type
 
 from modal import Cls, Function, Image, Queue, Stub, build, enter, exit, method
 from modal._serialization import deserialize
-from modal.app import container_app, init_container_app
+from modal.app import _container_app, init_container_app
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.partial_function import (
     _find_callables_for_obj,
@@ -408,7 +408,7 @@ def test_rehydrate(client, servicer, reset_container_app):
     init_container_app(client, app_id)
 
     # Associate app with stub
-    stub._init_container(client, container_app)
+    stub._init_container(client, _container_app)
 
     # Hydration shouldn't overwrite local function definition
     obj = Foo()

@@ -68,13 +68,8 @@ def _reset_container_app():
     _container_app.__init__()  # type: ignore
 
 
-LocalApp = synchronize_api(_LocalApp)
-ContainerApp = synchronize_api(_ContainerApp)
-
 _is_container_app = False
 _container_app = _ContainerApp()
-container_app = synchronize_api(_container_app)
-assert isinstance(container_app, ContainerApp)
 
 
 async def _init_container_app(
