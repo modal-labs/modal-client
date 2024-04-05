@@ -38,5 +38,9 @@ def deploy_stub_externally(
         stderr=subprocess.STDOUT,
         stdout=subprocess.PIPE if capture_output else None,
     )
-    stdout, _ = p.communicate()
-    return stdout.decode("utf8")
+    stdout_b, stderr_b = p.communicate()
+    stdout_s, stderr_s = (b.decode() if b is not None else None for b in (stdout_b, stderr_b))
+    if p.returncode != 0:
+        print(f"Deploying stub failed!\n### stdout ###\n{stdout_s}\n### stderr ###\n{stderr_s}")
+        raise Exception("Test helper failed to deploy stub")
+    return stdout_s
