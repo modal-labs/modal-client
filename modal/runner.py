@@ -44,7 +44,7 @@ async def _init_local_app_existing(client: _Client, existing_app_id: str) -> "_L
     obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
     app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
     object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
-    return _LocalApp(client, existing_app_id, app_page_url, tag_to_object_id=object_ids)
+    return _LocalApp(existing_app_id, app_page_url, tag_to_object_id=object_ids)
 
 
 async def _init_local_app_new(
@@ -62,7 +62,7 @@ async def _init_local_app_new(
     app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
     app_page_url = app_resp.app_logs_url
     logger.debug(f"Created new app with id {app_resp.app_id}")
-    return _LocalApp(client, app_resp.app_id, app_page_url, environment_name=environment_name, interactive=interactive)
+    return _LocalApp(app_resp.app_id, app_page_url, environment_name=environment_name, interactive=interactive)
 
 
 async def _init_local_app_from_name(
@@ -90,6 +90,7 @@ async def _init_local_app_from_name(
 
 
 async def _create_all_objects(
+    client: _Client,
     app: _LocalApp,
     indexed_objects: Dict[str, _Object],
     new_app_state: int,
@@ -97,11 +98,11 @@ async def _create_all_objects(
     output_mgr: Optional[OutputManager] = None,
 ):  # api_pb2.AppState.V
     """Create objects that have been defined but not created on the server."""
-    if not app.client.authenticated:
+    if not client.authenticated:
         raise ExecutionError("Objects cannot be created with an unauthenticated client")
 
     resolver = Resolver(
-        app.client,
+        client,
         output_mgr=output_mgr,
         environment_name=environment_name,
         app_id=app.app_id,
@@ -150,11 +151,14 @@ async def _create_all_objects(
         unindexed_object_ids=unindexed_object_ids,
         new_app_state=new_app_state,  # type: ignore
     )
-    await retry_transient_errors(app.client.stub.AppSetObjects, req_set)
+    await retry_transient_errors(client.stub.AppSetObjects, req_set)
 
 
 async def _disconnect(
-    app: _LocalApp, reason: "Optional[api_pb2.AppDisconnectReason.ValueType]" = None, exc_str: Optional[str] = None
+    client: _Client,
+    app_id: str,
+    reason: "Optional[api_pb2.AppDisconnectReason.ValueType]" = None,
+    exc_str: Optional[str] = None,
 ):
     """Tell the server the client has disconnected for this app. Terminates all running tasks
     for ephemeral apps."""
@@ -163,8 +167,8 @@ async def _disconnect(
         exc_str = exc_str[:1000]  # Truncate to 1000 chars
 
     logger.debug("Sending app disconnect/stop request")
-    req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=app.app_id, reason=reason, exception=exc_str)
-    await retry_transient_errors(app.client.stub.AppClientDisconnect, req_disconnect)
+    req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=app_id, reason=reason, exception=exc_str)
+    await retry_transient_errors(client.stub.AppClientDisconnect, req_disconnect)
     logger.debug("App disconnected")
 
 
@@ -220,7 +224,7 @@ async def _run_stub(
         app_state=app_state,
         interactive=interactive,
     )
-    async with stub._set_local_app(app), TaskContext(grace=config["logs_timeout"]) as tc:
+    async with stub._set_local_app(client, app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
         tc.infinite_loop(lambda: _heartbeat(client, app.app_id), sleep=HEARTBEAT_INTERVAL)
 
@@ -236,7 +240,9 @@ async def _run_stub(
         exc_info: Optional[BaseException] = None
         try:
             # Create all members
-            await _create_all_objects(app, stub._indexed_objects, app_state, environment_name, output_mgr=output_mgr)
+            await _create_all_objects(
+                client, app, stub._indexed_objects, app_state, environment_name, output_mgr=output_mgr
+            )
 
             # Update all functions client-side to have the output mgr
             for obj in stub.registered_functions.values():
@@ -296,7 +302,7 @@ async def _run_stub(
             else:
                 exc_str = ""
 
-            await _disconnect(app, reason, exc_str)
+            await _disconnect(client, app.app_id, reason, exc_str)
             stub._uncreate_all_objects()
 
     output_mgr.print_if_visible(
@@ -319,7 +325,7 @@ async def _serve_update(
         # Create objects
         output_mgr = OutputManager(None, True)
         await _create_all_objects(
-            app, stub._indexed_objects, api_pb2.APP_STATE_UNSPECIFIED, environment_name, output_mgr=output_mgr
+            client, app, stub._indexed_objects, api_pb2.APP_STATE_UNSPECIFIED, environment_name, output_mgr=output_mgr
         )
 
         # Communicate to the parent process
@@ -404,7 +410,12 @@ async def _deploy_stub(
         try:
             # Create all members
             await _create_all_objects(
-                app, stub._indexed_objects, post_init_state, environment_name=environment_name, output_mgr=output_mgr
+                client,
+                app,
+                stub._indexed_objects,
+                post_init_state,
+                environment_name=environment_name,
+                output_mgr=output_mgr,
             )
 
             # Deploy app
@@ -429,7 +440,7 @@ async def _deploy_stub(
             url = deploy_response.url
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
-            await _disconnect(app, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
+            await _disconnect(client, app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
     output_mgr.print_if_visible(step_completed("App deployed! 🎉"))

@@ -118,6 +118,7 @@ class _Stub:
     _local_entrypoints: Dict[str, _LocalEntrypoint]
     _container_app: Optional[_ContainerApp]
     _local_app: Optional[_LocalApp]
+    _client: Optional[_Client]
     _all_stubs: ClassVar[Dict[Optional[str], List["_Stub"]]] = {}
 
     def __init__(
@@ -174,6 +175,7 @@ class _Stub:
         self._web_endpoints = []
         self._local_app = None  # when this is the launcher process
         self._container_app = None  # when this is inside a container
+        self._client = None
 
         # Register this stub. This is used to look up the stub in the container, when we can't get it from the function
         _Stub._all_stubs.setdefault(self._name, []).append(self)
@@ -221,7 +223,7 @@ class _Stub:
             if tag in self._container_app.tag_to_object_id:
                 object_id: str = self._container_app.tag_to_object_id[tag]
                 metadata: Message = self._container_app.object_handle_metadata[object_id]
-                obj._hydrate(object_id, self._container_app.client, metadata)
+                obj._hydrate(object_id, self._client, metadata)
 
         self._indexed_objects[tag] = obj
 
@@ -301,11 +303,13 @@ class _Stub:
         deprecation_error((2023, 11, 8), _Stub.is_inside.__doc__)
 
     @asynccontextmanager
-    async def _set_local_app(self, app: _LocalApp) -> AsyncGenerator[None, None]:
+    async def _set_local_app(self, client: _Client, app: _LocalApp) -> AsyncGenerator[None, None]:
+        self._client = client
         self._local_app = app
         try:
             yield
         finally:
+            self._client = client
             self._local_app = None
 
     @asynccontextmanager
@@ -361,7 +365,8 @@ class _Stub:
 
         self._add_object(function.tag, function)
 
-    def _init_container(self, container_app: _ContainerApp):
+    def _init_container(self, client: _Client, container_app: _ContainerApp):
+        self._client = client
         self._container_app = container_app
 
         # Hydrate objects on stub
@@ -369,7 +374,7 @@ class _Stub:
             if tag in self._indexed_objects:
                 obj = self._indexed_objects[tag]
                 handle_metadata = container_app.object_handle_metadata[object_id]
-                obj._hydrate(object_id, container_app.client, handle_metadata)
+                obj._hydrate(object_id, client, handle_metadata)
 
     @property
     def registered_functions(self) -> Dict[str, _Function]:
@@ -722,11 +727,11 @@ class _Stub:
         if self._local_app:
             app_id = self._local_app.app_id
             environment_name = self._local_app.environment_name
-            client = self._local_app.client
+            client = self._client
         elif self._container_app:
             app_id = self._container_app.app_id
             environment_name = self._container_app.environment_name
-            client = self._container_app.client
+            client = self._client
         else:
             raise InvalidError("`stub.spawn_sandbox` requires a running app.")
 

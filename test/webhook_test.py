@@ -37,7 +37,7 @@ async def test_webhook(servicer, client, reset_container_app):
 
         # Make sure the container gets the app id as well
         await init_container_app.aio(client, stub.app_id)
-        stub._init_container(container_app)
+        stub._init_container(client, container_app)
         assert isinstance(f, Function)
         assert f.web_url
 

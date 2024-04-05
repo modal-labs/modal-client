@@ -408,7 +408,7 @@ def test_rehydrate(client, servicer, reset_container_app):
     init_container_app(client, app_id)
 
     # Associate app with stub
-    stub._init_container(container_app)
+    stub._init_container(client, container_app)
 
     # Hydration shouldn't overwrite local function definition
     obj = Foo()

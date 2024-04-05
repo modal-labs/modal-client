@@ -21,7 +21,6 @@ else:
 
 class _LocalApp:
     tag_to_object_id: Dict[str, str]
-    client: _Client
     app_id: str
     app_page_url: str
     environment_name: str
@@ -29,7 +28,6 @@ class _LocalApp:
 
     def __init__(
         self,
-        client: _Client,
         app_id: str,
         app_page_url: str,
         tag_to_object_id: Optional[Dict[str, str]] = None,
@@ -39,14 +37,12 @@ class _LocalApp:
         """mdmd:hidden This is the app constructor. Users should not call this directly."""
         self.app_id = app_id
         self.app_page_url = app_page_url
-        self.client = client
         self.tag_to_object_id = tag_to_object_id or {}
         self.environment_name = environment_name
         self.interactive = interactive
 
 
 class _ContainerApp:
-    client: Optional[_Client]
     app_id: Optional[str]
     environment_name: Optional[str]
     tag_to_object_id: Dict[str, str]
@@ -57,7 +53,6 @@ class _ContainerApp:
     fetching_inputs: bool
 
     def __init__(self):
-        self.client = None
         self.app_id = None
         self.environment_name = None
         self.tag_to_object_id = {}
