@@ -7,4 +7,4 @@ def stop_fetching_inputs():
 
     from .app import _container_app
 
-    _container_app.stop_fetching_inputs()
+    _container_app.fetching_inputs = False

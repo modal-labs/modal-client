@@ -65,15 +65,12 @@ class _ContainerApp:
         self.is_interactivity_enabled = False
         self.fetching_inputs = True
 
-    @staticmethod
-    def _reset_container():
-        # Just used for tests
-        global _is_container_app, _container_app
-        _is_container_app = False
-        _container_app.__init__()  # type: ignore
 
-    def stop_fetching_inputs(self):
-        self.fetching_inputs = False
+def _reset_container_app():
+    # Just used for tests
+    global _is_container_app, _container_app
+    _is_container_app = False
+    _container_app.__init__()  # type: ignore
 
 
 LocalApp = synchronize_api(_LocalApp)
