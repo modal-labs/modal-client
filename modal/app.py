@@ -62,7 +62,6 @@ async def _init_container_app(
     global _container_app, _is_container_app
 
     _is_container_app = True
-    _container_app.client = client
     _container_app.app_id = app_id
     _container_app.environment_name = environment_name
     _container_app.function_def = function_def
