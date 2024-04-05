@@ -10,7 +10,7 @@ from modal_version import __version__
 
 try:
     from ._tunnel import Tunnel, forward
-    from .app import container_app, interact, is_local
+    from .app import interact, is_local
     from .client import Client
     from .cloud_bucket_mount import CloudBucketMount
     from .cls import Cls
@@ -66,7 +66,6 @@ __all__ = [
     "Volume",
     "asgi_app",
     "build",
-    "container_app",
     "current_function_call_id",
     "current_input_id",
     "enter",
