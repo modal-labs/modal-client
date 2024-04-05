@@ -139,9 +139,6 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, 
 
     Raises an error if any of the elements are not strings or string lists.
     """
-    # TODO(erikbern): maybe we can just build somthing intelligent that checks
-    # based on type annotations in real time?
-    # Or use something like this? https://github.com/FelixTheC/strongtyping
 
     def is_str_list(x):
         return isinstance(x, list) and all(isinstance(y, str) for y in x)
@@ -169,7 +166,7 @@ def _make_pip_install_args(
         ("--extra-index-url", extra_index_url),  # TODO(erikbern): allow multiple?
     ]
 
-    args = " ".join(flag + " " + shlex.quote(value) for flag, value in flags if value is not None)
+    args = " ".join(f"{flag} {shlex.quote(value)}" for flag, value in flags if value is not None)
     if pre:
         args += " --pre"
 
@@ -528,23 +525,18 @@ class _Image(_Object, type_prefix="im"):
             return self
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
             package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
-
-            commands = [
-                "FROM base",
-                f"RUN python -m pip install {package_args} {extra_args}",
-                # TODO(erikbern): if extra_args is empty, we add a superfluous space at the end.
-                # However removing it at this point would cause image hashes to change.
-                # Maybe let's remove it later when/if client requirements change.
-            ]
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+            commands = ["FROM base", f"RUN python -m pip install {package_args} {extra_args}"]
+            if version > "2023.12":  # Back-compat for legacy trailing space with empty extra_args
+                commands = [cmd.strip() for cmd in commands]
             return DockerfileSpec(commands=commands, context_files={})
 
         gpu_config = parse_gpu_config(gpu)
         return _Image._from_args(
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
-            force_build=self.force_build or force_build,  # TODO shouldn't forcing upstream build always rerun this?
+            force_build=self.force_build or force_build,
             gpu_config=gpu_config,
             secrets=secrets,
         )
@@ -632,6 +624,8 @@ class _Image(_Object, type_prefix="im"):
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
             commands.extend(["RUN apt-get update && apt-get install -y git"])
             commands.extend([f'RUN python3 -m pip install "{url}" {extra_args}' for url in install_urls])
+            if version > "2023.12":  # Back-compat for legacy trailing space with empty extra_args
+                commands = [cmd.strip() for cmd in commands]
             return DockerfileSpec(commands=commands, context_files={})
 
         gpu_config = parse_gpu_config(gpu)
@@ -662,14 +656,17 @@ class _Image(_Object, type_prefix="im"):
             requirements_txt_path = os.path.expanduser(requirements_txt)
             context_files = {"/.requirements.txt": requirements_txt_path}
 
-            find_links_arg = f"-f {find_links}" if find_links else ""
+            null_find_links_arg = " " if version == "2023.12" else ""
+            find_links_arg = f" -f {find_links}" if find_links else null_find_links_arg
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
 
             commands = [
                 "FROM base",
                 "COPY /.requirements.txt /.requirements.txt",
-                f"RUN python -m pip install -r /.requirements.txt {find_links_arg} {extra_args}",
+                f"RUN python -m pip install -r /.requirements.txt{find_links_arg} {extra_args}",
             ]
+            if version > "2023.12":  # Back-compat for legacy whitespace with empty find_link / extra args
+                commands = [cmd.strip() for cmd in commands]
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
@@ -725,14 +722,10 @@ class _Image(_Object, type_prefix="im"):
 
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
             package_args = " ".join(shlex.quote(pkg) for pkg in sorted(dependencies))
+            commands = ["FROM base", f"RUN python -m pip install {package_args} {extra_args}"]
+            if version > "2023.12":  # Back-compat for legacy trailing space
+                commands = [cmd.strip() for cmd in commands]
 
-            commands = [
-                "FROM base",
-                f"RUN python -m pip install {package_args} {extra_args}",
-                # TODO(erikbern): if extra_args is empty, we add a superfluous space at the end.
-                # However removing it at this point would cause image hashes to change.
-                # Maybe let's remove it later when/if client requirements change.
-            ]
             return DockerfileSpec(commands=commands, context_files={})
 
         return _Image._from_args(
@@ -792,8 +785,10 @@ class _Image(_Object, type_prefix="im"):
                 context_files["/.poetry.lock"] = poetry_lockfile
                 commands += ["COPY /.poetry.lock /tmp/poetry/poetry.lock"]
 
-            # Indentation for back-compat TODO: fix when we update image_builder_version
-            install_cmd = "  poetry install --no-root"
+            install_cmd = "poetry install --no-root"
+            if version == "2023.12":
+                # Backwards compatability for previous string, which started with whitespace
+                install_cmd = "  " + install_cmd
 
             if with_:
                 install_cmd += f" --with {','.join(with_)}"
@@ -934,7 +929,6 @@ class _Image(_Object, type_prefix="im"):
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
-        # TODO include these in the base image once we version the build?
         return base.dockerfile_commands(
             [
                 "ENV CONDA_EXE=/usr/local/bin/conda",
@@ -1507,7 +1501,7 @@ class _Image(_Object, type_prefix="im"):
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = ["FROM base"] + [f"WORKDIR {shlex.quote(path)}"]
+            commands = ["FROM base", f"WORKDIR {shlex.quote(path)}"]
             return DockerfileSpec(commands=commands, context_files={})
 
         return _Image._from_args(
