@@ -1265,7 +1265,7 @@ class _Function(_Object, type_prefix="fu"):
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
 
-    @warn_if_generator_is_not_consumed
+    @warn_if_generator_is_not_consumed()
     @live_method_gen
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
@@ -1281,7 +1281,7 @@ class _Function(_Object, type_prefix="fu"):
     # iterators that we don't want to run inside the synchronicity thread. We delegate to `._map()` with
     # a safer Queue as input
     @synchronizer.nowrap
-    @warn_if_generator_is_not_consumed
+    @warn_if_generator_is_not_consumed(function_name="Function.map")
     def _map_sync(
         self,
         *input_iterators: Iterable[Any],  # one input iterator per argument in the mapped-over function/generator
@@ -1338,7 +1338,7 @@ class _Function(_Object, type_prefix="fu"):
             )
 
     @synchronizer.nowrap
-    @warn_if_generator_is_not_consumed
+    @warn_if_generator_is_not_consumed(function_name="Function.map.aio")
     async def _map_async(
         self,
         *input_iterators: Union[
@@ -1395,7 +1395,7 @@ class _Function(_Object, type_prefix="fu"):
             pass
 
     @synchronizer.nowrap
-    @warn_if_generator_is_not_consumed
+    @warn_if_generator_is_not_consumed(function_name="Function.starmap")
     async def _starmap_async(
         self,
         input_iterator: Union[Iterable[Sequence[Any]], AsyncIterable[Sequence[Any]]],
@@ -1421,7 +1421,7 @@ class _Function(_Object, type_prefix="fu"):
             feed_input_task.cancel()  # should only be needed in case of exceptions
 
     @synchronizer.nowrap
-    @warn_if_generator_is_not_consumed
+    @warn_if_generator_is_not_consumed(function_name="Function.starmap.aio")
     def _starmap_sync(
         self,
         input_iterator: Iterable[Sequence[Any]],

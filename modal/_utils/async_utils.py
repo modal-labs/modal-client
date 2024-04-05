@@ -259,9 +259,9 @@ async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_ti
 
 
 class _WarnIfGeneratorIsNotConsumed:
-    def __init__(self, gen, gen_f):
+    def __init__(self, gen, function_name: str):
         self.gen = gen
-        self.gen_f = gen_f
+        self.function_name = function_name
         self.iterated = False
         self.warned = False
 
@@ -283,10 +283,9 @@ class _WarnIfGeneratorIsNotConsumed:
     def __del__(self):
         if not self.iterated and not self.warned:
             self.warned = True
-            name = self.gen_f.__name__
             logger.warning(
-                f"Warning: the results of a call to {name} was not consumed, so the call will never be executed."
-                f" Consider a for-loop like `for x in {name}(...)` or unpacking the generator using `list(...)`"
+                f"Warning: the results of a call to {self.function_name} was not consumed, so the call will never be executed."
+                f" Consider a for-loop like `for x in {self.function_name}(...)` or unpacking the generator using `list(...)`"
             )
 
 
@@ -294,9 +293,9 @@ synchronize_api(_WarnIfGeneratorIsNotConsumed)
 
 
 class _WarnIfBlockingGeneratorIsNotConsumed:
-    def __init__(self, gen, gen_f: str):
+    def __init__(self, gen, function_name: str):
         self.gen = gen
-        self.gen_f = gen_f
+        self.function_name = function_name
         self.iterated = False
         self.warned = False
 
@@ -308,9 +307,9 @@ class _WarnIfBlockingGeneratorIsNotConsumed:
         self.iterated = True
         return self.gen.__next__()
 
-    async def send(self, value):
+    def send(self, value):
         self.iterated = True
-        return await self.gen.send(value)
+        return self.gen.send(value)
 
     def __repr__(self):
         return repr(self.gen)
@@ -318,24 +317,28 @@ class _WarnIfBlockingGeneratorIsNotConsumed:
     def __del__(self):
         if not self.iterated and not self.warned:
             self.warned = True
-            name = self.gen_f.__name__
             logger.warning(
-                f"Warning: the results of a call to {name} was not consumed, so the call will never be executed."
-                f" Consider a for-loop like `for x in {name}(...)` or unpacking the generator using `list(...)`"
+                f"Warning: the results of a call to {self.function_name} was not consumed, so the call will never be executed."
+                f" Consider a for-loop like `for x in {self.function_name}(...)` or unpacking the generator using `list(...)`"
             )
 
 
-def warn_if_generator_is_not_consumed(gen_f):
+def warn_if_generator_is_not_consumed(function_name: Optional[str] = None):
     # https://gist.github.com/erikbern/01ae78d15f89edfa7f77e5c0a827a94d
-    @functools.wraps(gen_f)
-    def f_wrapped(*args, **kwargs):
-        gen = gen_f(*args, **kwargs)
-        if inspect.isasyncgen(gen):
-            return _WarnIfGeneratorIsNotConsumed(gen, gen_f)
-        else:
-            return _WarnIfBlockingGeneratorIsNotConsumed(gen, gen_f)
+    def decorator(gen_f):
+        presented_func_name = function_name if function_name is not None else gen_f.__name__
 
-    return f_wrapped
+        @functools.wraps(gen_f)
+        def f_wrapped(*args, **kwargs):
+            gen = gen_f(*args, **kwargs)
+            if inspect.isasyncgen(gen):
+                return _WarnIfGeneratorIsNotConsumed(gen, presented_func_name)
+            else:
+                return _WarnIfBlockingGeneratorIsNotConsumed(gen, presented_func_name)
+
+        return f_wrapped
+
+    return decorator
 
 
 _shutdown_tasks = []
