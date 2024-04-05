@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
 
 from google.protobuf.empty_pb2 import Empty
@@ -19,46 +20,25 @@ else:
     _Function = TypeVar("_Function")
 
 
+@dataclass
 class _LocalApp:
-    tag_to_object_id: Dict[str, str]
     app_id: str
     app_page_url: str
-    environment_name: str
-    interactive: bool
-
-    def __init__(
-        self,
-        app_id: str,
-        app_page_url: str,
-        tag_to_object_id: Optional[Dict[str, str]] = None,
-        environment_name: Optional[str] = None,
-        interactive: bool = False,
-    ):
-        """mdmd:hidden This is the app constructor. Users should not call this directly."""
-        self.app_id = app_id
-        self.app_page_url = app_page_url
-        self.tag_to_object_id = tag_to_object_id or {}
-        self.environment_name = environment_name
-        self.interactive = interactive
+    tag_to_object_id: Dict[str, str] = field(default_factory=dict)
+    environment_name: Optional[str ] = None
+    interactive: bool = False
 
 
+@dataclass
 class _ContainerApp:
-    app_id: Optional[str]
-    environment_name: Optional[str]
-    tag_to_object_id: Dict[str, str]
-    object_handle_metadata: Dict[str, Optional[Message]]
+    app_id: Optional[str] = None
+    environment_name: Optional[str] = None
+    tag_to_object_id: Dict[str, str] = field(default_factory=dict)
+    object_handle_metadata: Dict[str, Optional[Message]] = field(default_factory=dict)
     # if true, there's an active PTY shell session connected to this process.
-    is_interactivity_enabled: bool
-    function_def: Optional[api_pb2.Function]
-    fetching_inputs: bool
-
-    def __init__(self):
-        self.app_id = None
-        self.environment_name = None
-        self.tag_to_object_id = {}
-        self.object_handle_metadata = {}
-        self.is_interactivity_enabled = False
-        self.fetching_inputs = True
+    is_interactivity_enabled: bool = False
+    function_def: Optional[api_pb2.Function] = None
+    fetching_inputs: bool = True
 
 
 def _reset_container_app():
