@@ -122,7 +122,7 @@ async def _serve_stub(
 
     async with _run_stub(stub, client=client, output_mgr=output_mgr, environment_name=environment_name):
         app: _LocalApp = stub._local_app
-        client.set_pre_stop(lambda: _disconnect(app))
+        client.set_pre_stop(lambda: _disconnect(client, app.app_id))
         async with TaskContext(grace=0.1) as tc:
             tc.create_task(_run_watch_loop(stub_ref, stub.app_id, output_mgr, watcher, environment_name))
             yield stub
