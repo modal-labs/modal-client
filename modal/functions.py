@@ -1280,6 +1280,8 @@ class _Function(_Object, type_prefix="fu"):
     # note that `map()` is not synchronicity-wrapped, since it accepts executable code in the form of
     # iterators that we don't want to run inside the synchronicity thread. We delegate to `._map()` with
     # a safer Queue as input
+    @synchronizer.nowrap
+    @warn_if_generator_is_not_consumed
     def _map_sync(
         self,
         *input_iterators: Iterable[Any],  # one input iterator per argument in the mapped-over function/generator
@@ -1419,6 +1421,7 @@ class _Function(_Object, type_prefix="fu"):
             feed_input_task.cancel()  # should only be needed in case of exceptions
 
     @synchronizer.nowrap
+    @warn_if_generator_is_not_consumed
     def _starmap_sync(
         self,
         input_iterator: Iterable[Sequence[Any]],
@@ -1446,12 +1449,12 @@ class _Function(_Object, type_prefix="fu"):
             for output in run_generator_sync(
                 self._starmap_async(
                     input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
-                )
+                ),
             ):
                 yield output
         except NestedAsyncCalls:
             raise InvalidError(
-                "You can't run Function.starmap() from an async function. Use Function.starmap.aio(...) instead."
+                "You can't run Function.map() or Function.for_each() from an async function. Use Function.map.aio()/Function.for_each.aio() instead."
             )
 
     @synchronizer.no_io_translation
