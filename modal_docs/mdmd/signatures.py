@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import ast
 import inspect
+import re
 import textwrap
 import warnings
 from typing import Tuple
@@ -69,5 +70,8 @@ def get_signature(name, callable) -> str:
         definition_source = definition_source.replace("async def", "def")
         definition_source = definition_source.replace("asynccontextmanager", "contextmanager")
         definition_source = definition_source.replace("AsyncIterator", "Iterator")
+
+    # remove any synchronicity-internal decorators
+    definition_source, _ = re.subn(r"^\s*@synchronizer\..*\n", "", definition_source)
 
     return definition_source
