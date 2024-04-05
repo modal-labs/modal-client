@@ -574,10 +574,11 @@ def _parse_retries(
 
 
 @dataclass
-class FunctionEnv:
+class _FunctionSpec:
     """
-    Stores information about the function environment. This is used for `modal shell` to support
-    running shells in the same environment as a user-defined function.
+    Stores information about a Function specification.
+    This is used for `modal shell` to support running shells with
+    the same configuration as a user-defined Function.
     """
 
     image: Optional[_Image]
@@ -607,7 +608,7 @@ class _Function(_Object, type_prefix="fu"):
     _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
     _function_name: Optional[str]
     _is_method: bool
-    _env: FunctionEnv
+    _spec: _FunctionSpec
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
@@ -703,7 +704,7 @@ class _Function(_Object, type_prefix="fu"):
             if image:
                 image = image.apt_install("autossh")
 
-        function_env = FunctionEnv(
+        function_spec = _FunctionSpec(
             mounts=all_mounts,
             secrets=secrets,
             gpu=gpu,
@@ -998,7 +999,7 @@ class _Function(_Object, type_prefix="fu"):
         obj._obj = None
         obj._is_generator = is_generator
         obj._is_method = bool(info.cls)
-        obj._env = function_env  # needed for modal shell
+        obj._spec = function_spec  # needed for modal shell
 
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
@@ -1153,9 +1154,9 @@ class _Function(_Object, type_prefix="fu"):
         return self._info
 
     @property
-    def env(self) -> FunctionEnv:
+    def spec(self) -> _FunctionSpec:
         """mdmd:hidden"""
-        return self._env
+        return self._spec
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""

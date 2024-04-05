@@ -16,7 +16,7 @@ from typing_extensions import TypedDict
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
-from ..functions import Function, FunctionEnv
+from ..functions import Function, _FunctionSpec
 from ..image import Image
 from ..runner import deploy_stub, interactive_shell, run_stub
 from ..serving import serve_stub
@@ -380,18 +380,18 @@ def shell(
     if func_ref is not None:
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
         assert isinstance(function, Function)
-        function_env: FunctionEnv = function.env
+        function_spec: _FunctionSpec = function.spec
         start_shell = partial(
             interactive_shell,
-            image=function_env.image,
-            mounts=function_env.mounts,
-            secrets=function_env.secrets,
-            network_file_systems=function_env.network_file_systems,
-            gpu=function_env.gpu,
-            cloud=function_env.cloud,
-            cpu=function_env.cpu,
-            memory=function_env.memory,
-            volumes=function_env.volumes,
+            image=function_spec.image,
+            mounts=function_spec.mounts,
+            secrets=function_spec.secrets,
+            network_file_systems=function_spec.network_file_systems,
+            gpu=function_spec.gpu,
+            cloud=function_spec.cloud,
+            cpu=function_spec.cpu,
+            memory=function_spec.memory,
+            volumes=function_spec.volumes,
             _allow_background_volume_commits=True,
         )
     else:
