@@ -66,6 +66,20 @@ def test_map(client, servicer, slow_put_inputs):
         assert len(servicer.cleared_function_calls) == 2
 
 
+def test_remote_call_large_input(client, servicer, monkeypatch, blob_server):
+    monkeypatch.setattr("modal.functions.MAX_OBJECT_SIZE_BYTES", 1)
+
+    stub = Stub()
+    dummy_modal = stub.function()(dummy)
+    with stub.run(client=client):
+        dummy_modal.remote(10)
+    # assert len(servicer.cleared_function_calls) == 0
+    #
+    # with stub.run(client=client):
+    #     assert list(dummy_modal.map([5, 2], [4, 3])) == [41, 13]
+    #     assert len(servicer.cleared_function_calls) == 1
+
+
 _side_effect_count = 0
 
 
