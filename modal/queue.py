@@ -393,7 +393,7 @@ class _Queue(_Object, type_prefix="qu"):
         response = await retry_transient_errors(self._client.stub.QueueLen, request)
         return response.len
 
-    @warn_if_generator_is_not_consumed()
+    @warn_if_generator_is_not_consumed
     @live_method_gen
     async def iterate(
         self, *, partition: Optional[str] = None, item_poll_timeout: float = 0.0
