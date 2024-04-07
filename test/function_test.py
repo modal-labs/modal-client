@@ -734,6 +734,7 @@ def test_no_state_reuse(client, servicer, supports_dir):
     assert not (first_deploy & second_deploy)
 
 
+@pytest.mark.asyncio
 async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
     # TODO: tests making use of mock blob server currently have to be async, since the
     #  blob server runs as an async pytest fixture which will have its event loop blocked
@@ -743,12 +744,16 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
     stub = Stub()
     dummy_modal = stub.function()(dummy)
 
+    _, blobs = blob_server
     async with stub.run.aio(client=client):
-        # assert await dummy_modal.remote.aio(10) == 100
-        assert [a async for a in dummy_modal.map.aio([5, 2], [4, 3])] == [41, 13]
-        # assert len(servicer.cleared_function_calls) == 1
+        assert len(blobs) == 0
+        assert [a async for a in dummy_modal.map.aio(range(100))] == [i**2 for i in range(100)]
+        assert len(servicer.cleared_function_calls) == 1
+
+    assert len(blobs) == 100
 
 
+@pytest.mark.asyncio
 async def test_non_aio_map_in_async_caller_error(client):
     dummy_function = stub.function()(dummy)
 
