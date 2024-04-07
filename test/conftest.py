@@ -599,7 +599,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         response_items = []
         function_call_inputs = self.client_calls.setdefault(request.function_call_id, [])
         for item in request.inputs:
-            args, kwargs = modal._serialization.deserialize(item.input.args, None) if item.input.args else ((), {})
+            if item.input.WhichOneof("args_oneof") == "args":
+                args, kwargs = modal._serialization.deserialize(item.input.args, None)
+            else:
+                args, kwargs = modal._serialization.deserialize(self.blobs[item.input.args_blob_id], None)
+
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
             response_items.append(api_pb2.FunctionPutInputsResponseItem(input_id=input_id, idx=item.idx))
