@@ -740,7 +740,7 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
     #  blob server runs as an async pytest fixture which will have its event loop blocked
     #  by the test itself otherwise... Should move to its own thread.
     monkeypatch.setattr("modal.functions.MAX_OBJECT_SIZE_BYTES", 1)
-
+    servicer.use_blob_outputs = True
     stub = Stub()
     dummy_modal = stub.function()(dummy)
 
@@ -750,7 +750,7 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
         assert [a async for a in dummy_modal.map.aio(range(100))] == [i**2 for i in range(100)]
         assert len(servicer.cleared_function_calls) == 1
 
-    assert len(blobs) == 100
+    assert len(blobs) == 200  # inputs + outputs
 
 
 @pytest.mark.asyncio

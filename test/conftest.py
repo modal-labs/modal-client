@@ -63,6 +63,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     fc_data_out: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
 
     def __init__(self, blob_host, blobs):
+        self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
             1, timeout=10
         )  # set to non-1 to get lock-step of output pushing within a test
@@ -323,8 +324,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             status_code = self.fail_blob_create.pop()
             raise GRPCError(status_code, "foobar")
         elif req.content_length > self.blob_multipart_threshold:
-            self.n_blobs += 1
-            blob_id = f"bl-{self.n_blobs}"
+            blob_id = await self.next_blob_id()
             num_parts = (req.content_length + self.blob_multipart_threshold - 1) // self.blob_multipart_threshold
             upload_urls = []
             for part_number in range(num_parts):
@@ -342,10 +342,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 )
             )
         else:
-            self.n_blobs += 1
-            blob_id = f"bl-{self.n_blobs}"
+            blob_id = await self.next_blob_id()
             upload_url = f"{self.blob_host}/upload?blob_id={blob_id}"
             await stream.send_message(api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url))
+
+    async def next_blob_id(self):
+        self.n_blobs += 1
+        blob_id = f"bl-{self.n_blobs}"
+        return blob_id
 
     async def BlobGet(self, stream):
         request: api_pb2.BlobGetRequest = await stream.recv_message()
@@ -659,13 +663,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if output_exc:
                 output = output_exc
             else:
+                serialized_data = serialize_data_format(result, result_data_format)
+                if self.use_blob_outputs:
+                    blob_id = await self.next_blob_id()
+                    self.blobs[blob_id] = serialized_data
+                    data_kwargs = {
+                        "data_blob_id": blob_id,
+                    }
+                else:
+                    data_kwargs = {"data": serialized_data}
                 output = api_pb2.FunctionGetOutputsItem(
                     input_id=input_id,
                     idx=idx,
-                    result=api_pb2.GenericResult(
-                        status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                        data=serialize_data_format(result, result_data_format),
-                    ),
+                    result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, **data_kwargs),
                     data_format=result_data_format,
                 )
 
