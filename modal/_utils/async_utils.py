@@ -234,6 +234,8 @@ def run_coro_blocking(coro):
 async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_time=0.015):
     """
     Read from a queue but return lists of items when queue is large
+
+    Treats a None value as end of queue items
     """
     item_list: List[Any] = []
 
@@ -257,9 +259,9 @@ async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_ti
 
 
 class _WarnIfGeneratorIsNotConsumed:
-    def __init__(self, gen, gen_f):
+    def __init__(self, gen, function_name: str):
         self.gen = gen
-        self.gen_f = gen_f
+        self.function_name = function_name
         self.iterated = False
         self.warned = False
 
@@ -271,30 +273,72 @@ class _WarnIfGeneratorIsNotConsumed:
         self.iterated = True
         return await self.gen.__anext__()
 
+    async def asend(self, value):
+        self.iterated = True
+        return await self.gen.asend(value)
+
     def __repr__(self):
         return repr(self.gen)
 
     def __del__(self):
         if not self.iterated and not self.warned:
             self.warned = True
-            name = self.gen_f.__name__
             logger.warning(
-                f"Warning: the results of a call to {name} was not consumed, so the call will never be executed."
-                f" Consider a for-loop like `for x in {name}(...)` or unpacking the generator using `list(...)`"
+                f"Warning: the results of a call to {self.function_name} was not consumed, so the call will never be executed."
+                f" Consider a for-loop like `for x in {self.function_name}(...)` or unpacking the generator using `list(...)`"
             )
 
 
 synchronize_api(_WarnIfGeneratorIsNotConsumed)
 
 
-def warn_if_generator_is_not_consumed(gen_f):
-    # https://gist.github.com/erikbern/01ae78d15f89edfa7f77e5c0a827a94d
-    @functools.wraps(gen_f)
-    def f_wrapped(*args, **kwargs):
-        gen = gen_f(*args, **kwargs)
-        return _WarnIfGeneratorIsNotConsumed(gen, gen_f)
+class _WarnIfBlockingGeneratorIsNotConsumed:
+    def __init__(self, gen, function_name: str):
+        self.gen = gen
+        self.function_name = function_name
+        self.iterated = False
+        self.warned = False
 
-    return f_wrapped
+    def __iter__(self):
+        self.iterated = True
+        return self.gen
+
+    def __next__(self):
+        self.iterated = True
+        return self.gen.__next__()
+
+    def send(self, value):
+        self.iterated = True
+        return self.gen.send(value)
+
+    def __repr__(self):
+        return repr(self.gen)
+
+    def __del__(self):
+        if not self.iterated and not self.warned:
+            self.warned = True
+            logger.warning(
+                f"Warning: the results of a call to {self.function_name} was not consumed, so the call will never be executed."
+                f" Consider a for-loop like `for x in {self.function_name}(...)` or unpacking the generator using `list(...)`"
+            )
+
+
+def warn_if_generator_is_not_consumed(function_name: Optional[str] = None):
+    # https://gist.github.com/erikbern/01ae78d15f89edfa7f77e5c0a827a94d
+    def decorator(gen_f):
+        presented_func_name = function_name if function_name is not None else gen_f.__name__
+
+        @functools.wraps(gen_f)
+        def f_wrapped(*args, **kwargs):
+            gen = gen_f(*args, **kwargs)
+            if inspect.isasyncgen(gen):
+                return _WarnIfGeneratorIsNotConsumed(gen, presented_func_name)
+            else:
+                return _WarnIfBlockingGeneratorIsNotConsumed(gen, presented_func_name)
+
+        return f_wrapped
+
+    return decorator
 
 
 _shutdown_tasks = []
@@ -384,3 +428,42 @@ async def asyncnullcontext(*args, **kwargs):
         pass
     """
     yield
+
+
+YIELD_TYPE = typing.TypeVar("YIELD_TYPE")
+SEND_TYPE = typing.TypeVar("SEND_TYPE")
+
+
+class NestedAsyncCalls(Exception):
+    pass
+
+
+def run_generator_sync(
+    gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE],
+) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass  # no event loop - this is what we expect!
+    else:
+        raise NestedAsyncCalls()
+    loop = asyncio.new_event_loop()  # set up new event loop for the map so we can use async logic
+
+    # more or less copied from synchronicity's implementation:
+    next_send: typing.Union[SEND_TYPE, None] = None
+    next_yield: YIELD_TYPE
+    exc: Optional[BaseException] = None
+    while True:
+        try:
+            if exc:
+                next_yield = loop.run_until_complete(gen.athrow(exc))
+            else:
+                next_yield = loop.run_until_complete(gen.asend(next_send))  # type: ignore[arg-type]
+        except StopAsyncIteration:
+            break
+        try:
+            next_send = yield next_yield
+            exc = None
+        except BaseException as err:
+            exc = err
+    loop.close()
