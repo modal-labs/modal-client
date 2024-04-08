@@ -1975,7 +1975,7 @@ message WebUrlInfo {
 }
 
 message WorkspaceNameLookupResponse {
-  string workspace_name = 1;
+  string workspace_name = 1 [deprecated=true];
   string username = 2;
 }
 
