@@ -1456,9 +1456,10 @@ message RateLimit {
 }
 
 message Resources {
-  uint32 memory_mb = 2;
-  uint32 milli_cpu = 3;
+  uint32 memory_mb = 2; // MiB
+  uint32 milli_cpu = 3; // milli CPU cores
   GPUConfig gpu_config = 4;
+  uint32 memory_mib_max = 5; // MiB
 }
 
 message S3Mount {
