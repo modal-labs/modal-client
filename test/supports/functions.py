@@ -406,3 +406,9 @@ class EventLoopCls:
     @method()
     async def f(self):
         return self.loop.is_running()
+
+
+@stub.function()
+def sandbox_f(x):
+    sb = stub.spawn_sandbox("echo", str(x))
+    return sb.object_id
