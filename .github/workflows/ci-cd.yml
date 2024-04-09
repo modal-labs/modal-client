@@ -79,7 +79,7 @@ jobs:
           deactivate
 
       - name: Check entrypoint import
-        run: python -c 'import modal._container_entrypoint'
+        run: python -c 'import modal._container_entrypoint; import fastapi'
 
   publish-base-images:
     name: |
