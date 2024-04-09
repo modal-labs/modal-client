@@ -1388,3 +1388,9 @@ def test_sigint_termination_exit_handler(servicer, exit_type):
     assert "[events:enter_sync,enter_async,delay,exit_sync,exit_async]" in stdout.decode()
     assert "Traceback" not in stderr.decode()
     assert servicer.task_result is None
+
+
+@skip_windows_unix_socket
+def test_sandbox(unix_servicer, event_loop):
+    ret = _run_container(unix_servicer, "test.supports.functions", "sandbox_f")
+    assert _unwrap_scalar(ret) == "sb-123"
