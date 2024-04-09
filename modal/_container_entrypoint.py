@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, 
 
 from google.protobuf.message import Message
 from grpclib import Status
+from synchronicity import Interface
 
 from modal_proto import api_pb2
 
@@ -46,7 +47,7 @@ from .config import config, logger
 from .exception import ExecutionError, InputCancellation, InvalidError
 from .functions import Function, _Function, _set_current_context_ids, _stream_function_call_data
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
-from .stub import _Stub
+from .stub import Stub, _Stub
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -1035,7 +1036,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize objects on the stub.
         if imp_fun.stub is not None:
-            imp_fun.stub._init_container(client, _container_app)
+            stub: Stub = synchronizer._translate_out(imp_fun.stub, Interface.BLOCKING)
+            stub._init_container(client, _container_app)
 
         # Hydrate all function dependencies.
         # TODO(erikbern): we an remove this once we
