@@ -265,7 +265,12 @@ async def retry_transient_errors(
 
 
 def find_free_port() -> int:
-    """Find a free TCP port, useful for testing."""
+    """
+    Find a free TCP port, useful for testing.
+
+    WARN: if a returned free port is not bound immediately by the caller, that same port
+    may be returned in subsequent calls to this function, potentially creating port collisions.
+    """
     with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
         s.bind(("", 0))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
