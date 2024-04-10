@@ -157,7 +157,7 @@ class _Stub:
                 (2023, 12, 13),
                 "Passing additional objects to the stub constructor is deprecated."
                 f" Please remove the following parameters from your stub definition: {', '.join(kwargs)}."
-                " In most cases, persistant (named) objects can just be defined in the global scope.",
+                " In most cases, persistent (named) objects can just be defined in the global scope.",
             )
 
         for k, v in kwargs.items():
