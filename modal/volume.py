@@ -321,8 +321,9 @@ class _Volume(_Object, type_prefix="vo"):
                     pass
             return None
 
+        pid_re = re.compile("^[1-9][0-9]*$")
         for dirent in os.listdir("/proc/"):
-            if re.match("^[1-9][0-9]*$", dirent):
+            if pid_re.match(dirent):
                 try:
                     err_str = find_open_file_for_pid(dirent)
                     if err_str:
