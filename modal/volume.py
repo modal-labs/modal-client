@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import concurrent.futures
+import os
 import time
 from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
@@ -276,6 +277,28 @@ class _Volume(_Object, type_prefix="vo"):
         try:
             await self._do_reload()
         except GRPCError as exc:
+            # TODO(staffan): This is very brittle and janky. We should return the open files from the server.
+            if exc.message == "there are open files preventing the operation":
+                # Attempt to identify what open files are problematic and include the path in the error message.
+                # This is best-effort and not necessarily bulletproof, as the view of open files inside the container
+                # might differ from that outside - but it will at least catch common errors.
+                vol_path = f"/__modal/volumes/{self.object_id}"
+
+                cwd = PurePosixPath(os.readlink("/proc/self/cwd"))
+                if cwd.is_relative_to(vol_path):
+                    raise RuntimeError(f"{exc.message}: the current working directory is inside the volume")
+
+                open_paths = []
+                for fd in os.listdir("/proc/self/fd"):
+                    try:
+                        path = PurePosixPath(os.readlink(f"/proc/self/fd/{fd}"))
+                        if path.is_relative_to(vol_path):
+                            rel_path = path.relative_to(vol_path)
+                            open_paths.append(rel_path.as_posix())
+                    except FileNotFoundError:
+                        pass
+                if open_paths:
+                    raise RuntimeError(f"{exc.message}: {open_paths} (relative to where the volume is mounted)")
             raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
 
     @live_method_gen
