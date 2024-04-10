@@ -270,8 +270,9 @@ class _Cls(_Object, type_prefix="cs"):
         allow_background_volume_commits: bool = False,
     ) -> "_Cls":
         """
-        Allows for the runtime modification of a modal.Cls's configuration.
-        Designed for usage in the [MK1 Flywheel](/docs/guide/mk1).
+        Beta: Allows for the runtime modification of a modal.Cls's configuration.
+
+        This is a beta feature and may be unstable.
 
         **Usage:**
 
