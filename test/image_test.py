@@ -58,10 +58,11 @@ def get_all_dockerfile_commands(image_id: str, servicer) -> str:
 
 
 @pytest.fixture(params=get_args(ImageBuilderVersion))
-def builder_version(request, server_url_env):
+def builder_version(request, server_url_env, modal_config):
     version = request.param
-    with mock.patch("test.conftest.ImageBuilderVersion", Literal[version]):  # type: ignore
-        yield version
+    with modal_config():
+        with mock.patch("test.conftest.ImageBuilderVersion", Literal[version]):  # type: ignore
+            yield version
 
 
 def test_python_version_validation():
@@ -715,7 +716,7 @@ def test_get_modal_requirements_path(builder_version, python_version):
         assert path.endswith(f"{builder_version}.txt")
 
 
-def test_image_builder_version(servicer, test_dir):
+def test_image_builder_version(servicer, test_dir, modal_config):
     stub = Stub(image=Image.debian_slim())
     # TODO use a single with statement and tuple of managers when we drop Py3.8
     test_requirements = str(test_dir / "supports" / "test-requirements.txt")
@@ -727,10 +728,11 @@ def test_image_builder_version(servicer, test_dir):
                         with Client(
                             servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")
                         ) as client:
-                            with stub.run(client=client):
-                                assert servicer.image_builder_versions
-                                for version in servicer.image_builder_versions.values():
-                                    assert version == "2000.01"
+                            with modal_config():
+                                with stub.run(client=client):
+                                    assert servicer.image_builder_versions
+                                    for version in servicer.image_builder_versions.values():
+                                        assert version == "2000.01"
 
 
 def test_image_builder_supported_versions(servicer):
@@ -745,9 +747,10 @@ def test_image_builder_supported_versions(servicer):
 
 
 @pytest.fixture
-def force_2023_12():
+def force_2023_12(modal_config):
     with mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.12"]):
-        yield
+        with modal_config():
+            yield
 
 
 @skip_windows("Different hash values for context file paths")
