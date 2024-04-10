@@ -298,8 +298,11 @@ class _Volume(_Object, type_prefix="vo"):
         self_pid = os.readlink("/proc/self")
 
         def find_open_file_for_pid(pid) -> Optional[str]:
-            with open(f"/proc/{pid}/cmdline", "r") as f:
-                cmdline = f.read()
+            # /proc/{pid}/cmdline is null separated
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                raw = f.read()
+                parts = raw.split(b"\0")
+                cmdline = " ".join([part.decode() for part in parts])
             cwd = PurePosixPath(os.readlink(f"/proc/{pid}/cwd"))
             if cwd.is_relative_to(relative_to):
                 if pid == self_pid:
