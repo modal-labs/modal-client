@@ -2,6 +2,7 @@
 import asyncio
 import concurrent.futures
 import os
+import re
 import time
 from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
@@ -277,29 +278,59 @@ class _Volume(_Object, type_prefix="vo"):
         try:
             await self._do_reload()
         except GRPCError as exc:
-            # TODO(staffan): This is very brittle and janky. We should return the open files from the server.
+            # TODO(staffan): This is brittle and janky, as it relies on specific paths and error messages which can
+            #  change server-side at any time. Consider returning the open files directly in the error emitted from the
+            #  server.
             if exc.message == "there are open files preventing the operation":
-                # Attempt to identify what open files are problematic and include the path in the error message.
+                # Attempt to identify what open files are problematic and include information about the first (to avoid
+                # really verbose errors) open file in the error message to help troubleshooting.
                 # This is best-effort and not necessarily bulletproof, as the view of open files inside the container
                 # might differ from that outside - but it will at least catch common errors.
                 vol_path = f"/__modal/volumes/{self.object_id}"
+                annotation = _Volume._open_files_error_annotation(vol_path)
+                if annotation:
+                    raise RuntimeError(f"{exc.message}: {annotation}")
 
-                cwd = PurePosixPath(os.readlink("/proc/self/cwd"))
-                if cwd.is_relative_to(vol_path):
-                    raise RuntimeError(f"{exc.message}: the current working directory is inside the volume")
-
-                open_paths = []
-                for fd in os.listdir("/proc/self/fd"):
-                    try:
-                        path = PurePosixPath(os.readlink(f"/proc/self/fd/{fd}"))
-                        if path.is_relative_to(vol_path):
-                            rel_path = path.relative_to(vol_path)
-                            open_paths.append(rel_path.as_posix())
-                    except FileNotFoundError:
-                        pass
-                if open_paths:
-                    raise RuntimeError(f"{exc.message}: {open_paths} (relative to where the volume is mounted)")
             raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
+
+    @staticmethod
+    def _open_files_error_annotation(relative_to: str) -> Optional[str]:
+        self_pid = os.readlink("/proc/self")
+
+        def find_open_file_for_pid(pid) -> Optional[str]:
+            with open(f"/proc/{pid}/cmdline", "r") as f:
+                cmdline = f.read()
+            cwd = PurePosixPath(os.readlink(f"/proc/{pid}/cwd"))
+            if cwd.is_relative_to(relative_to):
+                if pid == self_pid:
+                    return "cwd is inside the volume"
+                else:
+                    return f"cwd of '{cmdline}' is inside the volume"
+
+            for fd in os.listdir(f"/proc/{pid}/fd"):
+                try:
+                    path = PurePosixPath(os.readlink(f"/proc/{pid}/fd/{fd}"))
+                    if path.is_relative_to(relative_to):
+                        rel_path = path.relative_to(relative_to)
+                        if pid == self_pid:
+                            return f"path {rel_path} is open"
+                        else:
+                            return f"path {rel_path} is open from '{cmdline}'"
+                except FileNotFoundError:
+                    # File was closed
+                    pass
+            return None
+
+        for dirent in os.listdir("/proc/"):
+            if re.match("^[1-9][0-9]*$", dirent):
+                try:
+                    err_str = find_open_file_for_pid(dirent)
+                    if err_str:
+                        return err_str
+                except (FileNotFoundError, PermissionError):
+                    pass
+
+        return None
 
     @live_method_gen
     async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
