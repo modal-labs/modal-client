@@ -624,6 +624,7 @@ def _open_files_error_annotation(mount_path: str) -> Optional[str]:
             raw = f.read()
             parts = raw.split(b"\0")
             cmdline = " ".join([part.decode() for part in parts]).rstrip(" ")
+
         cwd = PurePosixPath(os.readlink(f"/proc/{pid}/cwd"))
         if cwd.is_relative_to(mount_path):
             if pid == self_pid:
@@ -649,9 +650,9 @@ def _open_files_error_annotation(mount_path: str) -> Optional[str]:
     for dirent in os.listdir("/proc/"):
         if pid_re.match(dirent):
             try:
-                err_str = find_open_file_for_pid(dirent)
-                if err_str:
-                    return err_str
+                annotation = find_open_file_for_pid(dirent)
+                if annotation:
+                    return annotation
             except (FileNotFoundError, PermissionError):
                 pass
 
