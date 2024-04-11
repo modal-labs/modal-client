@@ -8,8 +8,7 @@ from grpclib import GRPCError, Status
 from rich.text import Text
 
 from modal._output import OutputManager, get_app_logs_loop
-from modal._utils.async_utils import synchronizer
-from modal.app import _list_apps
+from modal._utils.async_utils import synchronizer, synchronize_api
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -26,6 +25,15 @@ APP_STATE_TO_MESSAGE = {
     api_pb2.APP_STATE_STOPPED: Text("stopped", style="blue"),
     api_pb2.APP_STATE_STOPPING: Text("stopping...", style="blue"),
 }
+
+
+@synchronize_api
+async def list_apps(env: str, client: Optional[_Client] = None) -> List[api_pb2.AppStats]:
+    """List apps in a given Modal environment."""
+    if client is None:
+        client = await _Client.from_env()
+    resp: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
+    return list(resp.apps)
 
 
 @app_cli.command("list")
