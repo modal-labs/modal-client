@@ -618,6 +618,14 @@ def _open_files_error_annotation(mount_path: str) -> Optional[str]:
 
     self_pid = os.readlink("/proc/self")
 
+    # TODO(staffan): Replace with path.is_relative_to(other) when support for Python 3.8 is dropped
+    def is_path_relative_to(path: PurePosixPath, other: str) -> bool:
+        try:
+            path.relative_to(other)
+            return True
+        except ValueError:
+            return False
+
     def find_open_file_for_pid(pid: str) -> Optional[str]:
         # /proc/{pid}/cmdline is null separated
         with open(f"/proc/{pid}/cmdline", "rb") as f:
@@ -626,7 +634,7 @@ def _open_files_error_annotation(mount_path: str) -> Optional[str]:
             cmdline = " ".join([part.decode() for part in parts]).rstrip(" ")
 
         cwd = PurePosixPath(os.readlink(f"/proc/{pid}/cwd"))
-        if cwd.is_relative_to(mount_path):
+        if is_path_relative_to(cwd, mount_path):
             if pid == self_pid:
                 return "cwd is inside volume"
             else:
@@ -635,7 +643,7 @@ def _open_files_error_annotation(mount_path: str) -> Optional[str]:
         for fd in os.listdir(f"/proc/{pid}/fd"):
             try:
                 path = PurePosixPath(os.readlink(f"/proc/{pid}/fd/{fd}"))
-                if path.is_relative_to(mount_path):
+                if is_path_relative_to(path, mount_path):
                     rel_path = path.relative_to(mount_path)
                     if pid == self_pid:
                         return f"path {rel_path} is open"
