@@ -472,6 +472,27 @@ class _Volume(_Object, type_prefix="vo"):
         """
         Copy files within the volume from src_paths to dst_path.
         The semantics of the copy operation follow those of the UNIX cp command.
+
+        The `src_paths` parameter is a list. If you want to copy a single file, you should pass a list with a
+        single element.
+
+        Both the `src_paths` and `dst_path` parameters are the location of the file *inside* the volume. You do not need to prepend
+        the volume mount path.
+
+        **Usage**
+
+        ```python notest
+        @stub.function(volumes={"/root/foo": volume})
+        def g():
+            volume.reload()  # Fetch latest changes
+            with open("/root/foo/bar/example.txt", "r") as f:
+                print(f.read())
+
+            volume.copy_files(["bar/example.txt"], "bar2")  # Copy files to another directory
+            volume.copy_files(
+                ["bar/example.txt"], "bar/example2.txt"
+            )  # Rename a file by copying
+        ```
         """
         src_paths = [path.encode("utf-8") for path in src_paths if isinstance(path, str)]
         if isinstance(dst_path, str):
