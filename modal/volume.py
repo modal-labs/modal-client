@@ -1,6 +1,9 @@
 # Copyright Modal Labs 2023
 import asyncio
 import concurrent.futures
+import os
+import platform
+import re
 import time
 from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
@@ -276,6 +279,19 @@ class _Volume(_Object, type_prefix="vo"):
         try:
             await self._do_reload()
         except GRPCError as exc:
+            # TODO(staffan): This is brittle and janky, as it relies on specific paths and error messages which can
+            #  change server-side at any time. Consider returning the open files directly in the error emitted from the
+            #  server.
+            if exc.message == "there are open files preventing the operation":
+                # Attempt to identify what open files are problematic and include information about the first (to avoid
+                # really verbose errors) open file in the error message to help troubleshooting.
+                # This is best-effort and not necessarily bulletproof, as the view of open files inside the container
+                # might differ from that outside - but it will at least catch common errors.
+                vol_path = f"/__modal/volumes/{self.object_id}"
+                annotation = _open_files_error_annotation(vol_path)
+                if annotation:
+                    raise RuntimeError(f"{exc.message}: {annotation}")
+
             raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
 
     @live_method_gen
@@ -594,3 +610,58 @@ class _VolumeUploadContextManager:
 
 Volume = synchronize_api(_Volume)
 VolumeUploadContextManager = synchronize_api(_VolumeUploadContextManager)
+
+
+def _open_files_error_annotation(mount_path: str) -> Optional[str]:
+    if platform.system() != "Linux":
+        return None
+
+    self_pid = os.readlink("/proc/self")
+
+    def find_open_file_for_pid(pid: str) -> Optional[str]:
+        # /proc/{pid}/cmdline is null separated
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            raw = f.read()
+            parts = raw.split(b"\0")
+            cmdline = " ".join([part.decode() for part in parts]).rstrip(" ")
+
+        cwd = PurePosixPath(os.readlink(f"/proc/{pid}/cwd"))
+        # NOTE(staffan): Python 3.8 doesn't have is_relative_to(), so we're stuck with catching ValueError until
+        # we drop Python 3.8 support.
+        try:
+            _rel_cwd = cwd.relative_to(mount_path)
+            if pid == self_pid:
+                return "cwd is inside volume"
+            else:
+                return f"cwd of '{cmdline}' is inside volume"
+        except ValueError:
+            pass
+
+        for fd in os.listdir(f"/proc/{pid}/fd"):
+            try:
+                path = PurePosixPath(os.readlink(f"/proc/{pid}/fd/{fd}"))
+                try:
+                    rel_path = path.relative_to(mount_path)
+                    if pid == self_pid:
+                        return f"path {rel_path} is open"
+                    else:
+                        return f"path {rel_path} is open from '{cmdline}'"
+                except ValueError:
+                    pass
+
+            except FileNotFoundError:
+                # File was closed
+                pass
+        return None
+
+    pid_re = re.compile("^[1-9][0-9]*$")
+    for dirent in os.listdir("/proc/"):
+        if pid_re.match(dirent):
+            try:
+                annotation = find_open_file_for_pid(dirent)
+                if annotation:
+                    return annotation
+            except (FileNotFoundError, PermissionError):
+                pass
+
+    return None
