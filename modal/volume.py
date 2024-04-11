@@ -476,7 +476,7 @@ class _Volume(_Object, type_prefix="vo"):
         The `src_paths` parameter is a list. If you want to copy a single file, you should pass a list with a
         single element.
 
-        Both the `src_paths` and `dst_path` parameters are the location of the file *inside* the volume. You do not need to prepend
+        `src_paths` and `dst_path` should refer to the desired location *inside* the volume. You do not need to prepend
         the volume mount path.
 
         **Usage**
