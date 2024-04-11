@@ -7,7 +7,7 @@ from google.protobuf.message import Message
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
-from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
+from ._utils.grpc_utils import get_proto_oneof
 from .client import _Client
 from .config import logger
 from .exception import InvalidError
@@ -72,8 +72,8 @@ _is_container_app = False
 _container_app = _ContainerApp()
 
 
-async def _init_container_app(
-    client: _Client,
+def _init_container_app(
+    items: List[api_pb2.AppGetObjectsItem],
     app_id: str,
     environment_name: str = "",
     function_def: Optional[api_pb2.Function] = None,
@@ -82,24 +82,17 @@ async def _init_container_app(
     global _container_app, _is_container_app
 
     _is_container_app = True
-    _container_app.client = client
     _container_app.app_id = app_id
     _container_app.environment_name = environment_name
     _container_app.function_def = function_def
     _container_app.tag_to_object_id = {}
     _container_app.object_handle_metadata = {}
-    req = api_pb2.AppGetObjectsRequest(app_id=app_id, include_unindexed=True)
-    resp = await retry_transient_errors(client.stub.AppGetObjects, req)
-    logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {app_id}")
-    for item in resp.items:
+    for item in items:
         handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
         _container_app.object_handle_metadata[item.object.object_id] = handle_metadata
         logger.debug(f"Setting metadata for {item.object.object_id} ({item.tag})")
         if item.tag:
             _container_app.tag_to_object_id[item.tag] = item.object.object_id
-
-
-init_container_app = synchronize_api(_init_container_app)
 
 
 async def _interact(client: Optional[_Client] = None) -> None:
