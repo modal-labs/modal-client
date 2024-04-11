@@ -1,6 +1,11 @@
 # Copyright Modal Labs 2023
+import asyncio
 import io
+import os
+import platform
 import pytest
+import re
+import sys
 import time
 from pathlib import Path
 from unittest import mock
@@ -8,6 +13,7 @@ from unittest import mock
 import modal
 from modal.exception import DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.runner import deploy_stub
+from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
 
@@ -344,3 +350,43 @@ def test_ephemeral(servicer, client):
 def test_lazy_hydration_from_named(set_env_client):
     vol = modal.Volume.from_name("my-vol", create_if_missing=True)
     assert vol.listdir("**") == []
+
+
+@pytest.mark.skipif(platform.system() != "Linux", reason="needs /proc")
+@pytest.mark.asyncio
+async def test_open_files_error_annotation(tmp_path):
+    assert _open_files_error_annotation(tmp_path) is None
+
+    # Current process keeps file open
+    with (tmp_path / "foo.txt").open("w") as _f:
+        assert _open_files_error_annotation(tmp_path) == "path foo.txt is open"
+
+    # cwd of current process is inside volume
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    assert _open_files_error_annotation(tmp_path) == "cwd is inside volume"
+    os.chdir(cwd)
+
+    # Subprocess keeps open file
+    open_path = tmp_path / "bar.txt"
+    open_path.write_text("")
+    proc = await asyncio.create_subprocess_exec("tail", "-f", open_path.as_posix())
+    await asyncio.sleep(0.01)  # Give process some time to start
+    assert _open_files_error_annotation(tmp_path) == f"path bar.txt is open from 'tail -f {open_path.as_posix()}'"
+    proc.kill()
+    await proc.wait()
+    assert _open_files_error_annotation(tmp_path) is None
+
+    # Subprocess cwd inside volume
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", f"import time; import os; os.chdir('{tmp_path}'); time.sleep(60)"
+    )
+    # Wait for process to chdir
+    for _ in range(100):
+        if os.readlink(f"/proc/{proc.pid}/cwd") == tmp_path.as_posix():
+            break
+        await asyncio.sleep(0.05)
+    assert re.match(f"^cwd of '{sys.executable} -c .*' is inside volume$", _open_files_error_annotation(tmp_path))
+    proc.kill()
+    await proc.wait()
+    assert _open_files_error_annotation(tmp_path) is None
