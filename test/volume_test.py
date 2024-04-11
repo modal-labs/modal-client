@@ -371,6 +371,7 @@ async def test_open_files_error_annotation(tmp_path):
     open_path = tmp_path / "bar.txt"
     open_path.write_text("")
     proc = await asyncio.create_subprocess_exec("tail", "-f", open_path.as_posix())
+    await asyncio.sleep(0.01)  # Give process some time to start
     assert _open_files_error_annotation(tmp_path) == f"path bar.txt is open from 'tail -f {open_path.as_posix()}'"
     proc.kill()
     await proc.wait()
@@ -380,6 +381,11 @@ async def test_open_files_error_annotation(tmp_path):
     proc = await asyncio.create_subprocess_exec(
         sys.executable, "-c", f"import time; import os; os.chdir('{tmp_path}'); time.sleep(60)"
     )
+    # Wait for process to chdir
+    for _ in range(100):
+        if os.readlink(f"/proc/{proc.pid}/cwd") == tmp_path.as_posix():
+            break
+        await asyncio.sleep(0.05)
     assert re.match(f"^cwd of '{sys.executable} -c .*' is inside volume$", _open_files_error_annotation(tmp_path))
     proc.kill()
     await proc.wait()
