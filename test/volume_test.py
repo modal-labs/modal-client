@@ -5,6 +5,7 @@ import os
 import platform
 import pytest
 import re
+import sys
 import time
 from pathlib import Path
 from unittest import mock
@@ -377,9 +378,9 @@ async def test_open_files_error_annotation(tmp_path):
 
     # Subprocess cwd inside volume
     proc = await asyncio.create_subprocess_exec(
-        "python", "-c", f"import time; import os; os.chdir('{tmp_path}'); time.sleep(60)"
+        sys.executable, "-c", f"import time; import os; os.chdir('{tmp_path}'); time.sleep(60)"
     )
-    assert re.match("^cwd of 'python -c .*' is inside volume$", _open_files_error_annotation(tmp_path))
+    assert re.match(f"^cwd of '{sys.executable} -c .*' is inside volume$", _open_files_error_annotation(tmp_path))
     proc.kill()
     await proc.wait()
     assert _open_files_error_annotation(tmp_path) is None
