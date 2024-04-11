@@ -129,41 +129,41 @@ class _Stub:
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
         volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
-        **indexed_objects: _Object,  # any Modal Object dependencies (Dict, Queue, etc.)
+        **kwargs: _Object,  # DEPRECATED: passing additional objects to the stub as kwargs is no longer supported
     ) -> None:
-        """Construct a new app stub, optionally with default image, mounts, secrets
+        """Construct a new app stub, optionally with default image, mounts, secrets, or volumes.
 
-        Any "indexed_objects" objects are loaded as part of running or deploying the app,
-        and are accessible by name on the running container app, e.g.:
-        ```python
-        stub = modal.Stub(key_value_store=modal.Dict.new())
-
-        @stub.function()
-        def store_something(key: str, value: str):
-            stub.app.key_value_store.put(key, value)
+        ```python notest
+        image = modal.Image.debian_slim().pip_install(...)
+        mount = modal.Mount.from_local_dir("./config")
+        secret = modal.Secret.from_name("my-secret")
+        volume = modal.Volume.from_name("my-data")
+        stub = modal.Stub(image=image, mounts=[mount], secrets=[secret], volumes={"/mnt/data": volume})
         ```
         """
 
         self._name = name
         self._description = name
 
-        check_sequence(mounts, _Mount, "mounts has to be a list or tuple of Mount objects")
-        check_sequence(secrets, _Secret, "secrets has to be a list or tuple of Secret objects")
+        check_sequence(mounts, _Mount, "`mounts=` has to be a list or tuple of Mount objects")
+        check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of Secret objects")
         validate_volumes(volumes)
 
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
 
-        if indexed_objects:
+        if kwargs:
             deprecation_warning(
                 (2023, 12, 13),
-                "Passing **kwargs to a stub is deprecated. In most cases, you can just define the objects in global scope.",
+                "Passing additional objects to the stub constructor is deprecated."
+                f" Please remove the following parameters from your stub definition: {', '.join(kwargs)}."
+                " In most cases, persistent (named) objects can just be defined in the global scope.",
             )
 
-        for k, v in indexed_objects.items():
+        for k, v in kwargs.items():
             self._validate_blueprint_value(k, v)
 
-        self._indexed_objects = indexed_objects
+        self._indexed_objects = kwargs
         if image is not None:
             self._indexed_objects["image"] = image  # backward compatibility since "image" used to be on the blueprint
 
@@ -214,7 +214,7 @@ class _Stub:
 
     def _validate_blueprint_value(self, key: str, value: Any):
         if not isinstance(value, _Object):
-            raise InvalidError(f"Stub attribute {key} with value {value} is not a valid Modal object")
+            raise InvalidError(f"Stub attribute `{key}` with value {value!r} is not a valid Modal object")
 
     def _add_object(self, tag, obj):
         if self._container_app:
@@ -800,6 +800,7 @@ class _App(_Stub):
     We haven't announced this and started deprecating stubs yet, so this is for
     forward compatibility reasons.
     """
+
     pass
 
 
