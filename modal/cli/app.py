@@ -9,7 +9,6 @@ from rich.text import Text
 
 from modal._output import OutputManager, get_app_logs_loop
 from modal._utils.async_utils import synchronizer
-from modal.app import _list_apps
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -37,8 +36,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 
     column_names = ["App ID", "Name", "State", "Creation time", "Stop time"]
     rows: List[List[Union[Text, str]]] = []
-    apps = await _list_apps(env=env, client=client)
-    for app_stats in apps:
+    resp: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
+    for app_stats in resp.apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
 
         rows.append(
