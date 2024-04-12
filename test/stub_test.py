@@ -7,7 +7,7 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 from modal import App, Dict, Image, Mount, Queue, Secret, Stub, Volume, web_endpoint
-from modal.app import list_apps
+from modal.app import list_apps  # type: ignore
 from modal.config import config
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
