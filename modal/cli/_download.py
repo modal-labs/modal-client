@@ -9,8 +9,7 @@ from typing import Optional, Tuple, Union
 from click import UsageError
 
 from modal.network_file_system import _NetworkFileSystem
-from modal.volume import _Volume, FileEntry, FileEntryType
-from modal_proto import api_pb2
+from modal.volume import FileEntry, FileEntryType, _Volume
 
 
 async def _glob_download(
