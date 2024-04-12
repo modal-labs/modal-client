@@ -9,7 +9,7 @@ from typing import Optional, Tuple, Union
 from click import UsageError
 
 from modal.network_file_system import _NetworkFileSystem
-from modal.volume import _Volume
+from modal.volume import _Volume, FileEntry, FileEntryType
 from modal_proto import api_pb2
 
 
@@ -19,7 +19,7 @@ async def _glob_download(
     local_destination: Path,
     overwrite: bool,
 ):
-    q: asyncio.Queue[Tuple[Optional[Path], Optional[api_pb2.FileEntry]]] = asyncio.Queue()
+    q: asyncio.Queue[Tuple[Optional[Path], Optional[FileEntry]]] = asyncio.Queue()
     num_consumers = 10  # concurrency limit
 
     async def producer():
@@ -46,14 +46,14 @@ async def _glob_download(
             if output_path is None:
                 return
             try:
-                if entry.type == api_pb2.FileEntry.FILE:
+                if entry.type == FileEntryType.FILE:
                     output_path.parent.mkdir(parents=True, exist_ok=True)
                     with output_path.open("wb") as fp:
                         b = 0
                         async for chunk in volume.read_file(entry.path):
                             b += fp.write(chunk)
                     print(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
-                elif entry.type == api_pb2.FileEntry.DIRECTORY:
+                elif entry.type == FileEntryType.DIRECTORY:
                     output_path.mkdir(parents=True, exist_ok=True)
             finally:
                 q.task_done()
