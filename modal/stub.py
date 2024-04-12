@@ -3,7 +3,7 @@ import inspect
 import os
 import typing
 from pathlib import PurePosixPath
-from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Union
+from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
@@ -482,7 +482,9 @@ class _Stub:
         volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Mountpoints for Modal Volumes
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        memory: Optional[
+            Union[int, Tuple[int, int]]
+        ] = None,  # Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to additionally specify a hard limit in MiB.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[

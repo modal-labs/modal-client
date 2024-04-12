@@ -551,7 +551,7 @@ class _FunctionSpec:
     gpu: GPU_T
     cloud: Optional[str]
     cpu: Optional[float]
-    memory: Optional[int]
+    memory: Optional[Union[int, Tuple[int, int]]]
 
 
 class _Function(_Object, type_prefix="fu"):
@@ -592,7 +592,7 @@ class _Function(_Object, type_prefix="fu"):
         allow_cross_region_volumes: bool = False,
         volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
-        memory: Optional[int] = None,
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
@@ -806,6 +806,16 @@ class _Function(_Object, type_prefix="fu"):
             if cpu is not None and cpu < 0.25:
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else 0
+            if memory and isinstance(memory, int):
+                memory_mb = memory
+                memory_mb_max = 0  # no limit
+            elif memory and isinstance(memory, tuple):
+                memory_mb, memory_mb_max = memory
+                if memory_mb_max < memory_mb:
+                    raise ValueError(f"Cannot specify a memory limit lower than request: {memory_mb_max} < {memory_mb}")
+            else:
+                memory_mb = 0
+                memory_mb_max = 0
 
             timeout_secs = timeout
 
@@ -872,7 +882,9 @@ class _Function(_Object, type_prefix="fu"):
                 function_serialized=function_serialized or b"",
                 class_serialized=class_serialized or b"",
                 function_type=function_type,
-                resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory or 0),
+                resources=api_pb2.Resources(
+                    milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory_mb, memory_mb_max=memory_mb_max
+                ),
                 webhook_config=webhook_config,
                 shared_volume_mounts=network_file_system_mount_protos(
                     validated_network_file_systems, allow_cross_region_volumes
