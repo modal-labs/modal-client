@@ -2,7 +2,7 @@
 import pytest
 
 from modal import Stub
-from modal.app import _container_app, init_container_app
+from modal.app import _container_app, _init_container_app
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -14,14 +14,21 @@ def my_f_1(x):
 
 @skip_windows_unix_socket
 @pytest.mark.asyncio
-async def test_container_function_lazily_imported(unix_servicer, container_client):
-    unix_servicer.app_objects["ap-123"] = {
-        "my_f_1": "fu-123",
-        "my_d": "di-123",
-    }
-    unix_servicer.app_functions["fu-123"] = api_pb2.Function()
-
-    await init_container_app.aio(container_client, "ap-123")
+async def test_container_function_lazily_imported(container_client):
+    items = [
+        api_pb2.AppGetObjectsItem(
+            tag="my_f_1",
+            object=api_pb2.Object(
+                object_id="fu-123",
+                function_handle_metadata=api_pb2.FunctionHandleMetadata(),
+            ),
+        ),
+        api_pb2.AppGetObjectsItem(
+            tag="my_d",
+            object=api_pb2.Object(object_id="di-123"),
+        ),
+    ]
+    _init_container_app(items, "ap-123")
     stub = Stub()
 
     # This is normally done in _container_entrypoint
