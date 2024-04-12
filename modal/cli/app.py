@@ -8,7 +8,7 @@ from grpclib import GRPCError, Status
 from rich.text import Text
 
 from modal._output import OutputManager, get_app_logs_loop
-from modal._utils.async_utils import synchronizer, synchronize_api
+from modal._utils.async_utils import synchronizer
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env

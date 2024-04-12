@@ -306,7 +306,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
     async def AppList(self, stream):
-        request: api_pb2.AppListRequest = await stream.recv_message()
+        await stream.recv_message()
         apps = []
         for app_name, app_id in self.deployed_apps.items():
             apps.append(api_pb2.AppStats(name=app_name, description=app_name, app_id=app_id))
