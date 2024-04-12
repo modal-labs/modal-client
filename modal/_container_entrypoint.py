@@ -42,6 +42,19 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 
+@dataclass
+class ImportedFunction:
+    obj: Any
+    fun: Callable
+    stub: Optional[_Stub]
+    is_async: bool
+    is_generator: bool
+    data_format: int  # api_pb2.DataFormat
+    input_concurrency: int
+    is_auto_snapshot: bool
+    function: _Function
+
+
 class UserCodeEventLoop:
     """Run an async event loop as a context manager and handle signals.
 
@@ -261,19 +274,6 @@ async def call_function_async(
             imp_fun.input_concurrency
         ):
             await run_input(input_id, function_call_id, args, kwargs)
-
-
-@dataclass
-class ImportedFunction:
-    obj: Any
-    fun: Callable
-    stub: Optional[_Stub]
-    is_async: bool
-    is_generator: bool
-    data_format: int  # api_pb2.DataFormat
-    input_concurrency: int
-    is_auto_snapshot: bool
-    function: _Function
 
 
 def import_function(
