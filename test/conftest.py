@@ -305,6 +305,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_heartbeats[request.app_id] += 1
         await stream.send_message(Empty())
 
+    async def AppList(self, stream):
+        await stream.recv_message()
+        apps = []
+        for app_name, app_id in self.deployed_apps.items():
+            apps.append(api_pb2.AppStats(name=app_name, description=app_name, app_id=app_id))
+        await stream.send_message(api_pb2.AppListResponse(apps=apps))
+
     ### Checkpoint
 
     async def ContainerCheckpoint(self, stream):
