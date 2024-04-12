@@ -1076,7 +1076,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, unix_serv
     monkeypatch.setattr(synchronizer, "_translate_scalar_out", translate_out_spy)
 
     # don't do blobbing for this test
-    monkeypatch.setattr("modal._container_entrypoint.MAX_OBJECT_SIZE_BYTES", 1e100)
+    monkeypatch.setattr("modal._container_io_manager.MAX_OBJECT_SIZE_BYTES", 1e100)
 
     large_data_list = list(range(int(1e6)))  # large data set
 
@@ -1249,7 +1249,7 @@ def test_stop_fetching_inputs(unix_servicer):
 
 @skip_windows_unix_socket
 def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypatch):
-    monkeypatch.setattr("modal._container_entrypoint.HEARTBEAT_INTERVAL", 0.01)
+    monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     num_heartbeats = 0
 
     async def heartbeat_responder(servicer, stream):
@@ -1285,9 +1285,9 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
         numcalls += 1
         raise Exception("oops")
 
-    monkeypatch.setattr("modal._container_entrypoint.HEARTBEAT_INTERVAL", 0.01)
+    monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     monkeypatch.setattr(
-        "modal._container_entrypoint._FunctionIOManager._heartbeat_handle_cancellations", custom_heartbeater
+        "modal._container_io_manager._ContainerIOManager._heartbeat_handle_cancellations", custom_heartbeater
     )
 
     ret = _run_container(
