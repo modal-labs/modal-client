@@ -505,6 +505,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # 1. Enable lazy hydration for all objects
         # 2. Fully deprecate .new() objects
         if imp_fun.function:
+            _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
             dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             function_deps = imp_fun.function.deps(only_explicit_mounts=True)
             if len(function_deps) != len(dep_object_ids):
@@ -514,7 +515,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 )
             for object_id, obj in zip(dep_object_ids, function_deps):
                 metadata: Message = _container_app.object_handle_metadata[object_id]
-                obj._hydrate(object_id, client, metadata)
+                obj._hydrate(object_id, _client, metadata)
 
         # Identify all "enter" methods that need to run before we checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
