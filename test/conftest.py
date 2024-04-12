@@ -1016,7 +1016,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SharedVolumeListFilesStream(self, stream):
         req: api_pb2.SharedVolumeListFilesRequest = await stream.recv_message()
         for path in self.nfs_files[req.shared_volume_id].keys():
-            entry = api_pb2.SharedVolumeListFilesEntry(path=path)
+            entry = api_pb2.FileEntry(path=path)
             response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
             await stream.send_message(response)
 
@@ -1155,11 +1155,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if req.path != "**":
             raise NotImplementedError("Only '**' listing is supported.")
         for k, vol_file in self.volume_files[req.volume_id].items():
-            entries = [
-                api_pb2.VolumeListFilesEntry(
-                    path=k, type=api_pb2.VolumeListFilesEntry.FileType.FILE, size=len(vol_file.data)
-                )
-            ]
+            entries = [api_pb2.FileEntry(path=k, type=api_pb2.FileEntry.FileType.FILE, size=len(vol_file.data))]
             await stream.send_message(api_pb2.VolumeListFilesResponse(entries=entries))
 
     async def VolumePutFiles(self, stream):

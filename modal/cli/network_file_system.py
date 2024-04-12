@@ -29,9 +29,6 @@ from modal.environments import ensure_env
 from modal.network_file_system import _NetworkFileSystem
 from modal_proto import api_pb2
 
-FileType = api_pb2.SharedVolumeListFilesEntry.FileType
-
-
 nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
 
 
@@ -114,7 +111,7 @@ async def ls(
         table.add_column("type")
 
         for entry in entries:
-            filetype = "dir" if entry.type == FileType.DIRECTORY else "file"
+            filetype = "dir" if entry.type == api_pb2.FileEntry.FileType.DIRECTORY else "file"
             table.add_row(entry.path, filetype)
         console.print(table)
     else:
@@ -195,17 +192,8 @@ async def get(
     destination = Path(local_destination)
     volume = await _volume_from_name(volume_name)
 
-    def is_file_fn(entry):
-        return entry.type == FileType.FILE
-
     if "*" in remote_path:
-        await _glob_download(
-            volume,
-            is_file_fn,
-            remote_path,
-            destination,
-            force,
-        )
+        await _glob_download(volume, remote_path, destination, force)
         return
 
     if destination != PIPE_PATH:
