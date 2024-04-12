@@ -6,13 +6,12 @@ import pytest
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
-import modal.app
 from modal import App, Dict, Image, Queue, Stub, web_endpoint
+from modal.app import list_apps
 from modal.config import config
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_stub
-from modal.stub import list_apps
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2

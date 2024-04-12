@@ -9,10 +9,10 @@ from rich.text import Text
 
 from modal._output import OutputManager, get_app_logs_loop
 from modal._utils.async_utils import synchronizer
+from modal.app_utils import _list_apps
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.stub import _list_apps
 from modal_proto import api_pb2
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
