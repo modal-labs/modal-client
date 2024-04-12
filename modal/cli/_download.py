@@ -4,7 +4,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 from click import UsageError
 
@@ -14,7 +14,7 @@ from modal_proto import api_pb2
 
 
 async def _glob_download(
-    volume: _NetworkFileSystem | _Volume,
+    volume: Union[_NetworkFileSystem, _Volume],
     remote_glob_path: str,
     local_destination: Path,
     overwrite: bool,
