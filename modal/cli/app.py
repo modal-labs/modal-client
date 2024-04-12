@@ -27,15 +27,6 @@ APP_STATE_TO_MESSAGE = {
 }
 
 
-@synchronize_api
-async def list_apps(env: str, client: Optional[_Client] = None) -> List[api_pb2.AppStats]:
-    """List apps in a given Modal environment."""
-    if client is None:
-        client = await _Client.from_env()
-    resp: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
-    return list(resp.apps)
-
-
 @app_cli.command("list")
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
@@ -45,8 +36,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 
     column_names = ["App ID", "Name", "State", "Creation time", "Stop time"]
     rows: List[List[Union[Text, str]]] = []
-    apps = await _list_apps(env=env, client=client)
-    for app_stats in apps:
+    resp: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
+    for app_stats in resp.apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
 
         rows.append(
