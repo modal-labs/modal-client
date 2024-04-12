@@ -1,8 +1,5 @@
 # Copyright Modal Labs 2024
-from __future__ import annotations
-
 import asyncio
-import contextlib
 import json
 import math
 import os
@@ -10,9 +7,10 @@ import signal
 import time
 import traceback
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Set, Tuple
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Set, Tuple
 
 from grpclib import Status
+from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
@@ -26,9 +24,6 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InputCancellation
 from .functions import _stream_function_call_data
-
-if TYPE_CHECKING:
-    pass
 
 MAX_OUTPUT_BATCH_SIZE: int = 49
 
@@ -143,8 +138,8 @@ class _ContainerIOManager:
             return True
         return False
 
-    @contextlib.asynccontextmanager
-    async def heartbeats(self):
+    @asynccontextmanager
+    async def heartbeats(self) -> AsyncGenerator[None, None]:
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")
@@ -394,7 +389,7 @@ class _ContainerIOManager:
 
         return serialized_tb, tb_line_cache
 
-    @contextlib.asynccontextmanager
+    @asynccontextmanager
     async def handle_user_exception(self) -> AsyncGenerator[None, None]:
         """Sets the task as failed in a way where it's not retried.
 
@@ -428,7 +423,7 @@ class _ContainerIOManager:
             # Shut down the task gracefully
             raise UserException()
 
-    @contextlib.asynccontextmanager
+    @asynccontextmanager
     async def handle_input_exception(self, input_id, started_at: float) -> AsyncGenerator[None, None]:
         """Handle an exception while processing a function input."""
         try:
