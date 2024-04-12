@@ -12,6 +12,7 @@ from modal.config import config
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_stub
+from modal.stub import list_apps
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
@@ -366,3 +367,13 @@ def test_app(client):
 
     with app.run(client=client):
         square_modal.remote(42)
+
+
+def test_list_apps(client):
+    apps_0 = [app.name for app in list_apps(client=client)]
+    stub = Stub()
+    deploy_stub(stub, "foobar", client=client)
+    apps_1 = [app.name for app in list_apps(client=client)]
+
+    assert len(apps_1) == len(apps_0) + 1
+    assert set(apps_1) - set(apps_0) == set(["foobar"])

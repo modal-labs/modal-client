@@ -26,7 +26,7 @@ from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
-from .object import _Object
+from .object import _get_environment_name, _Object
 from .partial_function import PartialFunction, _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
 from .proxy import _Proxy
 from .retries import Retries
@@ -805,3 +805,15 @@ class _App(_Stub):
 
 
 App = synchronize_api(_App)
+
+
+
+async def _list_apps(env: Optional[str] = None, client: Optional[_Client] = None) -> List[api_pb2.AppStats]:
+    """List apps in a given Modal environment."""
+    if client is None:
+        client = await _Client.from_env()
+    resp: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=_get_environment_name(env)))
+    return list(resp.apps)
+
+
+list_apps = synchronize_api(_list_apps)
