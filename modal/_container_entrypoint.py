@@ -7,9 +7,8 @@ import signal
 import sys
 import threading
 import time
-from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Type
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Sequence, Type
 
 from google.protobuf.message import Message
 from synchronicity import Interface
@@ -452,7 +451,7 @@ def import_function(
 def call_lifecycle_functions(
     event_loop: UserCodeEventLoop,
     container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
-    funcs: Iterable[Callable],
+    funcs: Sequence[Callable],
 ) -> None:
     """Call function(s), can be sync or async, but any return values are ignored."""
     with container_io_manager.handle_user_exception():
@@ -520,7 +519,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify all "enter" methods that need to run before we checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
-            call_lifecycle_functions(event_loop, container_io_manager, pre_checkpoint_methods.values())
+            call_lifecycle_functions(event_loop, container_io_manager, list(pre_checkpoint_methods.values()))
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and innitialization. Checkpointed containers run from this point onwards.
@@ -542,7 +541,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Identify the "enter" methods to run after resuming from a checkpoint.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
-            call_lifecycle_functions(event_loop, container_io_manager, post_checkpoint_methods.values())
+            call_lifecycle_functions(event_loop, container_io_manager, list(post_checkpoint_methods.values()))
 
         # Execute the function.
         try:
@@ -568,7 +567,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 # Identify "exit" methods and run them.
                 if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
                     exit_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
-                    call_lifecycle_functions(event_loop, container_io_manager, exit_methods.values())
+                    call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
 
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
                 # commit errors.
