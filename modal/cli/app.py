@@ -9,6 +9,7 @@ from rich.text import Text
 
 from modal._output import OutputManager, get_app_logs_loop
 from modal._utils.async_utils import synchronizer
+from modal.app_utils import _list_apps
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -31,13 +32,12 @@ APP_STATE_TO_MESSAGE = {
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     """List all running or recently running Modal apps for the current account"""
-    client = await _Client.from_env()
     env = ensure_env(env)
 
     column_names = ["App ID", "Name", "State", "Creation time", "Stop time"]
     rows: List[List[Union[Text, str]]] = []
-    resp: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env))
-    for app_stats in resp.apps:
+    apps: List[api_pb2.AppStats] = await _list_apps(env)
+    for app_stats in apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
 
         rows.append(

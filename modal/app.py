@@ -8,6 +8,7 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import get_proto_oneof
+from .app_utils import _list_apps, list_apps  # noqa: F401
 from .client import _Client
 from .config import logger
 from .exception import InvalidError
