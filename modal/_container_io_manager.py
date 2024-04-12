@@ -33,6 +33,10 @@ class UserException(Exception):
     """Used to shut down the task gracefully."""
 
 
+class Sentinel:
+    """Used to get type-stubs to work with this object."""
+
+
 class _ContainerIOManager:
     """Synchronizes all RPC calls and network operations for a running container.
 
@@ -40,7 +44,7 @@ class _ContainerIOManager:
     Then we could potentially move a bunch of the global functions onto it.
     """
 
-    _GENERATOR_STOP_SENTINEL = object()
+    _GENERATOR_STOP_SENTINEL: Sentinel = Sentinel()
 
     def __init__(self, container_args: api_pb2.ContainerArguments, client: _Client):
         self.cancelled_input_ids: Set[str] = set()
