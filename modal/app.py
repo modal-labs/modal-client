@@ -59,6 +59,7 @@ class _ContainerApp:
         self.tag_to_object_id = {}
         self.object_handle_metadata = {}
         self.is_interactivity_enabled = False
+        self.function_def = None
         self.fetching_inputs = True
 
 
