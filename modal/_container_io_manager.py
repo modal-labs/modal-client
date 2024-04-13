@@ -7,7 +7,7 @@ import signal
 import time
 import traceback
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, List, Optional, Set, Tuple
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple
 
 from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -44,9 +44,10 @@ class _ContainerIOManager:
     Then we could potentially move a bunch of the global functions onto it.
     """
 
-    _GENERATOR_STOP_SENTINEL: Sentinel = Sentinel()
+    _GENERATOR_STOP_SENTINEL: ClassVar[Sentinel] = Sentinel()
+    _singleton: ClassVar[Optional["_ContainerIOManager"]] = None
 
-    def __init__(self, container_args: api_pb2.ContainerArguments, client: _Client):
+    def _init(self, container_args: api_pb2.ContainerArguments, client: _Client):
         self.cancelled_input_ids: Set[str] = set()
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
@@ -68,6 +69,11 @@ class _ContainerIOManager:
 
         self._client = client
         assert isinstance(self._client, _Client)
+
+    def __new__(cls, container_args: api_pb2.ContainerArguments, client: _Client) -> "_ContainerIOManager":
+        cls._singleton = super().__new__(cls)
+        cls._singleton._init(container_args, client)
+        return cls._singleton
 
     async def _run_heartbeat_loop(self):
         while 1:
