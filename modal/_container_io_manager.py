@@ -9,6 +9,7 @@ import traceback
 from pathlib import Path
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple
 
+from google.protobuf.empty_pb2 import Empty
 from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -23,7 +24,7 @@ from ._utils.grpc_utils import retry_transient_errors
 from .app import _container_app
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InputCancellation
+from .exception import InputCancellation, InvalidError
 
 MAX_OUTPUT_BATCH_SIZE: int = 49
 
@@ -66,6 +67,8 @@ class _ContainerIOManager:
         self._environment_name = container_args.environment_name
         self._waiting_for_checkpoint = False
         self._heartbeat_loop = None
+
+        self._is_interactivity_enabled = False
 
         self._client = client
         assert isinstance(self._client, _Client)
@@ -570,6 +573,30 @@ class _ContainerIOManager:
             else:
                 logger.debug(f"modal.Volume background commit success for {volume_id}.")
 
+    async def interact(self):
+        if self._is_interactivity_enabled:
+            # Currently, interactivity is enabled forever
+            return
+        self._is_interactivity_enabled = True
+
+        if not self.function_def.pty_info:
+            raise InvalidError(
+                "Interactivity is not enabled in this function. Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
+            )
+
+        if self.function_def.concurrency_limit > 1:
+            print(
+                "Warning: Interactivity is not supported on functions with concurrency > 1. You may experience unexpected behavior."
+            )
+
+        # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here
+        # todo(nathan): check if function interactivity is enabled
+        try:
+            await self._client.stub.FunctionStartPtyShell(Empty())
+        except Exception as e:
+            print("Error: Failed to start PTY shell.")
+            raise e
+
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
 
@@ -580,3 +607,14 @@ def is_local() -> bool:
     Returns `False` when executed from a Modal container in the cloud.
     """
     return not _ContainerIOManager._singleton
+
+
+async def _interact() -> None:
+    container_io_manager = _ContainerIOManager._singleton
+    if not container_io_manager:
+        raise InvalidError("Interactivity only works inside a Modal container.")
+    else:
+        await container_io_manager.interact()
+
+
+interact = synchronize_api(_interact)

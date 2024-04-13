@@ -4,6 +4,7 @@ import pytest
 from google.protobuf.empty_pb2 import Empty
 
 from modal import Stub, interact
+from modal._container_io_manager import ContainerIOManager
 from modal.app import _container_app, _init_container_app
 from modal_proto import api_pb2
 
@@ -43,6 +44,9 @@ async def test_container_function_lazily_imported(container_client):
 
 @skip_windows_unix_socket
 def test_interact(container_client, unix_servicer):
+    # Initialize container singleton
+    ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+
     with unix_servicer.intercept() as ctx:
         ctx.add_response("FunctionStartPtyShell", Empty())
-        interact(container_client)
+        interact()

@@ -23,12 +23,12 @@ from ._asgi import (
     webhook_asgi_app,
     wsgi_app_wrapper,
 )
-from ._container_io_manager import ContainerIOManager, UserException, _ContainerIOManager
+from ._container_io_manager import ContainerIOManager, UserException, _ContainerIOManager, interact
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize
 from ._utils.async_utils import TaskContext, synchronizer
 from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
-from .app import _container_app, _init_container_app, interact
+from .app import _container_app, _init_container_app
 from .client import Client, _Client
 from .cls import Cls
 from .config import logger

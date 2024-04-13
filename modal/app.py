@@ -1,17 +1,13 @@
 # Copyright Modal Labs 2022
 from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
 
-from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 
 from modal_proto import api_pb2
 
-from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import get_proto_oneof
 from .app_utils import _list_apps, list_apps  # noqa: F401
-from .client import _Client
 from .config import logger
-from .exception import InvalidError
 
 if TYPE_CHECKING:
     from .functions import _Function
@@ -92,38 +88,3 @@ def _init_container_app(
         logger.debug(f"Setting metadata for {item.object.object_id} ({item.tag})")
         if item.tag:
             _container_app.tag_to_object_id[item.tag] = item.object.object_id
-
-
-async def _interact(client: Optional[_Client] = None) -> None:
-    if _container_app.is_interactivity_enabled:
-        # Currently, interactivity is enabled forever
-        return
-    _container_app.is_interactivity_enabled = True
-
-    if not client:
-        client = await _Client.from_env()
-
-    if client.client_type != api_pb2.CLIENT_TYPE_CONTAINER:
-        raise InvalidError("Interactivity only works inside a Modal Container.")
-
-    if _container_app.function_def is not None:
-        if not _container_app.function_def.pty_info:
-            raise InvalidError(
-                "Interactivity is not enabled in this function. Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
-            )
-
-        if _container_app.function_def.concurrency_limit > 1:
-            print(
-                "Warning: Interactivity is not supported on functions with concurrency > 1. You may experience unexpected behavior."
-            )
-
-    # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here
-    # todo(nathan): check if function interactivity is enabled
-    try:
-        await client.stub.FunctionStartPtyShell(Empty())
-    except Exception as e:
-        print("Error: Failed to start PTY shell.")
-        raise e
-
-
-interact = synchronize_api(_interact)
