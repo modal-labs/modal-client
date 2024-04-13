@@ -18,12 +18,12 @@ from ._serialization import deserialize, deserialize_data_format, serialize, ser
 from ._traceback import extract_traceback
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
+from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import retry_transient_errors
 from .app import _container_app
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InputCancellation
-from .functions import _stream_function_call_data
 
 MAX_OUTPUT_BATCH_SIZE: int = 49
 
