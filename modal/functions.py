@@ -16,7 +16,6 @@ from typing import (
     Collection,
     Dict,
     List,
-    Literal,
     Optional,
     Sequence,
     Set,
@@ -52,7 +51,7 @@ from ._utils.blob_utils import (
     blob_download,
     blob_upload,
 )
-from ._utils.function_utils import FunctionInfo, get_referred_objects, is_async
+from ._utils.function_utils import FunctionInfo, get_referred_objects, is_async, _stream_function_call_data
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 from ._utils.mount_utils import validate_mount_points, validate_volumes
 from .app import is_local
@@ -178,45 +177,6 @@ async def _create_input(args, kwargs, client, idx: Optional[int] = None) -> api_
             input=api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE),
             idx=idx,
         )
-
-
-async def _stream_function_call_data(
-    client, function_call_id: str, variant: Literal["data_in", "data_out"]
-) -> AsyncIterator[Any]:
-    """Read from the `data_in` or `data_out` stream of a function call."""
-    last_index = 0
-    retries_remaining = 10
-
-    if variant == "data_in":
-        stub_fn = client.stub.FunctionCallGetDataIn
-    elif variant == "data_out":
-        stub_fn = client.stub.FunctionCallGetDataOut
-    else:
-        raise ValueError(f"Invalid variant {variant}")
-
-    while True:
-        req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
-        try:
-            async for chunk in unary_stream(stub_fn, req):
-                if chunk.index <= last_index:
-                    continue
-                last_index = chunk.index
-                if chunk.data_blob_id:
-                    message_bytes = await blob_download(chunk.data_blob_id, client.stub)
-                else:
-                    message_bytes = chunk.data
-                message = deserialize_data_format(message_bytes, chunk.data_format, client)
-                yield message
-        except (GRPCError, StreamTerminatedError) as exc:
-            if retries_remaining > 0:
-                retries_remaining -= 1
-                if isinstance(exc, GRPCError):
-                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                        await asyncio.sleep(1.0)
-                        continue
-                elif isinstance(exc, StreamTerminatedError):
-                    continue
-            raise
 
 
 @dataclass
