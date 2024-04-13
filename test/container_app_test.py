@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2022
 import pytest
 
-from modal import Stub
+from google.protobuf.empty_pb2 import Empty
+
+from modal import Stub, interact
 from modal.app import _container_app, _init_container_app
 from modal_proto import api_pb2
 
@@ -37,3 +39,10 @@ async def test_container_function_lazily_imported(container_client):
     # Now, let's create my_f after the app started running and make sure it works
     my_f_container = stub.function()(my_f_1)
     assert await my_f_container.remote.aio(42) == 1764  # type: ignore
+
+
+@skip_windows_unix_socket
+def test_interact(container_client, unix_servicer):
+    with unix_servicer.intercept() as ctx:
+        ctx.add_response("FunctionStartPtyShell", Empty())
+        interact(container_client)
