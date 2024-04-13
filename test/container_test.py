@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
-from modal import Client
+from modal import Client, is_local
 from modal._container_entrypoint import UserException, main
 from modal._serialization import (
     deserialize,
@@ -1394,3 +1394,11 @@ def test_sigint_termination_exit_handler(servicer, exit_type):
 def test_sandbox(unix_servicer, event_loop):
     ret = _run_container(unix_servicer, "test.supports.functions", "sandbox_f")
     assert _unwrap_scalar(ret) == "sb-123"
+
+
+@skip_windows_unix_socket
+def test_is_local(unix_servicer, event_loop):
+    assert is_local() == True
+
+    ret = _run_container(unix_servicer, "test.supports.functions", "is_local_f")
+    assert _unwrap_scalar(ret) == False
