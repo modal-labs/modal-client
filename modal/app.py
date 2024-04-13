@@ -65,12 +65,10 @@ class _ContainerApp:
 
 def _reset_container_app():
     # Just used for tests
-    global _is_container_app, _container_app
-    _is_container_app = False
+    global _container_app
     _container_app.__init__()  # type: ignore
 
 
-_is_container_app = False
 _container_app = _ContainerApp()
 
 
@@ -81,9 +79,8 @@ def _init_container_app(
     function_def: Optional[api_pb2.Function] = None,
 ):
     """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
-    global _container_app, _is_container_app
+    global _container_app
 
-    _is_container_app = True
     _container_app.app_id = app_id
     _container_app.environment_name = environment_name
     _container_app.function_def = function_def
@@ -130,12 +127,3 @@ async def _interact(client: Optional[_Client] = None) -> None:
 
 
 interact = synchronize_api(_interact)
-
-
-def is_local() -> bool:
-    """Returns if we are currently on the machine launching/deploying a Modal app
-
-    Returns `True` when executed locally on the user's machine.
-    Returns `False` when executed from a Modal container in the cloud.
-    """
-    return not _is_container_app

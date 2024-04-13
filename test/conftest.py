@@ -28,6 +28,7 @@ from grpclib import GRPCError, Status
 
 import modal._serialization
 from modal import __version__, config
+from modal._container_io_manager import _ContainerIOManager
 from modal._serialization import serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.grpc_testing import patch_mock_servicer
@@ -1383,6 +1384,7 @@ def reset_container_app():
         yield
     finally:
         _reset_container_app()
+        _ContainerIOManager._reset_singleton()
 
 
 @pytest.fixture

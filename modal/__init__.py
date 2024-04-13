@@ -9,8 +9,9 @@ if sys.version_info[:2] >= (3, 13):
 from modal_version import __version__
 
 try:
+    from ._container_io_manager import is_local
     from ._tunnel import Tunnel, forward
-    from .app import interact, is_local
+    from .app import interact
     from .client import Client
     from .cloud_bucket_mount import CloudBucketMount
     from .cls import Cls

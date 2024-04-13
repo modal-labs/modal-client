@@ -75,6 +75,11 @@ class _ContainerIOManager:
         cls._singleton._init(container_args, client)
         return cls._singleton
 
+    @classmethod
+    def _reset_singleton(cls):
+        """Only used for tests."""
+        cls._singleton = None
+
     async def _run_heartbeat_loop(self):
         while 1:
             t0 = time.monotonic()
@@ -567,3 +572,11 @@ class _ContainerIOManager:
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
+
+def is_local() -> bool:
+    """Returns if we are currently on the machine launching/deploying a Modal app
+
+    Returns `True` when executed locally on the user's machine.
+    Returns `False` when executed from a Modal container in the cloud.
+    """
+    return not _ContainerIOManager._singleton
