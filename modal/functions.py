@@ -28,7 +28,6 @@ from typing import (
 from aiostream import pipe, stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
-from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
 
 from modal_proto import api_grpc, api_pb2
@@ -51,8 +50,8 @@ from ._utils.blob_utils import (
     blob_download,
     blob_upload,
 )
-from ._utils.function_utils import FunctionInfo, get_referred_objects, is_async, _stream_function_call_data
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.function_utils import FunctionInfo, _stream_function_call_data, get_referred_objects, is_async
+from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_mount_points, validate_volumes
 from .app import is_local
 from .call_graph import InputInfo, _reconstruct_call_graph

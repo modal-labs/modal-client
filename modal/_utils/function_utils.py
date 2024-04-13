@@ -11,13 +11,18 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, AsyncIterator, Callable, List, Literal, Optional, Set, Type
 
+from grpclib import GRPCError
+from grpclib.exceptions import StreamTerminatedError
+
 from modal_proto import api_pb2
 
-from .._serialization import serialize
+from .._serialization import deserialize_data_format, serialize
 from ..config import config, logger
 from ..exception import InvalidError, ModuleNotMountable
 from ..mount import ROOT_DIR, _Mount
 from ..object import Object
+from .blob_utils import blob_download
+from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
 SYS_PREFIXES = {
     Path(p)
