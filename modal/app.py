@@ -58,32 +58,25 @@ class _ContainerApp:
         self.fetching_inputs = True
 
 
-def _reset_container_app():
-    # Just used for tests
-    global _container_app
-    _container_app.__init__()  # type: ignore
-
-
-_container_app = _ContainerApp()
-
-
 def _init_container_app(
     items: List[api_pb2.AppGetObjectsItem],
     app_id: str,
     environment_name: str = "",
     function_def: Optional[api_pb2.Function] = None,
-):
+) -> _ContainerApp:
     """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
-    global _container_app
+    container_app = _ContainerApp()
 
-    _container_app.app_id = app_id
-    _container_app.environment_name = environment_name
-    _container_app.function_def = function_def
-    _container_app.tag_to_object_id = {}
-    _container_app.object_handle_metadata = {}
+    container_app.app_id = app_id
+    container_app.environment_name = environment_name
+    container_app.function_def = function_def
+    container_app.tag_to_object_id = {}
+    container_app.object_handle_metadata = {}
     for item in items:
         handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-        _container_app.object_handle_metadata[item.object.object_id] = handle_metadata
+        container_app.object_handle_metadata[item.object.object_id] = handle_metadata
         logger.debug(f"Setting metadata for {item.object.object_id} ({item.tag})")
         if item.tag:
-            _container_app.tag_to_object_id[item.tag] = item.object.object_id
+            container_app.tag_to_object_id[item.tag] = item.object.object_id
+
+    return container_app

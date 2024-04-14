@@ -5,7 +5,7 @@ from google.protobuf.empty_pb2 import Empty
 
 from modal import Stub, interact
 from modal._container_io_manager import ContainerIOManager
-from modal.app import _container_app, _init_container_app
+from modal.app import _init_container_app
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -31,11 +31,11 @@ async def test_container_function_lazily_imported(container_client):
             object=api_pb2.Object(object_id="di-123"),
         ),
     ]
-    _init_container_app(items, "ap-123")
+    container_app = _init_container_app(items, "ap-123")
     stub = Stub()
 
     # This is normally done in _container_entrypoint
-    stub._init_container(container_client, _container_app)
+    stub._init_container(container_client, container_app)
 
     # Now, let's create my_f after the app started running and make sure it works
     my_f_container = stub.function()(my_f_1)
