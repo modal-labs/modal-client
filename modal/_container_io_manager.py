@@ -21,7 +21,6 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import retry_transient_errors
-from .app import _container_app
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InputCancellation, InvalidError
@@ -69,6 +68,7 @@ class _ContainerIOManager:
         self._heartbeat_loop = None
 
         self._is_interactivity_enabled = False
+        self._fetching_inputs = True
 
         self._client = client
         assert isinstance(self._client, _Client)
@@ -293,7 +293,7 @@ class _ContainerIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         iteration = 0
-        while not eof_received and _container_app.fetching_inputs:
+        while not eof_received and self._fetching_inputs:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self._input_concurrency
@@ -596,6 +596,11 @@ class _ContainerIOManager:
         except Exception as e:
             print("Error: Failed to start PTY shell.")
             raise e
+
+    @classmethod
+    def stop_fetching_inputs(cls):
+        assert cls._singleton
+        cls._singleton._fetching_inputs = False
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)

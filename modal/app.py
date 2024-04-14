@@ -47,7 +47,6 @@ class _ContainerApp:
     # if true, there's an active PTY shell session connected to this process.
     is_interactivity_enabled: bool
     function_def: Optional[api_pb2.Function]
-    fetching_inputs: bool
 
     def __init__(self):
         self.app_id = None
