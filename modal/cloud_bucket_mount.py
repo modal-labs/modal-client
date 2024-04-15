@@ -85,10 +85,14 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
     cloud_bucket_mounts: List[api_pb2.CloudBucketMount] = []
 
     for path, mount in mounts:
-        # TODO: in future this relationship between endpoint URL and type will not hold true.
-        if mount.bucket_endpoint_url:
+        # crude mapping from mount arguments to type
+        # TODO(Jonathon): consider not having a type
+        if mount.bucket_endpoint_url and "r2.cloudflarestorage.com" in mount.bucket_endpoint_url:
             bucket_type = api_pb2.CloudBucketMount.BucketType.R2
+        elif mount.bucket_endpoint_url and "storage.googleapis.com" in mount.bucket_endpoint_url:
+            bucket_type = api_pb2.CloudBucketMount.BucketType.GCP
         else:
+            # just assume S3; this is backwards and forwards compatible.
             bucket_type = api_pb2.CloudBucketMount.BucketType.S3
 
         if mount.requester_pays and not mount.secret:
