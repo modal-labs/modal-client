@@ -24,6 +24,7 @@ from .object import (
     live_method,
     live_method_gen,
 )
+from .volume import FileEntry
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
@@ -293,7 +294,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 yield data
 
     @live_method_gen
-    async def iterdir(self, path: str) -> AsyncIterator[api_pb2.SharedVolumeListFilesEntry]:
+    async def iterdir(self, path: str) -> AsyncIterator[FileEntry]:
         """Iterate over all files in a directory in the network file system.
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)
@@ -303,7 +304,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self.object_id, path=path)
         async for batch in unary_stream(self._client.stub.SharedVolumeListFilesStream, req):
             for entry in batch.entries:
-                yield entry
+                yield FileEntry._from_proto(entry)
 
     @live_method
     async def add_local_file(
@@ -342,7 +343,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=True)
 
     @live_method
-    async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
+    async def listdir(self, path: str) -> List[FileEntry]:
         """List all files in a directory in the network file system.
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)
