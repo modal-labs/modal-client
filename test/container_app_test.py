@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2022
 import pytest
+from typing import Dict
 
 from google.protobuf.empty_pb2 import Empty
+from google.protobuf.message import Message
 
 from modal import Stub, interact
 from modal._container_io_manager import ContainerIOManager
@@ -18,11 +20,11 @@ def my_f_1(x):
 @skip_windows_unix_socket
 @pytest.mark.asyncio
 async def test_container_function_lazily_imported(container_client):
-    tag_to_object_id = {
+    tag_to_object_id: Dict[str, str] = {
         "my_f_1": "fu-123",
         "my_d": "di-123",
     }
-    object_handle_metadata = {
+    object_handle_metadata: Dict[str, Message] = {
         "fu-123": api_pb2.FunctionHandleMetadata(),
     }
     container_app = _ContainerApp(
