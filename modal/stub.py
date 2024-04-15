@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import inspect
-import os
 import typing
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Union
@@ -18,6 +17,7 @@ from ._utils.function_utils import FunctionInfo
 from ._utils.mount_utils import validate_volumes
 from .app import _ContainerApp, _LocalApp
 from .client import _Client
+from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
@@ -479,7 +479,9 @@ class _Stub:
         network_file_systems: Dict[
             Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
-        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Mountpoints for Modal Volumes
+        volumes: Dict[
+            Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
+        ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
@@ -615,7 +617,9 @@ class _Stub:
         network_file_systems: Dict[
             Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
-        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Mountpoints for Modal Volumes
+        volumes: Dict[
+            Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
+        ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
@@ -714,7 +718,9 @@ class _Stub:
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         block_network: bool = False,  # Whether to block network access
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Volumes to mount in the sandbox.
+        volumes: Dict[
+            Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
+        ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         _allow_background_volume_commits: bool = False,
         pty_info: Optional[api_pb2.PTYInfo] = None,
     ) -> _Sandbox:
