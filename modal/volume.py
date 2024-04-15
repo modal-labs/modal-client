@@ -42,6 +42,7 @@ from ._utils.blob_utils import (
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from .client import _Client
 from .config import logger
+from .exception import deprecation_error
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 # Max duration for uploading to volumes files
@@ -74,6 +75,12 @@ class FileEntry:
             type=FileEntryType(proto.type),
             mtime=proto.mtime,
             size=proto.size,
+        )
+
+    def __getattr__(self, name: str):
+        deprecation_error(
+            (2024, 4, 15),
+            f"The FileEntry dataclass was introduced to replace a private Protobuf message. This dataclass does not have the {name} attribute.",
         )
 
 
