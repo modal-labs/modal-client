@@ -12,6 +12,10 @@ def test_dict_app(servicer, client):
     assert d["foo"] == 47
     assert d.len() == 2
 
+    assert sorted(d.keys()) == ["foo", "xyz"]
+    assert sorted(d.values()) == [47, 123]
+    assert sorted(d.items()) == [("foo", 47), ("xyz", 123)]
+
     d.clear()
     assert d.len() == 0
     with pytest.raises(KeyError):
