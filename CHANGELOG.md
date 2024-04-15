@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.65 (2024-04-15)
+
+* Cloudflare R2 bucket support added to `modal.CloudBucketMount`
+
+
+
 ### 0.62.55 (2024-04-11)
 
 - When Volume reloads fail due to an open file, we now try to identify and report the relevant path. Note that there may be some circumstances in which we are unable to identify the specific file blocking a reload and will report a generic error message in that case.
