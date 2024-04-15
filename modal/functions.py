@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 import time
+import typing
 import warnings
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -15,9 +16,7 @@ from typing import (
     Callable,
     Collection,
     Dict,
-    Generator,
     Iterable,
-    Iterator,
     List,
     Literal,
     Optional,
@@ -45,9 +44,8 @@ from ._resolver import Resolver
 from ._serialization import deserialize, deserialize_data_format, serialize
 from ._traceback import append_modal_tb
 from ._utils.async_utils import (
-    NestedAsyncCalls,
+    AsyncOrSyncIteratable,
     queue_batch_iterator,
-    run_generator_sync,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -1289,7 +1287,7 @@ class _Function(_Object, type_prefix="fu"):
         kwargs={},  # any extra keyword arguments for the function
         order_outputs: bool = True,  # return outputs in order
         return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
-    ) -> Generator[Any, None, None]:
+    ) -> AsyncOrSyncIteratable:
         """Parallel map over a set of inputs.
 
         Takes one iterator argument per argument in the function being mapped over.
@@ -1326,17 +1324,13 @@ class _Function(_Object, type_prefix="fu"):
             print(list(my_func.map(range(3), return_exceptions=True)))
         ```
         """
-        try:
-            for output in run_generator_sync(
-                self._map_async(
-                    *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
-                )
-            ):
-                yield output
-        except NestedAsyncCalls:
-            raise InvalidError(
-                "You can't run Function.map() or Function.for_each() from an async function. Use Function.map.aio()/Function.for_each.aio() instead."
-            )
+
+        return AsyncOrSyncIteratable(
+            self._map_async(
+                *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+            ),
+            nested_async_message="You can't iter(Function.map()) or Function.for_each() from an async function. Use async for ... Function.map.aio() or Function.for_each.aio() instead.",
+        )
 
     @synchronizer.nowrap
     @warn_if_generator_is_not_consumed(function_name="Function.map.aio")
@@ -1403,7 +1397,7 @@ class _Function(_Object, type_prefix="fu"):
         kwargs={},
         order_outputs: bool = True,
         return_exceptions: bool = False,
-    ):
+    ) -> typing.AsyncIterable[Any]:
         raw_input_queue: Any = SynchronizedQueue()  # type: ignore
         raw_input_queue.init()
 
@@ -1429,7 +1423,7 @@ class _Function(_Object, type_prefix="fu"):
         kwargs={},
         order_outputs: bool = True,
         return_exceptions: bool = False,
-    ) -> Iterator[Any]:
+    ) -> AsyncOrSyncIteratable:
         """Like `map`, but spreads arguments over multiple function arguments.
 
         Assumes every input is a sequence (e.g. a tuple).
@@ -1446,17 +1440,12 @@ class _Function(_Object, type_prefix="fu"):
             assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
         ```
         """
-        try:
-            for output in run_generator_sync(
-                self._starmap_async(
-                    input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
-                ),
-            ):
-                yield output
-        except NestedAsyncCalls:
-            raise InvalidError(
-                "You can't run Function.map() or Function.for_each() from an async function. Use Function.map.aio()/Function.for_each.aio() instead."
-            )
+        return AsyncOrSyncIteratable(
+            self._starmap_async(
+                input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+            ),
+            nested_async_message="You can't run Function.map() or Function.for_each() from an async function. Use Function.map.aio()/Function.for_each.aio() instead.",
+        )
 
     @synchronizer.no_io_translation
     @live_method

@@ -12,6 +12,7 @@ from typing import Any, AsyncGenerator, Callable, Iterator, List, Optional, Set,
 import synchronicity
 from typing_extensions import ParamSpec
 
+from ..exception import InvalidError
 from .logger import logger
 
 synchronizer = synchronicity.Synchronizer()
@@ -267,7 +268,7 @@ class _WarnIfGeneratorIsNotConsumed:
 
     def __aiter__(self):
         self.iterated = True
-        return self.gen
+        return self.gen.__aiter__()
 
     async def __anext__(self):
         self.iterated = True
@@ -292,16 +293,11 @@ class _WarnIfGeneratorIsNotConsumed:
 synchronize_api(_WarnIfGeneratorIsNotConsumed)
 
 
-class _WarnIfBlockingGeneratorIsNotConsumed:
-    def __init__(self, gen, function_name: str):
-        self.gen = gen
-        self.function_name = function_name
-        self.iterated = False
-        self.warned = False
-
+class _WarnIfNonWrappedGeneratorIsNotConsumed(_WarnIfGeneratorIsNotConsumed):
+    # used for non-synchronicity-wrapped generators and iterators
     def __iter__(self):
         self.iterated = True
-        return self.gen
+        return iter(self.gen)
 
     def __next__(self):
         self.iterated = True
@@ -310,17 +306,6 @@ class _WarnIfBlockingGeneratorIsNotConsumed:
     def send(self, value):
         self.iterated = True
         return self.gen.send(value)
-
-    def __repr__(self):
-        return repr(self.gen)
-
-    def __del__(self):
-        if not self.iterated and not self.warned:
-            self.warned = True
-            logger.warning(
-                f"Warning: the results of a call to {self.function_name} was not consumed, so the call will never be executed."
-                f" Consider a for-loop like `for x in {self.function_name}(...)` or unpacking the generator using `list(...)`"
-            )
 
 
 def warn_if_generator_is_not_consumed(function_name: Optional[str] = None):
@@ -334,11 +319,35 @@ def warn_if_generator_is_not_consumed(function_name: Optional[str] = None):
             if inspect.isasyncgen(gen):
                 return _WarnIfGeneratorIsNotConsumed(gen, presented_func_name)
             else:
-                return _WarnIfBlockingGeneratorIsNotConsumed(gen, presented_func_name)
+                return _WarnIfNonWrappedGeneratorIsNotConsumed(gen, presented_func_name)
 
         return f_wrapped
 
     return decorator
+
+
+class AsyncOrSyncIteratable:
+    """Compatibility class for non-synchronicity wrapped async iterables to get
+    both async and sync interfaces in the same way that synchronicity does (but on the main thread)
+    so they can be "lazily" iterated using either `for _ in x` or `async for _ in x`
+
+    nested_async_message is raised as an InvalidError if the async variant is called
+    from an already async context, since that would otherwise deadlock the event loop
+    """
+
+    def __init__(self, async_iterable: typing.AsyncIterable[Any], nested_async_message):
+        self._async_iterable = async_iterable
+        self.nested_async_message = nested_async_message
+
+    def __aiter__(self):
+        return self._async_iterable
+
+    def __iter__(self):
+        try:
+            for output in run_generator_sync(self._async_iterable):  # type: ignore
+                yield output
+        except NestedAsyncCalls:
+            raise InvalidError(self.nested_async_message)
 
 
 _shutdown_tasks = []

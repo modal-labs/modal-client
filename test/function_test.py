@@ -763,7 +763,10 @@ async def test_non_aio_map_in_async_caller_error(client):
                 pass
 
         # using .aio should be ok:
-        res = []
-        async for r in dummy_function.map.aio([1, 2, 3]):
-            res.append(r)
+        res = [r async for r in dummy_function.map.aio([1, 2, 3])]
         assert res == [1, 4, 9]
+
+        # we might want to deprecate this syntax (async for ... in map without .aio),
+        # but we support it for backwards compatibility for now:
+        res = [r async for r in dummy_function.map([1, 2, 4])]
+        assert res == [1, 4, 16]
