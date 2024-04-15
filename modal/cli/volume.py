@@ -28,7 +28,6 @@ from modal.environments import ensure_env
 from modal.volume import _Volume, _VolumeUploadContextManager
 from modal_proto import api_pb2
 
-FileType = api_pb2.VolumeListFilesEntry.FileType
 PIPE_PATH = Path("-")
 
 volume_cli = Typer(
@@ -104,11 +103,8 @@ async def get(
     destination = Path(local_destination)
     volume = await _Volume.lookup(volume_name, environment_name=env)
 
-    def is_file_fn(entry):
-        return entry.type == FileType.FILE
-
     if "*" in remote_path:
-        await _glob_download(volume, is_file_fn, remote_path, destination, force)
+        await _glob_download(volume, remote_path, destination, force)
         return
 
     if destination != PIPE_PATH:
@@ -186,9 +182,9 @@ async def ls(
 
         locale_tz = datetime.now().astimezone().tzinfo
         for entry in entries:
-            if entry.type == FileType.DIRECTORY:
+            if entry.type == api_pb2.FileEntry.FileType.DIRECTORY:
                 filetype = "dir"
-            elif entry.type == FileType.SYMLINK:
+            elif entry.type == api_pb2.FileEntry.FileType.SYMLINK:
                 filetype = "link"
             else:
                 filetype = "file"
