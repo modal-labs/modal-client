@@ -69,7 +69,7 @@ class _CloudBucketMount:
 
     bucket_name: str
     # Endpoint URL is used to support Cloudflare R2.
-    bucket_endpoint_url: Optional[str]
+    bucket_endpoint_url: Optional[str] = None
 
     # Credentials used to access a cloud bucket.
     # If the bucket is private, the secret **must** contain AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
