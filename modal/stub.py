@@ -15,7 +15,7 @@ from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo
 from ._utils.mount_utils import validate_volumes
-from .app import _ContainerApp, _LocalApp
+from .app import RunningApp
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls
@@ -116,8 +116,7 @@ class _Stub:
     _volumes: Dict[Union[str, PurePosixPath], _Volume]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, _LocalEntrypoint]
-    _container_app: Optional[_ContainerApp]
-    _local_app: Optional[_LocalApp]
+    _running_app: Optional[RunningApp]
     _client: Optional[_Client]
     _all_stubs: ClassVar[Dict[Optional[str], List["_Stub"]]] = {}
 
@@ -173,8 +172,7 @@ class _Stub:
         self._volumes = volumes
         self._local_entrypoints = {}
         self._web_endpoints = []
-        self._local_app = None  # when this is the launcher process
-        self._container_app = None  # when this is inside a container
+        self._running_app = None  # Set inside container, OR during the time an app is running locally
         self._client = None
 
         # Register this stub. This is used to look up the stub in the container, when we can't get it from the function
@@ -189,18 +187,16 @@ class _Stub:
     def is_interactive(self) -> bool:
         """Whether the current app for the stub is running in interactive mode."""
         # return self._name
-        if self._local_app:
-            return self._local_app.interactive
+        if self._running_app:
+            return self._running_app.interactive
         else:
             return False
 
     @property
     def app_id(self) -> Optional[str]:
         """Return the app_id, if the stub is running."""
-        if self._container_app:
-            return self._container_app.app_id
-        elif self._local_app:
-            return self._local_app.app_id
+        if self._running_app:
+            return self._running_app.app_id
         else:
             return None
 
@@ -217,12 +213,12 @@ class _Stub:
             raise InvalidError(f"Stub attribute `{key}` with value {value!r} is not a valid Modal object")
 
     def _add_object(self, tag, obj):
-        if self._container_app:
+        if self._running_app:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the stub.
-            if tag in self._container_app.tag_to_object_id:
-                object_id: str = self._container_app.tag_to_object_id[tag]
-                metadata: Message = self._container_app.object_handle_metadata[object_id]
+            if tag in self._running_app.tag_to_object_id:
+                object_id: str = self._running_app.tag_to_object_id[tag]
+                metadata: Message = self._running_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, self._client, metadata)
 
         self._indexed_objects[tag] = obj
@@ -303,14 +299,14 @@ class _Stub:
         deprecation_error((2023, 11, 8), _Stub.is_inside.__doc__)
 
     @asynccontextmanager
-    async def _set_local_app(self, client: _Client, app: _LocalApp) -> AsyncGenerator[None, None]:
+    async def _set_local_app(self, client: _Client, app: RunningApp) -> AsyncGenerator[None, None]:
         self._client = client
-        self._local_app = app
+        self._running_app = app
         try:
             yield
         finally:
             self._client = None
-            self._local_app = None
+            self._running_app = None
 
     @asynccontextmanager
     async def run(
@@ -365,15 +361,15 @@ class _Stub:
 
         self._add_object(function.tag, function)
 
-    def _init_container(self, client: _Client, container_app: _ContainerApp):
+    def _init_container(self, client: _Client, running_app: RunningApp):
         self._client = client
-        self._container_app = container_app
+        self._running_app = running_app
 
         # Hydrate objects on stub
-        for tag, object_id in container_app.tag_to_object_id.items():
+        for tag, object_id in running_app.tag_to_object_id.items():
             if tag in self._indexed_objects:
                 obj = self._indexed_objects[tag]
-                handle_metadata = container_app.object_handle_metadata[object_id]
+                handle_metadata = running_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, client, handle_metadata)
 
     @property
@@ -730,13 +726,9 @@ class _Stub:
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
-        if self._local_app:
-            app_id = self._local_app.app_id
-            environment_name = self._local_app.environment_name
-            client = self._client
-        elif self._container_app:
-            app_id = self._container_app.app_id
-            environment_name = self._container_app.environment_name
+        if self._running_app:
+            app_id = self._running_app.app_id
+            environment_name = self._running_app.environment_name
             client = self._client
         else:
             raise InvalidError("`stub.spawn_sandbox` requires a running app.")
