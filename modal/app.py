@@ -1,17 +1,13 @@
 # Copyright Modal Labs 2022
 from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
 
-from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 
 from modal_proto import api_pb2
 
-from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import get_proto_oneof
 from .app_utils import _list_apps, list_apps  # noqa: F401
-from .client import _Client
 from .config import logger
-from .exception import InvalidError
 
 if TYPE_CHECKING:
     from .functions import _Function
@@ -51,7 +47,6 @@ class _ContainerApp:
     # if true, there's an active PTY shell session connected to this process.
     is_interactivity_enabled: bool
     function_def: Optional[api_pb2.Function]
-    fetching_inputs: bool
 
     def __init__(self):
         self.app_id = None
@@ -63,79 +58,25 @@ class _ContainerApp:
         self.fetching_inputs = True
 
 
-def _reset_container_app():
-    # Just used for tests
-    global _is_container_app, _container_app
-    _is_container_app = False
-    _container_app.__init__()  # type: ignore
-
-
-_is_container_app = False
-_container_app = _ContainerApp()
-
-
 def _init_container_app(
     items: List[api_pb2.AppGetObjectsItem],
     app_id: str,
     environment_name: str = "",
     function_def: Optional[api_pb2.Function] = None,
-):
+) -> _ContainerApp:
     """Used by the container to bootstrap the app and all its objects. Not intended to be called by Modal users."""
-    global _container_app, _is_container_app
+    container_app = _ContainerApp()
 
-    _is_container_app = True
-    _container_app.app_id = app_id
-    _container_app.environment_name = environment_name
-    _container_app.function_def = function_def
-    _container_app.tag_to_object_id = {}
-    _container_app.object_handle_metadata = {}
+    container_app.app_id = app_id
+    container_app.environment_name = environment_name
+    container_app.function_def = function_def
+    container_app.tag_to_object_id = {}
+    container_app.object_handle_metadata = {}
     for item in items:
         handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-        _container_app.object_handle_metadata[item.object.object_id] = handle_metadata
+        container_app.object_handle_metadata[item.object.object_id] = handle_metadata
         logger.debug(f"Setting metadata for {item.object.object_id} ({item.tag})")
         if item.tag:
-            _container_app.tag_to_object_id[item.tag] = item.object.object_id
+            container_app.tag_to_object_id[item.tag] = item.object.object_id
 
-
-async def _interact(client: Optional[_Client] = None) -> None:
-    if _container_app.is_interactivity_enabled:
-        # Currently, interactivity is enabled forever
-        return
-    _container_app.is_interactivity_enabled = True
-
-    if not client:
-        client = await _Client.from_env()
-
-    if client.client_type != api_pb2.CLIENT_TYPE_CONTAINER:
-        raise InvalidError("Interactivity only works inside a Modal Container.")
-
-    if _container_app.function_def is not None:
-        if not _container_app.function_def.pty_info:
-            raise InvalidError(
-                "Interactivity is not enabled in this function. Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
-            )
-
-        if _container_app.function_def.concurrency_limit > 1:
-            print(
-                "Warning: Interactivity is not supported on functions with concurrency > 1. You may experience unexpected behavior."
-            )
-
-    # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here
-    # todo(nathan): check if function interactivity is enabled
-    try:
-        await client.stub.FunctionStartPtyShell(Empty())
-    except Exception as e:
-        print("Error: Failed to start PTY shell.")
-        raise e
-
-
-interact = synchronize_api(_interact)
-
-
-def is_local() -> bool:
-    """Returns if we are currently on the machine launching/deploying a Modal app
-
-    Returns `True` when executed locally on the user's machine.
-    Returns `False` when executed from a Modal container in the cloud.
-    """
-    return not _is_container_app
+    return container_app

@@ -6,10 +6,10 @@ from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 
+from ._container_io_manager import is_local
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
-from .app import is_local
 from .client import _Client
 from .exception import InvalidError, NotFoundError
 from .object import _get_environment_name, _Object
