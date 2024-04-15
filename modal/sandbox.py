@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import AsyncIterator, Dict, List, Optional, Sequence, Union
+from typing import AsyncIterator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -241,7 +241,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
         cpu: Optional[float] = None,
-        memory: Optional[int] = None,
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
@@ -281,6 +281,16 @@ class _Sandbox(_Object, type_prefix="sb"):
             if cpu is not None and cpu < 0.25:
                 raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
             milli_cpu = int(1000 * cpu) if cpu is not None else None
+            if memory and isinstance(memory, int):
+                memory_mb = memory
+                memory_mb_max = 0  # no limit
+            elif memory and isinstance(memory, tuple):
+                memory_mb, memory_mb_max = memory
+                if memory_mb_max < memory_mb:
+                    raise ValueError(f"Cannot specify a memory limit lower than request: {memory_mb_max} < {memory_mb}")
+            else:
+                memory_mb = 0
+                memory_mb_max = 0
 
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
@@ -299,7 +309,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
                 workdir=workdir,
-                resources=api_pb2.Resources(gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory),
+                resources=api_pb2.Resources(
+                    gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory_mb, memory_mb_max=memory_mb_max
+                ),
                 cloud_provider=cloud_provider,
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),

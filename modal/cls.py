@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import os
 import typing
-from typing import Any, Callable, Collection, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -258,7 +258,7 @@ class _Cls(_Object, type_prefix="cs"):
     def with_options(
         self: "_Cls",
         cpu: Optional[float] = None,
-        memory: Optional[int] = None,
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
         gpu: GPU_T = None,
         secrets: Collection[_Secret] = (),
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},
@@ -292,7 +292,19 @@ class _Cls(_Object, type_prefix="cs"):
         if gpu or cpu or memory:
             milli_cpu = int(1000 * cpu) if cpu is not None else None
             gpu_config = parse_gpu_config(gpu)
-            resources = api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory)
+            if memory and isinstance(memory, int):
+                memory_mb = memory
+                memory_mb_max = 0  # no limit
+            elif memory and isinstance(memory, tuple):
+                memory_mb, memory_mb_max = memory
+                if memory_mb_max < memory_mb:
+                    raise ValueError(f"Cannot specify a memory limit lower than request: {memory_mb_max} < {memory_mb}")
+            else:
+                memory_mb = 0
+                memory_mb_max = 0
+            resources = api_pb2.Resources(
+                milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory_mb, memory_mb_max=memory_mb_max
+            )
         else:
             resources = None
 

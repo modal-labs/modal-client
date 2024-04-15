@@ -620,7 +620,9 @@ class _Stub:
         volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # Mountpoints for Modal Volumes
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        memory: Optional[
+            Union[int, Tuple[int, int]]
+        ] = None,  # Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to additionally specify a hard limit in MiB.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
@@ -714,7 +716,9 @@ class _Stub:
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        memory: Optional[
+            Union[int, Tuple[int, int]]
+        ] = None,  # Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to additionally specify a hard limit in MiB.
         block_network: bool = False,  # Whether to block network access
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},  # Volumes to mount in the sandbox.
         _allow_background_volume_commits: bool = False,
