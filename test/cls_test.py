@@ -7,7 +7,6 @@ from typing_extensions import assert_type
 
 from modal import Cls, Function, Image, Queue, Stub, build, enter, exit, method
 from modal._serialization import deserialize
-from modal.app import RunningApp
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.partial_function import (
     _find_callables_for_obj,
@@ -16,6 +15,7 @@ from modal.partial_function import (
     _PartialFunctionFlags,
 )
 from modal.runner import deploy_stub
+from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
 from .supports.base_class import BaseCls2

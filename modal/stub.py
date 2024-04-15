@@ -15,7 +15,6 @@ from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo
 from ._utils.mount_utils import validate_volumes
-from .app import RunningApp
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls
@@ -31,6 +30,7 @@ from .partial_function import PartialFunction, _find_callables_for_cls, _Partial
 from .proxy import _Proxy
 from .retries import Retries
 from .runner import _run_stub
+from .running_app import RunningApp
 from .sandbox import _Sandbox
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement

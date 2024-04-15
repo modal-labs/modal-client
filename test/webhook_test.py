@@ -8,9 +8,9 @@ from fastapi.testclient import TestClient
 
 from modal import Stub, asgi_app, web_endpoint, wsgi_app
 from modal._asgi import webhook_asgi_app
-from modal.app import RunningApp
 from modal.exception import InvalidError
 from modal.functions import Function
+from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
 stub = Stub()

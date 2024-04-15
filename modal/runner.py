@@ -19,11 +19,11 @@ from ._sandbox_shell import connect_to_sandbox
 from ._utils.app_utils import is_valid_app_name
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
-from .app import RunningApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import ExecutionError, InteractiveTimeoutError, InvalidError, _CliUserExecutionError
 from .object import _Object
+from .running_app import RunningApp
 
 if TYPE_CHECKING:
     from .stub import _Stub

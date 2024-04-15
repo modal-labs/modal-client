@@ -7,7 +7,7 @@ from google.protobuf.message import Message
 
 from modal import Stub, interact
 from modal._container_io_manager import ContainerIOManager
-from modal.app import RunningApp
+from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket

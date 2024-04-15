@@ -22,10 +22,10 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
-from .app import RunningApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InputCancellation, InvalidError
+from .running_app import RunningApp
 
 MAX_OUTPUT_BATCH_SIZE: int = 49
 
