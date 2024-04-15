@@ -15,6 +15,7 @@ from modal import (
     current_input_id,
     enter,
     exit,
+    is_local,
     method,
     web_endpoint,
     wsgi_app,
@@ -406,3 +407,14 @@ class EventLoopCls:
     @method()
     async def f(self):
         return self.loop.is_running()
+
+
+@stub.function()
+def sandbox_f(x):
+    sb = stub.spawn_sandbox("echo", str(x))
+    return sb.object_id
+
+
+@stub.function()
+def is_local_f(x):
+    return is_local()

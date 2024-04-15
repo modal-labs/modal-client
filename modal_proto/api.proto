@@ -107,7 +107,7 @@ enum CloudProvider {
 
 // Which data format a binary message is encoded with.
 enum DataFormat {
-  DATA_FORMAT_UNSPECIFIED = 0; // Equivalent to PICKLE in client version 0.52 and earlier.
+  DATA_FORMAT_UNSPECIFIED = 0;
   DATA_FORMAT_PICKLE = 1; // Cloudpickle
   DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
   DATA_FORMAT_GENERATOR_DONE = 3; // "GeneratorDone" protobuf message
@@ -1456,9 +1456,10 @@ message RateLimit {
 }
 
 message Resources {
-  uint32 memory_mb = 2;
-  uint32 milli_cpu = 3;
+  uint32 memory_mb = 2; // MiB
+  uint32 milli_cpu = 3; // milli CPU cores
   GPUConfig gpu_config = 4;
+  uint32 memory_mb_max = 5; // MiB
 }
 
 message S3Mount {
@@ -1975,7 +1976,7 @@ message WebUrlInfo {
 }
 
 message WorkspaceNameLookupResponse {
-  string workspace_name = 1;
+  string workspace_name = 1 [deprecated=true];
   string username = 2;
 }
 

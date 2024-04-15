@@ -653,3 +653,14 @@ def test_profile_list(servicer, server_url_env, modal_config):
                 os.environ["MODAL_TOKEN_SECRET"] = orig_env_token_secret
             else:
                 del os.environ["MODAL_TOKEN_SECRET"]
+
+
+def test_list_apps(servicer, mock_dir, set_env_client):
+    res = _run(["app", "list"])
+    assert "my_app_foo" not in res.stdout
+
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["deploy", "myapp.py", "--name", "my_app_foo"])
+
+    res = _run(["app", "list"])
+    assert "my_app_foo" in res.stdout

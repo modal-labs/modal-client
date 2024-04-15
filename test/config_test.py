@@ -8,7 +8,7 @@ import sys
 import toml
 
 import modal
-from modal.config import _lookup_workspace, config
+from modal.config import Config, _lookup_workspace, config
 
 
 def _cli(args, env={}):
@@ -134,4 +134,16 @@ def test_config_env_override_arbitrary_env():
 @pytest.mark.asyncio
 async def test_workspace_lookup(servicer, server_url_env):
     resp = await _lookup_workspace(servicer.remote_addr, "ak-abc", "as-xyz")
-    assert resp.workspace_name == "test-workspace"
+    assert resp.username == "test-username"
+
+
+@pytest.mark.parametrize("automount", ["false", "'false'", "'False'", "'0'", 0, "''"])
+def test_config_boolean(modal_config, automount):
+    modal_toml = f"""
+    [prof-1]
+    token_id = 'ak-abc'
+    token_secret = 'as_xyz'
+    automount = {automount}
+    """
+    with modal_config(modal_toml):
+        assert not Config().get("automount", "prof-1")

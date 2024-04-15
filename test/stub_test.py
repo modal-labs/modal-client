@@ -6,8 +6,8 @@ import pytest
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
-import modal.app
-from modal import App, Dict, Image, Queue, Stub, web_endpoint
+from modal import App, Dict, Image, Mount, Queue, Secret, Stub, Volume, web_endpoint
+from modal.app import list_apps  # type: ignore
 from modal.config import config
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
@@ -218,7 +218,7 @@ def test_registered_web_endpoints(client, servicer):
 def test_init_types():
     with pytest.raises(InvalidError):
         # singular secret to plural argument
-        Stub(secrets=modal.Secret.from_dict())  # type: ignore
+        Stub(secrets=Secret.from_dict())  # type: ignore
     with pytest.raises(InvalidError):
         # not a Secret Object
         Stub(secrets=[{"foo": "bar"}])  # type: ignore
@@ -228,15 +228,15 @@ def test_init_types():
             Stub(some_arg=5)  # type: ignore
     with pytest.raises(InvalidError):
         # should be an Image
-        Stub(image=modal.Secret.from_dict())  # type: ignore
+        Stub(image=Secret.from_dict())  # type: ignore
 
     with pytest.warns(DeprecationError):
         Stub(
-            image=modal.Image.debian_slim().pip_install("pandas"),
-            secrets=[modal.Secret.from_dict()],
-            mounts=[modal.Mount.from_local_file(__file__)],
-            some_dict=modal.Dict.new(),
-            some_queue=modal.Queue.new(),
+            image=Image.debian_slim().pip_install("pandas"),
+            secrets=[Secret.from_dict()],
+            mounts=[Mount.from_local_file(__file__)],
+            some_dict=Dict.new(),
+            some_queue=Queue.new(),
         )
 
 
@@ -244,7 +244,7 @@ def test_set_image_on_stub_as_attribute():
     # TODO: do we want to deprecate this syntax? It's kind of random for image to
     #     have a reserved name in the blueprint, and being the only of the construction
     #     arguments that can be set on the instance after construction
-    custom_img = modal.Image.debian_slim().apt_install("emacs")
+    custom_img = Image.debian_slim().apt_install("emacs")
     stub = Stub(image=custom_img)
     assert stub._get_default_image() == custom_img
 
@@ -307,7 +307,7 @@ def test_function_image_positional():
 @pytest.mark.asyncio
 async def test_deploy_disconnect(servicer, client):
     stub = Stub()
-    stub.function(secrets=[modal.Secret.from_name("nonexistent-secret")])(square)
+    stub.function(secrets=[Secret.from_name("nonexistent-secret")])(square)
 
     with pytest.raises(NotFoundError):
         await deploy_stub.aio(stub, "my-app", client=client)
@@ -320,12 +320,12 @@ async def test_deploy_disconnect(servicer, client):
 
 def test_redeploy_from_name_change(servicer, client):
     # Deploy queue
-    modal.Queue.lookup("foo-queue", create_if_missing=True, client=client)
+    Queue.lookup("foo-queue", create_if_missing=True, client=client)
 
     # Use it from stub
     stub = Stub()
     with pytest.warns(DeprecationError):
-        stub.q = modal.Queue.from_name("foo-queue")
+        stub.q = Queue.from_name("foo-queue")
     deploy_stub(stub, "my-app", client=client)
 
     # Change the object id of foo-queue
@@ -348,7 +348,7 @@ def test_parse_custom_domains():
 def test_hydrated_other_app_object_gets_referenced(servicer, client):
     stub = Stub("my-stub")
     with servicer.intercept() as ctx:
-        with modal.Volume.ephemeral(client=client) as vol:
+        with Volume.ephemeral(client=client) as vol:
             stub.function(volumes={"/vol": vol})(dummy)  # implicitly load vol
             deploy_stub(stub, client=client)
             app_set_objects_req = ctx.pop_request("AppSetObjects")
@@ -366,3 +366,13 @@ def test_app(client):
 
     with app.run(client=client):
         square_modal.remote(42)
+
+
+def test_list_apps(client):
+    apps_0 = [app.name for app in list_apps(client=client)]
+    stub = Stub()
+    deploy_stub(stub, "foobar", client=client)
+    apps_1 = [app.name for app in list_apps(client=client)]
+
+    assert len(apps_1) == len(apps_0) + 1
+    assert set(apps_1) - set(apps_0) == set(["foobar"])

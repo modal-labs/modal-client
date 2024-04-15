@@ -3,8 +3,10 @@ aiosignal==1.3.1
 aiostream==0.5.2
 annotated-types==0.6.0
 anyio==4.3.0
+async-timeout==4.0.3 ; python_version < "3.11"
 attrs==23.2.0
 certifi==2024.2.2
+exceptiongroup==1.2.0 ; python_version < "3.11"
 fastapi==0.110.0
 frozenlist==1.4.1
 grpclib==0.4.7

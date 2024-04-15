@@ -10,6 +10,18 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.55 (2024-04-11)
+
+- When Volume reloads fail due to an open file, we now try to identify and report the relevant path. Note that there may be some circumstances in which we are unable to identify the specific file blocking a reload and will report a generic error message in that case.
+
+
+
+### 0.62.53 (2024-04-10)
+
+- Values in the `modal.toml` config file that are spelled as `0`, `false`, `"False"`, or `"false"` will now be coerced in Python to`False`, whereas previously only `"0"` (as a string) would have the intended effect.
+
+
+
 ### 0.62.25 (2024-04-01)
 
 - Fixed a recent regression that caused functions using `modal.interact()` to crash.

@@ -294,9 +294,6 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
 
 
 def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
-    if data_format == api_pb2.DATA_FORMAT_UNSPECIFIED:
-        # TODO: Remove this after Modal client version 0.52, when the data_format field is always set.
-        return deserialize(s, client)
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return deserialize(s, client)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:

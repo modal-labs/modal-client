@@ -173,6 +173,10 @@ _profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
 # Define settings
 
 
+def _to_boolean(x: object) -> bool:
+    return str(x).lower() not in {"", "0", "false"}
+
+
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
     transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
@@ -190,17 +194,17 @@ _SETTINGS = {
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
-    "automount": _Setting(True, transform=lambda x: x not in ("", "0")),
-    "profiling_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
+    "automount": _Setting(True, transform=_to_boolean),
+    "profiling_enabled": _Setting(False, transform=_to_boolean),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
-    "function_runtime_debug": _Setting(False, transform=lambda x: x not in ("", "0")),  # For internal debugging use.
+    "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.
     "environment": _Setting(),
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
     "worker_id": _Setting(),  # For internal debugging use.
     "restore_state_path": _Setting("/__modal/restore-state.json"),
-    "force_build": _Setting(False, transform=lambda x: x not in ("", "0")),
-    "traceback": _Setting(False, transform=lambda x: x not in ("", "0")),
+    "force_build": _Setting(False, transform=_to_boolean),
+    "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
 }
 

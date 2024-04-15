@@ -67,7 +67,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r container_requirements.txt
+          pip install -r modal/requirements/2024.04.txt
           pip install synchronicity
 
       - name: Compile protos
@@ -79,7 +79,7 @@ jobs:
           deactivate
 
       - name: Check entrypoint import
-        run: python -c 'import modal._container_entrypoint'
+        run: python -c 'import modal._container_entrypoint; import fastapi'
 
   publish-base-images:
     name: |
