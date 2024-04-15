@@ -84,17 +84,19 @@ enum ClientType {
 }
 
 message CloudBucketMount {
+  enum BucketType {
+    UNSPECIFIED = 0;
+    S3 = 1;
+    R2 = 2;
+  }
+
   string bucket_name = 1;
   string mount_path = 2;
   string credentials_secret_id = 3;
   bool read_only = 4;
-  bool requester_pays = 6;
-
-  enum BucketType {
-    UNSPECIFIED = 0;
-    S3 = 1;
-  }
   BucketType bucket_type = 5;
+  bool requester_pays = 6;
+  optional string bucket_endpoint_url = 7;
 }
 
 enum CloudProvider {
