@@ -1,11 +1,13 @@
 # Copyright Modal Labs 2022
 import pytest
+from typing import Dict
 
 from google.protobuf.empty_pb2 import Empty
+from google.protobuf.message import Message
 
 from modal import Stub, interact
 from modal._container_io_manager import ContainerIOManager
-from modal.app import _init_container_app
+from modal.app import _ContainerApp
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -18,20 +20,16 @@ def my_f_1(x):
 @skip_windows_unix_socket
 @pytest.mark.asyncio
 async def test_container_function_lazily_imported(container_client):
-    items = [
-        api_pb2.AppGetObjectsItem(
-            tag="my_f_1",
-            object=api_pb2.Object(
-                object_id="fu-123",
-                function_handle_metadata=api_pb2.FunctionHandleMetadata(),
-            ),
-        ),
-        api_pb2.AppGetObjectsItem(
-            tag="my_d",
-            object=api_pb2.Object(object_id="di-123"),
-        ),
-    ]
-    container_app = _init_container_app(items, "ap-123")
+    tag_to_object_id: Dict[str, str] = {
+        "my_f_1": "fu-123",
+        "my_d": "di-123",
+    }
+    object_handle_metadata: Dict[str, Message] = {
+        "fu-123": api_pb2.FunctionHandleMetadata(),
+    }
+    container_app = _ContainerApp(
+        app_id="ap-123", tag_to_object_id=tag_to_object_id, object_handle_metadata=object_handle_metadata
+    )
     stub = Stub()
 
     # This is normally done in _container_entrypoint
