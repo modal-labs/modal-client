@@ -12,6 +12,7 @@ try:
 
     from ._container_io_manager import interact, is_local
     from ._tunnel import Tunnel, forward
+    from .app import App, Stub
     from .client import Client
     from .cloud_bucket_mount import CloudBucketMount
     from .cls import Cls
@@ -30,7 +31,6 @@ try:
     from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
     from .shared_volume import SharedVolume
-    from .stub import App, Stub
     from .volume import Volume
 except Exception:
     print()

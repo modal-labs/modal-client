@@ -13,6 +13,7 @@ import typer
 from rich.console import Console
 from typing_extensions import TypedDict
 
+from ..app import LocalEntrypoint, Stub
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
@@ -20,7 +21,6 @@ from ..functions import Function, _FunctionSpec
 from ..image import Image
 from ..runner import deploy_stub, interactive_shell, run_stub
 from ..serving import serve_stub
-from ..stub import LocalEntrypoint, Stub
 from .import_refs import import_function, import_stub
 from .utils import ENV_OPTION, ENV_OPTION_HELP
 

@@ -2,13 +2,13 @@
 import pytest
 
 from modal._utils.async_utils import synchronizer
+from modal.app import _LocalEntrypoint, _Stub
 from modal.cli.import_refs import (
     DEFAULT_STUB_NAME,
     get_by_object_path,
     import_file_or_module,
     parse_import_ref,
 )
-from modal.stub import _LocalEntrypoint, _Stub
 
 # Some helper vars for import_stub tests:
 local_entrypoint_src = """

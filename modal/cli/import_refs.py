@@ -19,9 +19,9 @@ from rich.console import Console
 from rich.markdown import Markdown
 
 import modal
+from modal.app import LocalEntrypoint, Stub
 from modal.exception import _CliUserExecutionError
 from modal.functions import Function
-from modal.stub import LocalEntrypoint, Stub
 
 
 @dataclasses.dataclass
