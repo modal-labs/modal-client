@@ -11,6 +11,7 @@ from modal_version import __version__
 try:
     from ._container_io_manager import interact, is_local
     from ._tunnel import Tunnel, forward
+    from ._utils.function_utils import current_function_call_id, current_input_id
     from .client import Client
     from .cloud_bucket_mount import CloudBucketMount
     from .cls import Cls
@@ -75,4 +76,6 @@ __all__ = [
     "web_server",
     "wsgi_app",
     "interact",
+    "current_function_call_id",
+    "current_input_id",
 ]

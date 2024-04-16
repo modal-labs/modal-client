@@ -6,7 +6,7 @@ import fastapi
 from starlette.requests import ClientDisconnect
 
 from modal._asgi import asgi_app_wrapper
-from modal.functions import _set_current_context_ids
+from modal._utils.function_utils import _set_current_context_ids
 
 
 class DummyException(Exception):

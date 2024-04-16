@@ -27,13 +27,19 @@ from ._container_io_manager import ContainerIOManager, UserException, _Container
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize
 from ._utils.async_utils import TaskContext, synchronizer
-from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
+from ._utils.function_utils import (
+    LocalFunctionError,
+    _set_current_context_ids,
+    is_async as get_is_async,
+    is_global_function,
+    method_has_params,
+)
 from .app import _ContainerApp
 from .client import Client, _Client
 from .cls import Cls
 from .config import logger
 from .exception import ExecutionError, InputCancellation, InvalidError
-from .functions import Function, _Function, _set_current_context_ids
+from .functions import Function, _Function
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 from .stub import Stub, _Stub
 
