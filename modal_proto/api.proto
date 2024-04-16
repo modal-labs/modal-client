@@ -88,6 +88,7 @@ message CloudBucketMount {
     UNSPECIFIED = 0;
     S3 = 1;
     R2 = 2;
+    GCP = 3;
   }
 
   string bucket_name = 1;
@@ -132,6 +133,20 @@ enum FileDescriptor {
   FILE_DESCRIPTOR_STDOUT = 1;
   FILE_DESCRIPTOR_STDERR = 2;
   FILE_DESCRIPTOR_INFO = 3;
+}
+
+// A file entry when listing files in a volume or network file system.
+message FileEntry {
+  enum FileType {
+    UNSPECIFIED = 0;
+    FILE = 1;
+    DIRECTORY = 2;
+    SYMLINK = 3;
+  }
+  string path = 1;
+  FileType type = 2;
+  uint64 mtime = 3;
+  uint64 size = 4;
 }
 
 enum FunctionCallType {
@@ -1707,18 +1722,8 @@ message SharedVolumeRemoveFileRequest {
   bool recursive = 3;
 }
 
-message SharedVolumeListFilesEntry {
-  enum FileType {
-    UNSPECIFIED = 0;
-    FILE = 1;
-    DIRECTORY = 2;
-  }
-  string path = 1;
-  FileType type = 2;
-}
-
 message SharedVolumeListFilesResponse {
-  repeated SharedVolumeListFilesEntry entries = 1;
+  repeated FileEntry entries = 1;
 }
 
 message SharedVolumeMount {
@@ -1889,19 +1894,6 @@ message VolumeGetFileResponse {
   uint64 len = 5; // number of bytes returned
 }
 
-message VolumeListFilesEntry {
-  enum FileType {
-    UNSPECIFIED = 0;
-    FILE = 1;
-    DIRECTORY = 2;
-    SYMLINK = 3;
-  }
-  string path = 1;
-  FileType type = 2;
-  uint64 mtime = 3;
-  uint64 size = 4;
-}
-
 message VolumeListFilesRequest {
   string volume_id = 1;
   string path = 2;
@@ -1909,7 +1901,7 @@ message VolumeListFilesRequest {
 }
 
 message VolumeListFilesResponse {
-  repeated VolumeListFilesEntry entries = 1;
+  repeated FileEntry entries = 1;
 }
 
 message VolumeListItem {

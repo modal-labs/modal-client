@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple
 
 from google.protobuf.empty_pb2 import Empty
+from google.protobuf.message import Message
 from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -20,7 +21,8 @@ from ._traceback import extract_traceback
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
-from ._utils.grpc_utils import retry_transient_errors
+from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
+from .app import _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InputCancellation, InvalidError
@@ -170,11 +172,20 @@ class _ContainerIOManager:
         if self._heartbeat_loop:
             self._heartbeat_loop.cancel()
 
-    async def get_app_objects(self) -> List[api_pb2.AppGetObjectsItem]:
+    async def get_app_objects(self) -> _ContainerApp:
         req = api_pb2.AppGetObjectsRequest(app_id=self.app_id, include_unindexed=True)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {self.app_id}")
-        return resp.items
+
+        tag_to_object_id = {}
+        object_handle_metadata = {}
+        for item in resp.items:
+            handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
+            object_handle_metadata[item.object.object_id] = handle_metadata
+            if item.tag:
+                tag_to_object_id[item.tag] = item.object.object_id
+
+        return _ContainerApp(self.app_id, self._environment_name, tag_to_object_id, object_handle_metadata)
 
     async def get_serialized_function(self) -> Tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition

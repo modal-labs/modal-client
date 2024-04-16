@@ -28,7 +28,7 @@ from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize
 from ._utils.async_utils import TaskContext, synchronizer
 from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
-from .app import _init_container_app
+from .app import _ContainerApp
 from .client import Client, _Client
 from .cls import Cls
 from .config import logger
@@ -472,10 +472,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # At some point, we should fix that by having built-in support for running "user code"
     container_io_manager = ContainerIOManager(container_args, client)
 
-    # Need to set up the container app before imports (since user may check it in global scope)
-    items: List[api_pb2.AppGetObjectsItem] = container_io_manager.get_app_objects()
-    container_app = _init_container_app(items, container_args.app_id, container_args.environment_name, container_args.function_def)
-
     with container_io_manager.heartbeats(), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
@@ -495,7 +491,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             )
 
         # Initialize objects on the stub.
+        # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
         if imp_fun.stub is not None:
+            container_app: _ContainerApp = container_io_manager.get_app_objects()
             stub: Stub = synchronizer._translate_out(imp_fun.stub, Interface.BLOCKING)
             stub._init_container(client, container_app)
 
