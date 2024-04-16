@@ -7,21 +7,24 @@ import sys
 import sysconfig
 import typing
 from collections import deque
+from contextvars import ContextVar
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, AsyncIterator, Callable, List, Literal, Optional, Set, Type
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
+from synchronicity.exceptions import UserCodeException
 
 from modal_proto import api_pb2
 
-from .._serialization import deserialize_data_format, serialize
+from .._serialization import deserialize, deserialize_data_format, serialize
+from .._traceback import append_modal_tb
 from ..config import config, logger
-from ..exception import InvalidError, ModuleNotMountable
+from ..exception import ExecutionError, FunctionTimeoutError, InvalidError, ModuleNotMountable, RemoteError
 from ..mount import ROOT_DIR, _Mount
 from ..object import Object
-from .blob_utils import blob_download
+from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
 SYS_PREFIXES = {
@@ -378,3 +381,152 @@ async def _stream_function_call_data(
                 elif isinstance(exc, StreamTerminatedError):
                     continue
             raise
+
+
+OUTPUTS_TIMEOUT = 55.0  # seconds
+ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
+
+
+def exc_with_hints(exc: BaseException):
+    """mdmd:hidden"""
+    if isinstance(exc, ImportError) and exc.msg == "attempted relative import with no known parent package":
+        exc.msg += """\n
+HINT: For relative imports to work, you might need to run your modal app as a module. Try:
+- `python -m my_pkg.my_app` instead of `python my_pkg/my_app.py`
+- `modal deploy my_pkg.my_app` instead of `modal deploy my_pkg/my_app.py`
+"""
+    elif isinstance(
+        exc, RuntimeError
+    ) and "CUDA error: no kernel image is available for execution on the device" in str(exc):
+        msg = (
+            exc.args[0]
+            + """\n
+HINT: This error usually indicates an outdated CUDA version. Older versions of torch (<=1.12)
+come with CUDA 10.2 by default. If pinning to an older torch version, you can specify a CUDA version
+manually, for example:
+-  image.pip_install("torch==1.12.1+cu116", find_links="https://download.pytorch.org/whl/torch_stable.html")
+"""
+        )
+        exc.args = (msg,)
+
+    return exc
+
+
+async def _process_result(result: api_pb2.GenericResult, data_format: int, stub, client=None):
+    if result.WhichOneof("data_oneof") == "data_blob_id":
+        data = await blob_download(result.data_blob_id, stub)
+    else:
+        data = result.data
+
+    if result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+        raise FunctionTimeoutError(result.exception)
+    elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+        if data:
+            try:
+                exc = deserialize(data, client)
+            except Exception as deser_exc:
+                raise ExecutionError(
+                    "Could not deserialize remote exception due to local error:\n"
+                    + f"{deser_exc}\n"
+                    + "This can happen if your local environment does not have the remote exception definitions.\n"
+                    + "Here is the remote traceback:\n"
+                    + f"{result.traceback}"
+                )
+            if not isinstance(exc, BaseException):
+                raise ExecutionError(f"Got remote exception of incorrect type {type(exc)}")
+
+            if result.serialized_tb:
+                try:
+                    tb_dict = deserialize(result.serialized_tb, client)
+                    line_cache = deserialize(result.tb_line_cache, client)
+                    append_modal_tb(exc, tb_dict, line_cache)
+                except Exception:
+                    pass
+            uc_exc = UserCodeException(exc_with_hints(exc))
+            raise uc_exc
+        raise RemoteError(result.exception)
+
+    try:
+        return deserialize_data_format(data, data_format, client)
+    except ModuleNotFoundError as deser_exc:
+        raise ExecutionError(
+            "Could not deserialize result due to error:\n"
+            + f"{deser_exc}\n"
+            + "This can happen if your local environment does not have a module that was used to construct the result. \n"
+        )
+
+
+async def _create_input(args, kwargs, client, idx: Optional[int] = None) -> api_pb2.FunctionPutInputsItem:
+    """Serialize function arguments and create a FunctionInput protobuf,
+    uploading to blob storage if needed.
+    """
+    if idx is None:
+        idx = 0
+
+    args_serialized = serialize((args, kwargs))
+
+    if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
+        args_blob_id = await blob_upload(args_serialized, client.stub)
+
+        return api_pb2.FunctionPutInputsItem(
+            input=api_pb2.FunctionInput(args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE),
+            idx=idx,
+        )
+    else:
+        return api_pb2.FunctionPutInputsItem(
+            input=api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE),
+            idx=idx,
+        )
+
+
+_current_input_id: ContextVar = ContextVar("_current_input_id")
+_current_function_call_id: ContextVar = ContextVar("_current_function_call_id")
+
+
+def current_input_id() -> Optional[str]:
+    """Returns the input ID for the current input.
+
+    Can only be called from Modal function (i.e. in a container context).
+
+    ```python
+    from modal import current_input_id
+
+    @stub.function()
+    def process_stuff():
+        print(f"Starting to process {current_input_id()}")
+    ```
+    """
+    try:
+        return _current_input_id.get()
+    except LookupError:
+        return None
+
+
+def current_function_call_id() -> Optional[str]:
+    """Returns the function call ID for the current input.
+
+    Can only be called from Modal function (i.e. in a container context).
+
+    ```python
+    from modal import current_function_call_id
+
+    @stub.function()
+    def process_stuff():
+        print(f"Starting to process input from {current_function_call_id()}")
+    ```
+    """
+    try:
+        return _current_function_call_id.get()
+    except LookupError:
+        return None
+
+
+def _set_current_context_ids(input_id: str, function_call_id: str) -> Callable[[], None]:
+    input_token = _current_input_id.set(input_id)
+    function_call_token = _current_function_call_id.set(function_call_id)
+
+    def _reset_current_context_ids():
+        _current_input_id.reset(input_token)
+        _current_function_call_id.reset(function_call_token)
+
+    return _reset_current_context_ids

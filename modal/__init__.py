@@ -9,7 +9,6 @@ if sys.version_info[:2] >= (3, 13):
 from modal_version import __version__
 
 try:
-
     from ._container_io_manager import interact, is_local
     from ._tunnel import Tunnel, forward
     from .client import Client
@@ -17,7 +16,7 @@ try:
     from .cls import Cls
     from .dict import Dict
     from .exception import Error
-    from .functions import Function, current_function_call_id, current_input_id
+    from .functions import Function
     from .image import Image
     from .mount import Mount
     from .network_file_system import NetworkFileSystem
@@ -67,8 +66,6 @@ __all__ = [
     "Volume",
     "asgi_app",
     "build",
-    "current_function_call_id",
-    "current_input_id",
     "enter",
     "exit",
     "forward",
