@@ -22,14 +22,15 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
-from .app import _ContainerApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InputCancellation, InvalidError
+from .running_app import RunningApp
 
 MAX_OUTPUT_BATCH_SIZE: int = 49
 
 RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
+
 
 class UserException(Exception):
     """Used to shut down the task gracefully."""
@@ -172,7 +173,7 @@ class _ContainerIOManager:
         if self._heartbeat_loop:
             self._heartbeat_loop.cancel()
 
-    async def get_app_objects(self) -> _ContainerApp:
+    async def get_app_objects(self) -> RunningApp:
         req = api_pb2.AppGetObjectsRequest(app_id=self.app_id, include_unindexed=True)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {self.app_id}")
@@ -185,7 +186,12 @@ class _ContainerIOManager:
             if item.tag:
                 tag_to_object_id[item.tag] = item.object.object_id
 
-        return _ContainerApp(self.app_id, self._environment_name, tag_to_object_id, object_handle_metadata)
+        return RunningApp(
+            self.app_id,
+            environment_name=self._environment_name,
+            tag_to_object_id=tag_to_object_id,
+            object_handle_metadata=object_handle_metadata,
+        )
 
     async def get_serialized_function(self) -> Tuple[Optional[Any], Callable]:
         # Fetch the serialized function definition
@@ -615,6 +621,7 @@ class _ContainerIOManager:
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
+
 
 def is_local() -> bool:
     """Returns if we are currently on the machine launching/deploying a Modal app

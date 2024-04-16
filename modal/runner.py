@@ -19,11 +19,11 @@ from ._sandbox_shell import connect_to_sandbox
 from ._utils.app_utils import is_valid_app_name
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
-from .app import _LocalApp
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import ExecutionError, InteractiveTimeoutError, InvalidError, _CliUserExecutionError
 from .object import _Object
+from .running_app import RunningApp
 
 if TYPE_CHECKING:
     from .stub import _Stub
@@ -39,13 +39,13 @@ async def _heartbeat(client, app_id):
     await retry_transient_errors(client.stub.AppHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
 
-async def _init_local_app_existing(client: _Client, existing_app_id: str) -> "_LocalApp":
+async def _init_local_app_existing(client: _Client, existing_app_id: str) -> "RunningApp":
     # Get all the objects first
     obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
     obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
     app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
     object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
-    return _LocalApp(existing_app_id, app_page_url, tag_to_object_id=object_ids)
+    return RunningApp(existing_app_id, app_page_url=app_page_url, tag_to_object_id=object_ids)
 
 
 async def _init_local_app_new(
@@ -54,7 +54,7 @@ async def _init_local_app_new(
     app_state: int,
     environment_name: str = "",
     interactive=False,
-) -> "_LocalApp":
+) -> "RunningApp":
     app_req = api_pb2.AppCreateRequest(
         description=description,
         environment_name=environment_name,
@@ -63,7 +63,9 @@ async def _init_local_app_new(
     app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
     app_page_url = app_resp.app_logs_url
     logger.debug(f"Created new app with id {app_resp.app_id}")
-    return _LocalApp(app_resp.app_id, app_page_url, environment_name=environment_name, interactive=interactive)
+    return RunningApp(
+        app_resp.app_id, app_page_url=app_page_url, environment_name=environment_name, interactive=interactive
+    )
 
 
 async def _init_local_app_from_name(
@@ -92,7 +94,7 @@ async def _init_local_app_from_name(
 
 async def _create_all_objects(
     client: _Client,
-    app: _LocalApp,
+    app: RunningApp,
     indexed_objects: Dict[str, _Object],
     new_app_state: int,
     environment_name: str,
@@ -195,7 +197,7 @@ async def _run_stub(
             " Are you calling stub.run() directly?"
             " Consider using the `modal run` shell command."
         )
-    if stub._local_app:
+    if stub._running_app:
         raise InvalidError(
             "App is already running and can't be started again.\n"
             "You should not use `stub.run` or `run_stub` within a Modal `local_entrypoint`"
