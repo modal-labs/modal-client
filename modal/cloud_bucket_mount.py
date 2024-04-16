@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
+from urllib.parse import urlparse
 
 from modal_proto import api_pb2
 
@@ -65,10 +66,37 @@ class _CloudBucketMount:
     def f():
         subprocess.run(["ls", "/my-mount"], check=True)
     ```
+
+    **Google GCS Usage**
+
+    Google Cloud Storage (GCS) is partially [S3-compatible](https://cloud.google.com/storage/docs/interoperability).
+    Currently **only `read_only=True`** is supported for GCS buckets. GCS Buckets also require a secret with Google-specific
+    key names (see below) populated with a [HMAC key](https://cloud.google.com/storage/docs/authentication/managing-hmackeys#create).
+
+    ```python
+    import subprocess
+
+    stub = modal.Stub()
+    gcp_hmac_secret = modal.Secret.from_dict({
+        "GOOGLE_ACCESS_KEY_ID": "GOOG1ERM12345...",
+        "GOOGLE_ACCESS_KEY_SECRET": "HTJ123abcdef...",
+    })
+    @stub.function(
+        volumes={
+            "/my-mount": modal.CloudBucketMount(
+                bucket_name="my-gcs-bucket",
+                bucket_endpoint_url="https://storage.googleapis.com",
+                secret=gcp_hmac_secret,
+                read_only=True,  # writing to bucket currently unsupported
+            )
+        }
+    )
+    def f():
+        subprocess.run(["ls", "/my-mount"], check=True)
     """
 
     bucket_name: str
-    # Endpoint URL is used to support Cloudflare R2.
+    # Endpoint URL is used to support Cloudflare R2 and Google Cloud Platform GCS.
     bucket_endpoint_url: Optional[str] = None
 
     # Credentials used to access a cloud bucket.
@@ -85,10 +113,21 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
     cloud_bucket_mounts: List[api_pb2.CloudBucketMount] = []
 
     for path, mount in mounts:
-        # TODO: in future this relationship between endpoint URL and type will not hold true.
+        # crude mapping from mount arguments to type.
         if mount.bucket_endpoint_url:
-            bucket_type = api_pb2.CloudBucketMount.BucketType.R2
+            parse_result = urlparse(mount.bucket_endpoint_url)
+            if parse_result.hostname.endswith("r2.cloudflarestorage.com"):
+                bucket_type = api_pb2.CloudBucketMount.BucketType.R2
+            elif parse_result.hostname.endswith("storage.googleapis.com"):
+                bucket_type = api_pb2.CloudBucketMount.BucketType.GCP
+                if not mount.read_only:
+                    raise ValueError(
+                        f"CloudBucketMount of '{mount.bucket_name}' is invalid. Writing to GCP buckets with modal.CloudBucketMount in currently unsupported."
+                    )
+            else:
+                raise ValueError(f"Unsupported bucket endpoint hostname '{parse_result.hostname}'")
         else:
+            # just assume S3; this is backwards and forwards compatible.
             bucket_type = api_pb2.CloudBucketMount.BucketType.S3
 
         if mount.requester_pays and not mount.secret:
