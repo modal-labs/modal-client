@@ -1,11 +1,13 @@
 # Copyright Modal Labs 2023
 import asyncio
 import concurrent.futures
+import enum
 import os
 import platform
 import re
 import time
 from contextlib import nullcontext
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import (
     IO,
@@ -40,11 +42,46 @@ from ._utils.blob_utils import (
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from .client import _Client
 from .config import logger
+from .exception import deprecation_error
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 # Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
 VOLUME_PUT_FILE_CLIENT_TIMEOUT = 30 * 60
+
+
+class FileEntryType(enum.IntEnum):
+    """Type of a file entry listed from a Modal volume."""
+
+    UNSPECIFIED = 0
+    FILE = 1
+    DIRECTORY = 2
+    SYMLINK = 3
+
+
+@dataclass(frozen=True)
+class FileEntry:
+    """A file or directory entry listed from a Modal volume."""
+
+    path: str
+    type: FileEntryType
+    mtime: int
+    size: int
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.FileEntry) -> "FileEntry":
+        return cls(
+            path=proto.path,
+            type=FileEntryType(proto.type),
+            mtime=proto.mtime,
+            size=proto.size,
+        )
+
+    def __getattr__(self, name: str):
+        deprecation_error(
+            (2024, 4, 15),
+            f"The FileEntry dataclass was introduced to replace a private Protobuf message. This dataclass does not have the {name} attribute.",
+        )
 
 
 class _Volume(_Object, type_prefix="vo"):
@@ -295,7 +332,7 @@ class _Volume(_Object, type_prefix="vo"):
             raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
 
     @live_method_gen
-    async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
+    async def iterdir(self, path: str) -> AsyncIterator[FileEntry]:
         """Iterate over all files in a directory in the volume.
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)
@@ -305,10 +342,10 @@ class _Volume(_Object, type_prefix="vo"):
         req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path)
         async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
             for entry in batch.entries:
-                yield entry
+                yield FileEntry._from_proto(entry)
 
     @live_method
-    async def listdir(self, path: str) -> List[api_pb2.VolumeListFilesEntry]:
+    async def listdir(self, path: str) -> List[FileEntry]:
         """List all files under a path prefix in the modal.Volume.
 
         * Passing a directory path lists all files in the directory

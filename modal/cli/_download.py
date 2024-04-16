@@ -4,47 +4,21 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Callable, Optional, Tuple, Union, overload
+from typing import Optional, Tuple, Union
 
 from click import UsageError
 
 from modal.network_file_system import _NetworkFileSystem
-from modal.volume import _Volume
-from modal_proto import api_pb2
-
-_Entry = Union[api_pb2.SharedVolumeListFilesEntry, api_pb2.VolumeListFilesEntry]
-
-
-@overload
-def _glob_download(
-    volume: _Volume,
-    is_file_fn: Callable[[api_pb2.VolumeListFilesEntry], bool],
-    remote_glob_path: str,
-    local_destination: Path,
-    overwrite: bool,
-):
-    ...
-
-
-@overload
-def _glob_download(
-    volume: _NetworkFileSystem,
-    is_file_fn: Callable[[api_pb2.SharedVolumeListFilesEntry], bool],
-    remote_glob_path: str,
-    local_destination: Path,
-    overwrite: bool,
-):
-    ...
+from modal.volume import FileEntry, FileEntryType, _Volume
 
 
 async def _glob_download(
-    volume,
-    is_file_fn,
+    volume: Union[_NetworkFileSystem, _Volume],
     remote_glob_path: str,
     local_destination: Path,
     overwrite: bool,
 ):
-    q: asyncio.Queue[Tuple[Optional[Path], Optional[_Entry]]] = asyncio.Queue()
+    q: asyncio.Queue[Tuple[Optional[Path], Optional[FileEntry]]] = asyncio.Queue()
     num_consumers = 10  # concurrency limit
 
     async def producer():
@@ -52,7 +26,7 @@ async def _glob_download(
             output_path = local_destination / entry.path
             if output_path.exists():
                 if overwrite:
-                    if is_file_fn(entry):
+                    if output_path.is_file():
                         os.remove(output_path)
                     else:
                         shutil.rmtree(output_path)
@@ -71,14 +45,15 @@ async def _glob_download(
             if output_path is None:
                 return
             try:
-                if is_file_fn(entry):
+                if entry.type == FileEntryType.FILE:
                     output_path.parent.mkdir(parents=True, exist_ok=True)
                     with output_path.open("wb") as fp:
                         b = 0
                         async for chunk in volume.read_file(entry.path):
                             b += fp.write(chunk)
-
                     print(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
+                elif entry.type == FileEntryType.DIRECTORY:
+                    output_path.mkdir(parents=True, exist_ok=True)
             finally:
                 q.task_done()
 
