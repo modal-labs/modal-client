@@ -19,17 +19,11 @@ from .supports import module_1, module_2
 
 @pytest.mark.asyncio
 async def test_kwargs(servicer, client):
-    with pytest.warns(DeprecationError):
-        stub = Stub(
+    with pytest.raises(DeprecationError):
+        Stub(
             d=Dict.new(),
             q=Queue.new(),
         )
-    async with stub.run(client=client):
-        with pytest.warns(DeprecationError):
-            await stub["d"].put.aio("foo", "bar")  # type: ignore
-            await stub["q"].put.aio("baz")  # type: ignore
-            assert await stub["d"].get.aio("foo") == "bar"  # type: ignore
-            assert await stub["q"].get.aio() == "baz"  # type: ignore
 
 
 @pytest.mark.asyncio
@@ -44,22 +38,6 @@ async def test_attrs(servicer, client):
             await stub.q.put.aio("baz")  # type: ignore
             assert await stub.d.get.aio("foo") == "bar"  # type: ignore
             assert await stub.q.get.aio() == "baz"  # type: ignore
-
-
-@pytest.mark.asyncio
-async def test_stub_type_validation(servicer, client):
-    with pytest.raises(InvalidError):
-        with pytest.warns(DeprecationError):
-            stub = Stub(
-                foo=4242,  # type: ignore
-            )
-
-    stub = Stub()
-
-    with pytest.raises(InvalidError) as excinfo:
-        stub.bar = 4242  # type: ignore
-
-    assert "4242" in str(excinfo.value)
 
 
 def square(x):
@@ -223,21 +201,14 @@ def test_init_types():
         # not a Secret Object
         Stub(secrets=[{"foo": "bar"}])  # type: ignore
     with pytest.raises(InvalidError):
-        # blueprint needs to use _Providers
-        with pytest.warns(DeprecationError):
-            Stub(some_arg=5)  # type: ignore
-    with pytest.raises(InvalidError):
         # should be an Image
         Stub(image=Secret.from_dict())  # type: ignore
 
-    with pytest.warns(DeprecationError):
-        Stub(
-            image=Image.debian_slim().pip_install("pandas"),
-            secrets=[Secret.from_dict()],
-            mounts=[Mount.from_local_file(__file__)],
-            some_dict=Dict.new(),
-            some_queue=Queue.new(),
-        )
+    Stub(
+        image=Image.debian_slim().pip_install("pandas"),
+        secrets=[Secret.from_dict()],
+        mounts=[Mount.from_local_file(__file__)],
+    )
 
 
 def test_set_image_on_stub_as_attribute():

@@ -152,7 +152,7 @@ class _Stub:
             raise InvalidError("image has to be a modal Image or AioImage object")
 
         if kwargs:
-            deprecation_warning(
+            deprecation_error(
                 (2023, 12, 13),
                 "Passing additional objects to the stub constructor is deprecated."
                 f" Please remove the following parameters from your stub definition: {', '.join(kwargs)}."
