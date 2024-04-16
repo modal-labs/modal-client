@@ -192,6 +192,18 @@ def test_function_memory_request(client):
     stub.function(memory=2048)(dummy)
 
 
+def test_function_memory_limit(client):
+    stub = Stub()
+    f = stub.function(memory=(2048, 4096))(dummy)
+
+    with stub.run(client=client):
+        f.remote()
+
+    g = stub.function(memory=(2048, 2048 - 1))(custom_function)
+    with pytest.raises(InvalidError), stub.run(client=client):
+        g.remote()
+
+
 def test_function_cpu_request(client):
     stub = Stub()
     stub.function(cpu=2.0)(dummy)
