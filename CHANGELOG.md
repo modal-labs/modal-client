@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.70 (2024-04-16)
+
+* `modal.CloudBucketMount` now supports read-only access to Google Cloud Storage
+
+
+
 ### 0.62.69 (2024-04-16)
 
 * Iterators passed to `Function.map()` and similar parallel execution primitives are now executed on the main thread, preventing blocking iterators from possibly locking up background Modal API calls, and risking task shutdowns.
