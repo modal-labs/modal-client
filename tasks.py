@@ -310,7 +310,11 @@ def show_deprecations(ctx):
             self.generic_visit(node)
 
         def visit_Call(self, node):
-            if isinstance(node.func, ast.Name) and node.func.id == "deprecation_warning":
+            func_name_to_level = {
+                "deprecation_warning": "[yellow]warning[/yellow]",
+                "deprecation_error": "[red]error[/red]"
+            }
+            if isinstance(node.func, ast.Name) and node.func.id in func_name_to_level:
                 depr_date = date(*(elt.n for elt in node.args[0].elts))
                 function = (
                     f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
@@ -329,7 +333,8 @@ def show_deprecations(ctx):
                 message = message.replace("\n", " ")
                 if len(message) > (max_length := 80):
                     message = message[:max_length] + "..."
-                self.deprecations.append((str(depr_date), f"{self.fname}:{node.lineno}", function, message))
+                level = func_name_to_level[node.func.id]
+                self.deprecations.append((str(depr_date), level, f"{self.fname}:{node.lineno}", function, message))
 
     files = get_modal_source_files()
     deprecations = []
@@ -341,7 +346,7 @@ def show_deprecations(ctx):
         deprecations.extend(visitor.deprecations)
 
     console = Console()
-    table = Table("Date", "Location", "Function", "Message")
+    table = Table("Date", "Level", "Location", "Function", "Message")
     for row in sorted(deprecations, key=lambda r: r[0]):
         table.add_row(*row)
     console.print(table)
