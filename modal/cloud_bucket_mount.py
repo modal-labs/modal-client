@@ -70,7 +70,7 @@ class _CloudBucketMount:
 
     Google Cloud Storage (GCS) is partially [S3-compatible](https://cloud.google.com/storage/docs/interoperability).
     Currently **only `read_only=True`** is supported for GCS buckets. GCS Buckets also require a secret with Google-specific
-    key names (see below).
+    key names (see below) populated with a [HMAC key](https://cloud.google.com/storage/docs/authentication/managing-hmackeys#create).
 
     ```python
     import subprocess
