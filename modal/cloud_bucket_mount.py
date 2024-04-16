@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
+from urllib.parse import urlparse
 
 from modal_proto import api_pb2
 
@@ -113,14 +114,18 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
 
     for path, mount in mounts:
         # crude mapping from mount arguments to type.
-        if mount.bucket_endpoint_url and "r2.cloudflarestorage.com" in mount.bucket_endpoint_url:
-            bucket_type = api_pb2.CloudBucketMount.BucketType.R2
-        elif mount.bucket_endpoint_url and "storage.googleapis.com" in mount.bucket_endpoint_url:
-            bucket_type = api_pb2.CloudBucketMount.BucketType.GCP
-            if not mount.read_only:
-                raise ValueError(
-                    f"CloudBucketMount of '{mount.bucket_name}' is invalid. Writing to GCP buckets with modal.CloudBucketMount in currently unsupported."
-                )
+        if mount.bucket_endpoint_url:
+            parse_result = urlparse(mount.bucket_endpoint_url)
+            if parse_result.hostname.endswith("r2.cloudflarestorage.com"):
+                bucket_type = api_pb2.CloudBucketMount.BucketType.R2
+            elif parse_result.hostname.endswith("storage.googleapis.com"):
+                bucket_type = api_pb2.CloudBucketMount.BucketType.GCP
+                if not mount.read_only:
+                    raise ValueError(
+                        f"CloudBucketMount of '{mount.bucket_name}' is invalid. Writing to GCP buckets with modal.CloudBucketMount in currently unsupported."
+                    )
+            else:
+                raise ValueError(f"Unsupported bucket endpoint hostname '{parse_result.hostname}'")
         else:
             # just assume S3; this is backwards and forwards compatible.
             bucket_type = api_pb2.CloudBucketMount.BucketType.S3
