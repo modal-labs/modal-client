@@ -40,6 +40,7 @@ from ._location import parse_cloud_provider
 from ._output import OutputManager
 from ._pty import get_pty_info
 from ._resolver import Resolver
+from ._resources import convert_fn_config_to_resources_config
 from ._serialization import deserialize, deserialize_data_format, serialize
 from ._traceback import append_modal_tb
 from ._utils.async_utils import (
@@ -799,20 +800,6 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-            if cpu is not None and cpu < 0.25:
-                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
-            milli_cpu = int(1000 * cpu) if cpu is not None else 0
-            if memory and isinstance(memory, int):
-                memory_mb = memory
-                memory_mb_max = 0  # no limit
-            elif memory and isinstance(memory, tuple):
-                memory_mb, memory_mb_max = memory
-                if memory_mb_max < memory_mb:
-                    raise ValueError(f"Cannot specify a memory limit lower than request: {memory_mb_max} < {memory_mb}")
-            else:
-                memory_mb = 0
-                memory_mb_max = 0
-
             timeout_secs = timeout
 
             if stub and stub.is_interactive and not is_builder_function:
@@ -878,9 +865,7 @@ class _Function(_Object, type_prefix="fu"):
                 function_serialized=function_serialized or b"",
                 class_serialized=class_serialized or b"",
                 function_type=function_type,
-                resources=api_pb2.Resources(
-                    milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory_mb, memory_mb_max=memory_mb_max
-                ),
+                resources=convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu),
                 webhook_config=webhook_config,
                 shared_volume_mounts=network_file_system_mount_protos(
                     validated_network_file_systems, allow_cross_region_volumes

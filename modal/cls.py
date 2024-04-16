@@ -10,6 +10,7 @@ from modal_proto import api_pb2
 
 from ._output import OutputManager
 from ._resolver import Resolver
+from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
@@ -19,7 +20,7 @@ from .exception import InvalidError, NotFoundError
 from .functions import (
     _parse_retries,
 )
-from .gpu import GPU_T, parse_gpu_config
+from .gpu import GPU_T
 from .object import _get_environment_name, _Object
 from .partial_function import (
     PartialFunction,
@@ -290,21 +291,7 @@ class _Cls(_Object, type_prefix="cs"):
         """
         retry_policy = _parse_retries(retries)
         if gpu or cpu or memory:
-            milli_cpu = int(1000 * cpu) if cpu is not None else None
-            gpu_config = parse_gpu_config(gpu)
-            if memory and isinstance(memory, int):
-                memory_mb = memory
-                memory_mb_max = 0  # no limit
-            elif memory and isinstance(memory, tuple):
-                memory_mb, memory_mb_max = memory
-                if memory_mb_max < memory_mb:
-                    raise ValueError(f"Cannot specify a memory limit lower than request: {memory_mb_max} < {memory_mb}")
-            else:
-                memory_mb = 0
-                memory_mb_max = 0
-            resources = api_pb2.Resources(
-                milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory_mb, memory_mb_max=memory_mb_max
-            )
+            resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu)
         else:
             resources = None
 

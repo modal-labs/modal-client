@@ -13,12 +13,13 @@ from modal_proto import api_pb2
 
 from ._location import parse_cloud_provider
 from ._resolver import Resolver
+from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 from ._utils.mount_utils import validate_mount_points, validate_volumes
 from .client import _Client
 from .config import config
-from .gpu import GPU_T, parse_gpu_config
+from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
@@ -274,24 +275,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             return deps
 
         async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
-            gpu_config = parse_gpu_config(gpu)
-
-            cloud_provider = parse_cloud_provider(cloud) if cloud else None
-
-            if cpu is not None and cpu < 0.25:
-                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
-            milli_cpu = int(1000 * cpu) if cpu is not None else None
-            if memory and isinstance(memory, int):
-                memory_mb = memory
-                memory_mb_max = 0  # no limit
-            elif memory and isinstance(memory, tuple):
-                memory_mb, memory_mb_max = memory
-                if memory_mb_max < memory_mb:
-                    raise ValueError(f"Cannot specify a memory limit lower than request: {memory_mb_max} < {memory_mb}")
-            else:
-                memory_mb = 0
-                memory_mb_max = 0
-
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
                 api_pb2.VolumeMount(
@@ -309,10 +292,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
                 workdir=workdir,
-                resources=api_pb2.Resources(
-                    gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory_mb, memory_mb_max=memory_mb_max
-                ),
-                cloud_provider=cloud_provider,
+                resources=convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu),
+                cloud_provider=parse_cloud_provider(cloud) if cloud else None,
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
                 block_network=block_network,
