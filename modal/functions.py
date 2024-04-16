@@ -88,7 +88,7 @@ ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
 
 
 if TYPE_CHECKING:
-    import modal.stub
+    import modal.app
 
 
 class _SynchronizedQueue:
@@ -561,7 +561,7 @@ class _Function(_Object, type_prefix="fu"):
     # TODO: more type annotations
     _info: Optional[FunctionInfo]
     _all_mounts: Collection[_Mount]
-    _stub: "modal.stub._Stub"
+    _stub: "modal.app._Stub"
     _obj: Any
     _web_url: Optional[str]
     _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
@@ -1098,7 +1098,7 @@ class _Function(_Object, type_prefix="fu"):
         return self._tag
 
     @property
-    def stub(self) -> "modal.stub._Stub":
+    def stub(self) -> "modal.app._Stub":
         """mdmd:hidden"""
         return self._stub
 
