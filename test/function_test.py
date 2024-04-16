@@ -4,11 +4,13 @@ import inspect
 import pytest
 import time
 import typing
+from contextlib import contextmanager
 
 from synchronicity.exceptions import UserCodeException
 
 import modal
 from modal import Image, Mount, NetworkFileSystem, Proxy, Stub, web_endpoint
+from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
@@ -64,6 +66,85 @@ def test_map(client, servicer, slow_put_inputs):
         assert len(servicer.cleared_function_calls) == 1
         assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
         assert len(servicer.cleared_function_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_map_async_generator(client):
+    stub = Stub()
+    dummy_modal = stub.function()(dummy)
+
+    async def gen_num():
+        yield 2
+        yield 3
+
+    async with stub.run(client=client):
+        res = [num async for num in dummy_modal.map.aio(gen_num())]
+        assert res == [4, 9]
+
+
+def _pow2(x: int):
+    return x**2
+
+
+@contextmanager
+def synchronicity_loop_delay_tracker():
+    done = False
+
+    async def _track_eventloop_blocking():
+        max_dur = 0.0
+        BLOCK_TIME = 0.01
+        while not done:
+            t0 = time.perf_counter()
+            await asyncio.sleep(BLOCK_TIME)
+            max_dur = max(max_dur, time.perf_counter() - t0)
+        return max_dur - BLOCK_TIME  # if it takes exactly BLOCK_TIME we would have zero delay
+
+    track_eventloop_blocking = synchronize_api(_track_eventloop_blocking)
+    yield track_eventloop_blocking(_future=True)
+    done = True
+
+
+def test_map_blocking_iterator_blocking_synchronicity_loop(client):
+    stub = Stub()
+    SLEEP_DUR = 0.5
+
+    def blocking_iter():
+        yield 1
+        time.sleep(SLEEP_DUR)
+        yield 2
+
+    pow2 = stub.function()(_pow2)
+
+    with stub.run(client=client):
+        t0 = time.monotonic()
+        with synchronicity_loop_delay_tracker() as max_delay:
+            for _ in pow2.map(blocking_iter()):
+                pass
+        dur = time.monotonic() - t0
+    assert dur >= SLEEP_DUR
+    assert max_delay.result() < 0.1  # should typically be much smaller than this
+
+
+@pytest.mark.asyncio
+async def test_map_blocking_iterator_blocking_synchronicity_loop_async(client):
+    stub = Stub()
+    SLEEP_DUR = 0.5
+
+    def blocking_iter():
+        yield 1
+        time.sleep(SLEEP_DUR)
+        yield 2
+
+    pow2 = stub.function()(_pow2)
+
+    async with stub.run(client=client):
+        t0 = time.monotonic()
+        with synchronicity_loop_delay_tracker() as max_delay:
+            async for _ in pow2.map.aio(blocking_iter()):
+                pass
+        dur = time.monotonic() - t0
+    assert dur >= SLEEP_DUR
+    assert max_delay.result() < 0.1  # should typically be much smaller than this
 
 
 _side_effect_count = 0
@@ -201,8 +282,7 @@ async def test_generator(client, servicer):
         assert len(servicer.cleared_function_calls) == 1
 
 
-@pytest.mark.asyncio
-async def test_generator_map_invalid(client, servicer):
+def test_generator_map_invalid(client, servicer):
     stub = Stub()
 
     later_gen_modal = stub.function()(later_gen)
@@ -213,11 +293,12 @@ async def test_generator_map_invalid(client, servicer):
     servicer.function_body(dummy)
 
     with stub.run(client=client):
-        with pytest.raises(InvalidError):
+        with pytest.raises(InvalidError, match="A generator function cannot be called with"):
             # Support for .map() on generators was removed in version 0.57
             for _ in later_gen_modal.map([1, 2, 3]):
                 pass
-        with pytest.raises(InvalidError):
+
+        with pytest.raises(InvalidError, match="A generator function cannot be called with"):
             later_gen_modal.for_each([1, 2, 3])
 
 
@@ -651,3 +732,41 @@ def test_no_state_reuse(client, servicer, supports_dir):
 
     # mount ids should not overlap between first and second deploy
     assert not (first_deploy & second_deploy)
+
+
+@pytest.mark.asyncio
+async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
+    # TODO: tests making use of mock blob server currently have to be async, since the
+    #  blob server runs as an async pytest fixture which will have its event loop blocked
+    #  by the test itself otherwise... Should move to its own thread.
+    monkeypatch.setattr("modal.functions.MAX_OBJECT_SIZE_BYTES", 1)
+    servicer.use_blob_outputs = True
+    stub = Stub()
+    dummy_modal = stub.function()(dummy)
+
+    _, blobs = blob_server
+    async with stub.run.aio(client=client):
+        assert len(blobs) == 0
+        assert [a async for a in dummy_modal.map.aio(range(100))] == [i**2 for i in range(100)]
+        assert len(servicer.cleared_function_calls) == 1
+
+    assert len(blobs) == 200  # inputs + outputs
+
+
+@pytest.mark.asyncio
+async def test_non_aio_map_in_async_caller_error(client):
+    dummy_function = stub.function()(dummy)
+
+    with stub.run(client=client):
+        with pytest.raises(InvalidError, match=".map.aio"):
+            for _ in dummy_function.map([1, 2, 3]):
+                pass
+
+        # using .aio should be ok:
+        res = [r async for r in dummy_function.map.aio([1, 2, 3])]
+        assert res == [1, 4, 9]
+
+        # we might want to deprecate this syntax (async for ... in map without .aio),
+        # but we support it for backwards compatibility for now:
+        res = [r async for r in dummy_function.map([1, 2, 4])]
+        assert res == [1, 4, 16]
