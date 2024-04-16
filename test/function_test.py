@@ -200,7 +200,7 @@ def test_function_memory_limit(client):
         f.remote()
 
     g = stub.function(memory=(2048, 2048 - 1))(custom_function)
-    with pytest.raises(ValueError), stub.run(client=client):
+    with pytest.raises(InvalidError), stub.run(client=client):
         g.remote()
 
 
