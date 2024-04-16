@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.72 (2024-04-16)
+
+* Specifying a hard memory limit for a `modal.Function` is now supported. Pass a tuple of `memory=(request, limit)`. Above the `limit`, which is specified in MiB, a Function's container will be OOM killed.
+
+
+
 ### 0.62.70 (2024-04-16)
 
 * `modal.CloudBucketMount` now supports read-only access to Google Cloud Storage
