@@ -2,7 +2,6 @@
 import asyncio
 import inspect
 import time
-import typing
 import warnings
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -10,12 +9,10 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
-    AsyncIterable,
     AsyncIterator,
     Callable,
     Collection,
     Dict,
-    Iterable,
     List,
     Optional,
     Sequence,
@@ -38,7 +35,6 @@ from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import (
-    AsyncOrSyncIteratable,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -71,7 +67,16 @@ from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
-from .parallel_map import SynchronizedQueue, _map_invocation, _SynchronizedQueue
+from .parallel_map import (
+    _for_each_async,
+    _for_each_sync,
+    _map_async,
+    _map_invocation,
+    _map_sync,
+    _starmap_async,
+    _starmap_sync,
+    _SynchronizedQueue,
+)
 from .proxy import _Proxy
 from .retries import Retries
 from .schedule import Schedule
@@ -879,7 +884,8 @@ class _Function(_Object, type_prefix="fu"):
         """mdmd:hidden
 
         Synchronicity-wrapped map implementation. To be safe against invocations of user code in the synchronicity thread
-        it doesn't accept an [async]iterator, and instead takes a _SynchronizedQueue instance.
+        it doesn't accept an [async]iterator, and instead takes a _SynchronizedQueue instance that is fed by
+        higher level functions like .map()
 
         _SynchronizedQueue is used instead of asyncio.Queue so that the main thread can put
         items in the queue safely.
@@ -930,177 +936,6 @@ class _Function(_Object, type_prefix="fu"):
     @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
         return await _Invocation.create(self.object_id, args, kwargs, self._client)
-
-    # note that `map()` is not synchronicity-wrapped, since it accepts executable code in the form of
-    # iterators that we don't want to run inside the synchronicity thread. We delegate to `._map()` with
-    # a safer Queue as input
-    @synchronizer.nowrap
-    @warn_if_generator_is_not_consumed(function_name="Function.map")
-    def _map_sync(
-        self,
-        *input_iterators: Iterable[Any],  # one input iterator per argument in the mapped-over function/generator
-        kwargs={},  # any extra keyword arguments for the function
-        order_outputs: bool = True,  # return outputs in order
-        return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
-    ) -> AsyncOrSyncIteratable:
-        """Parallel map over a set of inputs.
-
-        Takes one iterator argument per argument in the function being mapped over.
-
-        Example:
-        ```python
-        @stub.function()
-        def my_func(a):
-            return a ** 2
-
-
-        @stub.local_entrypoint()
-        def main():
-            assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
-        ```
-
-        If applied to a `stub.function`, `map()` returns one result per input and the output order
-        is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
-        in the order that they are completed instead.
-
-        `return_exceptions` can be used to treat exceptions as successful results:
-
-        ```python
-        @stub.function()
-        def my_func(a):
-            if a == 2:
-                raise Exception("ohno")
-            return a ** 2
-
-
-        @stub.local_entrypoint()
-        def main():
-            # [0, 1, UserCodeException(Exception('ohno'))]
-            print(list(my_func.map(range(3), return_exceptions=True)))
-        ```
-        """
-
-        return AsyncOrSyncIteratable(
-            self._map_async(
-                *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
-            ),
-            nested_async_message="You can't iter(Function.map()) or Function.for_each() from an async function. Use async for ... Function.map.aio() or Function.for_each.aio() instead.",
-        )
-
-    @synchronizer.nowrap
-    @warn_if_generator_is_not_consumed(function_name="Function.map.aio")
-    async def _map_async(
-        self,
-        *input_iterators: Union[
-            Iterable[Any], AsyncIterable[Any]
-        ],  # one input iterator per argument in the mapped-over function/generator
-        kwargs={},  # any extra keyword arguments for the function
-        order_outputs: bool = True,  # return outputs in order
-        return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
-    ) -> AsyncGenerator[Any, None]:
-        """mdmd:hidden
-        This runs in an event loop on the main thread
-
-        It concurrently feeds new input to the input queue and yields available outputs
-        to the caller.
-        Note that since the iterator(s) can block, it's a bit opaque how often the event
-        loop decides to get a new input vs how often it will emit a new output.
-        We could make this explicit as an improvement or even let users decide what they
-        prefer: throughput (prioritize queueing inputs) or latency (prioritize yielding results)
-        """
-        raw_input_queue: Any = SynchronizedQueue()  # type: ignore
-        raw_input_queue.init()
-
-        async def feed_queue():
-            # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-            async with stream.zip(*[stream.iterate(it) for it in input_iterators]).stream() as streamer:
-                async for args in streamer:
-                    await raw_input_queue.put.aio((args, kwargs))
-            await raw_input_queue.put.aio(None)  # end-of-input sentinel
-
-        feed_input_task = asyncio.create_task(feed_queue())
-
-        try:
-            async for output in self._map.aio(raw_input_queue, order_outputs, return_exceptions):  # type: ignore[reportFunctionMemberAccess]
-                yield output
-        finally:
-            feed_input_task.cancel()  # should only be needed in case of exceptions
-
-    def _for_each_sync(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
-        """Execute function for all inputs, ignoring outputs.
-
-        Convenient alias for `.map()` in cases where the function just needs to be called.
-        as the caller doesn't have to consume the generator to process the inputs.
-        """
-        # TODO(erikbern): it would be better if this is more like a map_spawn that immediately exits
-        # rather than iterating over the result
-        for _ in self.map(*input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions):
-            pass
-
-    @synchronizer.nowrap
-    async def _for_each_async(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
-        async for _ in self.map.aio(  # type: ignore
-            *input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions
-        ):
-            pass
-
-    @synchronizer.nowrap
-    @warn_if_generator_is_not_consumed(function_name="Function.starmap")
-    async def _starmap_async(
-        self,
-        input_iterator: Union[Iterable[Sequence[Any]], AsyncIterable[Sequence[Any]]],
-        kwargs={},
-        order_outputs: bool = True,
-        return_exceptions: bool = False,
-    ) -> typing.AsyncIterable[Any]:
-        raw_input_queue: Any = SynchronizedQueue()  # type: ignore
-        raw_input_queue.init()
-
-        async def feed_queue():
-            # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-            async with stream.iterate(input_iterator).stream() as streamer:
-                async for args in streamer:
-                    await raw_input_queue.put.aio((args, kwargs))
-            await raw_input_queue.put.aio(None)  # end-of-input sentinel
-
-        feed_input_task = asyncio.create_task(feed_queue())
-        try:
-            async for output in self._map.aio(raw_input_queue, order_outputs, return_exceptions):  # type: ignore[reportFunctionMemberAccess]
-                yield output
-        finally:
-            feed_input_task.cancel()  # should only be needed in case of exceptions
-
-    @synchronizer.nowrap
-    @warn_if_generator_is_not_consumed(function_name="Function.starmap.aio")
-    def _starmap_sync(
-        self,
-        input_iterator: Iterable[Sequence[Any]],
-        kwargs={},
-        order_outputs: bool = True,
-        return_exceptions: bool = False,
-    ) -> AsyncOrSyncIteratable:
-        """Like `map`, but spreads arguments over multiple function arguments.
-
-        Assumes every input is a sequence (e.g. a tuple).
-
-        Example:
-        ```python
-        @stub.function()
-        def my_func(a, b):
-            return a + b
-
-
-        @stub.local_entrypoint()
-        def main():
-            assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
-        ```
-        """
-        return AsyncOrSyncIteratable(
-            self._starmap_async(
-                input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
-            ),
-            nested_async_message="You can't run Function.map() or Function.for_each() from an async function. Use Function.map.aio()/Function.for_each.aio() instead.",
-        )
 
     @synchronizer.no_io_translation
     @live_method
