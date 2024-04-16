@@ -93,6 +93,7 @@ class _CloudBucketMount:
     )
     def f():
         subprocess.run(["ls", "/my-mount"], check=True)
+    ```
     """
 
     bucket_name: str
