@@ -37,7 +37,7 @@ T = TypeVar("T")
 
 
 if typing.TYPE_CHECKING:
-    import modal.stub
+    import modal.app
 
 
 class _Obj:
@@ -138,7 +138,7 @@ class _Cls(_Object, type_prefix="cs"):
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
-    _stub: Optional["modal.stub._Stub"] = None  # not set for lookups
+    _stub: Optional["modal.app._Stub"] = None  # not set for lookups
 
     def _initialize_from_empty(self):
         self._user_cls = None
