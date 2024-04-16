@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import AsyncIterator, Dict, List, Optional, Sequence, Union
+from typing import AsyncIterator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -13,12 +13,13 @@ from modal_proto import api_pb2
 
 from ._location import parse_cloud_provider
 from ._resolver import Resolver
+from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 from ._utils.mount_utils import validate_mount_points, validate_volumes
 from .client import _Client
 from .config import config
-from .gpu import GPU_T, parse_gpu_config
+from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
@@ -241,7 +242,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
         cpu: Optional[float] = None,
-        memory: Optional[int] = None,
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
@@ -274,14 +275,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             return deps
 
         async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
-            gpu_config = parse_gpu_config(gpu)
-
-            cloud_provider = parse_cloud_provider(cloud) if cloud else None
-
-            if cpu is not None and cpu < 0.25:
-                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
-            milli_cpu = int(1000 * cpu) if cpu is not None else None
-
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
                 api_pb2.VolumeMount(
@@ -299,8 +292,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
                 workdir=workdir,
-                resources=api_pb2.Resources(gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory),
-                cloud_provider=cloud_provider,
+                resources=convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu),
+                cloud_provider=parse_cloud_provider(cloud) if cloud else None,
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
                 block_network=block_network,
