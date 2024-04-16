@@ -28,13 +28,13 @@ from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize
 from ._utils.async_utils import TaskContext, synchronizer
 from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
-from .app import _ContainerApp
 from .client import Client, _Client
 from .cls import Cls
 from .config import logger
 from .exception import ExecutionError, InputCancellation, InvalidError
 from .functions import Function, _Function, _set_current_context_ids
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
+from .running_app import RunningApp
 from .stub import Stub, _Stub
 
 if TYPE_CHECKING:
@@ -490,10 +490,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 client,
             )
 
+        # Get ids and metadata for objects (primarily functions and classes) on the app
+        container_app: RunningApp = container_io_manager.get_app_objects()
+
         # Initialize objects on the stub.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
         if imp_fun.stub is not None:
-            container_app: _ContainerApp = container_io_manager.get_app_objects()
             stub: Stub = synchronizer._translate_out(imp_fun.stub, Interface.BLOCKING)
             stub._init_container(client, container_app)
 

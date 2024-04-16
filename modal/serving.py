@@ -14,7 +14,6 @@ from ._output import OutputManager
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.logger import logger
 from ._watcher import watch
-from .app import _LocalApp
 from .cli.import_refs import import_stub
 from .client import _Client
 from .config import config
@@ -121,8 +120,8 @@ async def _serve_stub(
         watcher = watch(mounts_to_watch, output_mgr)
 
     async with _run_stub(stub, client=client, output_mgr=output_mgr, environment_name=environment_name):
-        app: _LocalApp = stub._local_app
-        client.set_pre_stop(lambda: _disconnect(client, app.app_id))
+        app_id: str = stub.app_id
+        client.set_pre_stop(lambda: _disconnect(client, app_id))
         async with TaskContext(grace=0.1) as tc:
             tc.create_task(_run_watch_loop(stub_ref, stub.app_id, output_mgr, watcher, environment_name))
             yield stub
