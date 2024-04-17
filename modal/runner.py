@@ -176,7 +176,7 @@ async def _disconnect(
 
 
 @asynccontextmanager
-async def _run_app(
+async def _run_stub(
     stub: _App,
     client: Optional[_Client] = None,
     stdout=None,
@@ -345,7 +345,7 @@ class DeployResult:
     app_id: str
 
 
-async def _deploy_app(
+async def _deploy_stub(
     stub: _App,
     name: str = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -496,13 +496,7 @@ async def _interactive_shell(_stub: _App, cmd: List[str], environment_name: str 
         await connect_to_sandbox(sb)
 
 
-run_app = synchronize_api(_run_app)
+run_stub = synchronize_api(_run_stub)
 serve_update = synchronize_api(_serve_update)
-deploy_app = synchronize_api(_deploy_app)
+deploy_stub = synchronize_api(_deploy_stub)
 interactive_shell = synchronize_api(_interactive_shell)
-
-# Soon-to-be-deprecated ones, add warning soon
-_run_stub = _run_app
-run_stub = run_app
-_deploy_stub = _deploy_app
-deploy_stub = deploy_app
