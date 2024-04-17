@@ -28,7 +28,7 @@ from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize
 from ._utils.async_utils import TaskContext, synchronizer
 from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
-from .app import Stub, _Stub
+from .app import Stub, _App
 from .client import Client, _Client
 from .cls import Cls
 from .config import logger
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 class ImportedFunction:
     obj: Any
     fun: Callable
-    stub: Optional[_Stub]
+    stub: Optional[_App]
     is_async: bool
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
@@ -309,7 +309,7 @@ def import_function(
     cls: Optional[Type] = None
     fun: Callable
     function: Optional[_Function] = None
-    active_stub: Optional[_Stub] = None
+    active_stub: Optional[_App] = None
     pty_info: api_pb2.PTYInfo = function_def.pty_info
 
     if ser_fun is not None:
@@ -355,7 +355,7 @@ def import_function(
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated stubs - if there is only one with the indicated name, use that one
         stub_name: Optional[str] = function_def.stub_name or None  # coalesce protobuf field to None
-        matching_stubs = _Stub._all_stubs.get(stub_name, [])
+        matching_stubs = _App._all_stubs.get(stub_name, [])
         if len(matching_stubs) > 1:
             if stub_name is not None:
                 warning_sub_message = f"stub with the same name ('{stub_name}')"
