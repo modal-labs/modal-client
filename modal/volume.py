@@ -482,16 +482,10 @@ class _Volume(_Object, type_prefix="vo"):
         **Usage**
 
         ```python notest
-        @stub.function(volumes={"/root/foo": volume})
-        def g():
-            volume.reload()  # Fetch latest changes
-            with open("/root/foo/bar/example.txt", "r") as f:
-                print(f.read())
+        vol = modal.Volume.lookup("my-modal-volume")
 
-            volume.copy_files(["bar/example.txt"], "bar2")  # Copy files to another directory
-            volume.copy_files(
-                ["bar/example.txt"], "bar/example2.txt"
-            )  # Rename a file by copying
+        vol.copy_files(["bar/example.txt"], "bar2")  # Copy files to another directory
+        vol.copy_files(["bar/example.txt"], "bar/example2.txt")  # Rename a file by copying
         ```
         """
         src_paths = [path.encode("utf-8") for path in src_paths if isinstance(path, str)]
