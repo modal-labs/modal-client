@@ -106,6 +106,7 @@ enum CloudProvider {
   CLOUD_PROVIDER_GCP = 2;
   CLOUD_PROVIDER_AUTO = 3;
   CLOUD_PROVIDER_OCI = 4;
+  CLOUD_PROVIDER_LAMBDA_LABS = 5;
 }
 
 // Which data format a binary message is encoded with.
