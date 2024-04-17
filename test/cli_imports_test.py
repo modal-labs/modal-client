@@ -2,9 +2,9 @@
 import pytest
 
 from modal._utils.async_utils import synchronizer
-from modal.app import _LocalEntrypoint, _Stub
+from modal.app import _App, _LocalEntrypoint
 from modal.cli.import_refs import (
-    DEFAULT_STUB_NAME,
+    DEFAULT_APP_NAME,
     get_by_object_path,
     import_file_or_module,
     parse_import_ref,
@@ -85,18 +85,18 @@ dir_containing_python_package = {
     ["dir_structure", "ref", "expected_object_type"],
     [
         # # file syntax
-        (empty_dir_with_python_file, "mod.py", _Stub),
-        (empty_dir_with_python_file, "mod.py::stub", _Stub),
-        (empty_dir_with_python_file, "mod.py::other_stub", _Stub),
-        (dir_containing_python_package, "pack/file.py", _Stub),
-        (dir_containing_python_package, "pack/sub/subfile.py", _Stub),
-        (dir_containing_python_package, "dir/sub/subfile.py", _Stub),
+        (empty_dir_with_python_file, "mod.py", _App),
+        (empty_dir_with_python_file, "mod.py::stub", _App),
+        (empty_dir_with_python_file, "mod.py::other_stub", _App),
+        (dir_containing_python_package, "pack/file.py", _App),
+        (dir_containing_python_package, "pack/sub/subfile.py", _App),
+        (dir_containing_python_package, "dir/sub/subfile.py", _App),
         # # python module syntax
-        (empty_dir_with_python_file, "mod", _Stub),
-        (empty_dir_with_python_file, "mod::stub", _Stub),
-        (empty_dir_with_python_file, "mod::other_stub", _Stub),
-        (dir_containing_python_package, "pack.mod", _Stub),
-        (dir_containing_python_package, "pack.mod::other_stub", _Stub),
+        (empty_dir_with_python_file, "mod", _App),
+        (empty_dir_with_python_file, "mod::stub", _App),
+        (empty_dir_with_python_file, "mod::other_stub", _App),
+        (dir_containing_python_package, "pack.mod", _App),
+        (dir_containing_python_package, "pack.mod::other_stub", _App),
         (dir_containing_python_package, "pack/local.py::stub.main", _LocalEntrypoint),
     ],
 )
@@ -104,7 +104,7 @@ def test_import_object(dir_structure, ref, expected_object_type, mock_dir):
     with mock_dir(dir_structure):
         import_ref = parse_import_ref(ref)
         module = import_file_or_module(import_ref.file_or_module)
-        imported_object = get_by_object_path(module, import_ref.object_path or DEFAULT_STUB_NAME)
+        imported_object = get_by_object_path(module, import_ref.object_path or DEFAULT_APP_NAME)
         _translated_obj = synchronizer._translate_in(imported_object)
         assert isinstance(_translated_obj, expected_object_type)
 
