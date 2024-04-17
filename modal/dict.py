@@ -22,22 +22,23 @@ def _serialize_dict(data):
 class _Dict(_Object, type_prefix="di"):
     """Distributed dictionary for storage in Modal apps.
 
-    Keys and values can be essentially any object, so long as they can be
-    serialized by `cloudpickle`, including Modal objects.
+    Keys and values can be essentially any object, so long as they can be serialized by
+    `cloudpickle`, which includes other Modal objects.
 
     **Lifetime of a Dict and its items**
 
     An individual dict entry will expire 30 days after it was last added to its Dict object.
-    Because of this, `Dict`s are best not used for
-    long-term storage. All data is deleted when the app is stopped.
+    Additionally, data are stored in memory on the Modal server and could be lost due to
+    unexpected server restarts. Because of this, `Dict` is best suited for storing short-term
+    state and is not recommended for durable storage.
 
     **Usage**
 
     ```python
-    from modal import Dict, Stub
+    import modal
 
-    stub = Stub()
-    my_dict = Dict.from_name("my-persisted_dict", create_if_missing=True)
+    stub = modal.Stub()
+    my_dict = modal.Dict.from_name("my-persisted_dict", create_if_missing=True)
 
     @stub.local_entrypoint()
     def main():
@@ -47,6 +48,11 @@ class _Dict(_Object, type_prefix="di"):
         assert my_dict["some key"] == "some value"
         assert my_dict[123] == 456
     ```
+
+    The `Dict` class offers a few methods for operations that are usually accomplished
+    in Python with operators, such as `Dict.put` and `Dict.contains`. The advantage of
+    these methods is that they can be safely called in an asynchronous context, whereas
+    their operator-based analogues will block the event loop.
 
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-dicts).
     """
@@ -219,7 +225,7 @@ class _Dict(_Object, type_prefix="di"):
     async def __getitem__(self, key: Any) -> Any:
         """Get the value associated with a key.
 
-        This function only works in a synchronous context.
+        Note: this function will block the event loop when called in an async context.
         """
         NOT_FOUND = object()
         value = await self.get(key, NOT_FOUND)
@@ -247,7 +253,7 @@ class _Dict(_Object, type_prefix="di"):
     async def __setitem__(self, key: Any, value: Any) -> None:
         """Set a specific key-value pair to the dictionary.
 
-        This function only works in a synchronous context.
+        Note: this function will block the event loop when called in an async context.
         """
         return await self.put(key, value)
 
@@ -264,7 +270,7 @@ class _Dict(_Object, type_prefix="di"):
     async def __delitem__(self, key: Any) -> Any:
         """Delete a key from the dictionary.
 
-        This function only works in a synchronous context.
+        Note: this function will block the event loop when called in an async context.
         """
         return await self.pop(key)
 
@@ -272,7 +278,7 @@ class _Dict(_Object, type_prefix="di"):
     async def __contains__(self, key: Any) -> bool:
         """Return if a key is present.
 
-        This function only works in a synchronous context.
+        Note: this function will block the event loop when called in an async context.
         """
         return await self.contains(key)
 
