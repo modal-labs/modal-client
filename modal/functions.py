@@ -17,6 +17,7 @@ from typing import (
     Optional,
     Sequence,
     Sized,
+    Tuple,
     Type,
     Union,
 )
@@ -33,6 +34,7 @@ from ._location import parse_cloud_provider
 from ._output import OutputManager
 from ._pty import get_pty_info
 from ._resolver import Resolver
+from ._resources import convert_fn_config_to_resources_config
 from ._serialization import serialize
 from ._utils.async_utils import (
     synchronize_api,
@@ -85,7 +87,7 @@ from .secret import _Secret
 from .volume import _Volume
 
 if TYPE_CHECKING:
-    import modal.stub
+    import modal.app
 
 
 class _Invocation:
@@ -247,7 +249,7 @@ class _FunctionSpec:
     gpu: GPU_T
     cloud: Optional[str]
     cpu: Optional[float]
-    memory: Optional[int]
+    memory: Optional[Union[int, Tuple[int, int]]]
 
 
 class _Function(_Object, type_prefix="fu"):
@@ -260,7 +262,7 @@ class _Function(_Object, type_prefix="fu"):
     # TODO: more type annotations
     _info: Optional[FunctionInfo]
     _all_mounts: Collection[_Mount]
-    _stub: "modal.stub._Stub"
+    _stub: "modal.app._Stub"
     _obj: Any
     _web_url: Optional[str]
     _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
@@ -288,7 +290,7 @@ class _Function(_Object, type_prefix="fu"):
         allow_cross_region_volumes: bool = False,
         volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
-        memory: Optional[int] = None,
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
@@ -499,10 +501,6 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-            if cpu is not None and cpu < 0.25:
-                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
-            milli_cpu = int(1000 * cpu) if cpu is not None else 0
-
             timeout_secs = timeout
 
             if stub and stub.is_interactive and not is_builder_function:
@@ -568,7 +566,7 @@ class _Function(_Object, type_prefix="fu"):
                 function_serialized=function_serialized or b"",
                 class_serialized=class_serialized or b"",
                 function_type=function_type,
-                resources=api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory or 0),
+                resources=convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu),
                 webhook_config=webhook_config,
                 shared_volume_mounts=network_file_system_mount_protos(
                     validated_network_file_systems, allow_cross_region_volumes
@@ -801,7 +799,7 @@ class _Function(_Object, type_prefix="fu"):
         return self._tag
 
     @property
-    def stub(self) -> "modal.stub._Stub":
+    def stub(self) -> "modal.app._Stub":
         """mdmd:hidden"""
         return self._stub
 

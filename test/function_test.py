@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
+import os
 import pytest
 import time
 import typing
@@ -18,6 +19,12 @@ from modal.runner import deploy_stub
 from modal_proto import api_pb2
 
 stub = Stub()
+
+
+if os.environ.get("GITHUB_ACTIONS") == "true":
+    TIME_TOLERANCE = 0.25
+else:
+    TIME_TOLERANCE = 0.05
 
 
 @stub.function()
@@ -122,7 +129,7 @@ def test_map_blocking_iterator_blocking_synchronicity_loop(client):
                 pass
         dur = time.monotonic() - t0
     assert dur >= SLEEP_DUR
-    assert max_delay.result() < 0.1  # should typically be much smaller than this
+    assert max_delay.result() < TIME_TOLERANCE  # should typically be much smaller than this
 
 
 @pytest.mark.asyncio
@@ -144,7 +151,7 @@ async def test_map_blocking_iterator_blocking_synchronicity_loop_async(client):
                 pass
         dur = time.monotonic() - t0
     assert dur >= SLEEP_DUR
-    assert max_delay.result() < 0.1  # should typically be much smaller than this
+    assert max_delay.result() < TIME_TOLERANCE  # should typically be much smaller than this
 
 
 _side_effect_count = 0
@@ -190,6 +197,18 @@ def test_starmap(client):
 def test_function_memory_request(client):
     stub = Stub()
     stub.function(memory=2048)(dummy)
+
+
+def test_function_memory_limit(client):
+    stub = Stub()
+    f = stub.function(memory=(2048, 4096))(dummy)
+
+    with stub.run(client=client):
+        f.remote()
+
+    g = stub.function(memory=(2048, 2048 - 1))(custom_function)
+    with pytest.raises(InvalidError), stub.run(client=client):
+        g.remote()
 
 
 def test_function_cpu_request(client):

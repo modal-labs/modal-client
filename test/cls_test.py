@@ -7,7 +7,6 @@ from typing_extensions import assert_type
 
 from modal import Cls, Function, Image, Queue, Stub, build, enter, exit, method
 from modal._serialization import deserialize
-from modal.app import _ContainerApp
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.partial_function import (
     _find_callables_for_obj,
@@ -16,6 +15,7 @@ from modal.partial_function import (
     _PartialFunctionFlags,
 )
 from modal.runner import deploy_stub
+from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
 from .supports.base_class import BaseCls2
@@ -405,7 +405,7 @@ def test_rehydrate(client, servicer, reset_container_app):
     app_id = deploy_stub(stub, "my-cls-app", client=client).app_id
 
     # Initialize a container
-    container_app = _ContainerApp(app_id=app_id)
+    container_app = RunningApp(app_id=app_id)
 
     # Associate app with stub
     stub._init_container(client, container_app)

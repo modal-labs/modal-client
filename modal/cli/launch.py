@@ -8,9 +8,9 @@ from typing import Any, Dict, Optional
 
 from typer import Typer
 
+from ..app import Stub
 from ..exception import _CliUserExecutionError
 from ..runner import run_stub
-from ..stub import Stub
 from .import_refs import import_function
 
 launch_cli = Typer(

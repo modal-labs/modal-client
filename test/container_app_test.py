@@ -7,7 +7,7 @@ from google.protobuf.message import Message
 
 from modal import Stub, interact
 from modal._container_io_manager import ContainerIOManager
-from modal.app import _ContainerApp
+from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -27,7 +27,7 @@ async def test_container_function_lazily_imported(container_client):
     object_handle_metadata: Dict[str, Message] = {
         "fu-123": api_pb2.FunctionHandleMetadata(),
     }
-    container_app = _ContainerApp(
+    container_app = RunningApp(
         app_id="ap-123", tag_to_object_id=tag_to_object_id, object_handle_metadata=object_handle_metadata
     )
     stub = Stub()

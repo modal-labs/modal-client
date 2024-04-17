@@ -30,9 +30,9 @@ from modal._serialization import (
     serialize_data_format,
 )
 from modal._utils import async_utils
+from modal.app import _Stub
 from modal.exception import InvalidError
 from modal.partial_function import enter
-from modal.stub import _Stub
 from modal_proto import api_pb2
 
 from .helpers import deploy_stub_externally

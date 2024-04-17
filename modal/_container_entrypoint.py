@@ -34,14 +34,14 @@ from ._utils.function_utils import (
     is_global_function,
     method_has_params,
 )
-from .app import _ContainerApp
+from .app import Stub, _Stub
 from .client import Client, _Client
 from .cls import Cls
 from .config import logger
 from .exception import ExecutionError, InputCancellation, InvalidError
 from .functions import Function, _Function
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
-from .stub import Stub, _Stub
+from .running_app import RunningApp
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -496,10 +496,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 client,
             )
 
+        # Get ids and metadata for objects (primarily functions and classes) on the app
+        container_app: RunningApp = container_io_manager.get_app_objects()
+
         # Initialize objects on the stub.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
         if imp_fun.stub is not None:
-            container_app: _ContainerApp = container_io_manager.get_app_objects()
             stub: Stub = synchronizer._translate_out(imp_fun.stub, Interface.BLOCKING)
             stub._init_container(client, container_app)
 

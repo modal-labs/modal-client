@@ -675,10 +675,9 @@ def test_inside_ctx_unhydrated(client):
             with image_2.imports():
                 raise Exception("foo")
 
-        # Make sure run_inside works but is depreated
-        with pytest.warns(DeprecationError, match="imports()"):
-            with image_1.run_inside():
-                pass
+        # Old one raises
+        with pytest.raises(DeprecationError, match="imports()"):
+            image_1.run_inside()
 
         # Hydration of the image should raise the exception
         with pytest.raises(ImportError, match="foo"):

@@ -23,7 +23,7 @@ from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 from .config import config, logger, user_config_path
-from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -1549,8 +1549,7 @@ class _Image(_Object, type_prefix="im"):
             import torch
         ```
         """
-        deprecation_warning((2023, 12, 15), Image.run_inside.__doc__)
-        return self.imports()
+        deprecation_error((2023, 12, 15), Image.run_inside.__doc__)
 
 
 Image = synchronize_api(_Image)

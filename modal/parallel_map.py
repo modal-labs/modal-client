@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 import asyncio
 import typing
 from dataclasses import dataclass
