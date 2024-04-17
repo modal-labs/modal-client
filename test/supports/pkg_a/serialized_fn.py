@@ -8,9 +8,9 @@ import six  # noqa
 import modal  # noqa
 
 
-stub = modal.Stub()
+app = modal.App()
 
 
-@stub.function(serialized=True)
+@app.function(serialized=True)
 def f():
     pass

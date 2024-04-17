@@ -6,16 +6,16 @@ import sys
 from typing import Optional
 
 
-def deploy_stub_externally(
+def deploy_app_externally(
     servicer,
     file_or_module: str,
-    stub_variable: Optional[str] = None,
+    app_variable: Optional[str] = None,
     deployment_name="Deployment",
     cwd=None,
     env={},
     capture_output=True,
 ) -> Optional[str]:
-    # deploys a stub from another interpreter to prevent leaking state from client into a container process (apart from what goes through the servicer)
+    # deploys a app from another interpreter to prevent leaking state from client into a container process (apart from what goes through the servicer)
     # also has the advantage that no modules imported by the test files themselves will be added to sys.modules and included in mounts etc.
     windows_support: dict[str, str] = {}
 
@@ -29,10 +29,10 @@ def deploy_stub_externally(
     if cwd is None:
         cwd = pathlib.Path(__file__).parent.parent
 
-    stub_ref = file_or_module if stub_variable is None else f"{file_or_module}::{stub_variable}"
+    app_ref = file_or_module if app_variable is None else f"{file_or_module}::{app_variable}"
 
     p = subprocess.Popen(
-        [sys.executable, "-m", "modal.cli.entry_point", "deploy", stub_ref, "--name", deployment_name],
+        [sys.executable, "-m", "modal.cli.entry_point", "deploy", app_ref, "--name", deployment_name],
         cwd=cwd,
         env=env,
         stderr=subprocess.STDOUT,
@@ -41,6 +41,6 @@ def deploy_stub_externally(
     stdout_b, stderr_b = p.communicate()
     stdout_s, stderr_s = (b.decode() if b is not None else None for b in (stdout_b, stderr_b))
     if p.returncode != 0:
-        print(f"Deploying stub failed!\n### stdout ###\n{stdout_s}\n### stderr ###\n{stderr_s}")
-        raise Exception("Test helper failed to deploy stub")
+        print(f"Deploying app failed!\n### stdout ###\n{stdout_s}\n### stderr ###\n{stderr_s}")
+        raise Exception("Test helper failed to deploy app")
     return stdout_s

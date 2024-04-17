@@ -5,7 +5,7 @@ from typing import Dict
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 
-from modal import Stub, interact
+from modal import App, interact
 from modal._container_io_manager import ContainerIOManager
 from modal.running_app import RunningApp
 from modal_proto import api_pb2
@@ -30,13 +30,13 @@ async def test_container_function_lazily_imported(container_client):
     container_app = RunningApp(
         app_id="ap-123", tag_to_object_id=tag_to_object_id, object_handle_metadata=object_handle_metadata
     )
-    stub = Stub()
+    app = App()
 
     # This is normally done in _container_entrypoint
-    stub._init_container(container_client, container_app)
+    app._init_container(container_client, container_app)
 
     # Now, let's create my_f after the app started running and make sure it works
-    my_f_container = stub.function()(my_f_1)
+    my_f_container = app.function()(my_f_1)
     assert await my_f_container.remote.aio(42) == 1764  # type: ignore
 
 

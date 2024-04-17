@@ -3,9 +3,9 @@ import six  # noqa
 
 import modal
 
-stub = modal.Stub("imports_six")
+app = modal.App("imports_six")
 
 
-@stub.function()
+@app.function()
 def some_func():
     pass

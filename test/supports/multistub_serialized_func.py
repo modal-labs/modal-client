@@ -1,19 +1,19 @@
 # Copyright Modal Labs 2023
 import modal
 
-stub = modal.Stub()
+app = modal.App()
 
 
 def foo(i):
     return 1
 
 
-foo_handle = stub.function(serialized=True)(foo)
+foo_handle = app.function(serialized=True)(foo)
 
 
-other_stub = modal.Stub()
+other_app = modal.App()
 
 
-@other_stub.function()
+@other_app.function()
 def bar(i):
     return 2

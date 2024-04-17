@@ -6,8 +6,8 @@ import time
 from typing import List
 
 from modal import (
+    App,
     Image,
-    Stub,
     Volume,
     asgi_app,
     build,
@@ -24,59 +24,59 @@ from modal.exception import deprecation_warning
 
 SLEEP_DELAY = 0.1
 
-stub = Stub()
+app = App()
 
 
-@stub.function()
+@app.function()
 def square(x):
     return x * x
 
 
-@stub.function()
+@app.function()
 def ident(x):
     return x
 
 
-@stub.function()
+@app.function()
 def delay(t):
     time.sleep(t)
     return t
 
 
-@stub.function()
+@app.function()
 async def delay_async(t):
     await asyncio.sleep(t)
     return t
 
 
-@stub.function()
+@app.function()
 async def square_async(x):
     await asyncio.sleep(SLEEP_DELAY)
     return x * x
 
 
-@stub.function()
+@app.function()
 def raises(x):
     raise Exception("Failure!")
 
 
-@stub.function()
+@app.function()
 def raises_sysexit(x):
     raise SystemExit(1)
 
 
-@stub.function()
+@app.function()
 def raises_keyboardinterrupt(x):
     raise KeyboardInterrupt()
 
 
-@stub.function()
+@app.function()
 def gen_n(n):
     for i in range(n):
         yield i**2
 
 
-@stub.function()
+@app.function()
 def gen_n_fail_on_m(n, m):
     for i in range(n):
         if i == m:
@@ -89,7 +89,7 @@ def deprecated_function(x):
     return x**2
 
 
-@stub.function()
+@app.function()
 @web_endpoint()
 def webhook(arg="world"):
     return {"hello": arg}
@@ -101,7 +101,7 @@ def stream():
         yield f"{i}..."
 
 
-@stub.function()
+@app.function()
 @web_endpoint()
 def webhook_streaming():
     from fastapi.responses import StreamingResponse
@@ -115,7 +115,7 @@ async def stream_async():
         yield f"{i}..."
 
 
-@stub.function()
+@app.function()
 @web_endpoint()
 async def webhook_streaming_async():
     from fastapi.responses import StreamingResponse
@@ -132,12 +132,12 @@ def gen(n):
         yield i**2
 
 
-@stub.function(is_generator=True)
+@app.function(is_generator=True)
 def fun_returning_gen(n):
     return gen(n)
 
 
-@stub.function()
+@app.function()
 @asgi_app()
 def fastapi_app():
     from fastapi import FastAPI
@@ -151,7 +151,7 @@ def fastapi_app():
     return web_app
 
 
-@stub.function()
+@app.function()
 @wsgi_app()
 def basic_wsgi_app():
     def simple_app(environ, start_response):
@@ -165,7 +165,7 @@ def basic_wsgi_app():
     return simple_app
 
 
-@stub.cls()
+@app.cls()
 class Cls:
     def __init__(self):
         self._k = 11
@@ -190,7 +190,7 @@ class Cls:
         return self._generator(x)
 
 
-@stub.cls()
+@app.cls()
 class LifecycleCls:
     """Ensures that {sync,async} lifecycle hooks work with {sync,async} functions."""
 
@@ -260,7 +260,7 @@ class LifecycleCls:
         return self.events
 
 
-@stub.function()
+@app.function()
 def check_sibling_hydration(x):
     assert square.is_hydrated
     assert Cls().f.is_hydrated
@@ -273,7 +273,7 @@ def check_sibling_hydration(x):
     assert fun_returning_gen.is_generator
 
 
-@stub.cls()
+@app.cls()
 class ParamCls:
     def __init__(self, x: int, y: str) -> None:
         self.x = x
@@ -288,13 +288,13 @@ class ParamCls:
         return self.f.local(z)
 
 
-@stub.function(allow_concurrent_inputs=5)
+@app.function(allow_concurrent_inputs=5)
 def sleep_700_sync(x):
     time.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
 
 
-@stub.function(allow_concurrent_inputs=5)
+@app.function(allow_concurrent_inputs=5)
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
@@ -314,12 +314,12 @@ class BaseCls:
         return self.x * y
 
 
-@stub.cls()
+@app.cls()
 class DerivedCls(BaseCls):
     pass
 
 
-@stub.function()
+@app.function()
 def cube(x):
     # Note: this ends up calling the servicer fixture,
     # which always just returns the sum of the squares of the inputs,
@@ -328,7 +328,7 @@ def cube(x):
     return square.remote(x) * x
 
 
-@stub.function()
+@app.function()
 def function_calling_method(x, y, z):
     obj = ParamCls(x, y)
     return obj.f.remote(z)
@@ -340,7 +340,7 @@ volume = Volume.from_name("vol", create_if_missing=True)
 other_volume = Volume.from_name("other-vol", create_if_missing=True)
 
 
-@stub.function(image=image, volumes={"/tmp/xyz": volume})
+@app.function(image=image, volumes={"/tmp/xyz": volume})
 def check_dep_hydration(x):
     assert image.is_hydrated
     assert other_image.is_hydrated
@@ -348,7 +348,7 @@ def check_dep_hydration(x):
     assert other_volume.is_hydrated
 
 
-@stub.cls()
+@app.cls()
 class BuildCls:
     def __init__(self):
         self._k = 1
@@ -376,7 +376,7 @@ class BuildCls:
         return self._k * x
 
 
-@stub.cls(enable_memory_snapshot=True)
+@app.cls(enable_memory_snapshot=True)
 class CheckpointingCls:
     def __init__(self):
         self._vals = []
@@ -398,7 +398,7 @@ class CheckpointingCls:
         return "".join(self._vals) + x
 
 
-@stub.cls()
+@app.cls()
 class EventLoopCls:
     @enter()
     async def enter(self):
@@ -409,12 +409,12 @@ class EventLoopCls:
         return self.loop.is_running()
 
 
-@stub.function()
+@app.function()
 def sandbox_f(x):
-    sb = stub.spawn_sandbox("echo", str(x))
+    sb = app.spawn_sandbox("echo", str(x))
     return sb.object_id
 
 
-@stub.function()
+@app.function()
 def is_local_f(x):
     return is_local()

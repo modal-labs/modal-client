@@ -3,15 +3,15 @@ from __future__ import annotations
 
 import modal.experimental
 from modal import (
-    Stub,
+    App,
     enter,
     method,
 )
 
-stub = Stub()
+app = App()
 
 
-@stub.cls()
+@app.cls()
 class StopFetching:
     @enter()
     def init(self):

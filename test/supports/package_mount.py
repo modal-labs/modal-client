@@ -1,10 +1,10 @@
 # Copyright Modal Labs 2022
-from modal import Mount, Stub
+from modal import App, Mount
 
-stub = Stub()
+app = App()
 
 
-@stub.function()
+@app.function()
 def num_mounts(_x):
     mount = Mount.from_local_python_packages("module_1")
     return len(mount.entries)

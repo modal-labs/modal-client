@@ -1,10 +1,10 @@
 # Copyright Modal Labs 2023
 import modal
 
-stub = modal.Stub()
+app = modal.App()
 
 
-@stub.cls()
+@app.cls()
 class AParametrized:
     def __init__(self, x: int):
         self._x = x
