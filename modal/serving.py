@@ -20,9 +20,9 @@ from .config import config
 from .runner import _disconnect, _run_stub, serve_update
 
 if TYPE_CHECKING:
-    from .stub import _Stub
+    from .stub import _App
 else:
-    _Stub = TypeVar("_Stub")
+    _App = TypeVar("_App")
 
 
 def _run_serve(stub_ref: str, existing_app_id: str, is_ready: Event, environment_name: str):
@@ -100,13 +100,13 @@ def _get_clean_stub_description(stub_ref: str) -> str:
 
 @asynccontextmanager
 async def _serve_stub(
-    stub: "_Stub",
+    stub: "_App",
     stub_ref: str,
     stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
     _watcher: Optional[AsyncGenerator[Set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
-) -> AsyncGenerator["_Stub", None]:
+) -> AsyncGenerator["_App", None]:
     if environment_name is None:
         environment_name = config.get("environment")
 

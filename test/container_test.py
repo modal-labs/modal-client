@@ -30,7 +30,7 @@ from modal._serialization import (
     serialize_data_format,
 )
 from modal._utils import async_utils
-from modal.app import _Stub
+from modal.app import _App
 from modal.exception import InvalidError
 from modal.partial_function import enter
 from modal_proto import api_pb2
@@ -200,7 +200,7 @@ def _run_container(
             env["MODAL_SERVER_URL"] = servicer.remote_addr
 
         # reset _Stub tracking state between runs
-        _Stub._all_stubs = {}
+        _App._all_stubs.clear()
 
         try:
             with mock.patch.dict(os.environ, env):

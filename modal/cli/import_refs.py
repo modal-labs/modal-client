@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 
 import modal
-from modal.app import LocalEntrypoint, Stub
+from modal.app import App, LocalEntrypoint
 from modal.exception import _CliUserExecutionError
 from modal.functions import Function
 
@@ -85,7 +85,7 @@ def get_by_object_path(obj: Any, obj_path: Optional[str]) -> Optional[Any]:
     for segment in obj_path.split("."):
         attr = prefix + segment
         try:
-            if isinstance(obj, Stub):
+            if isinstance(obj, App):
                 if attr in obj.registered_entrypoints:
                     # local entrypoints are not on stub blueprint
                     obj = obj.registered_entrypoints[attr]
@@ -118,7 +118,7 @@ def get_by_object_path_try_possible_stub_names(obj: Any, obj_path: Optional[str]
 
 
 def _infer_function_or_help(
-    stub: Stub, module, accept_local_entrypoint: bool, accept_webhook: bool
+    stub: App, module, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint]:
     function_choices = set(stub.registered_functions.keys())
     if not accept_webhook:
@@ -186,7 +186,7 @@ def _show_no_auto_detectable_stub(stub_ref: ImportRef) -> None:
         error_console.print(md)
 
 
-def import_stub(stub_ref: str) -> Stub:
+def import_stub(stub_ref: str) -> App:
     import_ref = parse_import_ref(stub_ref)
 
     module = import_file_or_module(import_ref.file_or_module)
@@ -196,7 +196,7 @@ def import_stub(stub_ref: str) -> Stub:
         _show_no_auto_detectable_stub(import_ref)
         sys.exit(1)
 
-    if not isinstance(stub, Stub):
+    if not isinstance(stub, App):
         raise click.UsageError(f"{stub} is not a Modal Stub")
 
     return stub
@@ -242,7 +242,7 @@ def import_function(
         _show_function_ref_help(import_ref, base_cmd)
         sys.exit(1)
 
-    if isinstance(stub_or_function, Stub):
+    if isinstance(stub_or_function, App):
         # infer function or display help for how to select one
         stub = stub_or_function
         function_handle = _infer_function_or_help(stub, module, accept_local_entrypoint, accept_webhook)
