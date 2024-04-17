@@ -27,7 +27,7 @@ from modal.config import logger
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:
-    from modal.client import _Client
+    import modal.client
 
 
 class _SynchronizedQueue:
@@ -63,7 +63,7 @@ MAP_INVOCATION_CHUNK_SIZE = 49
 async def _map_invocation(
     function_id: str,
     raw_input_queue: _SynchronizedQueue,
-    client: "_Client",
+    client: "modal.client._Client",
     order_outputs: bool,
     return_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
