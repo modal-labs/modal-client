@@ -28,7 +28,7 @@ from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize
 from ._utils.async_utils import TaskContext, synchronizer
 from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
-from .app import Stub, _App
+from .app import App, _App
 from .client import Client, _Client
 from .cls import Cls
 from .config import logger
@@ -496,7 +496,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize objects on the stub.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
         if imp_fun.stub is not None:
-            stub: Stub = synchronizer._translate_out(imp_fun.stub, Interface.BLOCKING)
+            stub: App = synchronizer._translate_out(imp_fun.stub, Interface.BLOCKING)
             stub._init_container(client, container_app)
 
         # Hydrate all function dependencies.

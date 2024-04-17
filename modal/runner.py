@@ -26,9 +26,9 @@ from .object import _Object
 from .running_app import RunningApp
 
 if TYPE_CHECKING:
-    from .stub import _Stub
+    from .stub import _App
 else:
-    _Stub = TypeVar("_Stub")
+    _App = TypeVar("_App")
 
 
 async def _heartbeat(client, app_id):
@@ -177,7 +177,7 @@ async def _disconnect(
 
 @asynccontextmanager
 async def _run_stub(
-    stub: _Stub,
+    stub: _App,
     client: Optional[_Client] = None,
     stdout=None,
     show_progress: bool = True,
@@ -186,7 +186,7 @@ async def _run_stub(
     environment_name: Optional[str] = None,
     shell=False,
     interactive=False,
-) -> AsyncGenerator[_Stub, None]:
+) -> AsyncGenerator[_App, None]:
     """mdmd:hidden"""
     if environment_name is None:
         environment_name = config.get("environment")
@@ -346,7 +346,7 @@ class DeployResult:
 
 
 async def _deploy_stub(
-    stub: _Stub,
+    stub: _App,
     name: str = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client=None,
@@ -451,7 +451,7 @@ async def _deploy_stub(
     return DeployResult(app_id=app.app_id)
 
 
-async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str = "", **kwargs):
+async def _interactive_shell(_stub: _App, cmd: List[str], environment_name: str = "", **kwargs):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the

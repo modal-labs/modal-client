@@ -46,7 +46,7 @@ _default_image: _Image = _Image.debian_slim()
 
 class _LocalEntrypoint:
     _info: FunctionInfo
-    _stub: "_Stub"
+    _stub: "_App"
 
     def __init__(self, info, stub):
         self._info = info  # type: ignore
@@ -60,7 +60,7 @@ class _LocalEntrypoint:
         return self._info
 
     @property
-    def stub(self) -> "_Stub":
+    def stub(self) -> "_App":
         return self._stub
 
 

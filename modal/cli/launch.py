@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 from typer import Typer
 
-from ..app import Stub
+from ..app import App
 from ..exception import _CliUserExecutionError
 from ..runner import run_stub
 from .import_refs import import_function
@@ -29,7 +29,7 @@ def _launch_program(name: str, filename: str, args: Dict[str, Any]) -> None:
 
     program_path = str(Path(__file__).parent / "programs" / filename)
     entrypoint = import_function(program_path, "modal launch")
-    stub: Stub = entrypoint.stub
+    stub: App = entrypoint.stub
     stub.set_description(f"modal launch {name}")
 
     # `launch/` scripts must have a `local_entrypoint()` with no args, for simplicity here.
