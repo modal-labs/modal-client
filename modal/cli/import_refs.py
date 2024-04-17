@@ -257,3 +257,8 @@ def import_function(
         return app_or_function
     else:
         raise click.UsageError(f"{app_or_function} is not a Modal entity (should be a App or Function)")
+
+
+# For backwards compatibility - delete soon
+# We use it in our internal intergration tests
+import_stub = import_app
