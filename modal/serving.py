@@ -99,7 +99,7 @@ def _get_clean_stub_description(stub_ref: str) -> str:
 
 
 @asynccontextmanager
-async def _serve_stub(
+async def _serve_app(
     stub: "_App",
     stub_ref: str,
     stdout: Optional[io.TextIOWrapper] = None,
@@ -127,4 +127,8 @@ async def _serve_stub(
             yield stub
 
 
-serve_stub = synchronize_api(_serve_stub)
+serve_app = synchronize_api(_serve_app)
+
+# Soon-to-be-deprecated ones, add warning soon
+_serve_stub = _serve_app
+serve_stub = serve_app
