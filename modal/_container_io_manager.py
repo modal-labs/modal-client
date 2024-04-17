@@ -47,25 +47,48 @@ class _ContainerIOManager:
     Then we could potentially move a bunch of the global functions onto it.
     """
 
+    cancelled_input_ids: Set[str]
+    task_id: str
+    function_id: str
+    app_id: str
+    function_def: api_pb2.Function
+    checkpoint_id: Optional[str]
+
+    calls_completed: int
+    total_user_time: float
+    current_input_id: Optional[str]
+    current_input_started_at: Optional[float]
+
+    _input_concurrency: Optional[int]
+    _semaphore: Optional[asyncio.Semaphore]
+    _environment_name: str
+    _waiting_for_checkpoint: bool
+    _heartbeat_loop: Optional[asyncio.Task]
+
+    _is_interactivity_enabled: bool
+    _fetching_inputs: bool
+
+    _client: _Client
+
     _GENERATOR_STOP_SENTINEL: ClassVar[Sentinel] = Sentinel()
     _singleton: ClassVar[Optional["_ContainerIOManager"]] = None
 
     def _init(self, container_args: api_pb2.ContainerArguments, client: _Client):
-        self.cancelled_input_ids: Set[str] = set()
+        self.cancelled_input_ids = set()
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
-        self.checkpoint_id = container_args.checkpoint_id
+        self.checkpoint_id = container_args.checkpoint_id or None
 
         self.calls_completed = 0
-        self.total_user_time: float = 0.0
-        self.current_input_id: Optional[str] = None
-        self.current_input_started_at: Optional[float] = None
+        self.total_user_time = 0.0
+        self.current_input_id = None
+        self.current_input_started_at = None
 
-        self._input_concurrency: Optional[int] = None
+        self._input_concurrency = None
 
-        self._semaphore: Optional[asyncio.Semaphore] = None
+        self._semaphore = None
         self._environment_name = container_args.environment_name
         self._waiting_for_checkpoint = False
         self._heartbeat_loop = None
