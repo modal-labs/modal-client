@@ -700,6 +700,14 @@ message DictHeartbeatRequest {
   string dict_id = 1;
 }
 
+message DictContentsRequest {
+  string dict_id = 1;
+  // Setting these to True will populate the corresponding field in the response, otherwise it will be null
+  // This lets us support the keys/values/items SDK API through one RPC without unnecessary data transfer
+  bool keys = 2;
+  bool values = 3;
+}
+
 message DictLenRequest {
   string dict_id = 1;
 }
@@ -2036,6 +2044,7 @@ service ModalClient {
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
   rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
   rpc DictHeartbeat(DictHeartbeatRequest) returns (google.protobuf.Empty);
+  rpc DictContents(DictContentsRequest) returns (stream DictEntry);
   rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
   rpc DictGet(DictGetRequest) returns (DictGetResponse);
   rpc DictPop(DictPopRequest) returns (DictPopResponse);
