@@ -204,12 +204,14 @@ class _Object:
         if self._is_hydrated:
             return
         elif not self._hydrate_lazily:
-            raise ExecutionError(
-                "Object has not been hydrated and doesn't support lazy hydration."
+            object_type = self.__class__.__name__.strip("_")
+            message = (
+                f"{object_type} object has not been hydrated with the metadata it needs to run on Modal."
                 " This might happen if an object is defined on a different stub,"
                 " or if it's on the same stub but it didn't get created because it"
                 " wasn't defined in global scope."
             )
+            raise ExecutionError(message)
         else:
             # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
             resolver = Resolver(await _Client.from_env())
