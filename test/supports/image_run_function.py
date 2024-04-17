@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
 import modal
 
-stub = modal.Stub("a")
-other = modal.Stub("b")
+app = modal.App("a")
+other = modal.App("b")
 
 
 def builder_function():
@@ -12,6 +12,6 @@ def builder_function():
 image = modal.Image.debian_slim().run_function(builder_function)
 
 
-@stub.function(image=image)
+@app.function(image=image)
 def foo():
     pass

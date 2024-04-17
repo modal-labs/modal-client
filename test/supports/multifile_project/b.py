@@ -3,12 +3,12 @@ import c
 
 import modal
 
-stub = modal.Stub()
+app = modal.App()
 
 
-@stub.function(secrets=[modal.Secret.from_dict({"foo": "bar"})])
+@app.function(secrets=[modal.Secret.from_dict({"foo": "bar"})])
 def b_func():
     pass
 
 
-stub.include(c.stub)
+app.include(c.app)

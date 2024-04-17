@@ -1,15 +1,15 @@
 # Copyright Modal Labs 2023
 import modal
 
-stub = modal.Stub()
+app = modal.App()
 
 
-@stub.function()
+@app.function()
 def hello():
     print("hello")
     return "hello"
 
 
-@stub.function()
+@app.function()
 def other():
     return "other"

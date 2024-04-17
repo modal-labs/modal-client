@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2022
 import modal
 
-stub = modal.Stub("my-app")
+app = modal.App("my-app")
 
 nfs = modal.NetworkFileSystem.lookup("volume_app")
 
 
-@stub.function()
+@app.function()
 def foo():
     print("foo")

@@ -1,14 +1,14 @@
 # Copyright Modal Labs 2023
 import modal
 
-stub = modal.Stub()
+app = modal.App()
 
 
-@stub.function()
+@app.function()
 def foo():
     pass
 
 
-@stub.function()
+@app.function()
 def bar():
     pass
