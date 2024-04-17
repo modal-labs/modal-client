@@ -2,15 +2,15 @@
 
 import modal
 
-stub = modal.Stub()
+app = modal.App()
 
 
-@stub.function()
+@app.function()
 def foo():
     pass
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 async def main():
     print("called locally (async)")
     await foo.remote.aio()

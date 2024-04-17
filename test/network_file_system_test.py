@@ -6,7 +6,7 @@ from unittest import mock
 
 import modal
 from modal.exception import DeprecationError, InvalidError, NotFoundError
-from modal.runner import deploy_stub
+from modal.runner import deploy_app
 
 
 def dummy():
@@ -14,30 +14,30 @@ def dummy():
 
 
 def test_network_file_system_files(client, test_dir, servicer):
-    stub = modal.Stub()
+    app = modal.App()
     nfs = modal.NetworkFileSystem.from_name("xyz", create_if_missing=True)
 
-    dummy_modal = stub.function(network_file_systems={"/root/foo": nfs})(dummy)
+    dummy_modal = app.function(network_file_systems={"/root/foo": nfs})(dummy)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         dummy_modal.remote()
 
 
 def test_network_file_system_bad_paths():
-    stub = modal.Stub()
+    app = modal.App()
     nfs = modal.NetworkFileSystem.from_name("xyz", create_if_missing=True)
 
     def _f():
         pass
 
     with pytest.raises(InvalidError):
-        stub.function(network_file_systems={"/root/../../foo": nfs})(dummy)
+        app.function(network_file_systems={"/root/../../foo": nfs})(dummy)
 
     with pytest.raises(InvalidError):
-        stub.function(network_file_systems={"/": nfs})(dummy)
+        app.function(network_file_systems={"/": nfs})(dummy)
 
     with pytest.raises(InvalidError):
-        stub.function(network_file_systems={"/tmp/": nfs})(dummy)
+        app.function(network_file_systems={"/tmp/": nfs})(dummy)
 
 
 def test_network_file_system_handle_single_file(client, tmp_path, servicer):
@@ -98,27 +98,27 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
 
 
 def test_old_syntax(client, servicer):
-    stub = modal.Stub()
+    app = modal.App()
     with pytest.raises(DeprecationError):
-        stub.vol1 = modal.SharedVolume()  # type: ignore  # This is just a post-deprecation husk
+        app.vol1 = modal.SharedVolume()  # type: ignore  # This is just a post-deprecation husk
     with pytest.raises(DeprecationError):
-        stub.vol2 = modal.SharedVolume.new()
+        app.vol2 = modal.SharedVolume.new()
 
 
 def test_redeploy(servicer, client):
-    stub = modal.Stub()
+    app = modal.App()
     with pytest.warns(DeprecationError):
         n1 = modal.NetworkFileSystem.new()
         n2 = modal.NetworkFileSystem.new()
         n3 = modal.NetworkFileSystem.new()
-        stub.n1, stub.n2, stub.n3 = n1, n2, n3
+        app.n1, app.n2, app.n3 = n1, n2, n3
 
     # Deploy app once
-    deploy_stub(stub, "my-app", client=client)
+    deploy_app(app, "my-app", client=client)
     app1_ids = [n1.object_id, n2.object_id, n3.object_id]
 
     # Deploy app again
-    deploy_stub(stub, "my-app", client=client)
+    deploy_app(app, "my-app", client=client)
     app2_ids = [n1.object_id, n2.object_id, n3.object_id]
 
     # Make sure ids are stable
@@ -129,7 +129,7 @@ def test_redeploy(servicer, client):
     assert len(set(app2_ids)) == 3
 
     # Deploy to a different app
-    deploy_stub(stub, "my-other-app", client=client)
+    deploy_app(app, "my-other-app", client=client)
     app3_ids = [n1.object_id, n2.object_id, n3.object_id]
 
     # Should be unique and different

@@ -9,9 +9,9 @@ from .a import *  # noqa
 from .b.c import *  # noqa
 
 
-stub = modal.Stub()
+app = modal.App()
 
 
-@stub.function()
+@app.function()
 def f():
     pass

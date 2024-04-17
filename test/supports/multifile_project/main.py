@@ -4,6 +4,6 @@ import b
 
 import modal
 
-stub = modal.Stub()
-stub.include(a.stub)
-stub.include(b.stub)
+app = modal.App()
+app.include(a.app)
+app.include(b.app)

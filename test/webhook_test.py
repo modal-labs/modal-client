@@ -6,17 +6,17 @@ import sys
 
 from fastapi.testclient import TestClient
 
-from modal import Stub, asgi_app, web_endpoint, wsgi_app
+from modal import App, asgi_app, web_endpoint, wsgi_app
 from modal._asgi import webhook_asgi_app
 from modal.exception import InvalidError
 from modal.functions import Function
 from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
-stub = Stub()
+app = App()
 
 
-@stub.function(cpu=42)
+@app.function(cpu=42)
 @web_endpoint(method="PATCH")
 async def f(x):
     return {"square": x**2}
@@ -24,7 +24,7 @@ async def f(x):
 
 @pytest.mark.asyncio
 async def test_webhook(servicer, client, reset_container_app):
-    async with stub.run(client=client):
+    async with app.run(client=client):
         assert f.web_url
 
         assert servicer.app_functions["fu-1"].webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
@@ -36,8 +36,8 @@ async def test_webhook(servicer, client, reset_container_app):
         assert await f.local(100) == {"square": 10000}
 
         # Make sure the container gets the app id as well
-        container_app = RunningApp(app_id=stub.app_id)
-        stub._init_container(client, container_app)
+        container_app = RunningApp(app_id=app.app_id)
+        app._init_container(client, container_app)
         assert isinstance(f, Function)
         assert f.web_url
 
@@ -78,11 +78,11 @@ async def test_webhook_no_docs():
 
 
 def test_webhook_generator():
-    stub = Stub()
+    app = App()
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @stub.function(serialized=True)
+        @app.function(serialized=True)
         @web_endpoint()
         def web_gen():
             yield None
@@ -102,12 +102,12 @@ async def test_webhook_forgot_function(servicer, client):
 
 @pytest.mark.asyncio
 async def test_webhook_decorator_in_wrong_order(servicer, client):
-    stub = Stub()
+    app = App()
 
     with pytest.raises(InvalidError) as excinfo:
 
         @web_endpoint()  # type: ignore
-        @stub.function(serialized=True)
+        @app.function(serialized=True)
         async def g(x):
             pass
 
@@ -116,19 +116,19 @@ async def test_webhook_decorator_in_wrong_order(servicer, client):
 
 @pytest.mark.asyncio
 async def test_asgi_wsgi(servicer, client):
-    stub = Stub()
+    app = App()
 
-    @stub.function(serialized=True)
+    @app.function(serialized=True)
     @asgi_app()
     async def my_asgi(x):
         pass
 
-    @stub.function(serialized=True)
+    @app.function(serialized=True)
     @wsgi_app()
     async def my_wsgi(x):
         pass
 
-    async with stub.run(client=client):
+    async with app.run(client=client):
         pass
 
     assert len(servicer.app_functions) == 2

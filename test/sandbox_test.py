@@ -6,10 +6,10 @@ import pytest
 import time
 from pathlib import Path
 
-from modal import Image, Mount, NetworkFileSystem, Sandbox, Secret, Stub
+from modal import App, Image, Mount, NetworkFileSystem, Sandbox, Secret
 from modal.exception import InvalidError
 
-stub = Stub()
+app = App()
 
 
 skip_non_linux = pytest.mark.skipif(platform.system() != "Linux", reason="sandbox mock uses subprocess")
@@ -17,8 +17,8 @@ skip_non_linux = pytest.mark.skipif(platform.system() != "Linux", reason="sandbo
 
 @skip_non_linux
 def test_spawn_sandbox(client, servicer):
-    with stub.run(client=client):
-        sb = stub.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600)
+    with app.run(client=client):
+        sb = app.spawn_sandbox("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600)
 
         assert sb.poll() is None
 
@@ -41,8 +41,8 @@ def test_spawn_sandbox(client, servicer):
 def test_sandbox_mount(client, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
-    with stub.run(client=client):
-        sb = stub.spawn_sandbox(
+    with app.run(client=client):
+        sb = app.spawn_sandbox(
             "echo",
             "hi",
             mounts=[Mount.from_local_dir(Path(tmpdir), remote_path="/m")],
@@ -57,8 +57,8 @@ def test_sandbox_mount(client, servicer, tmpdir):
 def test_sandbox_image(client, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
-    with stub.run(client=client):
-        sb = stub.spawn_sandbox("echo", "hi", image=Image.debian_slim().pip_install("foo", "bar", "potato"))
+    with app.run(client=client):
+        sb = app.spawn_sandbox("echo", "hi", image=Image.debian_slim().pip_install("foo", "bar", "potato"))
         sb.wait()
 
     idx = max(servicer.images.keys())
@@ -69,8 +69,8 @@ def test_sandbox_image(client, servicer, tmpdir):
 
 @skip_non_linux
 def test_sandbox_secret(client, servicer, tmpdir):
-    with stub.run(client=client):
-        sb = stub.spawn_sandbox("echo", "$FOO", secrets=[Secret.from_dict({"FOO": "BAR"})])
+    with app.run(client=client):
+        sb = app.spawn_sandbox("echo", "$FOO", secrets=[Secret.from_dict({"FOO": "BAR"})])
         sb.wait()
 
     assert len(servicer.sandbox_defs[0].secret_ids) == 1
@@ -78,20 +78,20 @@ def test_sandbox_secret(client, servicer, tmpdir):
 
 @skip_non_linux
 def test_sandbox_nfs(client, servicer, tmpdir):
-    with stub.run(client=client):
+    with app.run(client=client):
         with NetworkFileSystem.ephemeral(client=client) as nfs:
             with pytest.raises(InvalidError):
-                stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs})
+                app.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs})
 
-            stub.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs})
+            app.spawn_sandbox("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs})
 
     assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
 
 
 @skip_non_linux
 def test_sandbox_from_id(client, servicer):
-    with stub.run(client=client):
-        sb = stub.spawn_sandbox("bash", "-c", "echo foo && exit 42", timeout=600)
+    with app.run(client=client):
+        sb = app.spawn_sandbox("bash", "-c", "echo foo && exit 42", timeout=600)
         sb.wait()
 
     sb2 = Sandbox.from_id(sb.object_id, client=client)
@@ -101,8 +101,8 @@ def test_sandbox_from_id(client, servicer):
 
 @skip_non_linux
 def test_sandbox_terminate(client, servicer):
-    with stub.run(client=client):
-        sb = stub.spawn_sandbox("bash", "-c", "sleep 10000")
+    with app.run(client=client):
+        sb = app.spawn_sandbox("bash", "-c", "sleep 10000")
         sb.terminate()
 
         assert sb.returncode != 0
@@ -111,8 +111,8 @@ def test_sandbox_terminate(client, servicer):
 @skip_non_linux
 @pytest.mark.asyncio
 async def test_sandbox_stdin_async(client, servicer):
-    async with stub.run.aio(client=client):
-        sb = stub.spawn_sandbox("bash", "-c", "while read line; do echo $line; done && exit 13")
+    async with app.run.aio(client=client):
+        sb = app.spawn_sandbox("bash", "-c", "while read line; do echo $line; done && exit 13")
 
         sb.stdin.write(b"foo\n")
         sb.stdin.write(b"bar\n")
@@ -129,8 +129,8 @@ async def test_sandbox_stdin_async(client, servicer):
 
 @skip_non_linux
 def test_sandbox_stdin(client, servicer):
-    with stub.run(client=client):
-        sb = stub.spawn_sandbox("bash", "-c", "while read line; do echo $line; done && exit 13")
+    with app.run(client=client):
+        sb = app.spawn_sandbox("bash", "-c", "while read line; do echo $line; done && exit 13")
 
         sb.stdin.write(b"foo\n")
         sb.stdin.write(b"bar\n")
@@ -147,16 +147,16 @@ def test_sandbox_stdin(client, servicer):
 
 @skip_non_linux
 def test_sandbox_stdin_invalid_write(client, servicer):
-    with stub.run(client=client):
-        sb = stub.spawn_sandbox("bash", "-c", "echo foo")
+    with app.run(client=client):
+        sb = app.spawn_sandbox("bash", "-c", "echo foo")
         with pytest.raises(TypeError):
             sb.stdin.write("foo\n")  # type: ignore
 
 
 @skip_non_linux
 def test_sandbox_stdin_write_after_eof(client, servicer):
-    with stub.run(client=client):
-        sb = stub.spawn_sandbox("bash", "-c", "echo foo")
+    with app.run(client=client):
+        sb = app.spawn_sandbox("bash", "-c", "echo foo")
         sb.stdin.write_eof()
         with pytest.raises(EOFError):
             sb.stdin.write(b"foo")
@@ -165,8 +165,8 @@ def test_sandbox_stdin_write_after_eof(client, servicer):
 @skip_non_linux
 @pytest.mark.asyncio
 async def test_sandbox_async_for(client, servicer):
-    async with stub.run.aio(client=client):
-        sb = stub.spawn_sandbox("bash", "-c", "echo hello && echo world && echo bye >&2")
+    async with app.run.aio(client=client):
+        sb = app.spawn_sandbox("bash", "-c", "echo hello && echo world && echo bye >&2")
 
         out = ""
 

@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2024
 import modal
 
-stub = modal.Stub("c")
+app = modal.App("c")
 
 
-@stub.function()
+@app.function()
 def c_func():
     pass

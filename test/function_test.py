@@ -10,15 +10,15 @@ from contextlib import contextmanager
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import Image, Mount, NetworkFileSystem, Proxy, Stub, web_endpoint
+from modal import App, Image, Mount, NetworkFileSystem, Proxy, web_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
-from modal.runner import deploy_stub
+from modal.runner import deploy_app
 from modal_proto import api_pb2
 
-stub = Stub()
+app = App()
 
 
 if os.environ.get("GITHUB_ACTIONS") == "true":
@@ -27,12 +27,12 @@ else:
     TIME_TOLERANCE = 0.05
 
 
-@stub.function()
+@app.function()
 def foo(p, q):
     return p + q + 11  # not actually used in test (servicer returns sum of square of all args)
 
 
-@stub.function()
+@app.function()
 async def async_foo(p, q):
     return p + q + 12
 
@@ -43,7 +43,7 @@ def dummy():
 
 def test_run_function(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
-    with stub.run(client=client):
+    with app.run(client=client):
         assert foo.remote(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
 
@@ -53,7 +53,7 @@ async def test_call_function_locally(client, servicer):
     assert foo.local(22, 44) == 77  # call it locally
     assert await async_foo.local(22, 44) == 78
 
-    with stub.run(client=client):
+    with app.run(client=client):
         assert foo.remote(2, 4) == 20
         assert async_foo.remote(2, 4) == 20
         assert await async_foo.remote.aio(2, 4) == 20
@@ -64,11 +64,11 @@ async def test_call_function_locally(client, servicer):
 def test_map(client, servicer, slow_put_inputs):
     servicer.slow_put_inputs = slow_put_inputs
 
-    stub = Stub()
-    dummy_modal = stub.function()(dummy)
+    app = App()
+    dummy_modal = app.function()(dummy)
 
     assert len(servicer.cleared_function_calls) == 0
-    with stub.run(client=client):
+    with app.run(client=client):
         assert list(dummy_modal.map([5, 2], [4, 3])) == [41, 13]
         assert len(servicer.cleared_function_calls) == 1
         assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
@@ -77,14 +77,14 @@ def test_map(client, servicer, slow_put_inputs):
 
 @pytest.mark.asyncio
 async def test_map_async_generator(client):
-    stub = Stub()
-    dummy_modal = stub.function()(dummy)
+    app = App()
+    dummy_modal = app.function()(dummy)
 
     async def gen_num():
         yield 2
         yield 3
 
-    async with stub.run(client=client):
+    async with app.run(client=client):
         res = [num async for num in dummy_modal.map.aio(gen_num())]
         assert res == [4, 9]
 
@@ -112,7 +112,7 @@ def synchronicity_loop_delay_tracker():
 
 
 def test_map_blocking_iterator_blocking_synchronicity_loop(client):
-    stub = Stub()
+    app = App()
     SLEEP_DUR = 0.5
 
     def blocking_iter():
@@ -120,9 +120,9 @@ def test_map_blocking_iterator_blocking_synchronicity_loop(client):
         time.sleep(SLEEP_DUR)
         yield 2
 
-    pow2 = stub.function()(_pow2)
+    pow2 = app.function()(_pow2)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         t0 = time.monotonic()
         with synchronicity_loop_delay_tracker() as max_delay:
             for _ in pow2.map(blocking_iter()):
@@ -134,7 +134,7 @@ def test_map_blocking_iterator_blocking_synchronicity_loop(client):
 
 @pytest.mark.asyncio
 async def test_map_blocking_iterator_blocking_synchronicity_loop_async(client):
-    stub = Stub()
+    app = App()
     SLEEP_DUR = 0.5
 
     def blocking_iter():
@@ -142,9 +142,9 @@ async def test_map_blocking_iterator_blocking_synchronicity_loop_async(client):
         time.sleep(SLEEP_DUR)
         yield 2
 
-    pow2 = stub.function()(_pow2)
+    pow2 = app.function()(_pow2)
 
-    async with stub.run(client=client):
+    async with app.run(client=client):
         t0 = time.monotonic()
         with synchronicity_loop_delay_tracker() as max_delay:
             async for _ in pow2.map.aio(blocking_iter()):
@@ -163,10 +163,10 @@ def side_effect(_):
 
 
 def test_for_each(client, servicer):
-    stub = Stub()
-    side_effect_modal = stub.function()(servicer.function_body(side_effect))
+    app = App()
+    side_effect_modal = app.function()(servicer.function_body(side_effect))
     assert _side_effect_count == 0
-    with stub.run(client=client):
+    with app.run(client=client):
         side_effect_modal.for_each(range(10))
 
     assert _side_effect_count == 10
@@ -178,42 +178,42 @@ def custom_function(x):
 
 
 def test_map_none_values(client, servicer):
-    stub = Stub()
+    app = App()
 
-    custom_function_modal = stub.function()(servicer.function_body(custom_function))
+    custom_function_modal = app.function()(servicer.function_body(custom_function))
 
-    with stub.run(client=client):
+    with app.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, None, 2, None]
 
 
 def test_starmap(client):
-    stub = Stub()
+    app = App()
 
-    dummy_modal = stub.function()(dummy)
-    with stub.run(client=client):
+    dummy_modal = app.function()(dummy)
+    with app.run(client=client):
         assert list(dummy_modal.starmap([[5, 2], [4, 3]])) == [29, 25]
 
 
 def test_function_memory_request(client):
-    stub = Stub()
-    stub.function(memory=2048)(dummy)
+    app = App()
+    app.function(memory=2048)(dummy)
 
 
 def test_function_memory_limit(client):
-    stub = Stub()
-    f = stub.function(memory=(2048, 4096))(dummy)
+    app = App()
+    f = app.function(memory=(2048, 4096))(dummy)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         f.remote()
 
-    g = stub.function(memory=(2048, 2048 - 1))(custom_function)
-    with pytest.raises(InvalidError), stub.run(client=client):
+    g = app.function(memory=(2048, 2048 - 1))(custom_function)
+    with pytest.raises(InvalidError), app.run(client=client):
         g.remote()
 
 
 def test_function_cpu_request(client):
-    stub = Stub()
-    stub.function(cpu=2.0)(dummy)
+    app = App()
+    app.function(cpu=2.0)(dummy)
 
 
 def later():
@@ -221,10 +221,10 @@ def later():
 
 
 def test_function_future(client, servicer):
-    stub = Stub()
+    app = App()
 
-    later_modal = stub.function()(servicer.function_body(later))
-    with stub.run(client=client):
+    later_modal = app.function()(servicer.function_body(later))
+    with app.run(client=client):
         future = later_modal.spawn()
         assert isinstance(future, FunctionCall)
 
@@ -251,11 +251,11 @@ def test_function_future(client, servicer):
 
 @pytest.mark.asyncio
 async def test_function_future_async(client, servicer):
-    stub = Stub()
+    app = App()
 
-    later_modal = stub.function()(servicer.function_body(later))
+    later_modal = app.function()(servicer.function_body(later))
 
-    async with stub.run(client=client):
+    async with app.run(client=client):
         future = await later_modal.spawn.aio()
         servicer.function_is_running = True
 
@@ -277,9 +277,9 @@ async def async_later_gen():
 
 @pytest.mark.asyncio
 async def test_generator(client, servicer):
-    stub = Stub()
+    app = App()
 
-    later_gen_modal = stub.function()(later_gen)
+    later_gen_modal = app.function()(later_gen)
 
     def dummy():
         yield "bar"
@@ -289,7 +289,7 @@ async def test_generator(client, servicer):
     servicer.function_body(dummy)
 
     assert len(servicer.cleared_function_calls) == 0
-    with stub.run(client=client):
+    with app.run(client=client):
         assert later_gen_modal.is_generator
         res: typing.Generator = later_gen_modal.remote_gen()  # type: ignore
         # Generators fulfil the *iterator protocol*, which requires both these methods.
@@ -302,16 +302,16 @@ async def test_generator(client, servicer):
 
 
 def test_generator_map_invalid(client, servicer):
-    stub = Stub()
+    app = App()
 
-    later_gen_modal = stub.function()(later_gen)
+    later_gen_modal = app.function()(later_gen)
 
     def dummy(x):
         yield x
 
     servicer.function_body(dummy)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         with pytest.raises(InvalidError, match="A generator function cannot be called with"):
             # Support for .map() on generators was removed in version 0.57
             for _ in later_gen_modal.map([1, 2, 3]):
@@ -323,9 +323,9 @@ def test_generator_map_invalid(client, servicer):
 
 @pytest.mark.asyncio
 async def test_generator_async(client, servicer):
-    stub = Stub()
+    app = App()
 
-    later_gen_modal = stub.function()(async_later_gen)
+    later_gen_modal = app.function()(async_later_gen)
 
     async def async_dummy():
         yield "bar"
@@ -334,7 +334,7 @@ async def test_generator_async(client, servicer):
     servicer.function_body(async_dummy)
 
     assert len(servicer.cleared_function_calls) == 0
-    async with stub.run(client=client):
+    async with app.run(client=client):
         assert later_gen_modal.is_generator
         res = later_gen_modal.remote_gen.aio()
         # Async generators fulfil the *asynchronous iterator protocol*, which requires both these methods.
@@ -349,10 +349,10 @@ async def test_generator_async(client, servicer):
 
 @pytest.mark.asyncio
 async def test_generator_future(client, servicer):
-    stub = Stub()
+    app = App()
 
-    later_gen_modal = stub.function()(later_gen)
-    with stub.run(client=client):
+    later_gen_modal = app.function()(later_gen)
+    with app.run(client=client):
         assert later_gen_modal.spawn() is None  # until we have a nice interface for polling generator futures
 
 
@@ -368,10 +368,10 @@ async def slo1(sleep_seconds):
 
 
 def test_sync_parallelism(client, servicer):
-    stub = Stub()
+    app = App()
 
-    slo1_modal = stub.function()(servicer.function_body(slo1))
-    with stub.run(client=client):
+    slo1_modal = app.function()(servicer.function_body(slo1))
+    with app.run(client=client):
         t0 = time.time()
         # NOTE tests breaks in macOS CI if the smaller time is smaller than ~300ms
         res = gather(slo1_modal.spawn(0.31), slo1_modal.spawn(0.3))
@@ -381,10 +381,10 @@ def test_sync_parallelism(client, servicer):
 
 
 def test_proxy(client, servicer):
-    stub = Stub()
+    app = App()
 
-    stub.function(proxy=Proxy.from_name("my-proxy"))(dummy)
-    with stub.run(client=client):
+    app.function(proxy=Proxy.from_name("my-proxy"))(dummy)
+    with app.run(client=client):
         pass
 
 
@@ -397,10 +397,10 @@ def failure():
 
 
 def test_function_exception(client, servicer):
-    stub = Stub()
+    app = App()
 
-    failure_modal = stub.function()(servicer.function_body(failure))
-    with stub.run(client=client):
+    failure_modal = app.function()(servicer.function_body(failure))
+    with app.run(client=client):
         with pytest.raises(CustomException) as excinfo:
             failure_modal.remote()
         assert "foo!" in str(excinfo.value)
@@ -408,10 +408,10 @@ def test_function_exception(client, servicer):
 
 @pytest.mark.asyncio
 async def test_function_exception_async(client, servicer):
-    stub = Stub()
+    app = App()
 
-    failure_modal = stub.function()(servicer.function_body(failure))
-    async with stub.run(client=client):
+    failure_modal = app.function()(servicer.function_body(failure))
+    async with app.run(client=client):
         with pytest.raises(CustomException) as excinfo:
             coro = failure_modal.remote.aio()
             assert inspect.isawaitable(
@@ -428,11 +428,11 @@ def custom_exception_function(x):
 
 
 def test_map_exceptions(client, servicer):
-    stub = Stub()
+    app = App()
 
-    custom_function_modal = stub.function()(servicer.function_body(custom_exception_function))
+    custom_function_modal = app.function()(servicer.function_body(custom_exception_function))
 
-    with stub.run(client=client):
+    with app.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, 1, 4, 9]
 
         with pytest.raises(CustomException) as excinfo:
@@ -449,22 +449,22 @@ def import_failure():
 
 
 def test_function_relative_import_hint(client, servicer):
-    stub = Stub()
+    app = App()
 
-    import_failure_modal = stub.function()(servicer.function_body(import_failure))
+    import_failure_modal = app.function()(servicer.function_body(import_failure))
 
-    with stub.run(client=client):
+    with app.run(client=client):
         with pytest.raises(ImportError) as excinfo:
             import_failure_modal.remote()
         assert "HINT" in str(excinfo.value)
 
 
 def test_nonglobal_function():
-    stub = Stub()
+    app = App()
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @stub.function()
+        @app.function()
         def f():
             pass
 
@@ -472,25 +472,25 @@ def test_nonglobal_function():
 
 
 def test_non_global_serialized_function():
-    stub = Stub()
+    app = App()
 
-    @stub.function(serialized=True)
+    @app.function(serialized=True)
     def f():
         pass
 
 
 def test_closure_valued_serialized_function(client, servicer):
-    stub = Stub()
+    app = App()
 
     def make_function(s):
-        @stub.function(name=f"ret_{s}", serialized=True)
+        @app.function(name=f"ret_{s}", serialized=True)
         def returner():
             return s
 
     for s in ["foo", "bar"]:
         make_function(s)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         pass
 
     functions = {}
@@ -508,14 +508,14 @@ def test_new_hydrated_internal(client, servicer):
 
 
 def test_from_id(client, servicer):
-    stub = Stub()
+    app = App()
 
-    @stub.function(serialized=True)
+    @app.function(serialized=True)
     @web_endpoint()
     def foo():
         pass
 
-    deploy_stub(stub, "dummy", client=client)
+    deploy_app(app, "dummy", client=client)
 
     function_id = foo.object_id
     assert function_id
@@ -528,22 +528,22 @@ def test_from_id(client, servicer):
     assert rehydrated_function_call.object_id == function_call.object_id
 
 
-lc_stub = Stub()
+lc_app = App()
 
 
-@lc_stub.function()
+@lc_app.function()
 def f(x):
     return x**2
 
 
 def test_allow_cross_region_volumes(client, servicer):
-    stub = Stub()
+    app = App()
     vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
     vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
     # Should pass flag for all the function's NetworkFileSystemMounts
-    stub.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
+    app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         assert len(servicer.app_functions) == 1
         for func in servicer.app_functions.values():
             assert len(func.shared_volume_mounts) == 2
@@ -553,15 +553,15 @@ def test_allow_cross_region_volumes(client, servicer):
 
 def test_allow_cross_region_volumes_webhook(client, servicer):
     # TODO(erikbern): this test seems a bit redundant
-    stub = Stub()
+    app = App()
     vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
     vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
     # Should pass flag for all the function's NetworkFileSystemMounts
-    stub.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
+    app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
         web_endpoint()(dummy)
     )
 
-    with stub.run(client=client):
+    with app.run(client=client):
         assert len(servicer.app_functions) == 1
         for func in servicer.app_functions.values():
             assert len(func.shared_volume_mounts) == 2
@@ -572,9 +572,9 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
 def test_serialize_deserialize_function_handle(servicer, client):
     from modal._serialization import deserialize, serialize
 
-    stub = Stub()
+    app = App()
 
-    @stub.function(serialized=True)
+    @app.function(serialized=True)
     @web_endpoint()
     def my_handle():
         pass
@@ -582,7 +582,7 @@ def test_serialize_deserialize_function_handle(servicer, client):
     with pytest.raises(InvalidError, match="hasn't been created"):
         serialize(my_handle)  # handle is not "live" yet! should not be serializable yet
 
-    with stub.run(client=client):
+    with app.run(client=client):
         blob = serialize(my_handle)
 
         rehydrated_function_handle = deserialize(blob, client)
@@ -592,12 +592,12 @@ def test_serialize_deserialize_function_handle(servicer, client):
 
 
 def test_default_cloud_provider(client, servicer, monkeypatch):
-    stub = Stub()
+    app = App()
 
     monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "oci")
-    stub.function()(dummy)
-    with stub.run(client=client):
-        object_id: str = stub.indexed_objects["dummy"].object_id
+    app.function()(dummy)
+    with app.run(client=client):
+        object_id: str = app.indexed_objects["dummy"].object_id
         f = servicer.app_functions[object_id]
 
     assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
@@ -615,9 +615,9 @@ def test_invalid_large_serialization(client):
         return big_data
 
     with pytest.warns(UserWarning, match="larger than the recommended limit"):
-        stub = Stub()
-        stub.function(serialized=True)(f)
-        with stub.run(client=client):
+        app = App()
+        app.function(serialized=True)(f)
+        with app.run(client=client):
             pass
 
     bigger_data = b"1" * 50000000
@@ -626,9 +626,9 @@ def test_invalid_large_serialization(client):
         return bigger_data
 
     with pytest.raises(InvalidError):
-        stub = Stub()
-        stub.function(serialized=True)(g)
-        with stub.run(client=client):
+        app = App()
+        app.function(serialized=True)(g)
+        with app.run(client=client):
             pass
 
 
@@ -638,16 +638,16 @@ def test_call_unhydrated_function():
 
 
 def test_deps_explicit(client, servicer):
-    stub = Stub()
+    app = App()
 
     image = Image.debian_slim()
     nfs_1 = NetworkFileSystem.from_name("nfs-1", create_if_missing=True)
     nfs_2 = NetworkFileSystem.from_name("nfs-2", create_if_missing=True)
 
-    stub.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
+    app.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
 
-    with stub.run(client=client):
-        object_id: str = stub.indexed_objects["dummy"].object_id
+    with app.run(client=client):
+        object_id: str = app.indexed_objects["dummy"].object_id
         f = servicer.app_functions[object_id]
 
     dep_object_ids = set(d.object_id for d in f.object_dependencies)
@@ -662,12 +662,12 @@ def dummy_closurevars():
 
 
 def test_deps_closurevars(client, servicer):
-    stub = Stub()
+    app = App()
 
     image = Image.debian_slim()
-    modal_f = stub.function(image=image)(dummy_closurevars)
+    modal_f = app.function(image=image)(dummy_closurevars)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         f = servicer.app_functions[modal_f.object_id]
 
     assert set(d.object_id for d in f.object_dependencies) == set([nfs.object_id, image.object_id])
@@ -681,12 +681,12 @@ def assert_is_wrapped_dict(some_arg):
 def test_calls_should_not_unwrap_modal_objects(servicer, client):
     some_modal_object = modal.Dict.lookup("blah", create_if_missing=True, client=client)
 
-    stub = Stub()
-    foo = stub.function()(assert_is_wrapped_dict)
+    app = App()
+    foo = app.function()(assert_is_wrapped_dict)
     servicer.function_body(assert_is_wrapped_dict)
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
-    with stub.run(client=client):
+    with app.run(client=client):
         assert type(foo.remote(some_modal_object)) == modal.Dict
         fc = foo.spawn(some_modal_object)
         assert type(fc.get()) == modal.Dict
@@ -707,12 +707,12 @@ def assert_is_wrapped_dict_gen(some_arg):
 def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
     some_modal_object = modal.Dict.lookup("blah", create_if_missing=True, client=client)
 
-    stub = Stub()
-    foo = stub.function()(assert_is_wrapped_dict_gen)
+    app = App()
+    foo = app.function()(assert_is_wrapped_dict_gen)
     servicer.function_body(assert_is_wrapped_dict_gen)
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
-    with stub.run(client=client):
+    with app.run(client=client):
         assert type(next(foo.remote_gen(some_modal_object))) == modal.Dict
         foo.spawn(some_modal_object)  # spawn on generator returns None, but starts the generator
 
@@ -723,11 +723,11 @@ def test_mount_deps_have_ids(client, servicer, monkeypatch, test_dir):
     # This test can possibly break if a function's deps diverge between
     # local and remote environments
     monkeypatch.syspath_prepend(test_dir / "supports")
-    stub = Stub()
-    stub.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
+    app = App()
+    app.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
 
     with servicer.intercept() as ctx:
-        with stub.run(client=client):
+        with app.run(client=client):
             pass
 
     function_create = ctx.pop_request("FunctionCreate")
@@ -740,13 +740,13 @@ def test_no_state_reuse(client, servicer, supports_dir):
     mount_instance_1 = Mount.from_local_file(supports_dir / "pyproject.toml")
     mount_instance_2 = Mount.from_local_file(supports_dir / "pyproject.toml")
 
-    stub = Stub("reuse-mount-stub")
-    stub.function(mounts=[mount_instance_1, mount_instance_2])(dummy)
+    app = App("reuse-mount-app")
+    app.function(mounts=[mount_instance_1, mount_instance_2])(dummy)
 
-    deploy_stub(stub, client=client, show_progress=False)
+    deploy_app(app, client=client, show_progress=False)
     first_deploy = {mount_instance_1.object_id, mount_instance_2.object_id}
 
-    deploy_stub(stub, client=client, show_progress=False)
+    deploy_app(app, client=client, show_progress=False)
     second_deploy = {mount_instance_1.object_id, mount_instance_2.object_id}
 
     # mount ids should not overlap between first and second deploy
@@ -760,11 +760,11 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
     #  by the test itself otherwise... Should move to its own thread.
     monkeypatch.setattr("modal.functions.MAX_OBJECT_SIZE_BYTES", 1)
     servicer.use_blob_outputs = True
-    stub = Stub()
-    dummy_modal = stub.function()(dummy)
+    app = App()
+    dummy_modal = app.function()(dummy)
 
     _, blobs = blob_server
-    async with stub.run.aio(client=client):
+    async with app.run.aio(client=client):
         assert len(blobs) == 0
         assert [a async for a in dummy_modal.map.aio(range(100))] == [i**2 for i in range(100)]
         assert len(servicer.cleared_function_calls) == 1
@@ -774,9 +774,9 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
 
 @pytest.mark.asyncio
 async def test_non_aio_map_in_async_caller_error(client):
-    dummy_function = stub.function()(dummy)
+    dummy_function = app.function()(dummy)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         with pytest.raises(InvalidError, match=".map.aio"):
             for _ in dummy_function.map([1, 2, 3]):
                 pass
