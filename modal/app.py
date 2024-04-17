@@ -46,7 +46,7 @@ _default_image: _Image = _Image.debian_slim()
 
 class _LocalEntrypoint:
     _info: FunctionInfo
-    _stub: "_Stub"
+    _stub: "_App"
 
     def __init__(self, info, stub):
         self._info = info  # type: ignore
@@ -60,7 +60,7 @@ class _LocalEntrypoint:
         return self._info
 
     @property
-    def stub(self) -> "_Stub":
+    def stub(self) -> "_App":
         return self._stub
 
 
@@ -77,8 +77,9 @@ def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[ty
 CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
 
 
-class _Stub:
-    """A `Stub` is a description of how to create a Modal application.
+class _App:
+    """A Modal app (formerly known as "stub") is a group of functions and classes
+    deployed together.
 
     The stub object principally describes Modal objects (`Function`, `Image`,
     `Secret`, etc.) associated with the application. It has three responsibilities:
@@ -122,7 +123,7 @@ class _Stub:
     _local_entrypoints: Dict[str, _LocalEntrypoint]
     _running_app: Optional[RunningApp]
     _client: Optional[_Client]
-    _all_stubs: ClassVar[Dict[Optional[str], List["_Stub"]]] = {}
+    _all_stubs: ClassVar[Dict[Optional[str], List["_App"]]] = {}
 
     def __init__(
         self,
@@ -180,7 +181,7 @@ class _Stub:
         self._client = None
 
         # Register this stub. This is used to look up the stub in the container, when we can't get it from the function
-        _Stub._all_stubs.setdefault(self._name, []).append(self)
+        _App._all_stubs.setdefault(self._name, []).append(self)
 
     @property
     def name(self) -> Optional[str]:
@@ -242,11 +243,11 @@ class _Stub:
             d[x] = y  # Refer to d in global scope
         ```
         """
-        deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
+        deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
         return self._indexed_objects[tag]
 
     def __setitem__(self, tag: str, obj: _Object):
-        deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
+        deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
         self._validate_blueprint_value(tag, obj)
         # Deprecated ?
         self._add_object(tag, obj)
@@ -256,12 +257,12 @@ class _Stub:
         assert isinstance(tag, str)
         if tag.startswith("__"):
             # Hacky way to avoid certain issues, e.g. pickle will try to look this up
-            raise AttributeError(f"Stub has no member {tag}")
+            raise AttributeError(f"App has no member {tag}")
         if tag not in self._indexed_objects:
             # Primarily to make hasattr work
-            raise AttributeError(f"Stub has no member {tag}")
+            raise AttributeError(f"App has no member {tag}")
         obj: _Object = self._indexed_objects[tag]
-        deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
+        deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
         return obj
 
     def __setattr__(self, tag: str, obj: _Object):
@@ -274,7 +275,7 @@ class _Stub:
             self._indexed_objects["image"] = obj
         else:
             self._validate_blueprint_value(tag, obj)
-            deprecation_warning((2024, 3, 25), _Stub.__getitem__.__doc__)
+            deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
             self._add_object(tag, obj)
 
     @property
@@ -300,7 +301,7 @@ class _Stub:
             import torch
         ```
         """
-        deprecation_error((2023, 11, 8), _Stub.is_inside.__doc__)
+        deprecation_error((2023, 11, 8), _App.is_inside.__doc__)
 
     @asynccontextmanager
     async def _set_local_app(self, client: _Client, app: RunningApp) -> AsyncGenerator[None, None]:
@@ -320,7 +321,7 @@ class _Stub:
         show_progress: bool = True,
         detach: bool = False,
         output_mgr: Optional[OutputManager] = None,
-    ) -> AsyncGenerator["_Stub", None]:
+    ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
         Use this as the main entry point for your Modal application. All calls
@@ -765,7 +766,7 @@ class _Stub:
         await resolver.load(obj)
         return obj
 
-    def include(self, /, other_stub: "_Stub"):
+    def include(self, /, other_stub: "_App"):
         """Include another stub's objects in this one.
 
         Useful splitting up Modal apps across different self-contained files
@@ -799,17 +800,17 @@ class _Stub:
             self._add_object(tag, object)
 
 
-Stub = synchronize_api(_Stub)
+App = synchronize_api(_App)
 
 
-class _App(_Stub):
-    """This enables using an "App" class instead of "Stub".
+class _Stub(_App):
+    """This enables using an "Stub" class instead of "App".
 
-    We haven't announced this and started deprecating stubs yet, so this is for
-    forward compatibility reasons.
+    For most of Modal's history, the app class was called "Stub", so this exists for
+    backwards compatibility, in order to facilitate moving from "Stub" to "App".
     """
 
     pass
 
 
-App = synchronize_api(_App)
+Stub = synchronize_api(_Stub)

@@ -13,7 +13,7 @@ import typer
 from rich.console import Console
 from typing_extensions import TypedDict
 
-from ..app import LocalEntrypoint, Stub
+from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
@@ -128,7 +128,7 @@ def _get_clean_stub_description(func_ref: str) -> str:
         return " ".join(sys.argv)
 
 
-def _get_click_command_for_function(stub: Stub, function_tag):
+def _get_click_command_for_function(stub: App, function_tag):
     function = stub.indexed_objects[function_tag]
     assert isinstance(function, Function)
 
@@ -167,7 +167,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
     return click.command(with_click_options)
 
 
-def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypoint):
+def _get_click_command_for_local_entrypoint(stub: App, entrypoint: LocalEntrypoint):
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
@@ -205,7 +205,7 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
         function_or_entrypoint = import_function(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
-        stub: Stub = function_or_entrypoint.stub
+        stub: App = function_or_entrypoint.stub
         if stub.description is None:
             stub.set_description(_get_clean_stub_description(func_ref))
         if isinstance(function_or_entrypoint, LocalEntrypoint):
@@ -375,7 +375,7 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    stub = Stub("modal shell")
+    stub = App("modal shell")
 
     if func_ref is not None:
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
