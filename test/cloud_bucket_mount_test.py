@@ -7,7 +7,7 @@ def dummy():
 
 
 def test_volume_mount(client, servicer):
-    stub = modal.Stub()
+    app = modal.App()
     secret = modal.Secret.from_dict({"AWS_ACCESS_KEY_ID": "1", "AWS_SECRET_ACCESS_KEY": "2"})
     cld_bckt_mnt = modal.CloudBucketMount(
         bucket_name="foo",
@@ -16,7 +16,7 @@ def test_volume_mount(client, servicer):
         read_only=False,
     )
 
-    _ = stub.function(volumes={"/root/foo": cld_bckt_mnt})(dummy)
+    _ = app.function(volumes={"/root/foo": cld_bckt_mnt})(dummy)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         pass

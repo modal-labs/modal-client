@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import modal
 
-stub = modal.Stub()
+app = modal.App()
 
 
-@stub.function()
+@app.function()
 def foo():
     print("foo")

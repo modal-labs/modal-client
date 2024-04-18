@@ -1,12 +1,12 @@
 # Copyright Modal Labs 2022
 import modal
 
-stub = modal.Stub("hello-world")
+app = modal.App("hello-world")
 
 if not modal.is_local():
     import nonexistent_package  # noqa
 
 
-@stub.function()
+@app.function()
 def f(i):
     pass

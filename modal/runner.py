@@ -26,9 +26,9 @@ from .object import _Object
 from .running_app import RunningApp
 
 if TYPE_CHECKING:
-    from .stub import _Stub
+    from .stub import _App
 else:
-    _Stub = TypeVar("_Stub")
+    _App = TypeVar("_App")
 
 
 async def _heartbeat(client, app_id):
@@ -176,8 +176,8 @@ async def _disconnect(
 
 
 @asynccontextmanager
-async def _run_stub(
-    stub: _Stub,
+async def _run_app(
+    stub: _App,
     client: Optional[_Client] = None,
     stdout=None,
     show_progress: bool = True,
@@ -186,7 +186,7 @@ async def _run_stub(
     environment_name: Optional[str] = None,
     shell=False,
     interactive=False,
-) -> AsyncGenerator[_Stub, None]:
+) -> AsyncGenerator[_App, None]:
     """mdmd:hidden"""
     if environment_name is None:
         environment_name = config.get("environment")
@@ -345,8 +345,8 @@ class DeployResult:
     app_id: str
 
 
-async def _deploy_stub(
-    stub: _Stub,
+async def _deploy_app(
+    stub: _App,
     name: str = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client=None,
@@ -451,7 +451,7 @@ async def _deploy_stub(
     return DeployResult(app_id=app.app_id)
 
 
-async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str = "", **kwargs):
+async def _interactive_shell(_stub: _App, cmd: List[str], environment_name: str = "", **kwargs):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -496,7 +496,13 @@ async def _interactive_shell(_stub: _Stub, cmd: List[str], environment_name: str
         await connect_to_sandbox(sb)
 
 
-run_stub = synchronize_api(_run_stub)
+run_app = synchronize_api(_run_app)
 serve_update = synchronize_api(_serve_update)
-deploy_stub = synchronize_api(_deploy_stub)
+deploy_app = synchronize_api(_deploy_app)
 interactive_shell = synchronize_api(_interactive_shell)
+
+# Soon-to-be-deprecated ones, add warning soon
+_run_stub = _run_app
+run_stub = run_app
+_deploy_stub = _deploy_app
+deploy_stub = deploy_app

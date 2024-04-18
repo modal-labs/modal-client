@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import modal
 
-a = modal.Stub()
+a = modal.App()
 
 
 @a.function()
@@ -10,7 +10,7 @@ def a_func(i):
     assert not b_func.is_hydrated
 
 
-b = modal.Stub()
+b = modal.App()
 
 
 @b.function()

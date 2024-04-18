@@ -56,7 +56,7 @@ async def env_mount_files():
 
 
 def test_mounted_files_script(servicer, supports_dir, env_mount_files, server_url_env):
-    helpers.deploy_stub_externally(servicer, script_path, cwd=supports_dir)
+    helpers.deploy_app_externally(servicer, script_path, cwd=supports_dir)
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
@@ -75,7 +75,7 @@ serialized_fn_path = "pkg_a/serialized_fn.py"
 
 
 def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, server_url_env):
-    helpers.deploy_stub_externally(servicer, serialized_fn_path, cwd=supports_dir)
+    helpers.deploy_app_externally(servicer, serialized_fn_path, cwd=supports_dir)
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
@@ -204,7 +204,7 @@ def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_ur
 
 
 def test_e2e_modal_run_py_file_mounts(servicer, supports_dir):
-    helpers.deploy_stub_externally(servicer, "hello.py", cwd=supports_dir)
+    helpers.deploy_app_externally(servicer, "hello.py", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount
@@ -213,7 +213,7 @@ def test_e2e_modal_run_py_file_mounts(servicer, supports_dir):
 
 
 def test_e2e_modal_run_py_module_mounts(servicer, supports_dir):
-    helpers.deploy_stub_externally(servicer, "hello", cwd=supports_dir)
+    helpers.deploy_app_externally(servicer, "hello", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount
@@ -235,12 +235,12 @@ def test_mounts_are_not_traversed_on_declaration(test_dir, monkeypatch, client, 
         return r
 
     monkeypatch.setattr("modal.mount._MountDir.get_files_to_upload", mock_get_files_to_upload)
-    stub = modal.Stub()
+    app = modal.App()
     mount_with_many_files = Mount.from_local_dir(test_dir, remote_path="/test")
-    stub.function(mounts=[mount_with_many_files])(foo)
+    app.function(mounts=[mount_with_many_files])(foo)
     assert len(return_values) == 0  # ensure we don't look at the files yet
 
-    with stub.run(client=client):
+    with app.run(client=client):
         pass
 
     assert return_values  # at this point we should have gotten all the mount files
@@ -258,7 +258,7 @@ def test_mount_dedupe(servicer, test_dir, server_url_env):
     normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
     normally_not_included_file.touch(exist_ok=True)
     print(
-        helpers.deploy_stub_externally(
+        helpers.deploy_app_externally(
             # no explicit mounts, rely on auto-mounting
             servicer,
             "mount_dedupe.py",
@@ -279,7 +279,7 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
     normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
     normally_not_included_file.touch(exist_ok=True)
     print(
-        helpers.deploy_stub_externally(
+        helpers.deploy_app_externally(
             # two explicit mounts of the same package
             servicer,
             "mount_dedupe.py",

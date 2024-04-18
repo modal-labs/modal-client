@@ -8,9 +8,9 @@ import six  # noqa
 import modal  # noqa
 
 
-stub = modal.Stub()
+app = modal.App()
 
 
-@stub.function()
+@app.function()
 def f():
     pass

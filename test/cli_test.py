@@ -117,13 +117,13 @@ def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
 def test_run(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _run(["run", stub_file.as_posix()])
-    _run(["run", stub_file.as_posix() + "::stub"])
+    _run(["run", stub_file.as_posix() + "::app"])
     _run(["run", stub_file.as_posix() + "::foo"])
     _run(["run", stub_file.as_posix() + "::bar"], expected_exit_code=1, expected_stderr=None)
     file_with_entrypoint = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     _run(["run", file_with_entrypoint.as_posix()])
     _run(["run", file_with_entrypoint.as_posix() + "::main"])
-    _run(["run", file_with_entrypoint.as_posix() + "::stub.main"])
+    _run(["run", file_with_entrypoint.as_posix() + "::app.main"])
 
 
 def test_run_app(servicer, set_env_client, test_dir):
@@ -196,9 +196,9 @@ def test_deploy(servicer, set_env_client, test_dir):
 
 def test_run_custom_stub(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "custom_stub.py"
-    res = _run(["run", stub_file.as_posix() + "::stub"], expected_exit_code=1, expected_stderr=None)
+    res = _run(["run", stub_file.as_posix() + "::app"], expected_exit_code=1, expected_stderr=None)
     assert "Could not find" in res.stderr
-    res = _run(["run", stub_file.as_posix() + "::stub.foo"], expected_exit_code=1, expected_stderr=None)
+    res = _run(["run", stub_file.as_posix() + "::app.foo"], expected_exit_code=1, expected_stderr=None)
     assert "Could not find" in res.stderr
 
     _run(["run", stub_file.as_posix() + "::foo"])
@@ -213,7 +213,7 @@ def test_run_aiofunc(servicer, set_env_client, test_dir):
 def test_run_local_entrypoint(servicer, set_env_client, test_dir):
     stub_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
 
-    res = _run(["run", stub_file.as_posix() + "::stub.main"])  # explicit name
+    res = _run(["run", stub_file.as_posix() + "::app.main"])  # explicit name
     assert "called locally" in res.stdout
     assert len(servicer.client_calls) == 2
 
@@ -240,7 +240,7 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         (
             [
                 "run",
-                f"{stub_file.as_posix()}::stub.dt_arg",
+                f"{stub_file.as_posix()}::app.dt_arg",
                 "--dt",
                 "2022-10-31",
             ],

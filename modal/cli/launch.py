@@ -8,9 +8,9 @@ from typing import Any, Dict, Optional
 
 from typer import Typer
 
-from ..app import Stub
+from ..app import App
 from ..exception import _CliUserExecutionError
-from ..runner import run_stub
+from ..runner import run_app
 from .import_refs import import_function
 
 launch_cli = Typer(
@@ -29,13 +29,13 @@ def _launch_program(name: str, filename: str, args: Dict[str, Any]) -> None:
 
     program_path = str(Path(__file__).parent / "programs" / filename)
     entrypoint = import_function(program_path, "modal launch")
-    stub: Stub = entrypoint.stub
-    stub.set_description(f"modal launch {name}")
+    app: App = entrypoint.stub
+    app.set_description(f"modal launch {name}")
 
     # `launch/` scripts must have a `local_entrypoint()` with no args, for simplicity here.
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
-    with run_stub(stub):
+    with run_app(app):
         try:
             if isasync:
                 asyncio.run(func())

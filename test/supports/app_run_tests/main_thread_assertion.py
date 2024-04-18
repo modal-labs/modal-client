@@ -9,9 +9,9 @@ assert threading.current_thread() == threading.main_thread()
 # can be checked to ensure module is loaded at all
 pytest._did_load_main_thread_assertion = True  # type: ignore
 
-stub = modal.Stub()
+app = modal.App()
 
 
-@stub.function()
+@app.function()
 def dummy():
     pass

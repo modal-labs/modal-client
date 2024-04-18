@@ -6,7 +6,7 @@ import pytest
 import sys
 from pathlib import Path
 
-from modal import Stub
+from modal import App
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
 from modal.exception import ModuleNotMountable
 from modal.mount import Mount
@@ -89,13 +89,13 @@ def dummy():
 
 
 def test_from_local_python_packages(servicer, client, test_dir):
-    stub = Stub()
+    app = App()
 
     sys.path.append((test_dir / "supports").as_posix())
 
-    stub.function(mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
+    app.function(mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         files = set(servicer.files_name2sha.keys())
         expected_files = {
             "/root/pkg_a/a.py",
@@ -110,14 +110,14 @@ def test_from_local_python_packages(servicer, client, test_dir):
         assert "/root/pkg_c/j/k.py" not in files
 
 
-def test_stub_mounts(servicer, client, test_dir):
+def test_app_mounts(servicer, client, test_dir):
     sys.path.append((test_dir / "supports").as_posix())
 
-    stub = Stub(mounts=[Mount.from_local_python_packages("pkg_b")])
+    app = App(mounts=[Mount.from_local_python_packages("pkg_b")])
 
-    stub.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
+    app.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         files = set(servicer.files_name2sha.keys())
         expected_files = {
             "/root/pkg_a/a.py",
@@ -132,11 +132,11 @@ def test_stub_mounts(servicer, client, test_dir):
 
 
 def test_from_local_python_packages_missing_module(servicer, client, test_dir, server_url_env):
-    stub = Stub()
-    stub.function(mounts=[Mount.from_local_python_packages("nonexistent_package")])(dummy)
+    app = App()
+    app.function(mounts=[Mount.from_local_python_packages("nonexistent_package")])(dummy)
 
     with pytest.raises(ModuleNotMountable):
-        with stub.run(client=client):
+        with app.run(client=client):
             pass
 
 

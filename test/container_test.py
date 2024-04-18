@@ -30,12 +30,12 @@ from modal._serialization import (
     serialize_data_format,
 )
 from modal._utils import async_utils
-from modal.app import _Stub
+from modal.app import _App
 from modal.exception import InvalidError
 from modal.partial_function import enter
 from modal_proto import api_pb2
 
-from .helpers import deploy_stub_externally
+from .helpers import deploy_app_externally
 from .supports.skip import skip_windows_signals, skip_windows_unix_socket
 
 EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
@@ -199,8 +199,8 @@ def _run_container(
             # Override server URL to reproduce restore behavior.
             env["MODAL_SERVER_URL"] = servicer.remote_addr
 
-        # reset _Stub tracking state between runs
-        _Stub._all_stubs = {}
+        # reset _App tracking state between runs
+        _App._all_apps.clear()
 
         try:
             with mock.patch.dict(os.environ, env):
@@ -726,14 +726,14 @@ def test_cli(unix_servicer):
 
 @skip_windows_unix_socket
 def test_function_sibling_hydration(unix_servicer):
-    deploy_stub_externally(unix_servicer, "test.supports.functions", "stub")
+    deploy_app_externally(unix_servicer, "test.supports.functions", "app")
     ret = _run_container(unix_servicer, "test.supports.functions", "check_sibling_hydration")
     assert _unwrap_scalar(ret) is None
 
 
 @skip_windows_unix_socket
 def test_multistub(unix_servicer, caplog):
-    deploy_stub_externally(unix_servicer, "test.supports.multistub", "a")
+    deploy_app_externally(unix_servicer, "test.supports.multistub", "a")
     ret = _run_container(unix_servicer, "test.supports.multistub", "a_func")
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
@@ -909,7 +909,7 @@ def test_derived_cls(unix_servicer):
 
 @skip_windows_unix_socket
 def test_call_function_that_calls_function(unix_servicer):
-    deploy_stub_externally(unix_servicer, "test.supports.functions", "stub")
+    deploy_app_externally(unix_servicer, "test.supports.functions", "app")
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
@@ -922,7 +922,7 @@ def test_call_function_that_calls_function(unix_servicer):
 @skip_windows_unix_socket
 def test_call_function_that_calls_method(unix_servicer, set_env_client):
     # TODO (elias): Remove set_env_client fixture dependency - shouldn't need an env client here?
-    deploy_stub_externally(unix_servicer, "test.supports.functions", "stub")
+    deploy_app_externally(unix_servicer, "test.supports.functions", "app")
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
@@ -1023,7 +1023,7 @@ def test_volume_commit_on_exit_doesnt_fail_container(unix_servicer):
 
 @skip_windows_unix_socket
 def test_function_dep_hydration(unix_servicer):
-    deploy_stub_externally(unix_servicer, "test.supports.functions", "stub")
+    deploy_app_externally(unix_servicer, "test.supports.functions", "app")
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",

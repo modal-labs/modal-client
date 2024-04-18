@@ -12,7 +12,7 @@ from unittest import mock
 
 import modal
 from modal.exception import DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
-from modal.runner import deploy_stub
+from modal.runner import deploy_app
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
@@ -22,35 +22,35 @@ def dummy():
 
 
 def test_volume_mount(client, servicer):
-    stub = modal.Stub()
+    app = modal.App()
     vol = modal.Volume.from_name("xyz", create_if_missing=True)
 
-    _ = stub.function(volumes={"/root/foo": vol})(dummy)
+    _ = app.function(volumes={"/root/foo": vol})(dummy)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         pass
 
 
 def test_volume_bad_paths():
-    stub = modal.Stub()
+    app = modal.App()
     vol = modal.Volume.from_name("xyz")
 
     with pytest.raises(InvalidError):
-        stub.function(volumes={"/root/../../foo": vol})(dummy)
+        app.function(volumes={"/root/../../foo": vol})(dummy)
 
     with pytest.raises(InvalidError):
-        stub.function(volumes={"/": vol})(dummy)
+        app.function(volumes={"/": vol})(dummy)
 
     with pytest.raises(InvalidError):
-        stub.function(volumes={"/tmp/": vol})(dummy)
+        app.function(volumes={"/tmp/": vol})(dummy)
 
 
 def test_volume_duplicate_mount():
-    stub = modal.Stub()
+    app = modal.App()
     vol = modal.Volume.from_name("xyz")
 
     with pytest.raises(InvalidError):
-        stub.function(volumes={"/foo": vol, "/bar": vol})(dummy)
+        app.function(volumes={"/foo": vol, "/bar": vol})(dummy)
 
 
 @pytest.mark.parametrize("skip_reload", [False, True])
@@ -109,20 +109,20 @@ def test_volume_reload(client, servicer):
 
 
 def test_redeploy(servicer, client):
-    stub = modal.Stub()
+    app = modal.App()
 
     with pytest.warns(DeprecationError):
         v1 = modal.Volume.new()
         v2 = modal.Volume.new()
         v3 = modal.Volume.new()
-        stub.v1, stub.v2, stub.v3 = v1, v2, v3
+        app.v1, app.v2, app.v3 = v1, v2, v3
 
     # Deploy app once
-    deploy_stub(stub, "my-app", client=client)
+    deploy_app(app, "my-app", client=client)
     app1_ids = [v1.object_id, v2.object_id, v3.object_id]
 
     # Deploy app again
-    deploy_stub(stub, "my-app", client=client)
+    deploy_app(app, "my-app", client=client)
     app2_ids = [v1.object_id, v2.object_id, v3.object_id]
 
     # Make sure ids are stable
@@ -133,7 +133,7 @@ def test_redeploy(servicer, client):
     assert len(set(app2_ids)) == 3
 
     # Deploy to a different app
-    deploy_stub(stub, "my-other-app", client=client)
+    deploy_app(app, "my-other-app", client=client)
     app3_ids = [v1.object_id, v2.object_id, v3.object_id]
 
     # Should be unique and different
