@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 class ImportedFunction:
     obj: Any
     fun: Callable
-    stub: Optional[_App]
+    app: Optional[_App]
     is_async: bool
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
@@ -309,7 +309,7 @@ def import_function(
     cls: Optional[Type] = None
     fun: Callable
     function: Optional[_Function] = None
-    active_stub: Optional[_App] = None
+    active_app: Optional[_App] = None
     pty_info: api_pb2.PTYInfo = function_def.pty_info
 
     if ser_fun is not None:
@@ -331,7 +331,7 @@ def import_function(
             if isinstance(f, Function):
                 function = synchronizer._translate_in(f)
                 fun = function.get_raw_f()
-                active_stub = function._stub
+                active_app = function._stub
             else:
                 fun = f
         elif len(parts) == 2:
@@ -343,7 +343,7 @@ def import_function(
                 _cls = synchronizer._translate_in(cls)
                 fun = _cls._callables[fun_name]
                 function = _cls._functions.get(fun_name)
-                active_stub = _cls._stub
+                active_app = _cls._stub
             else:
                 # This is a raw class
                 fun = getattr(cls, fun_name)
@@ -351,11 +351,11 @@ def import_function(
             raise InvalidError(f"Invalid function qualname {qual_name}")
 
     # If the cls/function decorator was applied in local scope, but the stub is global, we can look it up
-    if active_stub is None:
+    if active_app is None:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated stubs - if there is only one with the indicated name, use that one
         stub_name: Optional[str] = function_def.stub_name or None  # coalesce protobuf field to None
-        matching_stubs = _App._all_stubs.get(stub_name, [])
+        matching_stubs = _App._all_apps.get(stub_name, [])
         if len(matching_stubs) > 1:
             if stub_name is not None:
                 warning_sub_message = f"stub with the same name ('{stub_name}')"
@@ -365,7 +365,7 @@ def import_function(
                 f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
             )
         elif len(matching_stubs) == 1:
-            (active_stub,) = matching_stubs
+            (active_app,) = matching_stubs
         # there could also technically be zero found stubs, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
@@ -438,7 +438,7 @@ def import_function(
     return ImportedFunction(
         obj,
         fun,
-        active_stub,
+        active_app,
         is_async,
         is_generator,
         data_format,
@@ -495,8 +495,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize objects on the stub.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
-        if imp_fun.stub is not None:
-            stub: App = synchronizer._translate_out(imp_fun.stub, Interface.BLOCKING)
+        if imp_fun.app is not None:
+            stub: App = synchronizer._translate_out(imp_fun.app, Interface.BLOCKING)
             stub._init_container(client, container_app)
 
         # Hydrate all function dependencies.

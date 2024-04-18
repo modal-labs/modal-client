@@ -200,7 +200,7 @@ def _run_container(
             env["MODAL_SERVER_URL"] = servicer.remote_addr
 
         # reset _App tracking state between runs
-        _App._all_stubs.clear()
+        _App._all_apps.clear()
 
         try:
             with mock.patch.dict(os.environ, env):
