@@ -138,7 +138,7 @@ class _Cls(_Object, type_prefix="cs"):
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
-    _stub: Optional["modal.app._App"] = None  # not set for lookups
+    _app: Optional["modal.app._App"] = None  # not set for lookups
 
     def _initialize_from_empty(self):
         self._user_cls = None
@@ -181,7 +181,7 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
-    def from_local(user_cls, stub, decorator: Callable[[PartialFunction, type], _Function]) -> "_Cls":
+    def from_local(user_cls, app, decorator: Callable[[PartialFunction, type], _Function]) -> "_Cls":
         """mdmd:hidden"""
         functions: Dict[str, _Function] = {}
         for k, partial_function in _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.FUNCTION).items():
@@ -206,7 +206,7 @@ class _Cls(_Object, type_prefix="cs"):
 
         rep = f"Cls({user_cls.__name__})"
         cls = _Cls._from_loader(_load, rep, deps=_deps)
-        cls._stub = stub
+        cls._app = app
         cls._user_cls = user_cls
         cls._functions = functions
         cls._callables = callables
