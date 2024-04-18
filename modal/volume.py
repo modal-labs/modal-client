@@ -472,6 +472,25 @@ class _Volume(_Object, type_prefix="vo"):
         """
         Copy files within the volume from src_paths to dst_path.
         The semantics of the copy operation follow those of the UNIX cp command.
+
+        The `src_paths` parameter is a list. If you want to copy a single file, you should pass a list with a
+        single element.
+
+        `src_paths` and `dst_path` should refer to the desired location *inside* the volume. You do not need to prepend
+        the volume mount path.
+
+        **Usage**
+
+        ```python notest
+        vol = modal.Volume.lookup("my-modal-volume")
+
+        vol.copy_files(["bar/example.txt"], "bar2")  # Copy files to another directory
+        vol.copy_files(["bar/example.txt"], "bar/example2.txt")  # Rename a file by copying
+        ```
+
+        Note that if the volume is already mounted on the Modal function, you should use normal filesystem operations
+        like `os.rename()` and then `commit()` the volume. The `copy_files()` method is useful when you don't have
+        the volume mounted as a filesystem, e.g. when running a script on your local computer.
         """
         src_paths = [path.encode("utf-8") for path in src_paths if isinstance(path, str)]
         if isinstance(dst_path, str):
