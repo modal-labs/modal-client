@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import inspect
 import typing
+import warnings
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -565,6 +566,10 @@ class _App:
                 info = FunctionInfo(f, serialized=serialized, name_override=name, cls=_cls)
                 webhook_config = None
                 raw_f = f
+
+            if info.function_name.endswith(".app"):
+                warnings.warn("Beware: the function name is `app`. Modal will soon rename `Stub` to `App`, "
+                              "so you might run into issues if you have code like `app = modal.App()` in the same scope")
 
             if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
                 raise InvalidError(
