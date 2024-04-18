@@ -177,7 +177,7 @@ async def _disconnect(
 
 @asynccontextmanager
 async def _run_app(
-    stub: _App,
+    app: _App,
     client: Optional[_Client] = None,
     stdout=None,
     show_progress: bool = True,
@@ -197,21 +197,21 @@ async def _run_app(
             " Are you calling stub.run() directly?"
             " Consider using the `modal run` shell command."
         )
-    if stub._running_app:
+    if app._running_app:
         raise InvalidError(
             "App is already running and can't be started again.\n"
             "You should not use `stub.run` or `run_stub` within a Modal `local_entrypoint`"
         )
 
-    if stub.description is None:
+    if app.description is None:
         import __main__
 
         if "__file__" in dir(__main__):
-            stub.set_description(os.path.basename(__main__.__file__))
+            app.set_description(os.path.basename(__main__.__file__))
         else:
             # Interactive mode does not have __file__.
             # https://docs.python.org/3/library/__main__.html#import-main
-            stub.set_description(__main__.__name__)
+            app.set_description(__main__.__name__)
 
     if client is None:
         client = await _Client.from_env()
@@ -222,12 +222,12 @@ async def _run_app(
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     running_app: RunningApp = await _init_local_app_new(
         client,
-        stub.description,
+        app.description,
         environment_name=environment_name,
         app_state=app_state,
         interactive=interactive,
     )
-    async with stub._set_local_app(client, running_app), TaskContext(grace=config["logs_timeout"]) as tc:
+    async with app._set_local_app(client, running_app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
         tc.infinite_loop(lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL)
 
@@ -244,15 +244,15 @@ async def _run_app(
         try:
             # Create all members
             await _create_all_objects(
-                client, running_app, stub._indexed_objects, app_state, environment_name, output_mgr=output_mgr
+                client, running_app, app._indexed_objects, app_state, environment_name, output_mgr=output_mgr
             )
 
             # Update all functions client-side to have the output mgr
-            for obj in stub.registered_functions.values():
+            for obj in app.registered_functions.values():
                 obj._set_output_mgr(output_mgr)
 
             # Update all the classes client-side to propagate output manager to their methods.
-            for obj in stub.registered_classes.values():
+            for obj in app.registered_classes.values():
                 obj._set_output_mgr(output_mgr)
 
             # Show logs from dynamically created images.
@@ -261,14 +261,14 @@ async def _run_app(
 
             # Yield to context
             if shell:
-                yield stub
+                yield app
             else:
                 with output_mgr.show_status_spinner():
-                    yield stub
+                    yield app
         except KeyboardInterrupt as e:
             exc_info = e
             # mute cancellation errors on all function handles to prevent exception spam
-            for obj in stub.registered_functions.values():
+            for obj in app.registered_functions.values():
                 obj._set_mute_cancellation(True)
 
             if detach:
@@ -306,7 +306,7 @@ async def _run_app(
                 exc_str = ""
 
             await _disconnect(client, running_app.app_id, reason, exc_str)
-            stub._uncreate_all_objects()
+            app._uncreate_all_objects()
 
     output_mgr.print_if_visible(
         step_completed(f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]")
@@ -314,7 +314,7 @@ async def _run_app(
 
 
 async def _serve_update(
-    stub,
+    app: _App,
     existing_app_id: str,
     is_ready: Event,
     environment_name: str,
@@ -328,7 +328,7 @@ async def _serve_update(
         # Create objects
         output_mgr = OutputManager(None, True)
         await _create_all_objects(
-            client, running_app, stub._indexed_objects, api_pb2.APP_STATE_UNSPECIFIED, environment_name, output_mgr=output_mgr
+            client, running_app, app._indexed_objects, api_pb2.APP_STATE_UNSPECIFIED, environment_name, output_mgr=output_mgr
         )
 
         # Communicate to the parent process
@@ -346,7 +346,7 @@ class DeployResult:
 
 
 async def _deploy_app(
-    stub: _App,
+    app: _App,
     name: str = None,
     namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client=None,
@@ -380,7 +380,7 @@ async def _deploy_app(
         environment_name = config.get("environment")
 
     if name is None:
-        name = stub.name
+        name = app.name
     if name is None:
         raise InvalidError(
             "You need to either supply an explicit deployment name to the deploy command, or have a name set on the app.\n"
@@ -415,7 +415,7 @@ async def _deploy_app(
             await _create_all_objects(
                 client,
                 running_app,
-                stub._indexed_objects,
+                app._indexed_objects,
                 post_init_state,
                 environment_name=environment_name,
                 output_mgr=output_mgr,
@@ -451,7 +451,7 @@ async def _deploy_app(
     return DeployResult(app_id=running_app.app_id)
 
 
-async def _interactive_shell(_stub: _App, cmd: List[str], environment_name: str = "", **kwargs):
+async def _interactive_shell(_app: _App, cmd: List[str], environment_name: str = "", **kwargs):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -475,13 +475,13 @@ async def _interactive_shell(_stub: _App, cmd: List[str], environment_name: str 
     **kwargs will be passed into spawn_sandbox().
     """
     client = await _Client.from_env()
-    async with _run_app(_stub, client, environment_name=environment_name, shell=True):
+    async with _run_app(_app, client, environment_name=environment_name, shell=True):
         console = Console()
         loading_status = console.status("Starting container...")
         loading_status.start()
 
         sandbox_cmds = cmd if len(cmd) > 0 else ["/bin/bash"]
-        sb = await _stub.spawn_sandbox(*sandbox_cmds, pty_info=get_pty_info(shell=True), **kwargs)
+        sb = await _app.spawn_sandbox(*sandbox_cmds, pty_info=get_pty_info(shell=True), **kwargs)
         for _ in range(40):
             await asyncio.sleep(0.5)
             resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
