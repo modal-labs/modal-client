@@ -29,7 +29,7 @@ def _launch_program(name: str, filename: str, args: Dict[str, Any]) -> None:
 
     program_path = str(Path(__file__).parent / "programs" / filename)
     entrypoint = import_function(program_path, "modal launch")
-    app: App = entrypoint.stub
+    app: App = entrypoint.app
     app.set_description(f"modal launch {name}")
 
     # `launch/` scripts must have a `local_entrypoint()` with no args, for simplicity here.
