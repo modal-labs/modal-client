@@ -1103,6 +1103,12 @@ class _Function(_Object, type_prefix="fu"):
         return self._app
 
     @property
+    def stub(self) -> "modal.app._App":
+        """mdmd:hidden"""
+        # Deprecated soon, only for backwards compatibility
+        return self._app
+
+    @property
     def info(self) -> FunctionInfo:
         """mdmd:hidden"""
         assert self._info

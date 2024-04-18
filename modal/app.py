@@ -63,6 +63,11 @@ class _LocalEntrypoint:
     def app(self) -> "_App":
         return self._app
 
+    @property
+    def stub(self) -> "_App":
+        # Deprecated soon, only for backwards compatibility
+        return self._app
+
 
 LocalEntrypoint = synchronize_api(_LocalEntrypoint)
 
