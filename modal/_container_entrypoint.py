@@ -354,18 +354,18 @@ def import_function(
     if active_app is None:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated stubs - if there is only one with the indicated name, use that one
-        stub_name: Optional[str] = function_def.stub_name or None  # coalesce protobuf field to None
-        matching_stubs = _App._all_apps.get(stub_name, [])
-        if len(matching_stubs) > 1:
-            if stub_name is not None:
-                warning_sub_message = f"stub with the same name ('{stub_name}')"
+        app_name: Optional[str] = function_def.stub_name or None  # coalesce protobuf field to None
+        matching_apps = _App._all_apps.get(app_name, [])
+        if len(matching_apps) > 1:
+            if app_name is not None:
+                warning_sub_message = f"stub with the same name ('{app_name}')"
             else:
                 warning_sub_message = "unnamed stub"
             logger.warning(
                 f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
             )
-        elif len(matching_stubs) == 1:
-            (active_app,) = matching_stubs
+        elif len(matching_apps) == 1:
+            (active_app,) = matching_apps
         # there could also technically be zero found stubs, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
@@ -496,8 +496,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize objects on the stub.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
         if imp_fun.app is not None:
-            stub: App = synchronizer._translate_out(imp_fun.app, Interface.BLOCKING)
-            stub._init_container(client, container_app)
+            app: App = synchronizer._translate_out(imp_fun.app, Interface.BLOCKING)
+            app._init_container(client, container_app)
 
         # Hydrate all function dependencies.
         # TODO(erikbern): we an remove this once we
