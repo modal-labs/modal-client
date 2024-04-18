@@ -123,7 +123,7 @@ class _App:
     _local_entrypoints: Dict[str, _LocalEntrypoint]
     _running_app: Optional[RunningApp]
     _client: Optional[_Client]
-    _all_stubs: ClassVar[Dict[Optional[str], List["_App"]]] = {}
+    _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
 
     def __init__(
         self,
@@ -181,7 +181,7 @@ class _App:
         self._client = None
 
         # Register this stub. This is used to look up the stub in the container, when we can't get it from the function
-        _App._all_stubs.setdefault(self._name, []).append(self)
+        _App._all_apps.setdefault(self._name, []).append(self)
 
     @property
     def name(self) -> Optional[str]:
