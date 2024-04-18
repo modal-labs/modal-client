@@ -26,7 +26,7 @@ from .object import _Object
 from .running_app import RunningApp
 
 if TYPE_CHECKING:
-    from .stub import _App
+    from .app import _App
 else:
     _App = TypeVar("_App")
 
@@ -39,7 +39,7 @@ async def _heartbeat(client, app_id):
     await retry_transient_errors(client.stub.AppHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
 
-async def _init_local_app_existing(client: _Client, existing_app_id: str) -> "RunningApp":
+async def _init_local_app_existing(client: _Client, existing_app_id: str) -> RunningApp:
     # Get all the objects first
     obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
     obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
@@ -54,7 +54,7 @@ async def _init_local_app_new(
     app_state: int,
     environment_name: str = "",
     interactive=False,
-) -> "RunningApp":
+) -> RunningApp:
     app_req = api_pb2.AppCreateRequest(
         description=description,
         environment_name=environment_name,
@@ -73,7 +73,7 @@ async def _init_local_app_from_name(
     name: str,
     namespace,
     environment_name: str = "",
-):
+) -> RunningApp:
     # Look up any existing deployment
     app_req = api_pb2.AppGetByDeploymentNameRequest(
         name=name,
@@ -220,7 +220,7 @@ async def _run_app(
     if shell:
         output_mgr._visible_progress = False
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
-    app = await _init_local_app_new(
+    app: RunningApp = await _init_local_app_new(
         client,
         stub.description,
         environment_name=environment_name,
@@ -323,7 +323,7 @@ async def _serve_update(
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        app = await _init_local_app_existing(client, existing_app_id)
+        app: RunningApp = await _init_local_app_existing(client, existing_app_id)
 
         # Create objects
         output_mgr = OutputManager(None, True)
@@ -401,7 +401,7 @@ async def _deploy_app(
 
     output_mgr = OutputManager(stdout, show_progress)
 
-    app = await _init_local_app_from_name(client, name, namespace, environment_name=environment_name)
+    app: RunningApp = await _init_local_app_from_name(client, name, namespace, environment_name=environment_name)
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
