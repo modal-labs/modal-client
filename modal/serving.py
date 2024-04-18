@@ -20,7 +20,7 @@ from .config import config
 from .runner import _disconnect, _run_app, serve_update
 
 if TYPE_CHECKING:
-    from .stub import _App
+    from .app import _App
 else:
     _App = TypeVar("_App")
 
