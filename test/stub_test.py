@@ -347,3 +347,15 @@ def test_list_apps(client):
 
     assert len(apps_1) == len(apps_0) + 1
     assert set(apps_1) - set(apps_0) == set(["foobar"])
+
+
+def test_function_named_app():
+    # Make sure we have a helpful warning when a user's function is named "app"
+    # as it might collide with the App variable name (in particular if people
+    # find & replace "stub" with "app").
+    app = App()
+
+    with pytest.warns(match="app"):
+        @app.function(serialized=True)
+        def app():
+            ...
