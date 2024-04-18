@@ -475,7 +475,7 @@ async def _interactive_shell(_stub: _App, cmd: List[str], environment_name: str 
     **kwargs will be passed into spawn_sandbox().
     """
     client = await _Client.from_env()
-    async with _run_stub(_stub, client, environment_name=environment_name, shell=True):
+    async with _run_app(_stub, client, environment_name=environment_name, shell=True):
         console = Console()
         loading_status = console.status("Starting container...")
         loading_status.start()

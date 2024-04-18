@@ -1432,7 +1432,7 @@ class _Image(_Object, type_prefix="im"):
 
         function = _Function.from_args(
             info,
-            stub=None,
+            app=None,
             image=self,
             secret=secret,
             secrets=secrets,

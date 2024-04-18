@@ -33,7 +33,7 @@ from .object import _Object
 from .partial_function import PartialFunction, _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
 from .proxy import _Proxy
 from .retries import Retries
-from .runner import _run_stub
+from .runner import _run_app
 from .running_app import RunningApp
 from .sandbox import _Sandbox
 from .schedule import Schedule
@@ -46,11 +46,11 @@ _default_image: _Image = _Image.debian_slim()
 
 class _LocalEntrypoint:
     _info: FunctionInfo
-    _stub: "_App"
+    _app: "_App"
 
-    def __init__(self, info, stub):
+    def __init__(self, info, app):
         self._info = info  # type: ignore
-        self._stub = stub
+        self._app = app
 
     def __call__(self, *args, **kwargs):
         return self._info.raw_f(*args, **kwargs)
@@ -60,8 +60,13 @@ class _LocalEntrypoint:
         return self._info
 
     @property
+    def app(self) -> "_App":
+        return self._app
+
+    @property
     def stub(self) -> "_App":
-        return self._stub
+        # Deprecated soon, only for backwards compatibility
+        return self._app
 
 
 LocalEntrypoint = synchronize_api(_LocalEntrypoint)
@@ -333,7 +338,7 @@ class _App:
         objects. For backwards compatibility reasons, it returns the same stub.
         """
         # TODO(erikbern): deprecate this one too?
-        async with _run_stub(self, client, stdout, show_progress, detach, output_mgr):
+        async with _run_app(self, client, stdout, show_progress, detach, output_mgr):
             yield self
 
     def _get_default_image(self):
@@ -571,7 +576,7 @@ class _App:
 
             function = _Function.from_args(
                 info,
-                stub=self,
+                app=self,
                 image=image,
                 secret=secret,
                 secrets=secrets,

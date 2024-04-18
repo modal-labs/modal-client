@@ -331,7 +331,7 @@ def import_function(
             if isinstance(f, Function):
                 function = synchronizer._translate_in(f)
                 fun = function.get_raw_f()
-                active_app = function._stub
+                active_app = function._app
             else:
                 fun = f
         elif len(parts) == 2:
@@ -343,7 +343,7 @@ def import_function(
                 _cls = synchronizer._translate_in(cls)
                 fun = _cls._callables[fun_name]
                 function = _cls._functions.get(fun_name)
-                active_app = _cls._stub
+                active_app = _cls._app
             else:
                 # This is a raw class
                 fun = getattr(cls, fun_name)
