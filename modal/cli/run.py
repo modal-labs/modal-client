@@ -205,7 +205,7 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
         function_or_entrypoint = import_function(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
-        app: App = function_or_entrypoint.stub
+        app: App = function_or_entrypoint.app
         if app.description is None:
             app.set_description(_get_clean_app_description(func_ref))
         if isinstance(function_or_entrypoint, LocalEntrypoint):
