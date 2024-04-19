@@ -22,12 +22,12 @@ class _CloudBucketMount:
     ```python
     import subprocess
 
-    stub = modal.Stub()
+    app = modal.App()  # Note: "app" was called "stub" up until April 2024
     secret = modal.Secret.from_dict({
         "AWS_ACCESS_KEY_ID": "...",
         "AWS_SECRET_ACCESS_KEY": "...",
     })
-    @stub.function(
+    @app.function(
         volumes={
             "/my-mount": modal.CloudBucketMount(
                 bucket_name="s3-bucket-name",
@@ -48,12 +48,12 @@ class _CloudBucketMount:
     ```python
     import subprocess
 
-    stub = modal.Stub()
+    app = modal.App()  # Note: "app" was called "stub" up until April 2024
     secret = modal.Secret.from_dict({
         "AWS_ACCESS_KEY_ID": "...",
         "AWS_SECRET_ACCESS_KEY": "...",
     })
-    @stub.function(
+    @app.function(
         volumes={
             "/my-mount": modal.CloudBucketMount(
                 bucket_name="my-r2-bucket",
@@ -76,12 +76,12 @@ class _CloudBucketMount:
     ```python
     import subprocess
 
-    stub = modal.Stub()
+    app = modal.App()  # Note: "app" was called "stub" up until April 2024
     gcp_hmac_secret = modal.Secret.from_dict({
         "GOOGLE_ACCESS_KEY_ID": "GOOG1ERM12345...",
         "GOOGLE_ACCESS_KEY_SECRET": "HTJ123abcdef...",
     })
-    @stub.function(
+    @app.function(
         volumes={
             "/my-mount": modal.CloudBucketMount(
                 bucket_name="my-gcs-bucket",

@@ -60,13 +60,13 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     import modal
 
     nfs = modal.NetworkFileSystem.from_name("my-nfs", create_if_missing=True)
-    stub = modal.Stub()
+    app = modal.App()  # Note: "app" was called "stub" up until April 2024
 
-    @stub.function(network_file_systems={"/root/foo": nfs})
+    @app.function(network_file_systems={"/root/foo": nfs})
     def f():
         pass
 
-    @stub.function(network_file_systems={"/root/goo": nfs})
+    @app.function(network_file_systems={"/root/goo": nfs})
     def g():
         pass
     ```
@@ -127,7 +127,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         ```python notest
         volume = NetworkFileSystem.from_name("my-volume", create_if_missing=True)
 
-        @stub.function(network_file_systems={"/vol": volume})
+        @app.function(network_file_systems={"/vol": volume})
         def f():
             pass
         ```

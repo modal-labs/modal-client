@@ -230,9 +230,9 @@ def run(ctx, detach, quiet, interactive, env):
     """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
-    Alternatively, you can refer to the function via the stub:
+    Alternatively, you can refer to the function via the app:
 
-    `{file or module}::{stub variable name}.{function name}`
+    `{file or module}::{app variable name}.{function name}`
 
     **Examples:**
 
@@ -242,8 +242,8 @@ def run(ctx, detach, quiet, interactive, env):
     modal run my_app.py::hello_world
     ```
 
-    If your module only has a single stub called `stub` and your stub has a
-    single local entrypoint (or single function), you can omit the stub and
+    If your module only has a single app called `app` and your app has a
+    single local entrypoint (or single function), you can omit the app and
     function parts:
 
     ```bash
@@ -263,7 +263,7 @@ def run(ctx, detach, quiet, interactive, env):
 
 
 def deploy(
-    app_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
+    app_ref: str = typer.Argument(..., help="Path to a Python file with a app."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
     public: bool = typer.Option(
@@ -291,11 +291,11 @@ def deploy(
 
 
 def serve(
-    app_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
+    app_ref: str = typer.Argument(..., help="Path to a Python file with a app."),
     timeout: Optional[float] = None,
     env: str = ENV_OPTION,
 ):
-    """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
+    """Run a web endpoint(s) associated with a Modal app and hot-reload code.
 
     **Examples:**
 
@@ -323,7 +323,7 @@ def serve(
 def shell(
     func_ref: Optional[str] = typer.Argument(
         default=None,
-        help="Path to a Python file with a Stub or Modal function whose container to run.",
+        help="Path to a Python file with a App or Modal function whose container to run.",
         metavar="FUNC_REF",
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
@@ -357,7 +357,7 @@ def shell(
     modal shell
     ```
 
-    Start a bash shell using the spec for `my_function` in your stub:
+    Start a bash shell using the spec for `my_function` in your app:
 
     ```bash
     modal shell hello_world.py::my_function

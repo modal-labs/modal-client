@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2023
 """Load or import Python modules from the CLI.
 
-For example, the function reference of `modal run some_file.py::stub.foo_func`
-or the stub lookup of `modal deploy some_file.py`.
+For example, the function reference of `modal run some_file.py::app.foo_func`
+or the app lookup of `modal deploy some_file.py`.
 
 These functions are only called by the Modal CLI, not in tasks.
 """
@@ -146,16 +146,16 @@ def _infer_function_or_help(
         function_name = sorted_function_choices[0]
     elif len(function_choices) == 0:
         if app.registered_web_endpoints:
-            err_msg = "Modal stub has only web endpoints. Use `modal serve` instead of `modal run`."
+            err_msg = "Modal app has only web endpoints. Use `modal serve` instead of `modal run`."
         else:
-            err_msg = "Modal stub has no registered functions. Nothing to run."
+            err_msg = "Modal app has no registered functions. Nothing to run."
         raise click.UsageError(err_msg)
     else:
         help_text = f"""You need to specify a Modal function or local entrypoint to run, e.g.
 
 modal run app.py::my_function [...args]
 
-Registered functions and local entrypoints on the selected stub are:
+Registered functions and local entrypoints on the selected app are:
 {registered_functions_str}
 """
         raise click.UsageError(help_text)
@@ -173,14 +173,14 @@ def _show_no_auto_detectable_app(app_ref: ImportRef) -> None:
     object_path = app_ref.object_path
     import_path = app_ref.file_or_module
     error_console = Console(stderr=True)
-    error_console.print(f"[bold red]Could not find Modal stub '{object_path}' in {import_path}.[/bold red]")
+    error_console.print(f"[bold red]Could not find Modal app '{object_path}' in {import_path}.[/bold red]")
 
     if object_path is None:
         guidance_msg = (
-            f"Expected to find a stub variable named **`{DEFAULT_APP_NAME}`** (the default stub name). If your `modal.Stub` is named differently, "
-            "you must specify it in the stub ref argument. "
-            f"For example a stub variable `app_stub = modal.Stub()` in `{import_path}` would "
-            f"be specified as `{import_path}::app_stub`."
+            f"Expected to find a app variable named **`{DEFAULT_APP_NAME}`** (the default app name). If your `modal.App` is named differently, "
+            "you must specify it in the app ref argument. "
+            f"For example a app variable `app_2 = modal.App()` in `{import_path}` would "
+            f"be specified as `{import_path}::app_2`."
         )
         md = Markdown(guidance_msg)
         error_console.print(md)
@@ -197,7 +197,7 @@ def import_app(app_ref: str) -> App:
         sys.exit(1)
 
     if not isinstance(app, App):
-        raise click.UsageError(f"{app} is not a Modal Stub")
+        raise click.UsageError(f"{app} is not a Modal App")
 
     return app
 
@@ -212,7 +212,7 @@ def _show_function_ref_help(app_ref: ImportRef, base_cmd: str) -> None:
         )
     else:
         error_console.print(
-            f"[bold red]No function was specified, and no [green]`stub`[/green] variable could be found in '{import_path}'.[/bold red]"
+            f"[bold red]No function was specified, and no [green]`app`[/green] variable could be found in '{import_path}'.[/bold red]"
         )
     guidance_msg = f"""
 Usage:
@@ -220,9 +220,9 @@ Usage:
 
 Given the following example `app.py`:
 ```
-stub = modal.Stub()
+app = modal.App()  # Note: "app" was called "stub" up until April 2024
 
-@stub.function()
+@app.function()
 def foo():
     ...
 ```

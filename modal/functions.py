@@ -555,7 +555,8 @@ class _Function(_Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
-    `@stub.function()` decorator on the `Stub` object for your application.
+    `@app.function()` decorator on the `App` object (formerly called "Stub")
+    for your application.
     """
 
     # TODO: more type annotations
