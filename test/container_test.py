@@ -747,7 +747,7 @@ def test_multistub_privately_decorated(unix_servicer, caplog):
     # and the two stubs are not named
     ret = _run_container(unix_servicer, "test.supports.multistub_privately_decorated", "foo")
     assert _unwrap_scalar(ret) == 1
-    assert "You have more than one unnamed stub." in caplog.text
+    assert "You have more than one unnamed app." in caplog.text
 
 
 @skip_windows_unix_socket
@@ -775,7 +775,7 @@ def test_multistub_same_name_warning(unix_servicer, caplog, capsys):
         stub_name="dummy",
     )
     assert _unwrap_scalar(ret) == 1
-    assert "You have more than one stub with the same name ('dummy')" in caplog.text
+    assert "You have more than one app with the same name ('dummy')" in caplog.text
     capsys.readouterr()
 
 

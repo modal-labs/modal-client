@@ -13,7 +13,7 @@ from ._output import OutputManager
 _TIMEOUT_SENTINEL = object()
 
 
-class StubFilesFilter(DefaultFilter):
+class AppFilesFilter(DefaultFilter):
     def __init__(
         self,
         *,
@@ -54,7 +54,7 @@ class StubFilesFilter(DefaultFilter):
         return super().__call__(change, path)
 
 
-async def _watch_paths(paths: Set[Path], watch_filter: StubFilesFilter) -> AsyncGenerator[Set[str], None]:
+async def _watch_paths(paths: Set[Path], watch_filter: AppFilesFilter) -> AsyncGenerator[Set[str], None]:
     try:
         async for changes in awatch(*paths, step=500, watch_filter=watch_filter):
             changed_paths = {stringpath for _, stringpath in changes}
@@ -75,7 +75,7 @@ def _print_watched_paths(paths: Set[Path], output_mgr: OutputManager):
     output_mgr.print_if_visible(output_tree)
 
 
-def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], StubFilesFilter]:
+def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], AppFilesFilter]:
     paths = set()
     dir_filters: Dict[Path, Optional[Set[Path]]] = defaultdict(set)
     for mount in mounts:
@@ -89,7 +89,7 @@ def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], StubFilesF
             elif dir_filters[path] is not None:
                 dir_filters[path].add(filter_file.absolute().resolve())
 
-    watch_filter = StubFilesFilter(dir_filters=dict(dir_filters))
+    watch_filter = AppFilesFilter(dir_filters=dict(dir_filters))
     return paths, watch_filter
 
 

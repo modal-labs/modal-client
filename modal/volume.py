@@ -109,16 +109,16 @@ class _Volume(_Object, type_prefix="vo"):
     ```python
     import modal
 
-    stub = modal.Stub()
+    app = modal.App()  # Note: "app" was called "stub" up until April 2024
     volume = modal.Volume.from_name("my-persisted-volume", create_if_missing=True)
 
-    @stub.function(volumes={"/root/foo": volume})
+    @app.function(volumes={"/root/foo": volume})
     def f():
         with open("/root/foo/bar.txt", "w") as f:
             f.write("hello")
         volume.commit()  # Persist changes
 
-    @stub.function(volumes={"/root/foo": volume})
+    @app.function(volumes={"/root/foo": volume})
     def g():
         volume.reload()  # Fetch latest changes
         with open("/root/foo/bar.txt", "r") as f:
@@ -174,10 +174,10 @@ class _Volume(_Object, type_prefix="vo"):
 
         volume = modal.Volume.from_name("my-volume", create_if_missing=True)
 
-        stub = modal.Stub()
+        app = modal.App()  # Note: "app" was called "stub" up until April 2024
 
-        # Volume refers to the same object, even across instances of `stub`.
-        @stub.function(volumes={"/vol": volume})
+        # Volume refers to the same object, even across instances of `app`.
+        @app.function(volumes={"/vol": volume})
         def f():
             pass
         ```
