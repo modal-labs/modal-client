@@ -37,16 +37,13 @@ class _Dict(_Object, type_prefix="di"):
     ```python
     import modal
 
-    stub = modal.Stub()
     my_dict = modal.Dict.from_name("my-persisted_dict", create_if_missing=True)
 
-    @stub.local_entrypoint()
-    def main():
-        my_dict["some key"] = "some value"
-        my_dict[123] = 456
+    my_dict["some key"] = "some value"
+    my_dict[123] = 456
 
-        assert my_dict["some key"] == "some value"
-        assert my_dict[123] == 456
+    assert my_dict["some key"] == "some value"
+    assert my_dict[123] == 456
     ```
 
     The `Dict` class offers a few methods for operations that are usually accomplished
@@ -128,12 +125,9 @@ class _Dict(_Object, type_prefix="di"):
 
         **Examples**
 
-        ```python notest
-        # In one app:
-        stub.dict = Dict.persisted("my-dict")
-
-        # Later, in another app or Python file:
-        stub.dict = Dict.from_name("my-dict")
+        ```python
+        dict = Dict.from_name("my-dict", create_if_missing=True)
+        dict[123] = 456
         ```
         """
 
