@@ -660,6 +660,14 @@ message DictContainsResponse {
   bool found = 1;
 }
 
+message DictContentsRequest {
+  string dict_id = 1;
+  // Setting these to True will populate the corresponding field in the response, otherwise it will be null
+  // This lets us support the keys/values/items SDK API through one RPC without unnecessary data transfer
+  bool keys = 2;
+  bool values = 3;
+}
+
 message DictCreateRequest {  // Will be superseded by DictGetOrCreateRequest
   repeated DictEntry data = 1;
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
@@ -701,20 +709,25 @@ message DictHeartbeatRequest {
   string dict_id = 1;
 }
 
-message DictContentsRequest {
-  string dict_id = 1;
-  // Setting these to True will populate the corresponding field in the response, otherwise it will be null
-  // This lets us support the keys/values/items SDK API through one RPC without unnecessary data transfer
-  bool keys = 2;
-  bool values = 3;
-}
-
 message DictLenRequest {
   string dict_id = 1;
 }
 
 message DictLenResponse {
   int32 len = 1;
+}
+
+message DictListRequest {
+  string environment_name = 1;
+}
+
+message DictListResponse {
+  message DictInfo {
+    string name = 1;
+    double created_at = 2;
+  }
+
+  repeated DictInfo dicts = 1;
 }
 
 message DictPopRequest {
@@ -2042,15 +2055,16 @@ service ModalClient {
 
   // Dicts
   rpc DictClear(DictClearRequest) returns (google.protobuf.Empty);
+  rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
+  rpc DictContents(DictContentsRequest) returns (stream DictEntry);
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
+  rpc DictGet(DictGetRequest) returns (DictGetResponse);
   rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
   rpc DictHeartbeat(DictHeartbeatRequest) returns (google.protobuf.Empty);
-  rpc DictContents(DictContentsRequest) returns (stream DictEntry);
-  rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
-  rpc DictGet(DictGetRequest) returns (DictGetResponse);
-  rpc DictPop(DictPopRequest) returns (DictPopResponse);
-  rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictLen(DictLenRequest) returns (DictLenResponse);
+  rpc DictList(DictListRequest) returns (DictListResponse);
+  rpc DictPop(DictPopRequest) returns (DictPopResponse);
+  rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
 
   // Domains
   rpc DomainCreate(DomainCreateRequest) returns (DomainCreateResponse);
