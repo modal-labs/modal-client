@@ -13,17 +13,17 @@ class Retries:
 
     ```python
     import modal
-    stub = modal.Stub()
+    app = modal.App()  # Note: called "stub" up until April 2024
 
     # Basic configuration.
     # This sets a policy of max 4 retries with 1-second delay between failures.
-    @stub.function(retries=4)
+    @app.function(retries=4)
     def f():
         pass
 
 
     # Fixed-interval retries with 3-second delay between failures.
-    @stub.function(
+    @app.function(
         retries=modal.Retries(
             max_retries=2,
             backoff_coefficient=1.0,
@@ -35,7 +35,7 @@ class Retries:
 
 
     # Exponential backoff, with retry delay doubling after each failure.
-    @stub.function(
+    @app.function(
         retries=modal.Retries(
             max_retries=4,
             backoff_coefficient=2.0,

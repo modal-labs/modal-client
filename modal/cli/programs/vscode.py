@@ -10,14 +10,14 @@ import time
 import webbrowser
 from typing import Any, Dict, Tuple
 
-from modal import Image, Queue, Stub, forward
+from modal import App, Image, Queue, forward
 
 # Passed by `modal launch` locally via CLI, empty on remote runner.
 args: Dict[str, Any] = json.loads(os.environ.get("MODAL_LAUNCH_LOCAL_ARGS", "{}"))
 
 
-stub = Stub()
-stub.image = Image.from_registry("codercom/code-server", add_python="3.11").dockerfile_commands("ENTRYPOINT []")
+app = App()
+app.image = Image.from_registry("codercom/code-server", add_python="3.11").dockerfile_commands("ENTRYPOINT []")
 
 
 def wait_for_port(data: Tuple[str, str], q: Queue):
@@ -33,7 +33,7 @@ def wait_for_port(data: Tuple[str, str], q: Queue):
     q.put(data)
 
 
-@stub.function(cpu=args.get("cpu"), memory=args.get("memory"), gpu=args.get("gpu"), timeout=args.get("timeout"))
+@app.function(cpu=args.get("cpu"), memory=args.get("memory"), gpu=args.get("gpu"), timeout=args.get("timeout"))
 def run_vscode(q: Queue):
     os.chdir("/home/coder")
     token = secrets.token_urlsafe(13)
@@ -47,7 +47,7 @@ def run_vscode(q: Queue):
     q.put("done")
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def main():
     with Queue.ephemeral() as q:
         run_vscode.spawn(q)

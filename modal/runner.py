@@ -194,13 +194,13 @@ async def _run_app(
     if not is_local():
         raise InvalidError(
             "Can not run an app from within a container."
-            " Are you calling stub.run() directly?"
+            " Are you calling app.run() directly?"
             " Consider using the `modal run` shell command."
         )
     if app._running_app:
         raise InvalidError(
             "App is already running and can't be started again.\n"
-            "You should not use `stub.run` or `run_stub` within a Modal `local_entrypoint`"
+            "You should not use `app.run` or `run_app` within a Modal `local_entrypoint`"
         )
 
     if app.description is None:
@@ -364,7 +364,7 @@ async def _deploy_app(
 
     ```python
     if __name__ == "__main__":
-        deploy_stub(stub)
+        deploy_app(app)
     ```
 
     Deployment has two primary purposes:
@@ -386,9 +386,9 @@ async def _deploy_app(
             "You need to either supply an explicit deployment name to the deploy command, or have a name set on the app.\n"
             "\n"
             "Examples:\n"
-            'stub.deploy("some_name")\n\n'
+            'app.deploy("some_name")\n\n'
             "or\n"
-            'stub = Stub("some-name")'
+            'app = App("some-name")'
         )
 
     if not is_valid_app_name(name):
@@ -463,7 +463,7 @@ async def _interactive_shell(_app: _App, cmd: List[str], environment_name: str =
     ```python
     import modal
 
-    stub = modal.Stub(image=modal.Image.debian_slim().apt_install("vim"))
+    app = modal.App(image=modal.Image.debian_slim().apt_install("vim"))
     ```
 
     You can now run this using
