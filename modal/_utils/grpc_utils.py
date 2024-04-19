@@ -10,7 +10,9 @@ from typing import (
     Any,
     AsyncIterator,
     Dict,
+    List,
     Optional,
+    Type,
     TypeVar,
 )
 
@@ -52,6 +54,78 @@ class Subchannel:
         return True
 
 
+class ChannelPool(grpclib.client.Channel):
+    """Use multiple channels under the hood. A drop-in replacement for the grpclib Channel.
+
+    The main reason is to get around limitations with TCP connections over the internet,
+    in particular idle timeouts.
+
+    The algorithm is very simple. It reuses the last subchannel as long as it has had less
+    than 64 requests or if it was created less than 30s ago. It closes any subchannel that
+    hits 90s age. This means requests using the ChannelPool can't be longer than 60s.
+    """
+
+    _max_requests: int
+    _max_lifetime: float
+    _max_active: float
+    _subchannels: List[Subchannel]
+
+    def __init__(
+        self,
+        *args,
+        max_requests=64,  # Maximum number of total requests per subchannel
+        max_active=30,  # Don't accept more connections on the subchannel after this many seconds
+        max_lifetime=90,  # Close subchannel after this many seconds
+        **kwargs,
+    ):
+        self._subchannels = []
+        self._max_requests = max_requests
+        self._max_active = max_active
+        self._max_lifetime = max_lifetime
+        super().__init__(*args, **kwargs)
+
+    async def __connect__(self):
+        now = time.time()
+        # Remove any closed subchannels
+        while len(self._subchannels) > 0 and not self._subchannels[-1].connected():
+            self._subchannels.pop()
+
+        # Close and delete any subchannels that are past their lifetime
+        while len(self._subchannels) > 0 and now - self._subchannels[0].created_at > self._max_lifetime:
+            self._subchannels.pop(0).protocol.processor.close()
+
+        # See if we can reuse the last subchannel
+        create_subchannel = None
+        if len(self._subchannels) > 0:
+            if self._subchannels[-1].created_at < now - self._max_active:
+                # Don't reuse subchannel that's too old
+                create_subchannel = True
+            elif self._subchannels[-1].requests > self._max_requests:
+                create_subchannel = True
+            else:
+                create_subchannel = False
+        else:
+            create_subchannel = True
+
+        # Create new if needed
+        # There's a theoretical race condition here.
+        # This is harmless but may lead to superfluous protocols.
+        if create_subchannel:
+            protocol = await self._create_connection()
+            self._subchannels.append(Subchannel(protocol))
+
+        self._subchannels[-1].requests += 1
+        return self._subchannels[-1].protocol
+
+    def close(self) -> None:
+        while len(self._subchannels) > 0:
+            self._subchannels.pop(0).protocol.processor.close()
+
+    def __del__(self) -> None:
+        if len(self._subchannels) > 0:
+            logger.warning("Channel pool not properly closed")
+
+
 _SendType = TypeVar("_SendType")
 _RecvType = TypeVar("_RecvType")
 
@@ -66,6 +140,8 @@ RETRYABLE_GRPC_STATUS_CODES = [
 def create_channel(
     server_url: str,
     metadata: Dict[str, str] = {},
+    *,
+    use_pool: Optional[bool] = None,  # If None, inferred from the scheme
 ) -> grpclib.client.Channel:
     """Creates a grpclib.Channel.
 
@@ -74,6 +150,15 @@ def create_channel(
     """
     o = urllib.parse.urlparse(server_url)
 
+    if use_pool is None:
+        use_pool = o.scheme in ("http", "https")
+
+    channel_cls: Type[grpclib.client.Channel]
+    if use_pool:
+        channel_cls = ChannelPool
+    else:
+        channel_cls = grpclib.client.Channel
+
     channel: grpclib.client.Channel
     config = grpclib.config.Configuration(
         http2_connection_window_size=64 * 1024 * 1024,  # 64 MiB
@@ -81,7 +166,7 @@ def create_channel(
     )
 
     if o.scheme == "unix":
-        channel = grpclib.client.Channel(path=o.path, config=config)  # probably pointless to use a pool ever
+        channel = channel_cls(path=o.path, config=config)  # probably pointless to use a pool ever
     elif o.scheme in ("http", "https"):
         target = o.netloc
         parts = target.split(":")
@@ -89,7 +174,7 @@ def create_channel(
         ssl = o.scheme.endswith("s")
         host = parts[0]
         port = int(parts[1]) if len(parts) == 2 else 443 if ssl else 80
-        channel = grpclib.client.Channel(host, port, ssl=ssl, config=config)
+        channel = channel_cls(host, port, ssl=ssl, config=config)
     else:
         raise Exception(f"Unknown scheme: {o.scheme}")
 
