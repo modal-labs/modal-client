@@ -35,18 +35,15 @@ class _Dict(_Object, type_prefix="di"):
     **Usage**
 
     ```python
-    import modal
+    from modal import Dict
 
-    stub = modal.Stub()
-    my_dict = modal.Dict.from_name("my-persisted_dict", create_if_missing=True)
+    my_dict = Dict.from_name("my-persisted_dict", create_if_missing=True)
 
-    @stub.local_entrypoint()
-    def main():
-        my_dict["some key"] = "some value"
-        my_dict[123] = 456
+    my_dict["some key"] = "some value"
+    my_dict[123] = 456
 
-        assert my_dict["some key"] == "some value"
-        assert my_dict[123] == 456
+    assert my_dict["some key"] == "some value"
+    assert my_dict[123] == 456
     ```
 
     The `Dict` class offers a few methods for operations that are usually accomplished
@@ -95,6 +92,8 @@ class _Dict(_Object, type_prefix="di"):
 
         Usage:
         ```python
+        from modal import Dict
+
         with Dict.ephemeral() as d:
             d["foo"] = "bar"
 
@@ -128,12 +127,11 @@ class _Dict(_Object, type_prefix="di"):
 
         **Examples**
 
-        ```python notest
-        # In one app:
-        stub.dict = Dict.persisted("my-dict")
+        ```python
+        from modal import Dict
 
-        # Later, in another app or Python file:
-        stub.dict = Dict.from_name("my-dict")
+        dict = Dict.from_name("my-dict", create_if_missing=True)
+        dict[123] = 456
         ```
         """
 
@@ -172,7 +170,9 @@ class _Dict(_Object, type_prefix="di"):
         """Lookup a dict with a given name and tag.
 
         ```python
-        d = modal.Dict.lookup("my-dict")
+        from modal import Dict
+
+        d = Dict.lookup("my-dict")
         d["xyz"] = 123
         ```
         """
@@ -191,7 +191,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method
     async def clear(self) -> None:
-        """Remove all items from the modal.Dict."""
+        """Remove all items from the Dict."""
         req = api_pb2.DictClearRequest(dict_id=self.object_id)
         await retry_transient_errors(self._client.stub.DictClear, req)
 
