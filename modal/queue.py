@@ -152,12 +152,9 @@ class _Queue(_Object, type_prefix="qu"):
 
         **Examples**
 
-        ```python notest
-        # In one app:
-        stub.queue = Queue.persisted("my-queue")
-
-        # Later, in another app or Python file:
-        stub.queue = Queue.from_name("my-queue")
+        ```python
+        queue = Queue.from_name("my-queue", create_if_missing=True)
+        queue.put(123)
         ```
         """
 
