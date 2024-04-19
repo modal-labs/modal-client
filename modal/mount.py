@@ -452,7 +452,7 @@ class _Mount(_Object, type_prefix="mo"):
 
             if file_spec.use_blob:
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
-                async with blob_upload_concurrency.acquire():
+                async with blob_upload_concurrency:
                     with file_spec.source() as fp:
                         blob_id = await blob_upload_file(fp, resolver.client.stub)
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
