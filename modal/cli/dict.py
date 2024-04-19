@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2024
+from datetime import datetime
 from typing import Optional
 
 from rich.console import Console
@@ -6,9 +7,11 @@ from rich.json import JSON
 from typer import Argument, Typer
 
 from modal._utils.async_utils import synchronizer
+from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.dict import _Dict
+from modal.environments import ensure_env
 from modal_proto import api_pb2
 
 dict_cli = Typer(
@@ -21,8 +24,17 @@ dict_cli = Typer(
 @dict_cli.command(name="list")
 @synchronizer.create_blocking
 async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
-    """List all persistent Dict objects."""
-    ...
+    """List all named Dict objects."""
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    request = api_pb2.DictListRequest(environment_name=env)
+    response = await retry_transient_errors(client.stub.DictList, request)
+
+    def format_timestamp(t: float) -> str:
+        return datetime.strftime(datetime.fromtimestamp(t), "%Y-%m-%d %H:%M")
+
+    rows = [(d.name, format_timestamp(d.created_at)) for d in response.dicts]
+    display_table(["Name", "Created at"], rows, json)
 
 
 @dict_cli.command(name="show")
@@ -79,7 +91,7 @@ async def clear(name: str, *, env: Optional[str] = ENV_OPTION):
 @dict_cli.command(name="delete")
 @synchronizer.create_blocking
 async def delete(name: str, *, env: Optional[str] = ENV_OPTION):
-    """Delete a named, persistent Dict object and all of its data."""
+    """Delete a named Dict object and all of its data."""
     d = await _Dict.lookup(name, environment_name=env)
     client = await _Client.from_env()
     req = api_pb2.AppStopRequest(app_id=d.object_id, source=api_pb2.APP_STOP_SOURCE_CLI)
