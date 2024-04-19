@@ -63,14 +63,14 @@ class _Queue(_Object, type_prefix="qu"):
     assert my_queue.get() == 123
 
     my_queue.put(0)
-    my_queue.put(1, partition_key="foo")
-    my_queue.put(2, partition_key="bar")
+    my_queue.put(1, partition="foo")
+    my_queue.put(2, partition="bar")
 
     # Default and "foo" partition are ignored by the get operation.
-    assert my_queue.get(partition_key="bar") == 2
+    assert my_queue.get(partition="bar") == 2
 
     # Set custom 10s expiration time on "foo" partition.
-    my_queue.put(3, partition_key="foo", partition_ttl=10)
+    my_queue.put(3, partition="foo", partition_ttl=10)
 
     # (beta feature) Iterate through items in place (read immutably)
     my_queue.put(1)
