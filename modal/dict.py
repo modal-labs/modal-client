@@ -35,9 +35,9 @@ class _Dict(_Object, type_prefix="di"):
     **Usage**
 
     ```python
-    import modal
+    from modal import Dict
 
-    my_dict = modal.Dict.from_name("my-persisted_dict", create_if_missing=True)
+    my_dict = Dict.from_name("my-persisted_dict", create_if_missing=True)
 
     my_dict["some key"] = "some value"
     my_dict[123] = 456
@@ -92,6 +92,8 @@ class _Dict(_Object, type_prefix="di"):
 
         Usage:
         ```python
+        from modal import Dict
+
         with Dict.ephemeral() as d:
             d["foo"] = "bar"
 
@@ -126,6 +128,8 @@ class _Dict(_Object, type_prefix="di"):
         **Examples**
 
         ```python
+        from modal import Dict
+
         dict = Dict.from_name("my-dict", create_if_missing=True)
         dict[123] = 456
         ```
@@ -166,7 +170,9 @@ class _Dict(_Object, type_prefix="di"):
         """Lookup a dict with a given name and tag.
 
         ```python
-        d = modal.Dict.lookup("my-dict")
+        from modal import Dict
+
+        d = Dict.lookup("my-dict")
         d["xyz"] = 123
         ```
         """
@@ -185,7 +191,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method
     async def clear(self) -> None:
-        """Remove all items from the modal.Dict."""
+        """Remove all items from the Dict."""
         req = api_pb2.DictClearRequest(dict_id=self.object_id)
         await retry_transient_errors(self._client.stub.DictClear, req)
 

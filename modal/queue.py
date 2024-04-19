@@ -122,6 +122,8 @@ class _Queue(_Object, type_prefix="qu"):
 
         Usage:
         ```python
+        from modal import Queue
+
         with Queue.ephemeral() as q:
             q.put(123)
 
@@ -153,6 +155,8 @@ class _Queue(_Object, type_prefix="qu"):
         **Examples**
 
         ```python
+        from modal import Queue
+
         queue = Queue.from_name("my-queue", create_if_missing=True)
         queue.put(123)
         ```
@@ -189,6 +193,8 @@ class _Queue(_Object, type_prefix="qu"):
         """Lookup a queue with a given name and tag.
 
         ```python
+        from modal import Queue
+
         q = modal.Queue.lookup("my-queue")
         q.put(123)
         ```
