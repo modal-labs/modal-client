@@ -63,6 +63,9 @@ class ChannelPool(grpclib.client.Channel):
     The algorithm is very simple. It reuses the last subchannel as long as it has had less
     than 64 requests or if it was created less than 30s ago. It closes any subchannel that
     hits 90s age. This means requests using the ChannelPool can't be longer than 60s.
+
+    This is deprecated as of April 19, 2024. You can enable it with MODAL_CHANNEL_POOL=1
+    until it is removed from the codebase.
     """
 
     _max_requests: int
@@ -140,8 +143,6 @@ RETRYABLE_GRPC_STATUS_CODES = [
 def create_channel(
     server_url: str,
     metadata: Dict[str, str] = {},
-    *,
-    use_pool: Optional[bool] = None,  # If None, inferred from the scheme
 ) -> grpclib.client.Channel:
     """Creates a grpclib.Channel.
 
@@ -150,7 +151,10 @@ def create_channel(
     """
     o = urllib.parse.urlparse(server_url)
 
-    if use_pool is None:
+    import os
+
+    use_pool = False
+    if os.environ.get("MODAL_CHANNEL_POOL") == "1":
         use_pool = o.scheme in ("http", "https")
 
     channel_cls: Type[grpclib.client.Channel]
