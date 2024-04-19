@@ -52,33 +52,31 @@ class _Queue(_Object, type_prefix="qu"):
     **Usage**
 
     ```python
-    from modal import Queue, Stub
+    from modal import Queue
 
-    stub = Stub()
-    my_queue = Queue.from_name("my-persisted-queue", create_if_missing=True)
-
-    @stub.local_entrypoint()
-    def main():
+    with Queue.ephemeral() as my_queue:
+        # Putting values
         my_queue.put("some value")
         my_queue.put(123)
 
+        # Getting values
         assert my_queue.get() == "some value"
         assert my_queue.get() == 123
 
+        # Using partitions
         my_queue.put(0)
-        my_queue.put(1, partition_key="foo")
-        my_queue.put(2, partition_key="bar")
+        my_queue.put(1, partition="foo")
+        my_queue.put(2, partition="bar")
 
         # Default and "foo" partition are ignored by the get operation.
-        assert my_queue.get(partition_key="bar") == 2
+        assert my_queue.get(partition="bar") == 2
 
         # Set custom 10s expiration time on "foo" partition.
-        my_queue.put(3, partition_key="foo", partition_ttl=10)
+        my_queue.put(3, partition="foo", partition_ttl=10)
 
         # (beta feature) Iterate through items in place (read immutably)
         my_queue.put(1)
         assert [v for v in my_queue.iterate()] == [0, 1]
-
     ```
 
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
@@ -126,6 +124,8 @@ class _Queue(_Object, type_prefix="qu"):
 
         Usage:
         ```python
+        from modal import Queue
+
         with Queue.ephemeral() as q:
             q.put(123)
 
@@ -156,12 +156,11 @@ class _Queue(_Object, type_prefix="qu"):
 
         **Examples**
 
-        ```python notest
-        # In one app:
-        stub.queue = Queue.persisted("my-queue")
+        ```python
+        from modal import Queue
 
-        # Later, in another app or Python file:
-        stub.queue = Queue.from_name("my-queue")
+        queue = Queue.from_name("my-queue", create_if_missing=True)
+        queue.put(123)
         ```
         """
 
@@ -196,6 +195,8 @@ class _Queue(_Object, type_prefix="qu"):
         """Lookup a queue with a given name and tag.
 
         ```python
+        from modal import Queue
+
         q = modal.Queue.lookup("my-queue")
         q.put(123)
         ```
