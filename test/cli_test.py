@@ -135,7 +135,8 @@ def test_run_stub(servicer, set_env_client, test_dir):
 
 def test_run_stub_with_app(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "app_and_stub.py"
-    _run(["run", app_file.as_posix()])
+    with pytest.warns(match="`app`"):
+        _run(["run", app_file.as_posix()])
     _run(["run", app_file.as_posix() + "::stub"])
     _run(["run", app_file.as_posix() + "::foo"])
 

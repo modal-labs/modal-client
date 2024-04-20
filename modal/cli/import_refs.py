@@ -20,7 +20,7 @@ from rich.markdown import Markdown
 
 import modal
 from modal.app import App, LocalEntrypoint
-from modal.exception import _CliUserExecutionError
+from modal.exception import _CliUserExecutionError, deprecation_warning
 from modal.functions import Function
 
 
@@ -42,7 +42,6 @@ def parse_import_ref(object_ref: str) -> ImportRef:
 
 
 DEFAULT_APP_NAME = "app"
-POSSIBLE_APP_NAMES = ["app", "stub"]
 
 
 def import_file_or_module(file_or_module: str):
@@ -109,10 +108,26 @@ def get_by_object_path_try_possible_app_names(obj: Any, obj_path: Optional[str])
     if obj_path:
         return get_by_object_path(obj, obj_path)
     else:
-        for obj_path in POSSIBLE_APP_NAMES:
-            app = get_by_object_path(obj, obj_path)
-            if app is not None:
-                return app
+        app = get_by_object_path(obj, DEFAULT_APP_NAME)
+        stub = get_by_object_path(obj, "stub")
+        if isinstance(app, App):
+            return app
+        elif app is not None and isinstance(stub, App):
+            deprecation_warning(
+                (2024, 4, 20),
+                "The symbol `app` is present at the module level but it's not a Modal app."
+                " We will use `stub` instead, but this will not work in future Modal versions."
+                " Suggestion: change the name of `app` to something else."
+            )
+            return stub
+        elif isinstance(stub, App):
+            # TODO(erikbern): enable this deprecation warning shortly
+            #deprecation_warning(
+            #    (2024, 4, 20),
+            #    "The symbol `app` is not present but `stub` is. This will not work in future"
+            #    " Modal versions. Suggestion: change the name of `stub` to `app`."
+            #)
+            return stub
         else:
             return None
 
