@@ -65,7 +65,7 @@ def create(
     env_name = ensure_env(env)
     modal.Volume.create_deployed(name, environment_name=env)
     usage_code = f"""
-@stub.function(volumes={{"/my_vol": modal.Volume.from_name("{name}")}})
+@app.function(volumes={{"/my_vol": modal.Volume.from_name("{name}")}})
 def some_func():
     os.listdir("/my_vol")
 """

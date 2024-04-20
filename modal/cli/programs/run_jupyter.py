@@ -10,14 +10,14 @@ import time
 import webbrowser
 from typing import Any, Dict
 
-from modal import Image, Queue, Stub, forward
+from modal import App, Image, Queue, forward
 
 # Passed by `modal launch` locally via CLI, empty on remote runner.
 args: Dict[str, Any] = json.loads(os.environ.get("MODAL_LAUNCH_LOCAL_ARGS", "{}"))
 
 
-stub = Stub()
-stub.image = Image.from_registry(args.get("image"), add_python=args.get("add_python")).pip_install("jupyterlab")
+app = App()
+app.image = Image.from_registry(args.get("image"), add_python=args.get("add_python")).pip_install("jupyterlab")
 
 
 def wait_for_port(url: str, q: Queue):
@@ -33,7 +33,7 @@ def wait_for_port(url: str, q: Queue):
     q.put(url)
 
 
-@stub.function(cpu=args.get("cpu"), memory=args.get("memory"), gpu=args.get("gpu"), timeout=args.get("timeout"))
+@app.function(cpu=args.get("cpu"), memory=args.get("memory"), gpu=args.get("gpu"), timeout=args.get("timeout"))
 def run_jupyter(q: Queue):
     os.mkdir("/lab")
     token = secrets.token_urlsafe(13)
@@ -58,7 +58,7 @@ def run_jupyter(q: Queue):
     q.put("done")
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def main():
     with Queue.ephemeral() as q:
         run_jupyter.spawn(q)

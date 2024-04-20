@@ -35,9 +35,9 @@ class _LogsReader:
     **Usage**
 
     ```python
-    @stub.function()
+    @app.function()
     async def my_fn():
-        sandbox = stub.spawn_sandbox(
+        sandbox = app.spawn_sandbox(
             "bash",
             "-c",
             "while true; do echo foo; sleep 1; done"
@@ -66,7 +66,7 @@ class _LogsReader:
         **Usage**
 
         ```python
-        sandbox = stub.app.spawn_sandbox("echo", "hello")
+        sandbox = app.app.spawn_sandbox("echo", "hello")
         sandbox.wait()
 
         print(sandbox.stdout.read())
@@ -169,9 +169,9 @@ class _StreamWriter:
         **Usage**
 
         ```python
-        @stub.local_entrypoint()
+        @app.local_entrypoint()
         def main():
-            sandbox = stub.spawn_sandbox(
+            sandbox = app.spawn_sandbox(
                 "bash",
                 "-c",
                 "while read line; do echo $line; done",

@@ -1258,31 +1258,31 @@ class _Function(_Object, type_prefix="fu"):
 
         Example:
         ```python
-        @stub.function()
+        @app.function()
         def my_func(a):
             return a ** 2
 
 
-        @stub.local_entrypoint()
+        @app.local_entrypoint()
         def main():
             assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
         ```
 
-        If applied to a `stub.function`, `map()` returns one result per input and the output order
+        If applied to a `app.function`, `map()` returns one result per input and the output order
         is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
         in the order that they are completed instead.
 
         `return_exceptions` can be used to treat exceptions as successful results:
 
         ```python
-        @stub.function()
+        @app.function()
         def my_func(a):
             if a == 2:
                 raise Exception("ohno")
             return a ** 2
 
 
-        @stub.local_entrypoint()
+        @app.local_entrypoint()
         def main():
             # [0, 1, UserCodeException(Exception('ohno'))]
             print(list(my_func.map(range(3), return_exceptions=True)))
@@ -1394,12 +1394,12 @@ class _Function(_Object, type_prefix="fu"):
 
         Example:
         ```python
-        @stub.function()
+        @app.function()
         def my_func(a, b):
             return a + b
 
 
-        @stub.local_entrypoint()
+        @app.local_entrypoint()
         def main():
             assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
         ```
@@ -1654,7 +1654,7 @@ def current_input_id() -> Optional[str]:
     ```python
     from modal import current_input_id
 
-    @stub.function()
+    @app.function()
     def process_stuff():
         print(f"Starting to process {current_input_id()}")
     ```
@@ -1673,7 +1673,7 @@ def current_function_call_id() -> Optional[str]:
     ```python
     from modal import current_function_call_id
 
-    @stub.function()
+    @app.function()
     def process_stuff():
         print(f"Starting to process input from {current_function_call_id()}")
     ```
