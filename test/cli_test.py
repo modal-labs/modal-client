@@ -115,7 +115,7 @@ def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
 
 
 def test_run(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     _run(["run", app_file.as_posix()])
     _run(["run", app_file.as_posix() + "::app"])
     _run(["run", app_file.as_posix() + "::foo"])
@@ -150,23 +150,23 @@ def test_run_generator(servicer, set_env_client, test_dir):
 
 
 def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "stub_with_multiple_functions.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "app_with_multiple_functions.py"
     result = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
 
-    # should suggest available functions on the stub:
+    # should suggest available functions on the app:
     assert "foo" in result.stderr
     assert "bar" in result.stderr
 
     result = _run(
         ["run", app_file.as_posix(), "--help"], expected_exit_code=2, expected_stderr=None
     )  # TODO: help should not return non-zero
-    # help should also available functions on the stub:
+    # help should also available functions on the app:
     assert "foo" in result.stderr
     assert "bar" in result.stderr
 
 
 def test_run_states(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     _run(["run", app_file.as_posix()])
     assert servicer.app_state_history["ap-1"] == [
         api_pb2.APP_STATE_INITIALIZING,
@@ -176,26 +176,26 @@ def test_run_states(servicer, set_env_client, test_dir):
 
 
 def test_run_detach(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     _run(["run", "--detach", app_file.as_posix()])
     assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DETACHED]
 
 
 def test_run_quiet(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     # Just tests that the command runs without error for now (tests end up defaulting to `show_progress=False` anyway,
     # without a TTY).
     _run(["run", "--quiet", app_file.as_posix()])
 
 
 def test_deploy(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     _run(["deploy", "--name=deployment_name", app_file.as_posix()])
     assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
-def test_run_custom_stub(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "custom_stub.py"
+def test_run_custom_app(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "app_run_tests" / "custom_app.py"
     res = _run(["run", app_file.as_posix() + "::app"], expected_exit_code=1, expected_stderr=None)
     assert "Could not find" in res.stderr
     res = _run(["run", app_file.as_posix() + "::app.foo"], expected_exit_code=1, expected_stderr=None)
@@ -205,7 +205,7 @@ def test_run_custom_stub(servicer, set_env_client, test_dir):
 
 
 def test_run_aiofunc(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "async_stub.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "async_app.py"
     _run(["run", app_file.as_posix()])
     assert len(servicer.client_calls) == 1
 
@@ -222,7 +222,7 @@ def test_run_local_entrypoint(servicer, set_env_client, test_dir):
     assert len(servicer.client_calls) == 4
 
 
-def test_run_local_entrypoint_invalid_with_stub_run(servicer, set_env_client, test_dir):
+def test_run_local_entrypoint_invalid_with_app_run(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint_invalid.py"
 
     res = _run(["run", app_file.as_posix()], expected_exit_code=1)
@@ -376,7 +376,7 @@ def mock_shell_pty():
 
 @skip_windows("modal shell is not supported on Windows.")
 def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     webhook_app_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
     fake_stdin, captured_out = mock_shell_pty
 
@@ -405,7 +405,7 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 
 @skip_windows("modal shell is not supported on Windows.")
 def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     _, captured_out = mock_shell_pty
     _run(["shell", "--cmd", "pwd", app_file.as_posix() + "::foo"])
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
@@ -414,21 +414,21 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
 
 
 def test_app_descriptions(servicer, server_url_env, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "prints_desc_stub.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "prints_desc_app.py"
     _run(["run", "--detach", app_file.as_posix() + "::foo"])
 
     create_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppCreateRequest)]
     assert len(create_reqs) == 1
     assert create_reqs[0].app_state == api_pb2.APP_STATE_DETACHED
     description = create_reqs[0].description
-    assert "prints_desc_stub.py::foo" in description
+    assert "prints_desc_app.py::foo" in description
     assert "run --detach " not in description
 
     _run(["serve", "--timeout", "0.0", app_file.as_posix()])
     create_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppCreateRequest)]
     assert len(create_reqs) == 2
     description = create_reqs[1].description
-    assert "prints_desc_stub.py" in description
+    assert "prints_desc_app.py" in description
     assert "serve" not in description
     assert "--timeout 0.0" not in description
 
