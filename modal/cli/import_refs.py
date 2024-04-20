@@ -122,9 +122,10 @@ def get_by_object_path_try_possible_app_names(obj: Any, obj_path: Optional[str])
             return stub
         elif isinstance(stub, App):
             deprecation_warning(
-                (2024, 4, 20),
+                (2024, 4, 26),
                 "The symbol `app` is not present but `stub` is. This will not work in future"
-                " Modal versions. Suggestion: change the name of `stub` to `app`."
+                " Modal versions. Suggestion: change the name of `stub` to `app`.",
+                pending=True
             )
             return stub
         else:
