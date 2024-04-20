@@ -97,7 +97,7 @@ async def test_webhook_forgot_function(servicer, client):
     ret = subprocess.run(args, cwd=lib_dir, stderr=subprocess.PIPE)
     stderr = ret.stderr.decode()
     assert "absent_minded_function" in stderr
-    assert "@stub.function" in stderr
+    assert "@app.function" in stderr
 
 
 @pytest.mark.asyncio
