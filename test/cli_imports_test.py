@@ -14,19 +14,19 @@ from modal.cli.import_refs import (
 local_entrypoint_src = """
 import modal
 
-stub = modal.Stub()
-@stub.local_entrypoint()
+app = modal.App()
+@app.local_entrypoint()
 def main():
     pass
 """
 python_module_src = """
 import modal
-stub = modal.Stub("FOO")
-other_stub = modal.Stub("BAR")
-@other_stub.function()
+app = modal.App("FOO")
+other_app = modal.App("BAR")
+@other_app.function()
 def func():
     pass
-@stub.cls()
+@app.cls()
 class Parent:
     @modal.method()
     def meth(self):
@@ -37,9 +37,9 @@ assert not __package__
 
 python_package_src = """
 import modal
-stub = modal.Stub("FOO")
-other_stub = modal.Stub("BAR")
-@other_stub.function()
+app = modal.App("FOO")
+other_app = modal.App("BAR")
+@other_app.function()
 def func():
     pass
 assert __package__ == "pack"
@@ -47,9 +47,9 @@ assert __package__ == "pack"
 
 python_subpackage_src = """
 import modal
-stub = modal.Stub("FOO")
-other_stub = modal.Stub("BAR")
-@other_stub.function()
+app = modal.App("FOO")
+other_app = modal.App("BAR")
+@other_app.function()
 def func():
     pass
 assert __package__ == "pack.sub"
@@ -57,9 +57,9 @@ assert __package__ == "pack.sub"
 
 python_file_src = """
 import modal
-stub = modal.Stub("FOO")
-other_stub = modal.Stub("BAR")
-@other_stub.function()
+app = modal.App("FOO")
+other_app = modal.App("BAR")
+@other_app.function()
 def func():
     pass
 
@@ -86,18 +86,18 @@ dir_containing_python_package = {
     [
         # # file syntax
         (empty_dir_with_python_file, "mod.py", _App),
-        (empty_dir_with_python_file, "mod.py::stub", _App),
-        (empty_dir_with_python_file, "mod.py::other_stub", _App),
+        (empty_dir_with_python_file, "mod.py::app", _App),
+        (empty_dir_with_python_file, "mod.py::other_app", _App),
         (dir_containing_python_package, "pack/file.py", _App),
         (dir_containing_python_package, "pack/sub/subfile.py", _App),
         (dir_containing_python_package, "dir/sub/subfile.py", _App),
         # # python module syntax
         (empty_dir_with_python_file, "mod", _App),
-        (empty_dir_with_python_file, "mod::stub", _App),
-        (empty_dir_with_python_file, "mod::other_stub", _App),
+        (empty_dir_with_python_file, "mod::app", _App),
+        (empty_dir_with_python_file, "mod::other_app", _App),
         (dir_containing_python_package, "pack.mod", _App),
-        (dir_containing_python_package, "pack.mod::other_stub", _App),
-        (dir_containing_python_package, "pack/local.py::stub.main", _LocalEntrypoint),
+        (dir_containing_python_package, "pack.mod::other_app", _App),
+        (dir_containing_python_package, "pack/local.py::app.main", _LocalEntrypoint),
     ],
 )
 def test_import_object(dir_structure, ref, expected_object_type, mock_dir):

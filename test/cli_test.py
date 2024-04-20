@@ -26,12 +26,12 @@ import modal
 
 import other_module
 
-stub = modal.Stub("my_app")
+app = modal.App("my_app")
 
 # Sanity check that the module is imported properly
 import sys
 mod = sys.modules[__name__]
-assert mod.stub == stub
+assert mod.app == app
 """
 
 dummy_other_module_file = "x = 42"
@@ -126,10 +126,10 @@ def test_run(servicer, set_env_client, test_dir):
     _run(["run", file_with_entrypoint.as_posix() + "::app.main"])
 
 
-def test_run_app(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "stub_is_now_app.py"
+def test_run_stub(servicer, set_env_client, test_dir):
+    stub_file = test_dir / "supports" / "app_run_tests" / "app_was_once_stub.py"
     _run(["run", stub_file.as_posix()])
-    _run(["run", stub_file.as_posix() + "::app"])
+    _run(["run", stub_file.as_posix() + "::stub"])
     _run(["run", stub_file.as_posix() + "::foo"])
 
 
