@@ -41,8 +41,8 @@ def parse_import_ref(object_ref: str) -> ImportRef:
     return ImportRef(file_or_module, object_path)
 
 
-DEFAULT_APP_NAME = "stub"
-POSSIBLE_APP_NAMES = ["stub", "app"]
+DEFAULT_APP_NAME = "app"
+POSSIBLE_APP_NAMES = ["app", "stub"]
 
 
 def import_file_or_module(file_or_module: str):
