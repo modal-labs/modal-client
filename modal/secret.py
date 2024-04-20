@@ -37,7 +37,7 @@ class _Secret(_Object, type_prefix="st"):
 
         Usage:
         ```python
-        @stub.function(secrets=[modal.Secret.from_dict({"FOO": "bar"})])
+        @app.function(secrets=[modal.Secret.from_dict({"FOO": "bar"})])
         def run():
             print(os.environ["FOO"])
         ```
@@ -98,7 +98,7 @@ class _Secret(_Object, type_prefix="st"):
         If called with an argument, it will use that as a starting point for finding `.env` files.
         In particular, you can call it like this:
         ```python
-        @stub.function(secrets=[modal.Secret.from_dotenv(__file__)])
+        @app.function(secrets=[modal.Secret.from_dotenv(__file__)])
         def run():
             print(os.environ["USERNAME"])  # Assumes USERNAME is defined in your .env file
         ```
@@ -155,7 +155,7 @@ class _Secret(_Object, type_prefix="st"):
         ```python
         secret = modal.Secret.from_name("my-secret")
 
-        @stub.function(secrets=[secret])
+        @app.function(secrets=[secret])
         def run():
            ...
         ```

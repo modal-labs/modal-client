@@ -1396,7 +1396,7 @@ class _Image(_Object, type_prefix="im"):
         kwargs: Dict[str, Any] = {},  # Keyword arguments to the function.
     ) -> "_Image":
         """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
-        function, and any kwargs accepted by `@stub.function` (such as `Mount`s, `NetworkFileSystem`s, and resource requests) can
+        function, and any kwargs accepted by `@app.function` (such as `Mount`s, `NetworkFileSystem`s, and resource requests) can
         be supplied to it. After it finishes execution, a snapshot of the resulting container file system is saved as an image.
 
         **Note**
