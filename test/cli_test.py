@@ -115,11 +115,11 @@ def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
 
 
 def test_run(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
-    _run(["run", stub_file.as_posix()])
-    _run(["run", stub_file.as_posix() + "::app"])
-    _run(["run", stub_file.as_posix() + "::foo"])
-    _run(["run", stub_file.as_posix() + "::bar"], expected_exit_code=1, expected_stderr=None)
+    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _run(["run", app_file.as_posix()])
+    _run(["run", app_file.as_posix() + "::app"])
+    _run(["run", app_file.as_posix() + "::foo"])
+    _run(["run", app_file.as_posix() + "::bar"], expected_exit_code=1, expected_stderr=None)
     file_with_entrypoint = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     _run(["run", file_with_entrypoint.as_posix()])
     _run(["run", file_with_entrypoint.as_posix() + "::main"])
@@ -127,10 +127,10 @@ def test_run(servicer, set_env_client, test_dir):
 
 
 def test_run_stub(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "app_was_once_stub.py"
-    _run(["run", stub_file.as_posix()])
-    _run(["run", stub_file.as_posix() + "::stub"])
-    _run(["run", stub_file.as_posix() + "::foo"])
+    app_file = test_dir / "supports" / "app_run_tests" / "app_was_once_stub.py"
+    _run(["run", app_file.as_posix()])
+    _run(["run", app_file.as_posix() + "::stub"])
+    _run(["run", app_file.as_posix() + "::foo"])
 
 
 def test_run_async(servicer, set_env_client, test_dir):
@@ -144,21 +144,21 @@ def test_run_async(servicer, set_env_client, test_dir):
 
 
 def test_run_generator(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "generator.py"
-    result = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    app_file = test_dir / "supports" / "app_run_tests" / "generator.py"
+    result = _run(["run", app_file.as_posix()], expected_exit_code=1)
     assert "generator functions" in str(result.exception)
 
 
 def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "stub_with_multiple_functions.py"
-    result = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
+    app_file = test_dir / "supports" / "app_run_tests" / "stub_with_multiple_functions.py"
+    result = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
 
     # should suggest available functions on the stub:
     assert "foo" in result.stderr
     assert "bar" in result.stderr
 
     result = _run(
-        ["run", stub_file.as_posix(), "--help"], expected_exit_code=2, expected_stderr=None
+        ["run", app_file.as_posix(), "--help"], expected_exit_code=2, expected_stderr=None
     )  # TODO: help should not return non-zero
     # help should also available functions on the stub:
     assert "foo" in result.stderr
@@ -166,8 +166,8 @@ def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
 
 
 def test_run_states(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
-    _run(["run", stub_file.as_posix()])
+    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _run(["run", app_file.as_posix()])
     assert servicer.app_state_history["ap-1"] == [
         api_pb2.APP_STATE_INITIALIZING,
         api_pb2.APP_STATE_EPHEMERAL,
@@ -176,90 +176,90 @@ def test_run_states(servicer, set_env_client, test_dir):
 
 
 def test_run_detach(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
-    _run(["run", "--detach", stub_file.as_posix()])
+    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _run(["run", "--detach", app_file.as_posix()])
     assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DETACHED]
 
 
 def test_run_quiet(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     # Just tests that the command runs without error for now (tests end up defaulting to `show_progress=False` anyway,
     # without a TTY).
-    _run(["run", "--quiet", stub_file.as_posix()])
+    _run(["run", "--quiet", app_file.as_posix()])
 
 
 def test_deploy(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
-    _run(["deploy", "--name=deployment_name", stub_file.as_posix()])
+    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    _run(["deploy", "--name=deployment_name", app_file.as_posix()])
     assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
 def test_run_custom_stub(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "custom_stub.py"
-    res = _run(["run", stub_file.as_posix() + "::app"], expected_exit_code=1, expected_stderr=None)
+    app_file = test_dir / "supports" / "app_run_tests" / "custom_stub.py"
+    res = _run(["run", app_file.as_posix() + "::app"], expected_exit_code=1, expected_stderr=None)
     assert "Could not find" in res.stderr
-    res = _run(["run", stub_file.as_posix() + "::app.foo"], expected_exit_code=1, expected_stderr=None)
+    res = _run(["run", app_file.as_posix() + "::app.foo"], expected_exit_code=1, expected_stderr=None)
     assert "Could not find" in res.stderr
 
-    _run(["run", stub_file.as_posix() + "::foo"])
+    _run(["run", app_file.as_posix() + "::foo"])
 
 
 def test_run_aiofunc(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "async_stub.py"
-    _run(["run", stub_file.as_posix()])
+    app_file = test_dir / "supports" / "app_run_tests" / "async_stub.py"
+    _run(["run", app_file.as_posix()])
     assert len(servicer.client_calls) == 1
 
 
 def test_run_local_entrypoint(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
 
-    res = _run(["run", stub_file.as_posix() + "::app.main"])  # explicit name
+    res = _run(["run", app_file.as_posix() + "::app.main"])  # explicit name
     assert "called locally" in res.stdout
     assert len(servicer.client_calls) == 2
 
-    res = _run(["run", stub_file.as_posix()])  # only one entry-point, no name needed
+    res = _run(["run", app_file.as_posix()])  # only one entry-point, no name needed
     assert "called locally" in res.stdout
     assert len(servicer.client_calls) == 4
 
 
 def test_run_local_entrypoint_invalid_with_stub_run(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint_invalid.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint_invalid.py"
 
-    res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
+    res = _run(["run", app_file.as_posix()], expected_exit_code=1)
     assert "app is already running" in str(res.exception.__cause__).lower()
     assert "unreachable" not in res.stdout
     assert len(servicer.client_calls) == 0
 
 
 def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    res = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
+    app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
+    res = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
     assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
 
     valid_call_args = [
         (
             [
                 "run",
-                f"{stub_file.as_posix()}::app.dt_arg",
+                f"{app_file.as_posix()}::app.dt_arg",
                 "--dt",
                 "2022-10-31",
             ],
             "the day is 31",
         ),
-        (["run", f"{stub_file.as_posix()}::dt_arg", "--dt=2022-10-31"], "the day is 31"),
-        (["run", f"{stub_file.as_posix()}::int_arg", "--i=200"], "200 <class 'int'>"),
-        (["run", f"{stub_file.as_posix()}::default_arg"], "10 <class 'int'>"),
-        (["run", f"{stub_file.as_posix()}::unannotated_arg", "--i=2022-10-31"], "'2022-10-31' <class 'str'>"),
-        (["run", f"{stub_file.as_posix()}::unannotated_default_arg"], "10 <class 'int'>"),
-        (["run", f"{stub_file.as_posix()}::optional_arg", "--i=20"], "20 <class 'int'>"),
-        (["run", f"{stub_file.as_posix()}::optional_arg"], "None <class 'NoneType'>"),
-        (["run", f"{stub_file.as_posix()}::optional_arg_postponed"], "None <class 'NoneType'>"),
+        (["run", f"{app_file.as_posix()}::dt_arg", "--dt=2022-10-31"], "the day is 31"),
+        (["run", f"{app_file.as_posix()}::int_arg", "--i=200"], "200 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::default_arg"], "10 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::unannotated_arg", "--i=2022-10-31"], "'2022-10-31' <class 'str'>"),
+        (["run", f"{app_file.as_posix()}::unannotated_default_arg"], "10 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::optional_arg", "--i=20"], "20 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::optional_arg"], "None <class 'NoneType'>"),
+        (["run", f"{app_file.as_posix()}::optional_arg_postponed"], "None <class 'NoneType'>"),
     ]
     if sys.version_info >= (3, 10):
         valid_call_args.extend(
             [
-                (["run", f"{stub_file.as_posix()}::optional_arg_pep604", "--i=20"], "20 <class 'int'>"),
-                (["run", f"{stub_file.as_posix()}::optional_arg_pep604"], "None <class 'NoneType'>"),
+                (["run", f"{app_file.as_posix()}::optional_arg_pep604", "--i=20"], "20 <class 'int'>"),
+                (["run", f"{app_file.as_posix()}::optional_arg_pep604"], "None <class 'NoneType'>"),
             ]
         )
     for args, expected in valid_call_args:
@@ -268,17 +268,17 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         assert len(servicer.client_calls) == 0
 
     if sys.version_info >= (3, 10):
-        res = _run(["run", f"{stub_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
+        res = _run(["run", f"{app_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
         assert "Parameter `i` has unparseable annotation: typing.Union[int, str]" in str(res.exception)
 
     if sys.version_info <= (3, 10):
-        res = _run(["run", f"{stub_file.as_posix()}::optional_arg_pep604"], expected_exit_code=1)
+        res = _run(["run", f"{app_file.as_posix()}::optional_arg_pep604"], expected_exit_code=1)
         assert "Unable to generate command line interface for app entrypoint." in str(res.exception)
 
 
 def test_run_parse_args_function(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    res = _run(["run", stub_file.as_posix()], expected_exit_code=2, expected_stderr=None)
+    app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
+    res = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
     assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
 
     # HACK: all the tests use the same arg, i.
@@ -287,10 +287,10 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir):
         print(repr(i), type(i))
 
     valid_call_args = [
-        (["run", f"{stub_file.as_posix()}::int_arg_fn", "--i=200"], "200 <class 'int'>"),
-        (["run", f"{stub_file.as_posix()}::ALifecycle.some_method", "--i=hello"], "'hello' <class 'str'>"),
-        (["run", f"{stub_file.as_posix()}::ALifecycle.some_method_int", "--i=42"], "42 <class 'int'>"),
-        (["run", f"{stub_file.as_posix()}::optional_arg_fn"], "None <class 'NoneType'>"),
+        (["run", f"{app_file.as_posix()}::int_arg_fn", "--i=200"], "200 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::ALifecycle.some_method", "--i=hello"], "'hello' <class 'str'>"),
+        (["run", f"{app_file.as_posix()}::ALifecycle.some_method_int", "--i=42"], "42 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::optional_arg_fn"], "None <class 'NoneType'>"),
     ]
     for args, expected in valid_call_args:
         res = _run(args)
@@ -298,9 +298,9 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir):
 
 
 def test_run_user_script_exception(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "raises_error.py"
-    res = _run(["run", stub_file.as_posix()], expected_exit_code=1)
-    assert res.exc_info[1].user_source == str(stub_file.resolve())
+    app_file = test_dir / "supports" / "app_run_tests" / "raises_error.py"
+    res = _run(["run", app_file.as_posix()], expected_exit_code=1)
+    assert res.exc_info[1].user_source == str(app_file.resolve())
 
 
 @pytest.fixture
@@ -326,8 +326,8 @@ def test_no_user_code_in_synchronicity_deploy(servicer, set_env_client, test_dir
 
 
 def test_serve(servicer, set_env_client, server_url_env, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
-    _run(["serve", stub_file.as_posix(), "--timeout", "3"], expected_exit_code=0)
+    app_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
+    _run(["serve", app_file.as_posix(), "--timeout", "3"], expected_exit_code=0)
 
 
 @pytest.fixture
@@ -376,15 +376,15 @@ def mock_shell_pty():
 
 @skip_windows("modal shell is not supported on Windows.")
 def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
-    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
-    webhook_stub_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    webhook_app_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
     fake_stdin, captured_out = mock_shell_pty
 
     fake_stdin.clear()
     fake_stdin.extend([b'echo "Hello World"\n', b"exit\n"])
 
     # Function is explicitly specified
-    _run(["shell", stub_file.as_posix() + "::foo"])
+    _run(["shell", app_file.as_posix() + "::foo"])
 
     shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
 
@@ -393,29 +393,29 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     captured_out.clear()
 
     # Function is explicitly specified
-    _run(["shell", webhook_stub_file.as_posix() + "::foo"])
+    _run(["shell", webhook_app_file.as_posix() + "::foo"])
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
     captured_out.clear()
 
     # Function must be inferred
-    _run(["shell", webhook_stub_file.as_posix()])
+    _run(["shell", webhook_app_file.as_posix()])
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
     captured_out.clear()
 
 
 @skip_windows("modal shell is not supported on Windows.")
 def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
-    stub_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "default_stub.py"
     _, captured_out = mock_shell_pty
-    _run(["shell", "--cmd", "pwd", stub_file.as_posix() + "::foo"])
+    _run(["shell", "--cmd", "pwd", app_file.as_posix() + "::foo"])
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
     shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 
 def test_app_descriptions(servicer, server_url_env, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "prints_desc_stub.py"
-    _run(["run", "--detach", stub_file.as_posix() + "::foo"])
+    app_file = test_dir / "supports" / "app_run_tests" / "prints_desc_stub.py"
+    _run(["run", "--detach", app_file.as_posix() + "::foo"])
 
     create_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppCreateRequest)]
     assert len(create_reqs) == 1
@@ -424,7 +424,7 @@ def test_app_descriptions(servicer, server_url_env, test_dir):
     assert "prints_desc_stub.py::foo" in description
     assert "run --detach " not in description
 
-    _run(["serve", "--timeout", "0.0", stub_file.as_posix()])
+    _run(["serve", "--timeout", "0.0", app_file.as_posix()])
     create_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppCreateRequest)]
     assert len(create_reqs) == 2
     description = create_reqs[1].description
@@ -547,7 +547,7 @@ def test_environment_flag(test_dir, servicer, command):
     ):  # hacky - compatible with both argless modal run and interactive mode which always sends an arg...
         pass
 
-    stub_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
     with servicer.intercept() as ctx:
         ctx.add_response(
             "MountGetOrCreate",
@@ -563,7 +563,7 @@ def test_environment_flag(test_dir, servicer, command):
             api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id="sv-123"),
             request_filter=lambda req: req.deployment_name == "volume_app" and req.environment_name == "staging",
         )
-        _run(command + ["--env=staging", str(stub_file)])
+        _run(command + ["--env=staging", str(app_file)])
 
     app_create: api_pb2.AppCreateRequest = ctx.pop_request("AppCreate")
     assert app_create.environment_name == "staging"
@@ -581,7 +581,7 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
     ):  # hacky - compatible with both argless modal run and interactive mode which always sends an arg...
         pass
 
-    stub_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "app_with_lookups.py"
     with servicer.intercept() as ctx:
         ctx.add_response(
             "MountGetOrCreate",
@@ -598,17 +598,17 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
             request_filter=lambda req: req.deployment_name == "volume_app"
             and req.environment_name == "some_weird_default_env",
         )
-        _run(command + [str(stub_file)])
+        _run(command + [str(app_file)])
 
     app_create: api_pb2.AppCreateRequest = ctx.pop_request("AppCreate")
     assert app_create.environment_name == "some_weird_default_env"
 
 
 def test_cls(servicer, set_env_client, test_dir):
-    stub_file = test_dir / "supports" / "app_run_tests" / "cls.py"
+    app_file = test_dir / "supports" / "app_run_tests" / "cls.py"
 
-    _run(["run", stub_file.as_posix(), "--x", "42", "--y", "1000"])
-    _run(["run", f"{stub_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"])
+    _run(["run", app_file.as_posix(), "--x", "42", "--y", "1000"])
+    _run(["run", f"{app_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"])
 
 
 def test_profile_list(servicer, server_url_env, modal_config):
