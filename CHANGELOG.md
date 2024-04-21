@@ -19,6 +19,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 
 
+### 0.62.81 (2024-04-18)
+
+* We are introducing `modal.App` as a replacement for `modal.Stub` and encouraging the use of "app" terminology over "stub" to reduce confusion between concepts used in the SDK and the Dashboard. Support for `modal.Stub` will be gradually deprecated over the next few months.
+
+
+
 ### 0.62.72 (2024-04-16)
 
 * Specifying a hard memory limit for a `modal.Function` is now supported. Pass a tuple of `memory=(request, limit)`. Above the `limit`, which is specified in MiB, a Function's container will be OOM killed.
