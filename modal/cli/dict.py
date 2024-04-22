@@ -13,6 +13,7 @@ from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.dict import _Dict
 from modal.environments import ensure_env
+from modal.exception import ExecutionError
 from modal_proto import api_pb2
 
 dict_cli = Typer(
@@ -78,7 +79,6 @@ async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
 
     Note: When using the CLI, keys are always interpreted as having a string type.
     """
-    # TODO would it be nice to be able to get multiple values? Should we do that here?
     d = await _Dict.lookup(name, environment_name=env)
     console = Console()
     val = await d.get(key)
@@ -96,12 +96,20 @@ async def show(
 ):
     """Print the contents of a Dict."""
     d = await _Dict.lookup(name, environment_name=env)
-    i, items = 0, []
-    async for item in d.items():
-        i += 1
-        items.append(item)
-        if n is not None and i >= n:
-            break
+
+    try:
+        i, items = 0, []
+        async for item in d.items():
+            i += 1
+            items.append(item)
+            if n is not None and i >= n:
+                break
+    except ModuleNotFoundError as exc:
+        # I think that on 3.10+ we could rewrite this to use anext and attribute errors to specific
+        # items (perhaps represent them in the output as "<library>_object" or something.)
+        msg = f"Dict contains objects from the `{exc.name}` library and cannot be deserialized locally."
+        raise ExecutionError(msg)
+
     if json:
         # Note, we don't use the json= option of display_table becuase we want to display
         # the dict itself as a JSON, rather than have a JSON representation of the table.
