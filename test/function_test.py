@@ -758,7 +758,7 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
     # TODO: tests making use of mock blob server currently have to be async, since the
     #  blob server runs as an async pytest fixture which will have its event loop blocked
     #  by the test itself otherwise... Should move to its own thread.
-    monkeypatch.setattr("modal.functions.MAX_OBJECT_SIZE_BYTES", 1)
+    monkeypatch.setattr("modal._utils.function_utils.MAX_OBJECT_SIZE_BYTES", 1)
     servicer.use_blob_outputs = True
     app = App()
     dummy_modal = app.function()(dummy)

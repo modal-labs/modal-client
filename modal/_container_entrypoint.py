@@ -23,17 +23,23 @@ from ._asgi import (
     webhook_asgi_app,
     wsgi_app_wrapper,
 )
-from ._container_io_manager import ContainerIOManager, UserException, _ContainerIOManager, interact
+from ._container_io_manager import ContainerIOManager, UserException, _ContainerIOManager
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize
 from ._utils.async_utils import TaskContext, synchronizer
-from ._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_function, method_has_params
+from ._utils.function_utils import (
+    LocalFunctionError,
+    is_async as get_is_async,
+    is_global_function,
+    method_has_params,
+)
 from .app import App, _App
 from .client import Client, _Client
 from .cls import Cls
 from .config import logger
 from .exception import ExecutionError, InputCancellation, InvalidError
-from .functions import Function, _Function, _set_current_context_ids
+from .execution_context import _set_current_context_ids, interact
+from .functions import Function, _Function
 from .partial_function import _find_callables_for_obj, _PartialFunctionFlags
 from .running_app import RunningApp
 
@@ -259,15 +265,15 @@ async def call_function_async(
         # all run_input coroutines will have completed by the time we leave the execution context
         # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
         # for them to resolve gracefully:
-        async with TaskContext(0.01) as execution_context:
+        async with TaskContext(0.01) as task_context:
             async for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs.aio(
                 imp_fun.input_concurrency
             ):
                 # Note that run_inputs_outputs will not return until the concurrency semaphore has
                 # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
-                # This prevents leaving the execution_context before outputs have been created
+                # This prevents leaving the task_context before outputs have been created
                 # TODO: refactor to make this a bit more easy to follow?
-                execution_context.create_task(run_input(input_id, function_call_id, args, kwargs))
+                task_context.create_task(run_input(input_id, function_call_id, args, kwargs))
     else:
         async for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs.aio(
             imp_fun.input_concurrency

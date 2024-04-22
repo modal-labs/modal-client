@@ -420,7 +420,7 @@ class _Mount(_Object, type_prefix="mo"):
         total_uploads, total_bytes = 0, 0
         accounted_hashes: set[str] = set()
         message_label = _Mount._description(self._entries)
-        blob_upload_concurrency = asyncio.Semaphore(16) # Limit uploads of large files.
+        blob_upload_concurrency = asyncio.Semaphore(16)  # Limit uploads of large files.
         status_row = resolver.add_status_row()
 
         async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
@@ -533,7 +533,7 @@ class _Mount(_Object, type_prefix="mo"):
         # Don't re-run inside container.
 
         mount = _Mount._new()
-        from modal import is_local
+        from .execution_context import is_local
 
         if not is_local():
             return mount  # empty/non-mountable mount in case it's used from within a container

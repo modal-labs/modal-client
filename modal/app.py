@@ -8,6 +8,7 @@ from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional
 from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal.execution_context
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
@@ -353,7 +354,7 @@ class _App:
         for function in self.registered_functions.values():
             all_mounts.extend(function._all_mounts)
 
-        return [m for m in all_mounts if m.is_local()]
+        return [m for m in all_mounts if modal.execution_context.is_local()]
 
     def _add_function(self, function: _Function):
         if function.tag in self._indexed_objects:
@@ -566,8 +567,10 @@ class _App:
                 raw_f = f
 
             if info.function_name.endswith(".app"):
-                warnings.warn("Beware: the function name is `app`. Modal will soon rename `Stub` to `App`, "
-                              "so you might run into issues if you have code like `app = modal.App()` in the same scope")
+                warnings.warn(
+                    "Beware: the function name is `app`. Modal will soon rename `Stub` to `App`, "
+                    "so you might run into issues if you have code like `app = modal.App()` in the same scope"
+                )
 
             if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
                 raise InvalidError(
@@ -820,11 +823,11 @@ class _Stub(_App):
 
     def __new__(cls, *args, **kwargs):
         # TODO(erikbern): enable this warning soon!
-        #deprecation_warning(
+        # deprecation_warning(
         #    (2024, 4, 19),
         #   "The use of \"Stub\" has been deprecated in favor of \"App\"."
         #    " This is a pure name change with no other implications."
-        #)
+        # )
         return _App(*args, **kwargs)
 
 
