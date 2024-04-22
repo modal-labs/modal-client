@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 from contextvars import ContextVar
 from typing import Callable, Optional
 
