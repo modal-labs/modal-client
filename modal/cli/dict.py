@@ -26,7 +26,10 @@ dict_cli = Typer(
 @dict_cli.command(name="create")
 @synchronizer.create_blocking
 async def create(name: str, *, env: Optional[str] = ENV_OPTION):
-    """Create a named Dict object."""
+    """Create a named Dict object.
+
+    Note: This is a no-op when the Dict already exists.
+    """
     d = _Dict.from_name(name, environment_name=env, create_if_missing=True)
     client = await _Client.from_env()
     resolver = Resolver(client=client)
