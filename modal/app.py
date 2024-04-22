@@ -8,7 +8,6 @@ from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional
 from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
 
-import modal.execution_context
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
@@ -354,7 +353,7 @@ class _App:
         for function in self.registered_functions.values():
             all_mounts.extend(function._all_mounts)
 
-        return [m for m in all_mounts if modal.execution_context.is_local()]
+        return [m for m in all_mounts if m.is_local()]
 
     def _add_function(self, function: _Function):
         if function.tag in self._indexed_objects:
