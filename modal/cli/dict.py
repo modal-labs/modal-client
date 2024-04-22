@@ -55,7 +55,7 @@ async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
 @dict_cli.command("clear")
 @synchronizer.create_blocking
 async def clear(name: str, *, env: Optional[str] = ENV_OPTION):
-    """Clear the contents Dict by deleting all of its data."""
+    """Clear the contents of a Dict by deleting all of its data."""
     d = await _Dict.lookup(name, environment_name=env)
     await d.clear()
 
