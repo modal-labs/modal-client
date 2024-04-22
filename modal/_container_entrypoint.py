@@ -360,7 +360,7 @@ def import_function(
     if active_app is None:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated apps - if there is only one with the indicated name, use that one
-        app_name: Optional[str] = function_def.stub_name or None  # coalesce protobuf field to None
+        app_name: Optional[str] = function_def.app_name or None  # coalesce protobuf field to None
         matching_apps = _App._all_apps.get(app_name, [])
         if len(matching_apps) > 1:
             if app_name is not None:

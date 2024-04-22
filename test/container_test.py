@@ -86,7 +86,7 @@ def _container_args(
     function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
     webhook_type=api_pb2.WEBHOOK_TYPE_UNSPECIFIED,
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
-    stub_name: str = "",
+    app_name: str = "",
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
@@ -112,7 +112,7 @@ def _container_args(
         volume_mounts=volume_mounts,
         webhook_config=webhook_config,
         definition_type=definition_type,
-        stub_name=stub_name or "",
+        app_name=app_name or "",
         is_builder_function=is_builder_function,
         is_auto_snapshot=is_auto_snapshot,
         allow_concurrent_inputs=allow_concurrent_inputs,
@@ -147,7 +147,7 @@ def _run_container(
     function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
     webhook_type=api_pb2.WEBHOOK_TYPE_UNSPECIFIED,
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
-    stub_name: str = "",
+    app_name: str = "",
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
@@ -163,7 +163,7 @@ def _run_container(
         function_type,
         webhook_type,
         definition_type,
-        stub_name,
+        app_name,
         is_builder_function,
         allow_concurrent_inputs,
         serialized_params,
@@ -758,7 +758,7 @@ def test_multiapp_privately_decorated_named_app(unix_servicer, caplog):
         unix_servicer,
         "test.supports.multiapp_privately_decorated_named_app",
         "foo",
-        stub_name="dummy",
+        app_name="dummy",
     )
     assert _unwrap_scalar(ret) == 1
     assert len(caplog.messages) == 0  # no warnings, since target app is named
@@ -772,7 +772,7 @@ def test_multiapp_same_name_warning(unix_servicer, caplog, capsys):
         unix_servicer,
         "test.supports.multiapp_same_name",
         "foo",
-        stub_name="dummy",
+        app_name="dummy",
     )
     assert _unwrap_scalar(ret) == 1
     assert "You have more than one app with the same name ('dummy')" in caplog.text

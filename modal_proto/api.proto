@@ -873,7 +873,7 @@ message Function {
   // If set, overrides the runtime used by the function, either "runc" or "gvisor".
   string runtime = 30;
 
-  string stub_name = 31;
+  string app_name = 31;  // Formerly stub_name
 
   repeated VolumeMount volume_mounts = 33;
 
