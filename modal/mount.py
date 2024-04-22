@@ -531,7 +531,7 @@ class _Mount(_Object, type_prefix="mo"):
         # Don't re-run inside container.
 
         mount = _Mount._new()
-        from modal import is_local
+        from .execution_context import is_local
 
         if not is_local():
             return mount  # empty/non-mountable mount in case it's used from within a container

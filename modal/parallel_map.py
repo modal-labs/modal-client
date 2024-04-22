@@ -20,10 +20,10 @@ from modal._utils.function_utils import (
     OUTPUTS_TIMEOUT,
     _create_input,
     _process_result,
-    current_input_id,
 )
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.config import logger
+from modal.execution_context import current_input_id
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:
@@ -236,9 +236,6 @@ async def _map_invocation(
                 yield response.value
 
 
-# note that `map()` is not synchronicity-wrapped, since it accepts executable code in the form of
-# iterators that we don't want to run inside the synchronicity thread. We delegate to `._map()` with
-# a safer Queue as input
 @warn_if_generator_is_not_consumed(function_name="Function.map")
 def _map_sync(
     self,
@@ -325,6 +322,9 @@ async def _map_async(
     feed_input_task = asyncio.create_task(feed_queue())
 
     try:
+        # note that `map()` and `map.aio()` are not synchronicity-wrapped, since they accept executable code in the form of
+        # iterators that we don't want to run inside the synchronicity thread.
+        # Instead, we delegate to `._map()` with a safer Queue as input
         async for output in self._map.aio(raw_input_queue, order_outputs, return_exceptions):  # type: ignore[reportFunctionMemberAccess]
             yield output
     finally:

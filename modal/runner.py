@@ -11,7 +11,6 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._container_io_manager import is_local
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from ._pty import get_pty_info
 from ._resolver import Resolver
@@ -22,6 +21,7 @@ from ._utils.grpc_utils import retry_transient_errors
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import ExecutionError, InteractiveTimeoutError, InvalidError, _CliUserExecutionError
+from .execution_context import is_local
 from .object import _Object
 from .running_app import RunningApp
 

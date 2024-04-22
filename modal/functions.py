@@ -29,7 +29,6 @@ from synchronicity.combined_types import MethodWithAio
 
 from modal_proto import api_grpc, api_pb2
 
-from ._container_io_manager import is_local
 from ._location import parse_cloud_provider
 from ._output import OutputManager
 from ._pty import get_pty_info
@@ -48,7 +47,6 @@ from ._utils.function_utils import (
     _create_input,
     _process_result,
     _stream_function_call_data,
-    current_input_id,
     get_referred_objects,
     is_async,
 )
@@ -64,6 +62,7 @@ from .exception import (
     NotFoundError,
     deprecation_warning,
 )
+from .execution_context import current_input_id, is_local
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount

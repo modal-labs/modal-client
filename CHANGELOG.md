@@ -198,7 +198,7 @@ When called from within a container, `modal.experimental.stop_fetching_inputs()`
 
 ### 0.61.1 (2024-03-03)
 
-`modal run --interactive` or `modal run -i` run the app in "interactive mode". This allows any remote code to connect to the user's local terminal by calling `modal.interact()`. 
+`modal run --interactive` or `modal run -i` run the app in "interactive mode". This allows any remote code to connect to the user's local terminal by calling `modal.interact()`.
 
 ```python
 @stub.function()

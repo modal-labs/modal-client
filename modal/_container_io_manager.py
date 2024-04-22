@@ -644,23 +644,3 @@ class _ContainerIOManager:
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
-
-
-def is_local() -> bool:
-    """Returns if we are currently on the machine launching/deploying a Modal app
-
-    Returns `True` when executed locally on the user's machine.
-    Returns `False` when executed from a Modal container in the cloud.
-    """
-    return not _ContainerIOManager._singleton
-
-
-async def _interact() -> None:
-    container_io_manager = _ContainerIOManager._singleton
-    if not container_io_manager:
-        raise InvalidError("Interactivity only works inside a Modal container.")
-    else:
-        await container_io_manager.interact()
-
-
-interact = synchronize_api(_interact)
