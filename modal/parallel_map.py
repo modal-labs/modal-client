@@ -250,12 +250,12 @@ def _map_sync(
 
     Example:
     ```python
-    @stub.function()
+    @app.function()
     def my_func(a):
         return a ** 2
 
 
-    @stub.local_entrypoint()
+    @app.local_entrypoint()
     def main():
         assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
     ```
@@ -267,14 +267,14 @@ def _map_sync(
     `return_exceptions` can be used to treat exceptions as successful results:
 
     ```python
-    @stub.function()
+    @app.function()
     def my_func(a):
         if a == 2:
             raise Exception("ohno")
         return a ** 2
 
 
-    @stub.local_entrypoint()
+    @app.local_entrypoint()
     def main():
         # [0, 1, UserCodeException(Exception('ohno'))]
         print(list(my_func.map(range(3), return_exceptions=True)))
@@ -390,12 +390,12 @@ def _starmap_sync(
 
     Example:
     ```python
-    @stub.function()
+    @app.function()
     def my_func(a, b):
         return a + b
 
 
-    @stub.local_entrypoint()
+    @app.local_entrypoint()
     def main():
         assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
     ```

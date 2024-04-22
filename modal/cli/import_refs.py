@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2023
 """Load or import Python modules from the CLI.
 
-For example, the function reference of `modal run some_file.py::stub.foo_func`
-or the stub lookup of `modal deploy some_file.py`.
+For example, the function reference of `modal run some_file.py::app.foo_func`
+or the app lookup of `modal deploy some_file.py`.
 
 These functions are only called by the Modal CLI, not in tasks.
 """
@@ -20,7 +20,7 @@ from rich.markdown import Markdown
 
 import modal
 from modal.app import App, LocalEntrypoint
-from modal.exception import _CliUserExecutionError
+from modal.exception import _CliUserExecutionError, deprecation_warning
 from modal.functions import Function
 
 
@@ -41,8 +41,7 @@ def parse_import_ref(object_ref: str) -> ImportRef:
     return ImportRef(file_or_module, object_path)
 
 
-DEFAULT_APP_NAME = "stub"
-POSSIBLE_APP_NAMES = ["stub", "app"]
+DEFAULT_APP_NAME = "app"
 
 
 def import_file_or_module(file_or_module: str):
@@ -109,10 +108,26 @@ def get_by_object_path_try_possible_app_names(obj: Any, obj_path: Optional[str])
     if obj_path:
         return get_by_object_path(obj, obj_path)
     else:
-        for obj_path in POSSIBLE_APP_NAMES:
-            app = get_by_object_path(obj, obj_path)
-            if app is not None:
-                return app
+        app = get_by_object_path(obj, DEFAULT_APP_NAME)
+        stub = get_by_object_path(obj, "stub")
+        if isinstance(app, App):
+            return app
+        elif app is not None and isinstance(stub, App):
+            deprecation_warning(
+                (2024, 4, 20),
+                "The symbol `app` is present at the module level but it's not a Modal app."
+                " We will use `stub` instead, but this will not work in future Modal versions."
+                " Suggestion: change the name of `app` to something else."
+            )
+            return stub
+        elif isinstance(stub, App):
+            # TODO(erikbern): enable this deprecation warning shortly
+            #deprecation_warning(
+            #    (2024, 4, 20),
+            #    "The symbol `app` is not present but `stub` is. This will not work in future"
+            #    " Modal versions. Suggestion: change the name of `stub` to `app`."
+            #)
+            return stub
         else:
             return None
 
@@ -146,16 +161,16 @@ def _infer_function_or_help(
         function_name = sorted_function_choices[0]
     elif len(function_choices) == 0:
         if app.registered_web_endpoints:
-            err_msg = "Modal stub has only web endpoints. Use `modal serve` instead of `modal run`."
+            err_msg = "Modal app has only web endpoints. Use `modal serve` instead of `modal run`."
         else:
-            err_msg = "Modal stub has no registered functions. Nothing to run."
+            err_msg = "Modal app has no registered functions. Nothing to run."
         raise click.UsageError(err_msg)
     else:
         help_text = f"""You need to specify a Modal function or local entrypoint to run, e.g.
 
 modal run app.py::my_function [...args]
 
-Registered functions and local entrypoints on the selected stub are:
+Registered functions and local entrypoints on the selected app are:
 {registered_functions_str}
 """
         raise click.UsageError(help_text)
@@ -173,14 +188,14 @@ def _show_no_auto_detectable_app(app_ref: ImportRef) -> None:
     object_path = app_ref.object_path
     import_path = app_ref.file_or_module
     error_console = Console(stderr=True)
-    error_console.print(f"[bold red]Could not find Modal stub '{object_path}' in {import_path}.[/bold red]")
+    error_console.print(f"[bold red]Could not find Modal app '{object_path}' in {import_path}.[/bold red]")
 
     if object_path is None:
         guidance_msg = (
-            f"Expected to find a stub variable named **`{DEFAULT_APP_NAME}`** (the default stub name). If your `modal.Stub` is named differently, "
-            "you must specify it in the stub ref argument. "
-            f"For example a stub variable `app_stub = modal.Stub()` in `{import_path}` would "
-            f"be specified as `{import_path}::app_stub`."
+            f"Expected to find a app variable named **`{DEFAULT_APP_NAME}`** (the default app name). If your `modal.App` is named differently, "
+            "you must specify it in the app ref argument. "
+            f"For example a app variable `app_2 = modal.App()` in `{import_path}` would "
+            f"be specified as `{import_path}::app_2`."
         )
         md = Markdown(guidance_msg)
         error_console.print(md)
@@ -197,7 +212,7 @@ def import_app(app_ref: str) -> App:
         sys.exit(1)
 
     if not isinstance(app, App):
-        raise click.UsageError(f"{app} is not a Modal Stub")
+        raise click.UsageError(f"{app} is not a Modal App")
 
     return app
 
@@ -212,7 +227,7 @@ def _show_function_ref_help(app_ref: ImportRef, base_cmd: str) -> None:
         )
     else:
         error_console.print(
-            f"[bold red]No function was specified, and no [green]`stub`[/green] variable could be found in '{import_path}'.[/bold red]"
+            f"[bold red]No function was specified, and no [green]`app`[/green] variable could be found in '{import_path}'.[/bold red]"
         )
     guidance_msg = f"""
 Usage:
@@ -220,9 +235,9 @@ Usage:
 
 Given the following example `app.py`:
 ```
-stub = modal.Stub()
+app = modal.App()  # Note: "app" was called "stub" up until April 2024
 
-@stub.function()
+@app.function()
 def foo():
     ...
 ```

@@ -491,6 +491,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.dicts[request.dict_id][update.key] = update.value
         await stream.send_message(api_pb2.DictUpdateResponse())
 
+    async def DictContents(self, stream):
+        request: api_pb2.DictGetRequest = await stream.recv_message()
+        for k, v in self.dicts[request.dict_id].items():
+            await stream.send_message(api_pb2.DictEntry(key=k, value=v))
+
     ### Function
 
     async def FunctionBindParams(self, stream):

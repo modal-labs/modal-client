@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import inspect
 import typing
+import warnings
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -34,7 +35,7 @@ from .object import _Object
 from .partial_function import PartialFunction, _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
 from .proxy import _Proxy
 from .retries import Retries
-from .runner import _run_stub
+from .runner import _run_app
 from .running_app import RunningApp
 from .sandbox import _Sandbox
 from .schedule import Schedule
@@ -47,11 +48,11 @@ _default_image: _Image = _Image.debian_slim()
 
 class _LocalEntrypoint:
     _info: FunctionInfo
-    _stub: "_App"
+    _app: "_App"
 
-    def __init__(self, info, stub):
+    def __init__(self, info, app):
         self._info = info  # type: ignore
-        self._stub = stub
+        self._app = app
 
     def __call__(self, *args, **kwargs):
         return self._info.raw_f(*args, **kwargs)
@@ -61,8 +62,13 @@ class _LocalEntrypoint:
         return self._info
 
     @property
+    def app(self) -> "_App":
+        return self._app
+
+    @property
     def stub(self) -> "_App":
-        return self._stub
+        # Deprecated soon, only for backwards compatibility
+        return self._app
 
 
 LocalEntrypoint = synchronize_api(_LocalEntrypoint)
@@ -79,30 +85,28 @@ CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
 
 
 class _App:
-    """A Modal app (formerly known as "stub") is a group of functions and classes
+    """A Modal app (prior to April 2024 a "stub") is a group of functions and classes
     deployed together.
 
-    The stub object principally describes Modal objects (`Function`, `Image`,
-    `Secret`, etc.) associated with the application. It has three responsibilities:
+    The app serves at least three purposes:
 
-    * Syncing of identities across processes (your local Python interpreter and
-      every Modal worker active in your application).
-    * Making Objects stay alive and not be garbage collected for as long as the
-      app lives (see App lifetime below).
+    * A unit of deployment for functions and classes.
+    * Syncing of identities of (primarily) functions and classes across processes
+      (your local Python interpreter and every Modal containerr active in your application).
     * Manage log collection for everything that happens inside your code.
 
     **Registering functions with an app**
 
     The most common way to explicitly register an Object with an app is through the
-    `@stub.function()` decorator. It both registers the annotated function itself and
+    `@app.function()` decorator. It both registers the annotated function itself and
     other passed objects, like schedules and secrets, with the app:
 
     ```python
     import modal
 
-    stub = modal.Stub()
+    app = modal.App()  # Note: app were called "stub" up until April 2024
 
-    @stub.function(
+    @app.function(
         secrets=[modal.Secret.from_name("some_secret")],
         schedule=modal.Period(days=1),
     )
@@ -136,14 +140,14 @@ class _App:
         volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
         **kwargs: _Object,  # DEPRECATED: passing additional objects to the stub as kwargs is no longer supported
     ) -> None:
-        """Construct a new app stub, optionally with default image, mounts, secrets, or volumes.
+        """Construct a new app, optionally with default image, mounts, secrets, or volumes.
 
         ```python notest
         image = modal.Image.debian_slim().pip_install(...)
         mount = modal.Mount.from_local_dir("./config")
         secret = modal.Secret.from_name("my-secret")
         volume = modal.Volume.from_name("my-data")
-        stub = modal.Stub(image=image, mounts=[mount], secrets=[secret], volumes={"/mnt/data": volume})
+        app = modal.App(image=image, mounts=[mount], secrets=[secret], volumes={"/mnt/data": volume})
         ```
         """
 
@@ -160,8 +164,8 @@ class _App:
         if kwargs:
             deprecation_error(
                 (2023, 12, 13),
-                "Passing additional objects to the stub constructor is deprecated."
-                f" Please remove the following parameters from your stub definition: {', '.join(kwargs)}."
+                "Passing additional objects to the app constructor is deprecated."
+                f" Please remove the following parameters from your app definition: {', '.join(kwargs)}."
                 " In most cases, persistent (named) objects can just be defined in the global scope.",
             )
 
@@ -181,17 +185,17 @@ class _App:
         self._running_app = None  # Set inside container, OR during the time an app is running locally
         self._client = None
 
-        # Register this stub. This is used to look up the stub in the container, when we can't get it from the function
+        # Register this app. This is used to look up the app in the container, when we can't get it from the function
         _App._all_apps.setdefault(self._name, []).append(self)
 
     @property
     def name(self) -> Optional[str]:
-        """The user-provided name of the Stub."""
+        """The user-provided name of the App."""
         return self._name
 
     @property
     def is_interactive(self) -> bool:
-        """Whether the current app for the stub is running in interactive mode."""
+        """Whether the current app for the app is running in interactive mode."""
         # return self._name
         if self._running_app:
             return self._running_app.interactive
@@ -200,7 +204,7 @@ class _App:
 
     @property
     def app_id(self) -> Optional[str]:
-        """Return the app_id, if the stub is running."""
+        """Return the app_id, if the app is running."""
         if self._running_app:
             return self._running_app.app_id
         else:
@@ -208,7 +212,7 @@ class _App:
 
     @property
     def description(self) -> Optional[str]:
-        """The Stub's `name`, if available, or a fallback descriptive identifier."""
+        """The App's `name`, if available, or a fallback descriptive identifier."""
         return self._description
 
     def set_description(self, description: str):
@@ -216,12 +220,12 @@ class _App:
 
     def _validate_blueprint_value(self, key: str, value: Any):
         if not isinstance(value, _Object):
-            raise InvalidError(f"Stub attribute `{key}` with value {value!r} is not a valid Modal object")
+            raise InvalidError(f"App attribute `{key}` with value {value!r} is not a valid Modal object")
 
     def _add_object(self, tag, obj):
         if self._running_app:
             # If this is inside a container, then objects can be defined after app initialization.
-            # So we may have to initialize objects once they get bound to the stub.
+            # So we may have to initialize objects once they get bound to the app.
             if tag in self._running_app.tag_to_object_id:
                 object_id: str = self._running_app.tag_to_object_id[tag]
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
@@ -230,16 +234,16 @@ class _App:
         self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
-        """Stub assignments of the form `stub.x` or `stub["x"]` are deprecated!
+        """App assignments of the form `app.x` or `app["x"]` are deprecated!
 
         The only use cases for these assignments is in conjunction with `.new()`, which is now
         in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
-        need to assign those objects to the stub. Example:
+        need to assign those objects to the app. Example:
 
         ```python
         d = modal.Dict.from_name("my-dict", create_if_missing=True)
 
-        @stub.function()
+        @app.function()
         def f(x, y):
             d[x] = y  # Refer to d in global scope
         ```
@@ -281,7 +285,7 @@ class _App:
 
     @property
     def image(self) -> _Image:
-        # Exists to get the type inference working for `stub.image`
+        # Exists to get the type inference working for `app.image`
         # Will also keep this one after we remove [get/set][item/attr]
         return self._indexed_objects["image"]
 
@@ -330,11 +334,11 @@ class _App:
         manager, and they will correspond to the current app.
 
         Note that this method used to return a separate "App" object. This is
-        no longer useful since you can use the stub itself for access to all
-        objects. For backwards compatibility reasons, it returns the same stub.
+        no longer useful since you can use the app itself for access to all
+        objects. For backwards compatibility reasons, it returns the same app.
         """
         # TODO(erikbern): deprecate this one too?
-        async with _run_stub(self, client, stdout, show_progress, detach, output_mgr):
+        async with _run_app(self, client, stdout, show_progress, detach, output_mgr):
             yield self
 
     def _get_default_image(self):
@@ -371,7 +375,7 @@ class _App:
         self._client = client
         self._running_app = running_app
 
-        # Hydrate objects on stub
+        # Hydrate objects on app
         for tag, object_id in running_app.tag_to_object_id.items():
             if tag in self._indexed_objects:
                 obj = self._indexed_objects[tag]
@@ -380,17 +384,17 @@ class _App:
 
     @property
     def registered_functions(self) -> Dict[str, _Function]:
-        """All modal.Function objects registered on the stub."""
+        """All modal.Function objects registered on the app."""
         return {tag: obj for tag, obj in self._indexed_objects.items() if isinstance(obj, _Function)}
 
     @property
     def registered_classes(self) -> Dict[str, _Function]:
-        """All modal.Cls objects registered on the stub."""
+        """All modal.Cls objects registered on the app."""
         return {tag: obj for tag, obj in self._indexed_objects.items() if isinstance(obj, _Cls)}
 
     @property
     def registered_entrypoints(self) -> Dict[str, _LocalEntrypoint]:
-        """All local CLI entrypoints registered on the stub."""
+        """All local CLI entrypoints registered on the app."""
         return self._local_entrypoints
 
     @property
@@ -399,7 +403,7 @@ class _App:
 
     @property
     def registered_web_endpoints(self) -> List[str]:
-        """Names of web endpoint (ie. webhook) functions registered on the stub."""
+        """Names of web endpoint (ie. webhook) functions registered on the app."""
         return self._web_endpoints
 
     def local_entrypoint(
@@ -415,7 +419,7 @@ class _App:
         **Example**
 
         ```python
-        @stub.local_entrypoint()
+        @app.local_entrypoint()
         def main():
             some_modal_function.remote()
         ```
@@ -423,37 +427,37 @@ class _App:
         You can call the function using `modal run` directly from the CLI:
 
         ```shell
-        modal run stub_module.py
+        modal run app_module.py
         ```
 
-        Note that an explicit [`stub.run()`](/docs/reference/modal.Stub#run) is not needed, as an
+        Note that an explicit [`app.run()`](/docs/reference/modal.App#run) is not needed, as an
         [app](/docs/guide/apps) is automatically created for you.
 
         **Multiple Entrypoints**
 
-        If you have multiple `local_entrypoint` functions, you can qualify the name of your stub and function:
+        If you have multiple `local_entrypoint` functions, you can qualify the name of your app and function:
 
         ```shell
-        modal run stub_module.py::stub.some_other_function
+        modal run app_module.py::app.some_other_function
         ```
 
         **Parsing Arguments**
 
         If your entrypoint function take arguments with primitive types, `modal run` automatically parses them as
-        CLI options. For example, the following function can be called with `modal run stub_module.py --foo 1 --bar "hello"`:
+        CLI options. For example, the following function can be called with `modal run app_module.py --foo 1 --bar "hello"`:
 
         ```python
-        @stub.local_entrypoint()
+        @app.local_entrypoint()
         def main(foo: int, bar: str):
             some_modal_function.call(foo, bar)
         ```
 
-        Currently, `str`, `int`, `float`, `bool`, and `datetime.datetime` are supported. Use `modal run stub_module.py --help` for more
+        Currently, `str`, `int`, `float`, `bool`, and `datetime.datetime` are supported. Use `modal run app_module.py --help` for more
         information on usage.
 
         """
         if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@stub.local_entrypoint()`.")
+            raise InvalidError("Did you forget parentheses? Suggestion: `@app.local_entrypoint()`.")
         if name is not None and not isinstance(name, str):
             raise InvalidError("Invalid value for `name`: Must be string.")
 
@@ -500,7 +504,7 @@ class _App:
         keep_warm: Optional[
             int
         ] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
-        name: Optional[str] = None,  # Sets the Modal name of the function within the stub
+        name: Optional[str] = None,  # Sets the Modal name of the function within the app
         is_generator: Optional[
             bool
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
@@ -522,12 +526,12 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> Callable[..., _Function]:
-        """Decorator to register a new Modal function with this stub."""
+        """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg
-            raise InvalidError("`image` needs to be a keyword argument: `@stub.function(image=image)`.")
+            raise InvalidError("`image` needs to be a keyword argument: `@app.function(image=image)`.")
         if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@stub.function()`.")
+            raise InvalidError("Did you forget parentheses? Suggestion: `@app.function()`.")
 
         if interactive:
             deprecation_error(
@@ -562,9 +566,15 @@ class _App:
                 webhook_config = None
                 raw_f = f
 
+            if info.function_name.endswith(".app"):
+                warnings.warn(
+                    "Beware: the function name is `app`. Modal will soon rename `Stub` to `App`, "
+                    "so you might run into issues if you have code like `app = modal.App()` in the same scope"
+                )
+
             if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
                 raise InvalidError(
-                    "`stub.function` on methods is not allowed. See https://modal.com/docs/guide/lifecycle-functions instead"
+                    "`app.function` on methods is not allowed. See https://modal.com/docs/guide/lifecycle-functions instead"
                 )
 
             if is_generator is None:
@@ -572,7 +582,7 @@ class _App:
 
             function = _Function.from_args(
                 info,
-                stub=self,
+                app=self,
                 image=image,
                 secret=secret,
                 secrets=secrets,
@@ -655,7 +665,7 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@stub.cls()`.")
+            raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
         decorator: Callable[[PartialFunction, type], _Function] = self.function(
             image=image,
@@ -700,7 +710,7 @@ class _App:
             if len(cls._functions) > 1 and keep_warm is not None:
                 deprecation_warning(
                     (2023, 10, 20),
-                    "`@stub.cls(keep_warm=...)` is deprecated when there is more than 1 method."
+                    "`@app.cls(keep_warm=...)` is deprecated when there is more than 1 method."
                     " Use `@method(keep_warm=...)` on each method instead!",
                 )
 
@@ -743,7 +753,7 @@ class _App:
             environment_name = self._running_app.environment_name
             client = self._client
         else:
-            raise InvalidError("`stub.spawn_sandbox` requires a running app.")
+            raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
         # TODO(erikbern): pulling a lot of app internals here, let's clean up shortly
         resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
@@ -767,31 +777,31 @@ class _App:
         await resolver.load(obj)
         return obj
 
-    def include(self, /, other_stub: "_App"):
-        """Include another stub's objects in this one.
+    def include(self, /, other_app: "_App"):
+        """Include another app's objects in this one.
 
         Useful splitting up Modal apps across different self-contained files
 
         ```python
-        stub_a = modal.Stub("a")
-        @stub.function()
+        app_a = modal.App("a")
+        @app.function()
         def foo():
             ...
 
-        stub_b = modal.Stub("b")
-        @stub.function()
+        app_b = modal.App("b")
+        @app.function()
         def bar():
             ...
 
-        stub_a.include(stub_b)
+        app_a.include(app_b)
 
-        @stub_a.local_entrypoint()
+        @app_a.local_entrypoint()
         def main():
-            # use function declared on the included stub
+            # use function declared on the included app
             bar.remote()
         ```
         """
-        for tag, object in other_stub._indexed_objects.items():
+        for tag, object in other_app._indexed_objects.items():
             existing_object = self._indexed_objects.get(tag)
             if existing_object and existing_object != object:
                 logger.warning(
@@ -811,7 +821,14 @@ class _Stub(_App):
     backwards compatibility, in order to facilitate moving from "Stub" to "App".
     """
 
-    pass
+    def __new__(cls, *args, **kwargs):
+        # TODO(erikbern): enable this warning soon!
+        # deprecation_warning(
+        #    (2024, 4, 19),
+        #   "The use of \"Stub\" has been deprecated in favor of \"App\"."
+        #    " This is a pure name change with no other implications."
+        # )
+        return _App(*args, **kwargs)
 
 
 Stub = synchronize_api(_Stub)

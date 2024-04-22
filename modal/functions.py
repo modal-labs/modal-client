@@ -255,13 +255,14 @@ class _Function(_Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
-    `@stub.function()` decorator on the `Stub` object for your application.
+    `@app.function()` decorator on the `App` object (formerly called "Stub")
+    for your application.
     """
 
     # TODO: more type annotations
     _info: Optional[FunctionInfo]
     _all_mounts: Collection[_Mount]
-    _stub: "modal.app._App"
+    _app: "modal.app._App"
     _obj: Any
     _web_url: Optional[str]
     _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
@@ -276,7 +277,7 @@ class _Function(_Object, type_prefix="fu"):
     @staticmethod
     def from_args(
         info: FunctionInfo,
-        stub,
+        app,
         image: _Image,
         secret: Optional[_Secret] = None,
         secrets: Sequence[_Secret] = (),
@@ -384,7 +385,7 @@ class _Function(_Object, type_prefix="fu"):
                 snapshot_info = FunctionInfo(build_function, cls=info.cls)
                 snapshot_function = _Function.from_args(
                     snapshot_info,
-                    stub=None,
+                    app=None,
                     image=image,
                     secrets=secrets,
                     gpu=gpu,
@@ -502,7 +503,7 @@ class _Function(_Object, type_prefix="fu"):
 
             timeout_secs = timeout
 
-            if stub and stub.is_interactive and not is_builder_function:
+            if app and app.is_interactive and not is_builder_function:
                 pty_info = get_pty_info(shell=False)
             else:
                 pty_info = None
@@ -533,8 +534,8 @@ class _Function(_Object, type_prefix="fu"):
                 class_serialized = None
 
             stub_name = ""
-            if stub and stub.name:
-                stub_name = stub.name
+            if app and app.name:
+                stub_name = app.name
 
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
@@ -650,7 +651,7 @@ class _Function(_Object, type_prefix="fu"):
         obj._info = info
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
-        obj._stub = stub  # needed for CLI right now
+        obj._app = app  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
         obj._is_method = bool(info.cls)
@@ -798,9 +799,15 @@ class _Function(_Object, type_prefix="fu"):
         return self._tag
 
     @property
+    def app(self) -> "modal.app._App":
+        """mdmd:hidden"""
+        return self._app
+
+    @property
     def stub(self) -> "modal.app._App":
         """mdmd:hidden"""
-        return self._stub
+        # Deprecated soon, only for backwards compatibility
+        return self._app
 
     @property
     def info(self) -> FunctionInfo:

@@ -732,63 +732,63 @@ def test_function_sibling_hydration(unix_servicer):
 
 
 @skip_windows_unix_socket
-def test_multistub(unix_servicer, caplog):
-    deploy_app_externally(unix_servicer, "test.supports.multistub", "a")
-    ret = _run_container(unix_servicer, "test.supports.multistub", "a_func")
+def test_multiapp(unix_servicer, caplog):
+    deploy_app_externally(unix_servicer, "test.supports.multiapp", "a")
+    ret = _run_container(unix_servicer, "test.supports.multiapp", "a_func")
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
-    # Note that the stub can be inferred from the function, even though there are multiple
-    # stubs present in the file
+    # Note that the app can be inferred from the function, even though there are multiple
+    # apps present in the file
 
 
 @skip_windows_unix_socket
-def test_multistub_privately_decorated(unix_servicer, caplog):
-    # function handle does not override the original function, so we can't find the stub
-    # and the two stubs are not named
-    ret = _run_container(unix_servicer, "test.supports.multistub_privately_decorated", "foo")
+def test_multiapp_privately_decorated(unix_servicer, caplog):
+    # function handle does not override the original function, so we can't find the app
+    # and the two apps are not named
+    ret = _run_container(unix_servicer, "test.supports.multiapp_privately_decorated", "foo")
     assert _unwrap_scalar(ret) == 1
-    assert "You have more than one unnamed stub." in caplog.text
+    assert "You have more than one unnamed app." in caplog.text
 
 
 @skip_windows_unix_socket
-def test_multistub_privately_decorated_named_stub(unix_servicer, caplog):
-    # function handle does not override the original function, so we can't find the stub
-    # but we can use the names of the stubs to determine the active stub
+def test_multiapp_privately_decorated_named_app(unix_servicer, caplog):
+    # function handle does not override the original function, so we can't find the app
+    # but we can use the names of the apps to determine the active app
     ret = _run_container(
         unix_servicer,
-        "test.supports.multistub_privately_decorated_named_stub",
+        "test.supports.multiapp_privately_decorated_named_app",
         "foo",
         stub_name="dummy",
     )
     assert _unwrap_scalar(ret) == 1
-    assert len(caplog.messages) == 0  # no warnings, since target stub is named
+    assert len(caplog.messages) == 0  # no warnings, since target app is named
 
 
 @skip_windows_unix_socket
-def test_multistub_same_name_warning(unix_servicer, caplog, capsys):
-    # function handle does not override the original function, so we can't find the stub
-    # two stubs with the same name - warn since we won't know which one to hydrate
+def test_multiapp_same_name_warning(unix_servicer, caplog, capsys):
+    # function handle does not override the original function, so we can't find the app
+    # two apps with the same name - warn since we won't know which one to hydrate
     ret = _run_container(
         unix_servicer,
-        "test.supports.multistub_same_name",
+        "test.supports.multiapp_same_name",
         "foo",
         stub_name="dummy",
     )
     assert _unwrap_scalar(ret) == 1
-    assert "You have more than one stub with the same name ('dummy')" in caplog.text
+    assert "You have more than one app with the same name ('dummy')" in caplog.text
     capsys.readouterr()
 
 
 @skip_windows_unix_socket
-def test_multistub_serialized_func(unix_servicer, caplog):
-    # serialized functions shouldn't warn about multiple/not finding stubs, since they shouldn't load the module to begin with
+def test_multiapp_serialized_func(unix_servicer, caplog):
+    # serialized functions shouldn't warn about multiple/not finding apps, since they shouldn't load the module to begin with
     def dummy(x):
         return x
 
     unix_servicer.function_serialized = serialize(dummy)
     ret = _run_container(
         unix_servicer,
-        "test.supports.multistub_serialized_func",
+        "test.supports.multiapp_serialized_func",
         "foo",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
     )
@@ -798,7 +798,7 @@ def test_multistub_serialized_func(unix_servicer, caplog):
 
 @skip_windows_unix_socket
 def test_image_run_function_no_warn(unix_servicer, caplog):
-    # builder functions currently aren't tied to any modal stub, so they shouldn't need to warn if they can't determine a stub to use
+    # builder functions currently aren't tied to any modal app, so they shouldn't need to warn if they can't determine a app to use
     ret = _run_container(
         unix_servicer,
         "test.supports.image_run_function",

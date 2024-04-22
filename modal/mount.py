@@ -227,9 +227,9 @@ class _Mount(_Object, type_prefix="mo"):
     ```python
     import modal
     import os
-    stub = modal.Stub()
+    app = modal.App()  # Note: "app" was called "stub" up until April 2024
 
-    @stub.function(mounts=[modal.Mount.from_local_dir("~/foo", remote_path="/root/foo")])
+    @app.function(mounts=[modal.Mount.from_local_dir("~/foo", remote_path="/root/foo")])
     def f():
         # `/root/foo` has the contents of `~/foo`.
         print(os.listdir("/root/foo/"))
@@ -413,21 +413,20 @@ class _Mount(_Object, type_prefix="mo"):
         resolver: Resolver,
         existing_object_id: Optional[str],
     ):
-        # Run a threadpool to compute hash values, and use concurrent coroutines to register files.
-        t0 = time.time()
-        n_concurrent_uploads = 16
+        t0 = time.monotonic()
 
-        n_files = 0
-        uploaded_hashes: set[str] = set()
-        total_bytes = 0
+        # Asynchronously list and checksum files with a thread pool, then upload them concurrently.
+        n_seen, n_finished = 0, 0
+        total_uploads, total_bytes = 0, 0
+        accounted_hashes: set[str] = set()
         message_label = _Mount._description(self._entries)
+        blob_upload_concurrency = asyncio.Semaphore(16)  # Limit uploads of large files.
         status_row = resolver.add_status_row()
 
         async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
-            nonlocal n_files, uploaded_hashes, total_bytes
-            status_row.message(
-                f"Creating mount {message_label}: Uploaded {len(uploaded_hashes)}/{n_files} inspected files"
-            )
+            nonlocal n_seen, n_finished, total_uploads, total_bytes
+            n_seen += 1
+            status_row.message(f"Creating mount {message_label}: Uploaded {n_finished}/{n_seen} files")
 
             remote_filename = file_spec.mount_filename
             mount_file = api_pb2.MountFile(
@@ -436,23 +435,26 @@ class _Mount(_Object, type_prefix="mo"):
                 mode=file_spec.mode,
             )
 
-            if file_spec.sha256_hex in uploaded_hashes:
+            if file_spec.sha256_hex in accounted_hashes:
+                n_finished += 1
                 return mount_file
 
             request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
+            accounted_hashes.add(file_spec.sha256_hex)
             response = await retry_transient_errors(resolver.client.stub.MountPutFile, request, base_delay=1)
 
-            n_files += 1
             if response.exists:
+                n_finished += 1
                 return mount_file
 
-            uploaded_hashes.add(file_spec.sha256_hex)
+            total_uploads += 1
             total_bytes += file_spec.size
 
             if file_spec.use_blob:
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
-                with file_spec.source() as fp:
-                    blob_id = await blob_upload_file(fp, resolver.client.stub)
+                async with blob_upload_concurrency:
+                    with file_spec.source() as fp:
+                        blob_id = await blob_upload_file(fp, resolver.client.stub)
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
@@ -465,24 +467,24 @@ class _Mount(_Object, type_prefix="mo"):
             while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
                 response = await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1)
                 if response.exists:
+                    n_finished += 1
                     return mount_file
 
             raise modal.exception.MountUploadTimeoutError(f"Mounting of {file_spec.source_description} timed out")
 
-        logger.debug(f"Uploading mount using {n_concurrent_uploads} uploads")
+        # Create the asynchronous iterable for file specs.
+        file_specs = aiostream.stream.iterate(_Mount._get_files(self._entries))
 
-        # Create async generator
-        files_stream = aiostream.stream.iterate(_Mount._get_files(self._entries))
-
-        # Upload files
-        uploads_stream = aiostream.stream.map(files_stream, _put_file, task_limit=n_concurrent_uploads)
+        # Upload files, or check if they already exist.
+        n_concurrent_uploads = 512
+        uploads_stream = aiostream.stream.map(file_specs, _put_file, task_limit=n_concurrent_uploads)
         files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
 
         if not files:
             logger.warning(f"Mount of '{message_label}' is empty.")
 
-        # Build mounts
-        status_row.message(f"Creating mount {message_label}: Building mount")
+        # Build the mount.
+        status_row.message(f"Creating mount {message_label}: Finalizing index of {len(files)} files")
         if self._deployment_name:
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=self._deployment_name,
@@ -500,7 +502,7 @@ class _Mount(_Object, type_prefix="mo"):
         resp = await retry_transient_errors(resolver.client.stub.MountGetOrCreate, req, base_delay=1)
         status_row.finish(f"Created mount {message_label}")
 
-        logger.debug(f"Uploaded {len(uploaded_hashes)}/{n_files} files and {total_bytes} bytes in {time.time() - t0}s")
+        logger.debug(f"Uploaded {total_uploads} new files and {total_bytes} bytes in {time.monotonic() - t0}s")
         self._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
 
     @staticmethod
@@ -518,9 +520,9 @@ class _Mount(_Object, type_prefix="mo"):
         import modal
         import my_local_module
 
-        stub = modal.Stub()
+        app = modal.App()  # Note: "app" was called "stub" up until April 2024
 
-        @stub.function(mounts=[
+        @app.function(mounts=[
             modal.Mount.from_local_python_packages("my_local_module", "my_other_module"),
         ])
         def f():

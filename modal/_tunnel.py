@@ -63,9 +63,9 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
 
     ```python
     from flask import Flask
-    from modal import Image, Stub, forward
+    from modal import Image, App, forward
 
-    stub = Stub(image=Image.debian_slim().pip_install("Flask"))
+    app = App(image=Image.debian_slim().pip_install("Flask"))  # Note: "app" was called "stub" up until April 2024
     app = Flask(__name__)
 
 
@@ -74,7 +74,7 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
         return "Hello, World!"
 
 
-    @stub.function()
+    @app.function()
     def run_app():
         # Start a web server inside the container at port 8000. `modal.forward(8000)` lets us
         # expose that port to the world at a random HTTPS URL.
@@ -90,7 +90,7 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
     ```python
     import socket
     import threading
-    from modal import Stub, forward
+    from modal import App, forward
 
 
     def run_echo_server(port: int):
@@ -115,10 +115,10 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
             threading.Thread(target=handle, args=(conn,)).start()
 
 
-    stub = Stub()
+    app = App()  # Note: "app" was called "stub" up until April 2024
 
 
-    @stub.function()
+    @app.function()
     def tcp_tunnel():
         # This exposes port 8000 to public Internet traffic over TCP.
         with forward(8000, unencrypted=True) as tunnel:

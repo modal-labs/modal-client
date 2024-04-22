@@ -161,7 +161,7 @@ def call_function_sync(
                 if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                     raise InvalidError(
                         f"Sync (non-generator) function return value of type {type(res)}."
-                        " You might need to use @stub.function(..., is_generator=True)."
+                        " You might need to use @app.function(..., is_generator=True)."
                     )
                 container_io_manager.push_output(input_id, started_at, res, imp_fun.data_format)
         reset_context()
@@ -255,7 +255,7 @@ async def call_function_async(
                 if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                     raise InvalidError(
                         f"Async (non-generator) function returned value of type {type(res)}"
-                        " You might need to use @stub.function(..., is_generator=True)."
+                        " You might need to use @app.function(..., is_generator=True)."
                     )
                 value = await res
                 await container_io_manager.push_output.aio(input_id, started_at, value, imp_fun.data_format)
@@ -289,7 +289,7 @@ def import_function(
     container_io_manager,
     client: Client,
 ) -> ImportedFunction:
-    """Imports a function dynamically, and locates the stub.
+    """Imports a function dynamically, and locates the app.
 
     This is somewhat complex because we're dealing with 3 quite different type of functions:
     1. Functions defined in global scope and decorated in global scope (Function objects)
@@ -302,9 +302,9 @@ def import_function(
 
     This helper also handles web endpoints, ASGI/WSGI servers, and HTTP servers.
 
-    In order to locate the stub, we try two things:
-    * If the function is a Function, we can get the stub directly from it
-    * Otherwise, use the stub name and look it up from a global list of stubs: this
+    In order to locate the app, we try two things:
+    * If the function is a Function, we can get the app directly from it
+    * Otherwise, use the app name and look it up from a global list of apps: this
       typically only happens in case 2 above, or in sometimes for case 3
 
     Note that `import_function` is *not* synchronized, becase we need it to run on the main
@@ -337,7 +337,7 @@ def import_function(
             if isinstance(f, Function):
                 function = synchronizer._translate_in(f)
                 fun = function.get_raw_f()
-                active_app = function._stub
+                active_app = function._app
             else:
                 fun = f
         elif len(parts) == 2:
@@ -349,30 +349,30 @@ def import_function(
                 _cls = synchronizer._translate_in(cls)
                 fun = _cls._callables[fun_name]
                 function = _cls._functions.get(fun_name)
-                active_app = _cls._stub
+                active_app = _cls._app
             else:
                 # This is a raw class
                 fun = getattr(cls, fun_name)
         else:
             raise InvalidError(f"Invalid function qualname {qual_name}")
 
-    # If the cls/function decorator was applied in local scope, but the stub is global, we can look it up
+    # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
     if active_app is None:
         # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
-        # Look at all instantiated stubs - if there is only one with the indicated name, use that one
-        stub_name: Optional[str] = function_def.stub_name or None  # coalesce protobuf field to None
-        matching_stubs = _App._all_apps.get(stub_name, [])
-        if len(matching_stubs) > 1:
-            if stub_name is not None:
-                warning_sub_message = f"stub with the same name ('{stub_name}')"
+        # Look at all instantiated apps - if there is only one with the indicated name, use that one
+        app_name: Optional[str] = function_def.stub_name or None  # coalesce protobuf field to None
+        matching_apps = _App._all_apps.get(app_name, [])
+        if len(matching_apps) > 1:
+            if app_name is not None:
+                warning_sub_message = f"app with the same name ('{app_name}')"
             else:
-                warning_sub_message = "unnamed stub"
+                warning_sub_message = "unnamed app"
             logger.warning(
-                f"You have more than one {warning_sub_message}. It's recommended to name all your Stubs uniquely when using multiple stubs"
+                f"You have more than one {warning_sub_message}. It's recommended to name all your Apps uniquely when using multiple apps"
             )
-        elif len(matching_stubs) == 1:
-            (active_app,) = matching_stubs
-        # there could also technically be zero found stubs, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
+        elif len(matching_apps) == 1:
+            (active_app,) = matching_apps
+        # there could also technically be zero found apps, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
     is_async = get_is_async(fun)
@@ -499,11 +499,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Get ids and metadata for objects (primarily functions and classes) on the app
         container_app: RunningApp = container_io_manager.get_app_objects()
 
-        # Initialize objects on the stub.
+        # Initialize objects on the app.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
         if imp_fun.app is not None:
-            stub: App = synchronizer._translate_out(imp_fun.app, Interface.BLOCKING)
-            stub._init_container(client, container_app)
+            app: App = synchronizer._translate_out(imp_fun.app, Interface.BLOCKING)
+            app._init_container(client, container_app)
 
         # Hydrate all function dependencies.
         # TODO(erikbern): we an remove this once we

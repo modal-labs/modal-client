@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from typing import Any, AsyncIterator, Optional, Type
+from typing import Any, AsyncIterator, Optional, Tuple, Type
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -8,11 +8,11 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.grpc_utils import retry_transient_errors
+from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from .client import _Client
 from .config import logger
 from .exception import deprecation_warning
-from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method
+from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
 def _serialize_dict(data):
@@ -35,18 +35,15 @@ class _Dict(_Object, type_prefix="di"):
     **Usage**
 
     ```python
-    import modal
+    from modal import Dict
 
-    stub = modal.Stub()
-    my_dict = modal.Dict.from_name("my-persisted_dict", create_if_missing=True)
+    my_dict = Dict.from_name("my-persisted_dict", create_if_missing=True)
 
-    @stub.local_entrypoint()
-    def main():
-        my_dict["some key"] = "some value"
-        my_dict[123] = 456
+    my_dict["some key"] = "some value"
+    my_dict[123] = 456
 
-        assert my_dict["some key"] == "some value"
-        assert my_dict[123] == 456
+    assert my_dict["some key"] == "some value"
+    assert my_dict[123] == 456
     ```
 
     The `Dict` class offers a few methods for operations that are usually accomplished
@@ -95,6 +92,8 @@ class _Dict(_Object, type_prefix="di"):
 
         Usage:
         ```python
+        from modal import Dict
+
         with Dict.ephemeral() as d:
             d["foo"] = "bar"
 
@@ -128,12 +127,11 @@ class _Dict(_Object, type_prefix="di"):
 
         **Examples**
 
-        ```python notest
-        # In one app:
-        stub.dict = Dict.persisted("my-dict")
+        ```python
+        from modal import Dict
 
-        # Later, in another app or Python file:
-        stub.dict = Dict.from_name("my-dict")
+        dict = Dict.from_name("my-dict", create_if_missing=True)
+        dict[123] = 456
         ```
         """
 
@@ -172,7 +170,9 @@ class _Dict(_Object, type_prefix="di"):
         """Lookup a dict with a given name and tag.
 
         ```python
-        d = modal.Dict.lookup("my-dict")
+        from modal import Dict
+
+        d = Dict.lookup("my-dict")
         d["xyz"] = 123
         ```
         """
@@ -191,7 +191,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method
     async def clear(self) -> None:
-        """Remove all items from the modal.Dict."""
+        """Remove all items from the Dict."""
         req = api_pb2.DictClearRequest(dict_id=self.object_id)
         await retry_transient_errors(self._client.stub.DictClear, req)
 
@@ -281,6 +281,39 @@ class _Dict(_Object, type_prefix="di"):
         Note: this function will block the event loop when called in an async context.
         """
         return await self.contains(key)
+
+    @live_method_gen
+    async def keys(self) -> AsyncIterator[Any]:
+        """Return an iterator over the keys in this dictionary.
+
+        Note that (unlike with Python dicts) the return value is a simple iterator,
+        and results are unordered.
+        """
+        req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True)
+        async for resp in unary_stream(self._client.stub.DictContents, req):
+            yield deserialize(resp.key, self._client)
+
+    @live_method_gen
+    async def values(self) -> AsyncIterator[Any]:
+        """Return an iterator over the values in this dictionary.
+
+        Note that (unlike with Python dicts) the return value is a simple iterator,
+        and results are unordered.
+        """
+        req = api_pb2.DictContentsRequest(dict_id=self.object_id, values=True)
+        async for resp in unary_stream(self._client.stub.DictContents, req):
+            yield deserialize(resp.value, self._client)
+
+    @live_method_gen
+    async def items(self) -> AsyncIterator[Tuple[Any, Any]]:
+        """Return an iterator over the (key, value) tuples in this dictionary.
+
+        Note that (unlike with Python dicts) the return value is a simple iterator,
+        and results are unordered.
+        """
+        req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True, values=True)
+        async for resp in unary_stream(self._client.stub.DictContents, req):
+            yield (deserialize(resp.key, self._client), deserialize(resp.value, self._client))
 
 
 Dict = synchronize_api(_Dict)

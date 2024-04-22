@@ -34,7 +34,7 @@ def current_input_id() -> Optional[str]:
     ```python
     from modal import current_input_id
 
-    @stub.function()
+    @app.function()
     def process_stuff():
         print(f"Starting to process {current_input_id()}")
     ```
@@ -53,7 +53,7 @@ def current_function_call_id() -> Optional[str]:
     ```python
     from modal import current_function_call_id
 
-    @stub.function()
+    @app.function()
     def process_stuff():
         print(f"Starting to process input from {current_function_call_id()}")
     ```
