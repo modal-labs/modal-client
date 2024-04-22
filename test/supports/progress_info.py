@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from .stub import app, f
+from .common import app, f
 
 if __name__ == "__main__":
     with app.run(show_progress=True):
