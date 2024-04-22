@@ -533,9 +533,9 @@ class _Function(_Object, type_prefix="fu"):
                 function_serialized = None
                 class_serialized = None
 
-            stub_name = ""
+            app_name = ""
             if app and app.name:
-                stub_name = app.name
+                app_name = app.name
 
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
@@ -582,7 +582,7 @@ class _Function(_Object, type_prefix="fu"):
                 warm_pool_size=keep_warm or 0,
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
-                stub_name=stub_name,
+                app_name=app_name,
                 is_builder_function=is_builder_function,
                 allow_concurrent_inputs=allow_concurrent_inputs or 0,
                 worker_id=config.get("worker_id"),
