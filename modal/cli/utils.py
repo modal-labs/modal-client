@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+from collections.abc import Sequence
 from datetime import datetime
 from typing import List, Union
 
@@ -25,7 +26,9 @@ def _plain(text: Union[Text, str]) -> str:
     return text.plain if isinstance(text, Text) else text
 
 
-def display_table(column_names: List[str], rows: List[List[Union[Text, str]]], json: bool = False, title: str = None):
+def display_table(
+    column_names: List[str], rows: Sequence[Sequence[Union[Text, str]]], json: bool = False, title: str = None
+):
     console = Console()
     if json:
         json_data = [{col: _plain(row[i]) for i, col in enumerate(column_names)} for row in rows]
