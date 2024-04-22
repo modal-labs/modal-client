@@ -115,7 +115,7 @@ async def show(
         raise ExecutionError(msg)
 
     if json:
-        # Note, we don't use the json= option of display_table becuase we want to display
+        # Note, we don't use the json= option of display_table because we want to display
         # the dict itself as a JSON, rather than have a JSON representation of the table.
         console = Console()
         console.print(JSON.from_data(dict(items)))
