@@ -332,27 +332,27 @@ class _Volume(_Object, type_prefix="vo"):
             raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
 
     @live_method_gen
-    async def iterdir(self, path: str) -> AsyncIterator[FileEntry]:
+    async def iterdir(self, path: str, *, recursive: bool = True) -> AsyncIterator[FileEntry]:
         """Iterate over all files in a directory in the volume.
 
-        * Passing a directory path lists all files in the directory (names are relative to the directory)
-        * Passing a file path returns a list containing only that file's listing description
-        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        Passing a directory path lists all files in the directory. For a file path, return only that
+        file's description. If `recursive` is set to True, list all files and folders under the path
+        recursively.
         """
-        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path)
+        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
         async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
             for entry in batch.entries:
                 yield FileEntry._from_proto(entry)
 
     @live_method
-    async def listdir(self, path: str) -> List[FileEntry]:
+    async def listdir(self, path: str, *, recursive: bool = False) -> List[FileEntry]:
         """List all files under a path prefix in the modal.Volume.
 
-        * Passing a directory path lists all files in the directory
-        * Passing a file path returns a list containing only that file's listing description
-        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        Passing a directory path lists all files in the directory. For a file path, return only that
+        file's description. If `recursive` is set to True, list all files and folders under the path
+        recursively.
         """
-        return [entry async for entry in self.iterdir(path)]
+        return [entry async for entry in self.iterdir(path, recursive=recursive)]
 
     @live_method_gen
     async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:

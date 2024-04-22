@@ -1,11 +1,8 @@
 # Copyright Modal Labs 2022
 import os
-import shutil
 import sys
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import List, Optional
 
 import typer
@@ -21,15 +18,13 @@ import modal
 from modal._output import step_completed, step_progress
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli._download import _glob_download
+from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.exception import deprecation_warning
 from modal.volume import _Volume, _VolumeUploadContextManager
 from modal_proto import api_pb2
-
-PIPE_PATH = Path("-")
 
 volume_cli = Typer(
     name="volume",
@@ -86,53 +81,24 @@ async def get(
     force: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
-    """Download files from a modal.Volume.
+    """Download files from a Volume object.
 
-    Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download all matching *files*, preserving
-    the source directory structure for the matched files.
+    If a folder is passed for REMOTE_PATH, the contents of the folder will be downloaded
+    recursively, including all subdirectories.
 
     **Example**
 
     ```bash
-    modal volume get <volume-name> logs/april-12-1.txt .
-    modal volume get <volume-name> "**" dump_volume
+    modal volume get <volume_name> logs/april-12-1.txt
+    modal volume get <volume_name> / volume_data_dump
     ```
 
-    Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths).
+    Use "-" as LOCAL_DESTINATION to write file contents to standard output.
     """
     ensure_env(env)
     destination = Path(local_destination)
     volume = await _Volume.lookup(volume_name, environment_name=env)
-
-    if "*" in remote_path:
-        await _glob_download(volume, remote_path, destination, force)
-        return
-
-    if destination != PIPE_PATH:
-        if destination.is_dir():
-            destination = destination / remote_path.rsplit("/")[-1]
-
-        if destination.exists() and not force:
-            raise UsageError(f"'{destination}' already exists")
-        elif not destination.parent.exists():
-            raise UsageError(f"Local directory '{destination.parent}' does not exist")
-
-    @contextmanager
-    def _destination_stream():
-        if destination == PIPE_PATH:
-            yield sys.stdout.buffer
-        else:
-            with NamedTemporaryFile(delete=False) as fp:
-                yield fp
-            shutil.move(fp.name, destination)
-
-    try:
-        with _destination_stream() as fp:
-            await volume.read_file_into_fileobj(remote_path.lstrip("/"), fileobj=fp, progress=destination != PIPE_PATH)
-    except FileNotFoundError as exc:
-        raise UsageError(str(exc))
-    except GRPCError as exc:
-        raise UsageError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+    await _volume_download(volume, remote_path, destination, force)
 
 
 @volume_cli.command(name="list", help="List the details of all modal.Volume volumes in an environment.")

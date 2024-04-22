@@ -11,30 +11,42 @@ from click import UsageError
 from modal.network_file_system import _NetworkFileSystem
 from modal.volume import FileEntry, FileEntryType, _Volume
 
+PIPE_PATH = Path("-")
 
-async def _glob_download(
+
+async def _volume_download(
     volume: Union[_NetworkFileSystem, _Volume],
-    remote_glob_path: str,
+    remote_path: str,
     local_destination: Path,
     overwrite: bool,
 ):
+    is_pipe = local_destination == PIPE_PATH
+
     q: asyncio.Queue[Tuple[Optional[Path], Optional[FileEntry]]] = asyncio.Queue()
-    num_consumers = 10  # concurrency limit
+    num_consumers = 1 if is_pipe else 10  # concurrency limit for downloading files
 
     async def producer():
-        async for entry in volume.iterdir(remote_glob_path):
-            output_path = local_destination / entry.path
-            if output_path.exists():
-                if overwrite:
-                    if output_path.is_file():
-                        os.remove(output_path)
+        if isinstance(volume, _Volume):
+            iterator = volume.iterdir(remote_path, recursive=True)
+        else:
+            iterator = volume.iterdir(remote_path)  # NFS still supports "glob" paths
+
+        async for entry in iterator:
+            if is_pipe:
+                await q.put((None, entry))
+            else:
+                output_path = local_destination / entry.path
+                if output_path.exists():
+                    if overwrite:
+                        if output_path.is_file():
+                            os.remove(output_path)
+                        else:
+                            shutil.rmtree(output_path)
                     else:
-                        shutil.rmtree(output_path)
-                else:
-                    raise UsageError(
-                        f"Output path '{output_path}' already exists. Use --force to overwrite the output directory"
-                    )
-            await q.put((output_path, entry))
+                        raise UsageError(
+                            f"Output path '{output_path}' already exists. Use --force to overwrite the output directory"
+                        )
+                await q.put((output_path, entry))
         # No more entries to process; issue one shutdown message for each consumer.
         for _ in range(num_consumers):
             await q.put((None, None))
@@ -42,20 +54,26 @@ async def _glob_download(
     async def consumer():
         while True:
             output_path, entry = await q.get()
-            if output_path is None:
+            if entry is None:
                 return
             try:
-                if entry.type == FileEntryType.FILE:
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    with output_path.open("wb") as fp:
-                        b = 0
+                if is_pipe:
+                    if entry.type == FileEntryType.FILE:
                         async for chunk in volume.read_file(entry.path):
-                            b += fp.write(chunk)
-                    print(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
-                elif entry.type == FileEntryType.DIRECTORY:
-                    output_path.mkdir(parents=True, exist_ok=True)
+                            sys.stdout.buffer.write(chunk)
+                else:
+                    if entry.type == FileEntryType.FILE:
+                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                        with output_path.open("wb") as fp:
+                            b = 0
+                            async for chunk in volume.read_file(entry.path):
+                                b += fp.write(chunk)
+                        print(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
+                    elif entry.type == FileEntryType.DIRECTORY:
+                        output_path.mkdir(parents=True, exist_ok=True)
             finally:
                 q.task_done()
 
     consumers = [consumer() for _ in range(num_consumers)]
     await asyncio.gather(producer(), *consumers)
+    sys.stdout.flush()
