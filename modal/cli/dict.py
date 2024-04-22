@@ -4,7 +4,7 @@ from typing import Optional
 
 from rich.console import Console
 from rich.json import JSON
-from typer import Argument, Typer
+from typer import Argument, Option, Typer
 
 from modal._resolver import Resolver
 from modal._utils.async_utils import synchronizer
@@ -92,25 +92,29 @@ async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
 @synchronizer.create_blocking
 async def show(
     name: str,
-    n: int = Argument(default=None, help="Retrieve and show no more than this many entries"),
+    n: int = Argument(default=20, help="Retrieve and show no more than this many entries"),
     *,
+    all: bool = Option(default=False, help="Ignore N and print all entries in the Dict (may be slow)"),
     json: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
     """Print the contents of a Dict.
 
-    Note: By default, this command will retrieve the complete Dict contents.
-    Using the N argument is recommended for quickly inspecting a small number of items.
+    Note: By default, this command truncates the contents. Use the `N` argument to control the
+    amount of data shown or the `--all` option to retrieve the entire Dict.
     """
     d = await _Dict.lookup(name, environment_name=env)
 
     try:
         i, items = 0, []
-        async for item in d.items():
+        async for key, val in d.items():
             i += 1
-            items.append(item)
-            if n is not None and i >= n:
+            if not all and i > n:
+                items.append(("...", "..."))
                 break
+            else:
+                # TODO consider a flag to optionally show repr(key), repr(val)?
+                items.append((key, val))
     except ModuleNotFoundError as exc:
         # I think that on 3.10+ we could rewrite this to use anext and attribute errors to specific
         # items (perhaps represent them in the output as "<library>_object" or something.)

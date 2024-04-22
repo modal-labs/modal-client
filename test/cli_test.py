@@ -700,7 +700,11 @@ def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
     assert re.search(r" b .+ blah ", res.stdout)
 
     res = _run(["dict", "show", "baz-dict", "1"])
+    assert re.search(r"\.\.\. .+ \.\.\.", res.stdout)
     assert "blah" not in res.stdout
+
+    res = _run(["dict", "show", "baz-dict", "2"])
+    assert "..." not in res.stdout
 
     assert _run(["dict", "get", "baz-dict", "a"]).stdout == "123\n"
     assert _run(["dict", "get", "baz-dict", "b"]).stdout == "blah\n"
