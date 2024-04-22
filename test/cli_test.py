@@ -690,19 +690,20 @@ def test_dict_create_list_delete(servicer, server_url_env, set_env_client):
 
 def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
     # Kind of hacky to be modifying the attributes on the servicer like this
-    key = ("foo-dict", api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, "main")
-    servicer.deployed_dicts[key] = "di-123"
-    servicer.dicts = {"di-123": {dumps("a"): dumps(123), dumps("b"): dumps("blah")}}
+    key = ("baz-dict", api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, "main")
+    dict_id = "di-abc123"
+    servicer.deployed_dicts[key] = dict_id
+    servicer.dicts[dict_id] = {dumps("a"): dumps(123), dumps("b"): dumps("blah")}
 
-    res = _run(["dict", "show", "foo-dict"])
+    res = _run(["dict", "show", "baz-dict"])
     assert re.search(r" a .+ 123 ", res.stdout)
     assert re.search(r" b .+ blah ", res.stdout)
 
-    res = _run(["dict", "show", "foo-dict", "1"])
+    res = _run(["dict", "show", "baz-dict", "1"])
     assert "blah" not in res.stdout
 
-    assert _run(["dict", "get", "foo-dict", "a"]).stdout == "123\n"
-    assert _run(["dict", "get", "foo-dict", "b"]).stdout == "blah\n"
+    assert _run(["dict", "get", "baz-dict", "a"]).stdout == "123\n"
+    assert _run(["dict", "get", "baz-dict", "b"]).stdout == "blah\n"
 
-    res = _run(["dict", "clear", "foo-dict"])
-    assert servicer.dicts["di-123"] == {}
+    res = _run(["dict", "clear", "baz-dict"])
+    assert servicer.dicts[dict_id] == {}
