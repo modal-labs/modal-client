@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
-from collections.abc import Sequence
 from datetime import datetime
-from typing import List, Union
+from typing import List, Sequence, Union
 
 import typer
 from rich.console import Console
