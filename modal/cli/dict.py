@@ -94,7 +94,11 @@ async def show(
     json: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
-    """Print the contents of a Dict."""
+    """Print the contents of a Dict.
+
+    Note: By default, this command will retrieve the complete Dict contents.
+    Using the N argument is recommended for quickly inspecting a small number of items.
+    """
     d = await _Dict.lookup(name, environment_name=env)
 
     try:
