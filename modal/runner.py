@@ -11,7 +11,6 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._container_io_manager import is_local
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from ._pty import get_pty_info
 from ._resolver import Resolver
@@ -22,6 +21,7 @@ from ._utils.grpc_utils import retry_transient_errors
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import ExecutionError, InteractiveTimeoutError, InvalidError, _CliUserExecutionError
+from .execution_context import is_local
 from .object import _Object
 from .running_app import RunningApp
 
@@ -232,7 +232,9 @@ async def _run_app(
         tc.infinite_loop(lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL)
 
         with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-            initialized_msg = f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+            initialized_msg = (
+                f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+            )
             output_mgr.print_if_visible(step_completed(initialized_msg))
             output_mgr.update_app_page_url(running_app.app_page_url)
 
@@ -328,7 +330,12 @@ async def _serve_update(
         # Create objects
         output_mgr = OutputManager(None, True)
         await _create_all_objects(
-            client, running_app, app._indexed_objects, api_pb2.APP_STATE_UNSPECIFIED, environment_name, output_mgr=output_mgr
+            client,
+            running_app,
+            app._indexed_objects,
+            api_pb2.APP_STATE_UNSPECIFIED,
+            environment_name,
+            output_mgr=output_mgr,
         )
 
         # Communicate to the parent process
@@ -401,7 +408,9 @@ async def _deploy_app(
 
     output_mgr = OutputManager(stdout, show_progress)
 
-    running_app: RunningApp = await _init_local_app_from_name(client, name, namespace, environment_name=environment_name)
+    running_app: RunningApp = await _init_local_app_from_name(
+        client, name, namespace, environment_name=environment_name
+    )
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive

@@ -8,8 +8,8 @@ from ._utils.async_utils import TaskContext
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from .config import logger
 from .exception import ExecutionError, InvalidError
+from .execution_context import current_function_call_id
 from .experimental import stop_fetching_inputs
-from .functions import current_function_call_id
 
 FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
