@@ -313,6 +313,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             apps.append(api_pb2.AppStats(name=app_name, description=app_name, app_id=app_id))
         await stream.send_message(api_pb2.AppListResponse(apps=apps))
 
+    async def AppStop(self, stream):
+        request: api_pb2.AppStopRequest = await stream.recv_message()
+        app_id_to_deployment_name = {v: k for k, v in self.deployed_apps.items()}
+        deploy_name = app_id_to_deployment_name[request.app_id]
+        self.deployed_apps.pop(deploy_name)
+        await stream.send_message(Empty())
+
     ### Checkpoint
 
     async def ContainerCheckpoint(self, stream):
@@ -459,11 +466,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
             self.deployed_dicts[k] = dict_id
+            self.deployed_apps[request.deployment_name] = f"ap-{dict_id}"
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
         else:
-            raise GRPCError(Status.NOT_FOUND, "Queue not found")
+            raise GRPCError(Status.NOT_FOUND, "Dict not found")
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
 
     async def DictHeartbeat(self, stream):
@@ -489,6 +497,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def DictLen(self, stream):
         request: api_pb2.DictLenRequest = await stream.recv_message()
         await stream.send_message(api_pb2.DictLenResponse(len=len(self.dicts[request.dict_id])))
+
+    async def DictList(self, stream):
+        dicts = [
+            api_pb2.DictListResponse.DictInfo(name=name, created_at=1)
+            for name, _, _ in self.deployed_dicts
+            if name in self.deployed_apps
+        ]
+        await stream.send_message(api_pb2.DictListResponse(dicts=dicts))
 
     async def DictUpdate(self, stream):
         request: api_pb2.DictUpdateRequest = await stream.recv_message()
