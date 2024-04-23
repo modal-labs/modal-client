@@ -105,8 +105,25 @@ def is_async(function):
 class FunctionInfo:
     """Class that helps us extract a bunch of information about a function."""
 
+    raw_f: Callable[..., Any]
+    function_name: str
+    cls: Optional[Type[Any]]
+    signature: Optional[inspect.Signature]
+    file: Optional[str]
+    definition_type: "api_pb2.Function.DefinitionType.ValueType"
+    type: FunctionInfoType
+    base_dir: str
+    module_name: Optional[str]
+    remote_dir: Optional[PurePosixPath] = None
+
     # TODO: we should have a bunch of unit tests for this
-    def __init__(self, f, serialized=False, name_override: Optional[str] = None, cls: Optional[Type] = None):
+    def __init__(
+        self,
+        f: Optional[Callable[..., Any]],
+        serialized=False,
+        name_override: Optional[str] = None,
+        cls: Optional[Type] = None,
+    ):
         self.raw_f = f
         self.cls = cls
 
