@@ -24,6 +24,7 @@ from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _Object
+from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 
 
@@ -248,6 +249,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         allow_background_volume_commits: bool = False,
         pty_info: Optional[api_pb2.PTYInfo] = None,
+        _experimental_scheduler: bool = False,
+        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -300,6 +303,10 @@ class _Sandbox(_Object, type_prefix="sb"):
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
                 pty_info=pty_info,
+                _experimental_scheduler=_experimental_scheduler,
+                _experimental_scheduler_placement=_experimental_scheduler_placement.proto
+                if _experimental_scheduler_placement
+                else None,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)

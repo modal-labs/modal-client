@@ -1533,6 +1533,11 @@ message Sandbox {
   repeated VolumeMount volume_mounts = 13;
 
   PTYInfo pty_info = 15;
+
+  // If set, tasks will be scheduled using the new scheduler, which also knows
+  // to look at fine-grained placement constraints.
+  bool _experimental_scheduler = 16;
+  optional SchedulerPlacement _experimental_scheduler_placement = 17;
 }
 
 message SandboxCreateRequest {
