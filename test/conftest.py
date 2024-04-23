@@ -1047,7 +1047,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for path in self.nfs_files[req.shared_volume_id].keys():
             entry = api_pb2.FileEntry(path=path, type=api_pb2.FileEntry.FileType.FILE)
             response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
-            if req.path == "**" or req.path == path:
+            if req.path == "**" or req.path == "/" or req.path == path:  # hack
                 await stream.send_message(response)
 
     ### Task
