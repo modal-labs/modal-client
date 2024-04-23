@@ -339,6 +339,21 @@ class _Volume(_Object, type_prefix="vo"):
         file's description. If `recursive` is set to True, list all files and folders under the path
         recursively.
         """
+        from modal_version import minor_number
+
+        # This allows us to remove the server shim after 0.62 is no longer supported.
+        deprecation = deprecation_warning if minor_number <= 62 else deprecation_error
+        if path.endswith("**"):
+            deprecation(
+                (2024, 4, 23),
+                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please pass recursive=True instead. For the CLI, just remove the glob suffix.",
+            )
+        elif path.endswith("*"):
+            deprecation(
+                (2024, 4, 23),
+                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please remove the glob `*` suffix.",
+            )
+
         req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
         async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
             for entry in batch.entries:
