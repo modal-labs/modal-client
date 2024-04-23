@@ -465,7 +465,6 @@ def test_nfs_get(set_env_client, servicer):
         _run(["nfs", "put", nfs_name, upload_path, "test.txt"])
 
         _run(["nfs", "get", nfs_name, "test.txt", tmpdir])
-        print(servicer.nfs_files)
         with open(os.path.join(tmpdir, "test.txt"), "r") as f:
             assert f.read() == "foo bar baz"
 
