@@ -339,10 +339,10 @@ class _Volume(_Object, type_prefix="vo"):
         file's description. If `recursive` is set to True, list all files and folders under the path
         recursively.
         """
-        from modal_version import minor_number
+        from modal_version import major_number, minor_number
 
         # This allows us to remove the server shim after 0.62 is no longer supported.
-        deprecation = deprecation_warning if minor_number <= 62 else deprecation_error
+        deprecation = deprecation_warning if (major_number, minor_number) <= (0, 62) else deprecation_error
         if path.endswith("**"):
             deprecation(
                 (2024, 4, 23),
