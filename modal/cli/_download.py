@@ -4,7 +4,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import AsyncIterator, Optional, Tuple, Union
 
 from click import UsageError
 
@@ -26,6 +26,7 @@ async def _volume_download(
     num_consumers = 1 if is_pipe else 10  # concurrency limit for downloading files
 
     async def producer():
+        iterator: AsyncIterator[FileEntry]
         if isinstance(volume, _Volume):
             iterator = volume.iterdir(remote_path, recursive=True)
         else:

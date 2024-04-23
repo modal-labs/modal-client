@@ -1047,7 +1047,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for path in self.nfs_files[req.shared_volume_id].keys():
             entry = api_pb2.FileEntry(path=path)
             response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
-            await stream.send_message(response)
+            if req.path == "**" or req.path == path:
+                await stream.send_message(response)
 
     ### Task
 
@@ -1181,11 +1182,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeListFiles(self, stream):
         req = await stream.recv_message()
-        if req.path != "**":
-            raise NotImplementedError("Only '**' listing is supported.")
+        path = req.path if req.path else "/"
+        if path.startswith("/"):
+            path = path[1:]
+        if path.endswith("/"):
+            path = path[:-1]
+
+        found_file = False  # empty directory detection is not handled here!
         for k, vol_file in self.volume_files[req.volume_id].items():
-            entries = [api_pb2.FileEntry(path=k, type=api_pb2.FileEntry.FileType.FILE, size=len(vol_file.data))]
-            await stream.send_message(api_pb2.VolumeListFilesResponse(entries=entries))
+            if not path or k == path or (k.startswith(path + "/") and (req.recursive or "/" not in k[len(path) + 1 :])):
+                entry = api_pb2.FileEntry(path=k, type=api_pb2.FileEntry.FileType.FILE, size=len(vol_file.data))
+                await stream.send_message(api_pb2.VolumeListFilesResponse(entries=[entry]))
+                found_file = True
+
+        if path and not found_file:
+            raise GRPCError(Status.NOT_FOUND, "No such file")
 
     async def VolumePutFiles(self, stream):
         req = await stream.recv_message()
