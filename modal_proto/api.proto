@@ -678,6 +678,10 @@ message DictCreateResponse {  // Will be superseded by DictGetOrCreateResponse
   string dict_id = 1;
 }
 
+message DictDeleteRequest {
+  string dict_id = 1;
+}
+
 message DictGetOrCreateRequest {
   string deployment_name = 1;
   DeploymentNamespace namespace = 2;
@@ -1431,6 +1435,10 @@ message QueueCreateResponse {
   string queue_id = 1;
 }
 
+message QueueDeleteRequest {
+  string queue_id = 1;
+}
+
 message QueueGetOrCreateRequest {
   string deployment_name = 1;
   DeploymentNamespace namespace = 2;
@@ -2064,6 +2072,7 @@ service ModalClient {
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictContents(DictContentsRequest) returns (stream DictEntry);
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
+  rpc DictDelete(DictDeleteRequest) returns (google.protobuf.Empty);
   rpc DictGet(DictGetRequest) returns (DictGetResponse);
   rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
   rpc DictHeartbeat(DictHeartbeatRequest) returns (google.protobuf.Empty);
@@ -2122,6 +2131,7 @@ service ModalClient {
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
+  rpc QueueDelete(QueueDeleteRequest) returns (google.protobuf.Empty);
   rpc QueueGetOrCreate(QueueGetOrCreateRequest) returns (QueueGetOrCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueueHeartbeat(QueueHeartbeatRequest) returns (google.protobuf.Empty);
