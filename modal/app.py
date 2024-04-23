@@ -740,6 +740,10 @@ class _App:
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         _allow_background_volume_commits: bool = False,
         pty_info: Optional[api_pb2.PTYInfo] = None,
+        _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
+        _experimental_scheduler_placement: Optional[
+            SchedulerPlacement
+        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -772,6 +776,8 @@ class _App:
             volumes=volumes,
             allow_background_volume_commits=_allow_background_volume_commits,
             pty_info=pty_info,
+            _experimental_scheduler=_experimental_scheduler,
+            _experimental_scheduler_placement=_experimental_scheduler_placement,
         )
         await resolver.load(obj)
         return obj
