@@ -471,6 +471,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_dict_heartbeats += 1
         await stream.send_message(Empty())
 
+    async def DictDelete(self, stream):
+        request: api_pb2.DictDeleteRequest = await stream.recv_message()
+        self.deployed_dicts = {k: v for k, v in self.deployed_dicts.items() if v != request.dict_id}
+        await stream.send_message(Empty())
+
     async def DictClear(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
         self.dicts[request.dict_id] = {}
@@ -826,6 +831,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
+
+    async def QueueDelete(self, stream):
+        request: api_pb2.QueueDeleteRequest = await stream.recv_message()
+        self.deployed_queues = {k: v for k, v in self.deployed_queues.items() if v != request.queue_id}
+        await stream.send_message(Empty())
 
     async def QueueHeartbeat(self, stream):
         await stream.recv_message()

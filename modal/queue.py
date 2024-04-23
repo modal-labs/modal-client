@@ -210,6 +210,12 @@ class _Queue(_Object, type_prefix="qu"):
         await resolver.load(obj)
         return obj
 
+    @staticmethod
+    async def delete(label: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        obj = await _Queue.lookup(label, client=client, environment_name=environment_name)
+        req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.QueueDelete, req)
+
     async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> List[Any]:
         request = api_pb2.QueueGetRequest(
             queue_id=self.object_id,

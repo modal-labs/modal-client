@@ -521,10 +521,28 @@ class _Volume(_Object, type_prefix="vo"):
         return _VolumeUploadContextManager(self.object_id, self._client, force=force)
 
     @live_method
-    async def delete(self):
+    async def _instance_delete(self):
         await retry_transient_errors(
             self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id)
         )
+
+    async def delete(
+        self, label: str = "", /, client: Optional[_Client] = None, environment_name: Optional[str] = None
+    ):
+        # TODO Upon enforcement of this deprecation, add a `@staticmethod` decorator,
+        # and convert label to a required postional or keyword argument parameter
+        if isinstance(self, _Volume):
+            msg = (
+                "Calling Volume.delete as an instance method is deprecated."
+                " Please update your code to call it as a static method, passing"
+                " the name of the volume to delete, e.g. `modal.Volume.delete('my-volume')`."
+            )
+            deprecation_warning((2024, 4, 23), msg)
+            await self._instance_delete()
+            return
+        obj = await _Volume.lookup(label, client=client, environment_name=environment_name)
+        req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.VolumeDelete, req)
 
 
 class _VolumeUploadContextManager:
