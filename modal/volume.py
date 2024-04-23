@@ -526,9 +526,7 @@ class _Volume(_Object, type_prefix="vo"):
             self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id)
         )
 
-    async def delete(
-        self, label: str = "", /, client: Optional[_Client] = None, environment_name: Optional[str] = None
-    ):
+    async def delete(self, label: str = "", client: Optional[_Client] = None, environment_name: Optional[str] = None):
         # TODO Upon enforcement of this deprecation, add a `@staticmethod` decorator,
         # and convert label to a required postional or keyword argument parameter
         if isinstance(self, _Volume):
