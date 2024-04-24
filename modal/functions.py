@@ -87,6 +87,7 @@ from .volume import _Volume
 
 if TYPE_CHECKING:
     import modal.app
+    import modal.partial_function
 
 
 class _Invocation:
@@ -272,6 +273,41 @@ class _Function(_Object, type_prefix="fu"):
     _raw_f: Callable[..., Any]
     _build_args: dict
     _parent: "_Function"
+
+    @staticmethod
+    def method_from_class_function(
+        class_function: "_Function", method_name: str, *, webhook_config: Optional[api_pb2.WebhookConfig] = None
+    ):
+        lookup_name = f"{class_function._function_name}.{method_name}"
+
+        async def _load(self: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            function_definition = api_pb2.Function(
+                function_name=lookup_name,
+                webhook_config=webhook_config,
+                # TODO: schedule, retries,
+                is_method=True,
+            )
+            request = api_pb2.FunctionCreateRequest(
+                app_id=resolver.app_id,
+                function=function_definition,
+                existing_function_id=existing_object_id or "",
+            )
+            response = await resolver.client.stub.FunctionCreate(request)
+            self._hydrate(
+                class_function.object_id,  # note that this uses the object id of the "class function"
+                resolver.client,
+                response.handle_metadata,
+            )
+
+        async def _preload():
+            # TODO: implement
+            pass
+
+        def _deps():
+            return [class_function]
+
+        rep = f"Method({lookup_name})"
+        return _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
 
     @staticmethod
     def from_args(

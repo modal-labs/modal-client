@@ -221,12 +221,14 @@ class _Cls(_Object, type_prefix="cs"):
             # once we have the resolved "class function" we create placeholder methods
             # these are used mostly to associate methods with web config and Function.lookup
             # might be able to get rid of these at some point with some backend refactoring
-            for k, partial_function in _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.FUNCTION).items():
-                method_function = decorator(
-                    partial_function, user_cls, cls_func.object_id
-                )  # TODO: extract this into its own _Function constructor
+            for method_name, partial_function in _find_partial_methods_for_cls(
+                user_cls, _PartialFunctionFlags.FUNCTION
+            ).items():
+                method_function = _Function.method_from_class_function(
+                    cls_func, method_name, webhook_config=partial_function.webhook_config
+                )
                 await resolver.load(method_function)  # TODO: parallelize
-                functions[k] = method_function
+                functions[method_name] = method_function
 
             req = api_pb2.ClassCreateRequest(
                 app_id=resolver.app_id, existing_class_id=existing_object_id, class_function_id=cls_func.object_id
