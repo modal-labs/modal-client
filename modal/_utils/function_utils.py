@@ -74,13 +74,14 @@ class FunctionInfo:
     raw_f: Callable[..., Any]
     function_name: str
     cls: Optional[Type[Any]]
-    signature: Optional[inspect.Signature]
-    file: Optional[str]
     definition_type: "api_pb2.Function.DefinitionType.ValueType"
-    type: FunctionInfoType
-    base_dir: str
     module_name: Optional[str]
-    remote_dir: Optional[PurePosixPath] = None
+
+    _type: FunctionInfoType
+    _signature: Optional[inspect.Signature]
+    _file: Optional[str]
+    _base_dir: str
+    _remote_dir: Optional[PurePosixPath] = None
 
     # TODO: we should have a bunch of unit tests for this
     def __init__(
@@ -107,7 +108,7 @@ class FunctionInfo:
         else:
             self.function_name = f.__qualname__
 
-        self.signature = inspect.signature(f)
+        self._signature = inspect.signature(f)
 
         # If it's a cls, the @method could be defined in a base class in a different file.
         if cls is not None:
@@ -119,44 +120,44 @@ class FunctionInfo:
             # This is a "real" module, eg. examples.logs.f
             # Get the package path
             # Note: __import__ always returns the top-level package.
-            self.file = os.path.abspath(module.__file__)
+            self._file = os.path.abspath(module.__file__)
             package_paths = set([os.path.abspath(p) for p in __import__(module.__package__).__path__])
             # There might be multiple package paths in some weird cases
             base_dirs = [
-                base_dir for base_dir in package_paths if os.path.commonpath((base_dir, self.file)) == base_dir
+                base_dir for base_dir in package_paths if os.path.commonpath((base_dir, self._file)) == base_dir
             ]
 
             if not base_dirs:
-                logger.info(f"Module files: {self.file}")
+                logger.info(f"Module files: {self._file}")
                 logger.info(f"Package paths: {package_paths}")
                 logger.info(f"Base dirs: {base_dirs}")
                 raise Exception("Wasn't able to find the package directory!")
             elif len(base_dirs) > 1:
                 # Base_dirs should all be prefixes of each other since they all contain `module_file`.
                 base_dirs.sort(key=len)
-            self.base_dir = base_dirs[0]
+            self._base_dir = base_dirs[0]
             self.module_name = module.__spec__.name
-            self.remote_dir = ROOT_DIR / PurePosixPath(module.__package__.split(".")[0])
+            self._remote_dir = ROOT_DIR / PurePosixPath(module.__package__.split(".")[0])
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
-            self.type = FunctionInfoType.PACKAGE
+            self._type = FunctionInfoType.PACKAGE
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
             # python foo/bar/baz.py
 
             # If it's a cls, the @method could be defined in a base class in a different file.
-            self.file = os.path.abspath(inspect.getfile(module))
-            self.module_name = inspect.getmodulename(self.file)
-            self.base_dir = os.path.dirname(self.file)
+            self._file = os.path.abspath(inspect.getfile(module))
+            self.module_name = inspect.getmodulename(self._file)
+            self._base_dir = os.path.dirname(self._file)
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
-            self.type = FunctionInfoType.FILE
+            self._type = FunctionInfoType.FILE
         else:
             self.module_name = None
-            self.base_dir = os.path.abspath("")  # get current dir
+            self._base_dir = os.path.abspath("")  # get current dir
             self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
             if serialized:
-                self.type = FunctionInfoType.SERIALIZED
+                self._type = FunctionInfoType.SERIALIZED
             else:
-                self.type = FunctionInfoType.NOTEBOOK
+                self._type = FunctionInfoType.NOTEBOOK
 
         if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             # Sanity check that this function is defined in global scope
@@ -198,30 +199,30 @@ class FunctionInfo:
             These are typically local modules which are imported but not part of the running package
 
         """
-        if self.type == FunctionInfoType.NOTEBOOK:
+        if self._type == FunctionInfoType.NOTEBOOK:
             # Don't auto-mount anything for notebooks.
             return []
 
         # make sure the function's own entrypoint is included:
-        if self.type == FunctionInfoType.PACKAGE:
+        if self._type == FunctionInfoType.PACKAGE:
             if config.get("automount"):
                 return [_Mount.from_local_python_packages(self.module_name)]
             elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
                 # mount only relevant file and __init__.py:s
                 return [
                     _Mount.from_local_dir(
-                        self.base_dir,
-                        remote_path=self.remote_dir,
+                        self._base_dir,
+                        remote_path=self._remote_dir,
                         recursive=True,
-                        condition=entrypoint_only_package_mount_condition(self.file),
+                        condition=entrypoint_only_package_mount_condition(self._file),
                     )
                 ]
         elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
-            remote_path = ROOT_DIR / Path(self.file).name
+            remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
                 return [
                     _Mount.from_local_file(
-                        self.file,
+                        self._file,
                         remote_path=remote_path,
                     )
                 ]
@@ -231,7 +232,7 @@ class FunctionInfo:
         return self.function_name
 
     def is_nullary(self):
-        for param in self.signature.parameters.values():
+        for param in self._signature.parameters.values():
             if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                 # variadic parameters are nullary
                 continue
