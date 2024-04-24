@@ -189,6 +189,17 @@ class _Dict(_Object, type_prefix="di"):
         await resolver.load(obj)
         return obj
 
+    @staticmethod
+    async def delete(
+        label: str,
+        *,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ):
+        obj = await _Dict.lookup(label, client=client, environment_name=environment_name)
+        req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.DictDelete, req)
+
     @live_method
     async def clear(self) -> None:
         """Remove all items from the Dict."""
