@@ -27,7 +27,7 @@ import aiostream
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal.exception import VolumeUploadTimeoutError, deprecation_warning
+from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_warning
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -521,10 +521,36 @@ class _Volume(_Object, type_prefix="vo"):
         return _VolumeUploadContextManager(self.object_id, self._client, force=force)
 
     @live_method
-    async def delete(self):
+    async def _instance_delete(self):
         await retry_transient_errors(
             self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id)
         )
+
+    # @staticmethod  # TODO uncomment when enforcing deprecation of instance method invocation
+    async def delete(*args, label: str = "", client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        # -- Backwards-compatibility section
+        # TODO(michael) Upon enforcement of this deprecation, remove *args and the default argument for label=.
+        if isinstance(self := args[0], _Volume):
+            msg = (
+                "Calling Volume.delete as an instance method is deprecated."
+                " Please update your code to call it as a static method, passing"
+                " the name of the volume to delete, e.g. `modal.Volume.delete('my-volume')`."
+            )
+            deprecation_warning((2024, 4, 23), msg)
+            await self._instance_delete()
+            return
+        elif isinstance(args[0], type):
+            args = args[1:]
+
+        if args and isinstance(args[0], str):
+            if label:
+                raise InvalidError("`label` specified as both positional and keyword argument")
+            label = args[0]
+        # -- Backwards-compatibility code ends here
+
+        obj = await _Volume.lookup(label, client=client, environment_name=environment_name)
+        req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.VolumeDelete, req)
 
 
 class _VolumeUploadContextManager:

@@ -4,6 +4,7 @@ import queue
 import time
 
 from modal import Queue
+from modal.exception import NotFoundError
 
 from .supports.skip import skip_macos, skip_windows
 
@@ -25,6 +26,10 @@ def test_queue(servicer, client):
     assert [v for v in q.iterate(item_poll_timeout=1.0)] == [1, 2, 3]
     assert 1.0 < time.time() - t0 < 2.0
     assert [v for v in q.iterate(item_poll_timeout=0.0)] == [1, 2, 3]
+
+    Queue.delete("some-random-queue", client=client)
+    with pytest.raises(NotFoundError):
+        Queue.lookup("some-random-queue", client=client)
 
 
 def test_queue_ephemeral(servicer, client):

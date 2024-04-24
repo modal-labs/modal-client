@@ -3,6 +3,7 @@ import pytest
 import time
 
 from modal import Dict
+from modal.exception import NotFoundError
 
 
 def test_dict_app(servicer, client):
@@ -24,6 +25,10 @@ def test_dict_app(servicer, client):
     assert d.get("foo", default=True)
     d["foo"] = None
     assert d["foo"] is None
+
+    Dict.delete("my-amazing-dict", client=client)
+    with pytest.raises(NotFoundError):
+        Dict.lookup("my-amazing-dict", client=client)
 
 
 def test_dict_ephemeral(servicer, client):

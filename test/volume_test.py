@@ -319,7 +319,8 @@ async def test_volume_copy_2(client, tmp_path, servicer):
     assert returned_file_data[Path("test_dir/file2.txt")].data == b"test copy"
 
 
-def test_persisted(servicer, client):
+@pytest.mark.parametrize("delete_as_instance_method", [True, False])
+def test_persisted(servicer, client, delete_as_instance_method):
     # Lookup should fail since it doesn't exist
     with pytest.raises(NotFoundError):
         modal.Volume.lookup("xyz", client=client)
@@ -331,7 +332,11 @@ def test_persisted(servicer, client):
     v = modal.Volume.lookup("xyz", client=client)
 
     # Delete it
-    v.delete()
+    if delete_as_instance_method:
+        with pytest.warns(DeprecationError):
+            v.delete()
+    else:
+        modal.Volume.delete("xyz", client=client)
 
     # Lookup should fail again
     with pytest.raises(NotFoundError):
