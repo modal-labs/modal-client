@@ -6,7 +6,6 @@ import os
 import platform
 import re
 import time
-from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import (
@@ -400,24 +399,14 @@ class _Volume(_Object, type_prefix="vo"):
                 yield data
 
     @live_method
-    async def read_file_into_fileobj(self, path: Union[str, bytes], fileobj: IO[bytes], progress: bool = False) -> int:
+    async def read_file_into_fileobj(self, path: Union[str, bytes], fileobj: IO[bytes]) -> int:
         """mdmd:hidden
 
-        Read volume file into file-like IO object, with support for progress display.
-        Used by modal CLI. In future will replace current generator implementation of `read_file` method.
+        Read volume file into file-like IO object.
+        In the future, this will replace the current generator implementation of the `read_file` method.
         """
         if isinstance(path, str):
             path = path.encode("utf-8")
-
-        if progress:
-            from ._output import download_progress_bar
-
-            progress_bar = download_progress_bar()
-            task_id = progress_bar.add_task("download", path=path.decode(), start=False)
-            progress_bar.console.log(f"Requesting {path.decode()}")
-        else:
-            progress_bar = nullcontext()
-            task_id = None
 
         chunk_size_bytes = 8 * 1024 * 1024
         start = 0
@@ -433,45 +422,30 @@ class _Volume(_Object, type_prefix="vo"):
         if n != len(response.data):
             raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
         elif n == response.size:
-            if progress:
-                progress_bar.console.log(f"Wrote {n} bytes to '{path.decode()}'")
             return response.size
         elif n > response.size:
             raise RuntimeError(f"length of returned data exceeds reported filesize: {n} > {response.size}")
         # else: there's more data to read. continue reading with further ranged GET requests.
-        start = n
         file_size = response.size
         written = n
 
-        if progress:
-            progress_bar.update(task_id, total=int(file_size))
-            progress_bar.start_task(task_id)
+        while True:
+            req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path, start=written, len=chunk_size_bytes)
+            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+            if response.WhichOneof("data_oneof") != "data":
+                raise RuntimeError("expected to receive 'data' in response")
+            if len(response.data) > chunk_size_bytes:
+                raise RuntimeError(f"received more data than requested: {len(response.data)} > {chunk_size_bytes}")
+            elif (written + len(response.data)) > file_size:
+                raise RuntimeError(f"received data exceeds filesize of {chunk_size_bytes}")
 
-        with progress_bar:
-            while True:
-                req = api_pb2.VolumeGetFileRequest(
-                    volume_id=self.object_id, path=path, start=start, len=chunk_size_bytes
-                )
-                response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
-                if response.WhichOneof("data_oneof") != "data":
-                    raise RuntimeError("expected to receive 'data' in response")
-                if len(response.data) > chunk_size_bytes:
-                    raise RuntimeError(f"received more data than requested: {len(response.data)} > {chunk_size_bytes}")
-                elif (written + len(response.data)) > file_size:
-                    raise RuntimeError(f"received data exceeds filesize of {chunk_size_bytes}")
+            n = fileobj.write(response.data)
+            if n != len(response.data):
+                raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
+            written += n
+            if written == file_size:
+                break
 
-                n = fileobj.write(response.data)
-                if n != len(response.data):
-                    raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
-                start += n
-                written += n
-                if progress:
-                    progress_bar.update(task_id, advance=n)
-                if written == file_size:
-                    break
-
-        if progress:
-            progress_bar.console.log(f"Wrote {written} bytes to '{path.decode()}'")
         return written
 
     @live_method
