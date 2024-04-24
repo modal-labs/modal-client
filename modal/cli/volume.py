@@ -309,4 +309,4 @@ async def delete(
             abort=True,
         )
 
-    await _Volume.delete(volume_name, environment_name=env)
+    await _Volume.delete(label=volume_name, environment_name=env)
