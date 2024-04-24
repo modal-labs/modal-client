@@ -543,8 +543,8 @@ class _App:
         secrets = [*self._secrets, *secrets]
 
         def wrapped(
-            f: Union[_PartialFunction, Callable[..., Any]],
-            _cls: Optional[type] = None,  # Used for methods only
+            f: Union[_PartialFunction, Callable[..., Any], None],
+            _cls: Optional[type] = None,  # Used for methods and "object functions" only
         ) -> _Function:
             nonlocal keep_warm, is_generator
 
@@ -666,7 +666,7 @@ class _App:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
-        decorator: Callable[[PartialFunction, type], _Function] = self.function(
+        decorator: Callable[[Union[PartialFunction, None], type], _Function] = self.function(
             image=image,
             secret=secret,
             secrets=secrets,

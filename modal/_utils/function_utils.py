@@ -5,7 +5,7 @@ import os
 from collections import deque
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncIterator, Callable, List, Literal, Optional, Set, Type
+from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Set, Type
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
@@ -71,14 +71,13 @@ def is_async(function):
 class FunctionInfo:
     """Class that helps us extract a bunch of information about a function."""
 
-    raw_f: Callable[..., Any]
+    raw_f: Optional[Callable[..., Any]]  # if None - this is a "class function"
     function_name: str
     cls: Optional[Type[Any]]
     definition_type: "api_pb2.Function.DefinitionType.ValueType"
     module_name: Optional[str]
 
     _type: FunctionInfoType
-    _signature: Optional[inspect.Signature]
     _file: Optional[str]
     _base_dir: str
     _remote_dir: Optional[PurePosixPath] = None
@@ -86,7 +85,7 @@ class FunctionInfo:
     # TODO: we should have a bunch of unit tests for this
     def __init__(
         self,
-        f: Callable[..., Any],
+        f: Optional[Callable[..., Any]],
         serialized=False,
         name_override: Optional[str] = None,
         cls: Optional[Type] = None,
@@ -96,6 +95,9 @@ class FunctionInfo:
 
         if name_override is not None:
             self.function_name = name_override
+        elif f is None and cls:
+            # "class function"
+            self.function_name = cls.__name__
         elif f.__qualname__ != f.__name__ and not serialized:
             # Class function.
             if len(f.__qualname__.split(".")) > 2:
@@ -107,8 +109,6 @@ class FunctionInfo:
             self.function_name = f"{cls.__name__}.{f.__name__}"
         else:
             self.function_name = f.__qualname__
-
-        self._signature = inspect.signature(f)
 
         # If it's a cls, the @method could be defined in a base class in a different file.
         if cls is not None:
@@ -162,7 +162,8 @@ class FunctionInfo:
         if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
-            if not is_global_function(f.__qualname__):
+            qualname = f.__qualname__ if f else cls.__qualname__
+            if not is_global_function(qualname):
                 raise LocalFunctionError(
                     "Modal can only import functions defined in global scope unless they are `serialized=True`"
                 )
@@ -179,7 +180,7 @@ class FunctionInfo:
         logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
         return serialized_bytes
 
-    def get_globals(self):
+    def get_globals(self) -> Dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals
 
         func = self.raw_f
@@ -232,7 +233,8 @@ class FunctionInfo:
         return self.function_name
 
     def is_nullary(self):
-        for param in self._signature.parameters.values():
+        signature = inspect.signature(self.raw_f)
+        for param in signature.parameters.values():
             if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                 # variadic parameters are nullary
                 continue

@@ -134,6 +134,7 @@ Obj = synchronize_api(_Obj)
 
 class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
+    _class_function: _Function
     _functions: Dict[str, _Function]
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
@@ -142,6 +143,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _initialize_from_empty(self):
         self._user_cls = None
+        self._class_function = None
         self._functions = {}
         self._options = None
         self._callables = {}
@@ -150,6 +152,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _initialize_from_other(self, other: "_Cls"):
         self._user_cls = other._user_cls
+        self._class_function = other._class_function
         self._functions = other._functions
         self._options = other._options
         self._callables = other._callables
@@ -160,6 +163,15 @@ class _Cls(_Object, type_prefix="cs"):
         self._output_mgr = output_mgr
 
     def _hydrate_metadata(self, metadata: Message):
+        assert isinstance(metadata, api_pb2.ClassHandleMetadata)
+
+        if metadata.class_function_id:
+            # we don't have any hydration metadata on "class functions", for now
+            if self._class_function:
+                self._class_function._hydrate(metadata.class_function_id, self.client, None)
+            else:
+                self._class_function = _Function._new_hydrated(metadata.class_function_id, self._client, None)
+
         for method in metadata.methods:
             if method.function_name in self._functions:
                 self._functions[method.function_name]._hydrate(
@@ -171,7 +183,12 @@ class _Cls(_Object, type_prefix="cs"):
                 )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
-        class_handle_metadata = api_pb2.ClassHandleMetadata()
+        if self._class_function:
+            class_function_id = self._class_function.object_id
+        else:
+            class_function_id = ""
+
+        class_handle_metadata = api_pb2.ClassHandleMetadata(class_function_id=class_function_id)
         for f_name, f in self._functions.items():
             class_handle_metadata.methods.append(
                 api_pb2.ClassMethod(
@@ -184,7 +201,14 @@ class _Cls(_Object, type_prefix="cs"):
     def from_local(user_cls, app, decorator: Callable[[PartialFunction, type], _Function]) -> "_Cls":
         """mdmd:hidden"""
         functions: Dict[str, _Function] = {}
+        # first create a function representing the whole class, this is the single function id that will be used
+        # by containers running methods
+        cls_func = decorator(None, user_cls)
+
+        # then create placeholders for each method - these are used mostly for web config (and Function.lookup("Cls.meth"))
         for k, partial_function in _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.FUNCTION).items():
+            # TODO: mark these as placeholders / redirect them to use the class function, which then needs to be
+            # precreated so the placeholders can reference the actual method to call!
             functions[k] = decorator(partial_function, user_cls)
 
         # Disable the warning that these are not wrapped
@@ -195,7 +219,7 @@ class _Cls(_Object, type_prefix="cs"):
         callables: Dict[str, Callable] = _find_callables_for_cls(user_cls, ~_PartialFunctionFlags(0))
 
         def _deps() -> List[_Function]:
-            return list(functions.values())
+            return [cls_func] + list(functions.values())
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
@@ -208,6 +232,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls = _Cls._from_loader(_load, rep, deps=_deps)
         cls._app = app
         cls._user_cls = user_cls
+        cls._class_function = cls_func
         cls._functions = functions
         cls._callables = callables
         cls._from_other_workspace = False

@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 import threading
+import typing
 from typing import TYPE_CHECKING, Callable, Dict
 
 from typing_extensions import assert_type
@@ -53,10 +54,16 @@ def test_run_class(client, servicer):
 
 
 def test_call_class_sync(client, servicer):
-    with app.run(client=client):
-        foo: Foo = Foo()
-        ret: float = foo.bar.remote(42)
-        assert ret == 1764
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            foo: Foo = Foo()
+            ret: float = foo.bar.remote(42)
+            assert ret == 1764
+
+    function_creates: typing.List[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
+    assert len(function_creates) == 2
+    function_names = {fc.function.function_name for fc in function_creates}
+    assert function_names == {"Foo", "Foo.bar"}
 
 
 # Reusing the app runs into an issue with stale function handles.

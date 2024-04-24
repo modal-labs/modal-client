@@ -213,7 +213,7 @@ class FunctionStats:
 
 def _parse_retries(
     retries: Optional[Union[int, Retries]],
-    raw_f: Optional[Callable] = None,
+    object_name: str,
 ) -> Optional[api_pb2.FunctionRetryPolicy]:
     if isinstance(retries, int):
         return Retries(
@@ -226,9 +226,8 @@ def _parse_retries(
     elif retries is None:
         return None
     else:
-        err_object = f"Function {raw_f}" if raw_f else "Function"
         raise InvalidError(
-            f"{err_object} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
+            f"{object_name} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
         )
 
 
@@ -314,13 +313,18 @@ class _Function(_Object, type_prefix="fu"):
         """mdmd:hidden"""
         tag = info.get_tag()
 
-        raw_f = info.raw_f
-        assert callable(raw_f)
-        if schedule is not None:
-            if not info.is_nullary():
+        if info.raw_f:
+            raw_f = info.raw_f
+            assert callable(raw_f)
+            if schedule is not None and not info.is_nullary():
                 raise InvalidError(
                     f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
                 )
+        else:
+            # must be a "class function"
+            assert info.cls
+            assert not webhook_config
+            assert not schedule
 
         if secret is not None:
             deprecation_warning(
@@ -354,7 +358,9 @@ class _Function(_Object, type_prefix="fu"):
             # TODO: maybe the entire constructor should be exited early if not local?
             all_mounts = []
 
-        retry_policy = _parse_retries(retries, raw_f)
+        retry_policy = _parse_retries(
+            retries, f"Function {info.get_tag()}" if info.raw_f else f"Class {info.get_tag()}"
+        )
 
         gpu_config = parse_gpu_config(gpu)
 
@@ -646,7 +652,7 @@ class _Function(_Object, type_prefix="fu"):
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
 
-        obj._raw_f = raw_f
+        obj._raw_f = info.raw_f
         obj._info = info
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
