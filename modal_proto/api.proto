@@ -518,6 +518,7 @@ message ClassCreateRequest {
   string app_id = 1  [ (modal.options.audit_target_attr) = true ];
   string existing_class_id = 2;
   repeated ClassMethod methods = 3;
+  string class_function_id = 4;
 }
 
 message ClassCreateResponse {
@@ -934,6 +935,7 @@ message FunctionHandleMetadata {
   Function.FunctionType function_type = 8;
   string web_url = 28;
   bool is_method = 39;
+  bool call_with_method_name = 40;
 }
 
 message FunctionCreateRequest {

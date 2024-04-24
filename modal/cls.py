@@ -205,12 +205,6 @@ class _Cls(_Object, type_prefix="cs"):
         # by containers running methods
         cls_func = decorator(None, user_cls)
 
-        # then create placeholders for each method - these are used mostly for web config (and Function.lookup("Cls.meth"))
-        for k, partial_function in _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.FUNCTION).items():
-            # TODO: mark these as placeholders / redirect them to use the class function, which then needs to be
-            # precreated so the placeholders can reference the actual method to call!
-            functions[k] = decorator(partial_function, user_cls)
-
         # Disable the warning that these are not wrapped
         for partial_function in _find_partial_methods_for_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
             partial_function.wrapped = True
@@ -222,7 +216,21 @@ class _Cls(_Object, type_prefix="cs"):
             return [cls_func] + list(functions.values())
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
-            req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
+            await resolver.load(cls_func)  # TODO(elias): we need the existing object id for the function too!
+
+            # once we have the resolved "class function" we create placeholder methods
+            # these are used mostly to associate methods with web config and Function.lookup
+            # might be able to get rid of these at some point with some backend refactoring
+            for k, partial_function in _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.FUNCTION).items():
+                method_function = decorator(
+                    partial_function, user_cls, cls_func.object_id
+                )  # TODO: extract this into its own _Function constructor
+                await resolver.load(method_function)  # TODO: parallelize
+                functions[k] = method_function
+
+            req = api_pb2.ClassCreateRequest(
+                app_id=resolver.app_id, existing_class_id=existing_object_id, class_function_id=cls_func.object_id
+            )
             for f_name, f in functions.items():
                 req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
             resp = await resolver.client.stub.ClassCreate(req)
