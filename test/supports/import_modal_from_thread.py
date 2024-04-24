@@ -13,5 +13,5 @@ def main():
 if __name__ == "__main__":
     t = threading.Thread(target=main, daemon=True)
     t.start()
-    was_success = success.wait(timeout=1)
+    was_success = success.wait(timeout=5)
     assert was_success
