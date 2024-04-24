@@ -10,6 +10,18 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.108 (2024-04-24)
+
+- Added `Dict.delete` and `Queue.delete` as API methods for deleting named storage objects:
+
+    ```
+    import modal
+    modal.Queue.delete("my-job-queue")
+   ```
+- Deprecated invoking `Volume.delete` as an instance method; it should now be invoked as a static method with the name of  the Volume to delete, as with the other methods.
+
+
+
 ### 0.62.98 (2024-04-21)
 
 - The `modal.Dict` object now implements a `keys`/`values`/`items` API. Note that there are a few differences when compared to standard Python dicts:
