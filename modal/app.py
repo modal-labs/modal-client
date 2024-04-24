@@ -828,7 +828,7 @@ class _Stub(_App):
 
     def __new__(cls, *args, **kwargs):
         deprecation_warning(
-            (2024, 4, 26),
+            (2024, 4, 29),
             "The use of \"Stub\" has been deprecated in favor of \"App\"."
             " This is a pure name change with no other implications.",
             pending=True
