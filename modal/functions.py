@@ -65,7 +65,7 @@ from .exception import (
 from .execution_context import current_input_id, is_local
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount
+from .mount import _get_client_mount, _Mount, get_auto_mounts
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
 from .parallel_map import (
@@ -347,8 +347,7 @@ class _Function(_Object, type_prefix="fu"):
             ]
 
             if config.get("automount"):
-                automounts = info.get_auto_mounts()
-                all_mounts += automounts
+                all_mounts += get_auto_mounts()
         else:
             # skip any mount introspection/logic inside containers, since the function
             # should already be hydrated
