@@ -2,10 +2,6 @@
 import asyncio
 import inspect
 import os
-import site
-import sys
-import sysconfig
-import typing
 from collections import deque
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -20,26 +16,11 @@ from modal_proto import api_pb2
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
 from ..config import config, logger
-from ..exception import ExecutionError, FunctionTimeoutError, InvalidError, ModuleNotMountable, RemoteError
-from ..mount import ROOT_DIR, _Mount
+from ..exception import ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
+from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from ..object import Object
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
-
-SYS_PREFIXES = {
-    Path(p)
-    for p in (
-        sys.prefix,
-        sys.base_prefix,
-        sys.exec_prefix,
-        sys.base_exec_prefix,
-        *sysconfig.get_paths().values(),
-        *site.getsitepackages(),
-        site.getusersitepackages(),
-    )
-}
-
-SYS_PREFIXES |= {p.resolve() for p in SYS_PREFIXES}
 
 
 class FunctionInfoType(Enum):
@@ -66,21 +47,6 @@ def entrypoint_only_package_mount_condition(entrypoint_file):
         return False
 
     return inner
-
-
-def _is_modal_path(remote_path: PurePosixPath):
-    path_prefix = remote_path.parts[:3]
-    remote_python_paths = [("/", "root"), ("/", "pkg")]
-    for base in remote_python_paths:
-        is_modal_path = path_prefix in [
-            base + ("modal",),
-            base + ("modal_proto",),
-            base + ("modal_version",),
-            base + ("synchronicity",),
-        ]
-        if is_modal_path:
-            return True
-    return False
 
 
 def is_global_function(function_qual_name):
@@ -119,7 +85,7 @@ class FunctionInfo:
     # TODO: we should have a bunch of unit tests for this
     def __init__(
         self,
-        f: Optional[Callable[..., Any]],
+        f: Callable[..., Any],
         serialized=False,
         name_override: Optional[str] = None,
         cls: Optional[Type] = None,
@@ -260,45 +226,6 @@ class FunctionInfo:
                     )
                 ]
         return []
-
-    def get_auto_mounts(self) -> typing.List[_Mount]:
-        # Auto-mount local modules that have been imported in global scope.
-        # This may or may not include the "entrypoint" of the function as well, depending on how modal is invoked
-        # Note: sys.modules may change during the iteration
-        auto_mounts = []
-        top_level_modules = []
-        skip_prefixes = set()
-        for name, module in sorted(sys.modules.items(), key=lambda kv: len(kv[0])):
-            parent = name.rsplit(".")[0]
-            if parent and parent in skip_prefixes:
-                skip_prefixes.add(name)
-                continue
-            skip_prefixes.add(name)
-            top_level_modules.append((name, module))
-
-        for module_name, module in top_level_modules:
-            if module_name.startswith("__"):
-                # skip "built in" modules like __main__ and __mp_main__
-                # the running function's main file should be included anyway
-                continue
-
-            try:
-                # at this point we don't know if the sys.modules module should be mounted or not
-                potential_mount = _Mount.from_local_python_packages(module_name)
-                mount_paths = potential_mount._top_level_paths()
-            except ModuleNotMountable:
-                # this typically happens if the module is a built-in, has binary components or doesn't exist
-                continue
-
-            for local_path, remote_path in mount_paths:
-                # TODO: use is_relative_to once we deprecate Python 3.8
-                if any(str(local_path).startswith(str(p)) for p in SYS_PREFIXES) or _is_modal_path(remote_path):
-                    # skip any module that has paths in SYS_PREFIXES, or would overwrite the modal Package in the container
-                    break
-            else:
-                auto_mounts.append(potential_mount)
-
-        return auto_mounts
 
     def get_tag(self):
         return self.function_name
