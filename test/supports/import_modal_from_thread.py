@@ -1,15 +1,12 @@
 # Copyright Modal Labs 2024
 import threading
-import traceback
 
 success = threading.Event()
 
 
 def main():
-    try:
-        import modal  # noqa
-    except BaseException:
-        traceback.print_exc()
+    import modal  # noqa
+
     success.set()
 
 
