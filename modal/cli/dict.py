@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2024
+import builtins
 from datetime import datetime
 from typing import Optional
 
@@ -55,7 +56,7 @@ async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
 @dict_cli.command("clear")
 @synchronizer.create_blocking
 async def clear(name: str, *, env: Optional[str] = ENV_OPTION):
-    """Clear the contents of a Dict by deleting all of its data."""
+    """Clear the contents of a named Dict by deleting all of its data."""
     d = await _Dict.lookup(name, environment_name=env)
     await d.clear()
 
@@ -90,16 +91,17 @@ async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
 @synchronizer.create_blocking
 async def show(
     name: str,
-    n: int = Argument(default=20, help="Retrieve and show no more than this many entries"),
+    n: int = Argument(default=20, help="Limit the number of entries shown"),
     *,
     all: bool = Option(default=False, help="Ignore N and print all entries in the Dict (may be slow)"),
+    repr: bool = Option(default=False, help="Display items using repr() to see more details"),
     json: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
     """Print the contents of a Dict.
 
     Note: By default, this command truncates the contents. Use the `N` argument to control the
-    amount of data shown or the `--all` option to retrieve the entire Dict.
+    amount of data shown or the `--all` option to retrieve the entire Dict, which may be slow.
     """
     d = await _Dict.lookup(name, environment_name=env)
 
@@ -110,8 +112,8 @@ async def show(
             items.append(("...", "..."))
             break
         else:
-            # TODO consider a flag to optionally show repr(key), repr(val)?
-            items.append((key, val))
+            display_item = (builtins.repr(key), builtins.repr(val)) if repr else (str(key), str(val))
+            items.append(display_item)
 
     if json:
         # Note, we don't use the json= option of display_table because we want to display
