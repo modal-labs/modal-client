@@ -82,7 +82,7 @@ async def _grpc_exc_string(exc: GRPCError, method_name: str, server_url: str, ti
 
 class _Client:
     _client_from_env: ClassVar[Optional["_Client"]] = None
-    _client_from_env_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
+    _client_from_env_lock: Optional[asyncio.Lock] = None
 
     def __init__(
         self,
@@ -223,6 +223,9 @@ class _Client:
         else:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = None
+
+        if cls._client_from_env_lock is None:
+            cls._client_from_env_lock = asyncio.Lock()
 
         async with cls._client_from_env_lock:
             if cls._client_from_env:
