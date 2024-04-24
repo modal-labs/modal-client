@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-
+import os
 import platform
 import pytest
 import sys
@@ -19,3 +19,9 @@ skip_windows_signals = skip_windows("Windows doesn't support UNIX signal handlin
 
 def skip_old_py(msg: str, min_version: tuple):
     return pytest.mark.skipif(sys.version_info < min_version, reason=msg)
+
+
+skip_github_non_linux = pytest.mark.skipif(
+    (os.environ.get("GITHUB_ACTIONS") == "true" and platform.system() != "Linux"),
+    reason="containers only have to run on linux.",
+)
