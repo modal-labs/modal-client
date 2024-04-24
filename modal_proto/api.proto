@@ -1778,6 +1778,7 @@ message TaskInfo {
   double started_at = 2;
   double finished_at = 3;
   modal.client.GenericResult result = 4;
+  double enqueued_at = 5;
 }
 
 message TaskLogs {
