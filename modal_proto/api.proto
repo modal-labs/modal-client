@@ -678,6 +678,10 @@ message DictCreateResponse {  // Will be superseded by DictGetOrCreateResponse
   string dict_id = 1;
 }
 
+message DictDeleteRequest {
+  string dict_id = 1;
+}
+
 message DictGetOrCreateRequest {
   string deployment_name = 1;
   DeploymentNamespace namespace = 2;
@@ -1431,6 +1435,10 @@ message QueueCreateResponse {
   string queue_id = 1;
 }
 
+message QueueDeleteRequest {
+  string queue_id = 1;
+}
+
 message QueueGetOrCreateRequest {
   string deployment_name = 1;
   DeploymentNamespace namespace = 2;
@@ -1533,6 +1541,11 @@ message Sandbox {
   repeated VolumeMount volume_mounts = 13;
 
   PTYInfo pty_info = 15;
+
+  // If set, tasks will be scheduled using the new scheduler, which also knows
+  // to look at fine-grained placement constraints.
+  bool _experimental_scheduler = 16;
+  optional SchedulerPlacement _experimental_scheduler_placement = 17;
 }
 
 message SandboxCreateRequest {
@@ -2059,6 +2072,7 @@ service ModalClient {
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictContents(DictContentsRequest) returns (stream DictEntry);
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
+  rpc DictDelete(DictDeleteRequest) returns (google.protobuf.Empty);
   rpc DictGet(DictGetRequest) returns (DictGetResponse);
   rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
   rpc DictHeartbeat(DictHeartbeatRequest) returns (google.protobuf.Empty);
@@ -2117,6 +2131,7 @@ service ModalClient {
 
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
+  rpc QueueDelete(QueueDeleteRequest) returns (google.protobuf.Empty);
   rpc QueueGetOrCreate(QueueGetOrCreateRequest) returns (QueueGetOrCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueueHeartbeat(QueueHeartbeatRequest) returns (google.protobuf.Empty);
