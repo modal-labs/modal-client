@@ -13,7 +13,6 @@ from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.dict import _Dict
 from modal.environments import ensure_env
-from modal.exception import ExecutionError
 from modal_proto import api_pb2
 
 dict_cli = Typer(
@@ -98,21 +97,15 @@ async def show(
     """
     d = await _Dict.lookup(name, environment_name=env)
 
-    try:
-        i, items = 0, []
-        async for key, val in d.items():
-            i += 1
-            if not all and i > n:
-                items.append(("...", "..."))
-                break
-            else:
-                # TODO consider a flag to optionally show repr(key), repr(val)?
-                items.append((key, val))
-    except ModuleNotFoundError as exc:
-        # I think that on 3.10+ we could rewrite this to use anext and attribute errors to specific
-        # items (perhaps represent them in the output as "<library>_object" or something.)
-        msg = f"Dict contains objects from the `{exc.name}` library and cannot be deserialized locally."
-        raise ExecutionError(msg)
+    i, items = 0, []
+    async for key, val in d.items():
+        i += 1
+        if not all and i > n:
+            items.append(("...", "..."))
+            break
+        else:
+            # TODO consider a flag to optionally show repr(key), repr(val)?
+            items.append((key, val))
 
     if json:
         # Note, we don't use the json= option of display_table because we want to display
