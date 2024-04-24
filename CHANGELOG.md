@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.109 (2024-04-24)
+
+- Improved feedback for deserialization failures when objects are being transferred between local / remote environments.
+
+
+
 ### 0.62.108 (2024-04-24)
 
 - Added `Dict.delete` and `Queue.delete` as API methods for deleting named storage objects:
