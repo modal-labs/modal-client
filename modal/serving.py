@@ -17,6 +17,7 @@ from ._watcher import watch
 from .cli.import_refs import import_app
 from .client import _Client
 from .config import config
+from .exception import deprecation_warning
 from .runner import _disconnect, _run_app, serve_update
 
 if TYPE_CHECKING:
@@ -127,8 +128,10 @@ async def _serve_app(
             yield app
 
 
-serve_app = synchronize_api(_serve_app)
+def _serve_stub(*args, **kwargs):
+    deprecation_warning((2024, 4, 29), "`serve_stub` is deprecated. Please use `serve_app` instead.", pending=True)
+    return _run_app(*args, **kwargs)
 
-# Soon-to-be-deprecated ones, add warning soon
-_serve_stub = _serve_app
-serve_stub = serve_app
+
+serve_app = synchronize_api(_serve_app)
+serve_stub = synchronize_api(_serve_stub)

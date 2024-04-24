@@ -11,7 +11,7 @@ from modal.app import list_apps  # type: ignore
 from modal.config import config
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
-from modal.runner import deploy_app
+from modal.runner import deploy_app, deploy_stub
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
@@ -364,3 +364,10 @@ def test_function_named_app():
 def test_stub():
     with pytest.warns(match="App"):
         Stub()
+
+
+def test_deploy_stub(servicer, client):
+    app = App("xyz")
+    deploy_app(app, client=client)
+    with pytest.warns(match="deploy_app"):
+        deploy_stub(app, client=client)
