@@ -64,15 +64,8 @@ async def clear(name: str, *, env: Optional[str] = ENV_OPTION):
 @synchronizer.create_blocking
 async def delete(name: str, *, env: Optional[str] = ENV_OPTION):
     """Delete a named Dict object and all of its data."""
-    client = await _Client.from_env()
-    lookup_request = api_pb2.AppGetByDeploymentNameRequest(
-        name=name,
-        environment_name=ensure_env(env),
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-    )
-    resp = await client.stub.AppGetByDeploymentName(lookup_request)
-    stop_req = api_pb2.AppStopRequest(app_id=resp.app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
-    await client.stub.AppStop(stop_req)
+    # TODO confirmation?
+    await _Dict.delete(name, environment_name=env)
 
 
 @dict_cli.command(name="get")
