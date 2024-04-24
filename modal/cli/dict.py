@@ -2,6 +2,7 @@
 from datetime import datetime
 from typing import Optional
 
+import typer
 from rich.console import Console
 from rich.json import JSON
 from typer import Argument, Option, Typer
@@ -9,7 +10,7 @@ from typer import Argument, Option, Typer
 from modal._resolver import Resolver
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli.utils import ENV_OPTION, display_table
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.dict import _Dict
 from modal.environments import ensure_env
@@ -61,9 +62,14 @@ async def clear(name: str, *, env: Optional[str] = ENV_OPTION):
 
 @dict_cli.command(name="delete")
 @synchronizer.create_blocking
-async def delete(name: str, *, env: Optional[str] = ENV_OPTION):
+async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
     """Delete a named Dict object and all of its data."""
-    # TODO confirmation?
+    if not yes:
+        typer.confirm(
+            f"Are you sure you want to irrevocably delete the modal.Dict '{name}'?",
+            default=False,
+            abort=True,
+        )
     await _Dict.delete(name, environment_name=env)
 
 

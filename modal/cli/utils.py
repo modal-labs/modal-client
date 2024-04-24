@@ -45,3 +45,5 @@ If not specified, Modal will use the default environment of your current profile
 Otherwise, raises an error if the workspace has multiple environments.
 """
 ENV_OPTION = typer.Option(default=None, help=ENV_OPTION_HELP)
+
+YES_OPTION = typer.Option(False, "-y", "--yes", help="Run without pausing for confirmation.")
