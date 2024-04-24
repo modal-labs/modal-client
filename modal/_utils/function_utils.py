@@ -402,12 +402,16 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
         )
 
 
-async def _create_input(args, kwargs, client, idx: Optional[int] = None) -> api_pb2.FunctionPutInputsItem:
+async def _create_input(
+    args, kwargs, client, *, idx: Optional[int] = None, method_name: Optional[str] = None
+) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
     """
     if idx is None:
         idx = 0
+    if method_name is None:
+        method_name = ""  # proto compatible
 
     args_serialized = serialize((args, kwargs))
 
@@ -415,11 +419,19 @@ async def _create_input(args, kwargs, client, idx: Optional[int] = None) -> api_
         args_blob_id = await blob_upload(args_serialized, client.stub)
 
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE),
+            input=api_pb2.FunctionInput(
+                args_blob_id=args_blob_id,
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                method_name=method_name,
+            ),
             idx=idx,
         )
     else:
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE),
+            input=api_pb2.FunctionInput(
+                args=args_serialized,
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                method_name=method_name,
+            ),
             idx=idx,
         )

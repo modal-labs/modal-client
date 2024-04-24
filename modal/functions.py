@@ -99,9 +99,11 @@ class _Invocation:
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(function_id: str, args, kwargs, client: _Client) -> "_Invocation":
+    async def create(
+        function_id: str, args, kwargs, *, client: _Client, method_name: Optional[str] = None
+    ) -> "_Invocation":
         assert client.stub
-        item = await _create_input(args, kwargs, client)
+        item = await _create_input(args, kwargs, client, method_name=method_name)
 
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
@@ -273,6 +275,8 @@ class _Function(_Object, type_prefix="fu"):
     _raw_f: Callable[..., Any]
     _build_args: dict
     _parent: "_Function"
+
+    _method_name: Optional[str]  # when this is the method of a class/object function - TODO: unify with _is_method?
 
     @staticmethod
     def method_from_class_function(
@@ -955,6 +959,7 @@ class _Function(_Object, type_prefix="fu"):
             order_outputs,
             return_exceptions,
             count_update_callback,
+            method_name=self._method_name,
         ):
             yield item
 

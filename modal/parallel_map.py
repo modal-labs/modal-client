@@ -67,6 +67,8 @@ async def _map_invocation(
     order_outputs: bool,
     return_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
+    *,
+    method_name: str,
 ):
     assert client.stub
     request = api_pb2.FunctionMapRequest(
@@ -97,7 +99,7 @@ async def _map_invocation(
         idx = num_inputs
         num_inputs += 1
         (args, kwargs) = argskwargs
-        return await _create_input(args, kwargs, client, idx)
+        return await _create_input(args, kwargs, client, idx=idx, method_name=method_name)
 
     async def input_iter():
         while 1:

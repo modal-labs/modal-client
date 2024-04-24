@@ -1072,6 +1072,7 @@ message FunctionInput {
   }
   bool final_input = 9;
   DataFormat data_format = 10; // For args_oneof.
+  optional string method_name = 11; // specifies which method to call when calling a class/object function
 }
 
 message FunctionMapRequest {
