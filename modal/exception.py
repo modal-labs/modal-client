@@ -82,6 +82,10 @@ class ExecutionError(Error):
     """Raised when something unexpected happened during runtime."""
 
 
+class DeserializationError(Error):
+    """Raised to provide more context when an error is encountered during deserialization."""
+
+
 class DeprecationError(UserWarning):
     """UserWarning category emitted when a deprecated Modal feature or API is used."""
 
