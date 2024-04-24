@@ -313,13 +313,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             apps.append(api_pb2.AppStats(name=app_name, description=app_name, app_id=app_id))
         await stream.send_message(api_pb2.AppListResponse(apps=apps))
 
-    async def AppStop(self, stream):
-        request: api_pb2.AppStopRequest = await stream.recv_message()
-        app_id_to_deployment_name = {v: k for k, v in self.deployed_apps.items()}
-        deploy_name = app_id_to_deployment_name[request.app_id]
-        self.deployed_apps.pop(deploy_name)
-        await stream.send_message(Empty())
-
     ### Checkpoint
 
     async def ContainerCheckpoint(self, stream):
