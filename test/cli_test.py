@@ -682,7 +682,7 @@ def test_dict_create_list_delete(servicer, server_url_env, set_env_client):
     assert "foo-dict" in res.stdout
     assert "bar-dict" in res.stdout
 
-    _run(["dict", "delete", "bar-dict"])
+    _run(["dict", "delete", "bar-dict", "--yes"])
     res = _run(["dict", "list"])
     assert "foo-dict" in res.stdout
     assert "bar-dict" not in res.stdout
