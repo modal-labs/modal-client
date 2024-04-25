@@ -59,20 +59,21 @@ class _OutputValue:
 
 MAP_INVOCATION_CHUNK_SIZE = 49
 
+if typing.TYPE_CHECKING:
+    import modal.functions
+
 
 async def _map_invocation(
-    function_id: str,
+    function: "modal.functions._Function",
     raw_input_queue: _SynchronizedQueue,
     client: "modal.client._Client",
     order_outputs: bool,
     return_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
-    *,
-    method_name: str,
 ):
     assert client.stub
     request = api_pb2.FunctionMapRequest(
-        function_id=function_id,
+        function_id=function._use_function_id,
         parent_input_id=current_input_id() or "",
         function_call_type=api_pb2.FUNCTION_CALL_TYPE_MAP,
         return_exceptions=return_exceptions,
@@ -99,7 +100,7 @@ async def _map_invocation(
         idx = num_inputs
         num_inputs += 1
         (args, kwargs) = argskwargs
-        return await _create_input(args, kwargs, client, idx=idx, method_name=method_name)
+        return await _create_input(args, kwargs, client, idx=idx, method_name=function._use_method_name)
 
     async def input_iter():
         while 1:
@@ -128,7 +129,7 @@ async def _map_invocation(
         nonlocal have_all_inputs, num_inputs
         async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
             request = api_pb2.FunctionPutInputsRequest(
-                function_id=function_id, inputs=items, function_call_id=function_call_id
+                function_id=function._use_function_id, inputs=items, function_call_id=function_call_id
             )
             logger.debug(
                 f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."

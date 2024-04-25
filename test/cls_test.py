@@ -71,6 +71,9 @@ def test_call_class_sync(client, servicer):
     assert foobar_def.use_method_name == "bar"
     assert foobar_def.use_function_id == class_create.class_function_id
 
+    (function_map_request,) = ctx.get_requests("FunctionMap")
+    assert function_map_request.function_id == class_create.class_function_id
+
 
 # Reusing the app runs into an issue with stale function handles.
 # TODO (akshat): have all the client tests use separate apps, and throw

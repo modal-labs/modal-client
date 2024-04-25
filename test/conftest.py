@@ -559,6 +559,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     function_name=req.function_name,
                     function_type=req.function_type,
                     web_url=web_url,
+                    use_function_id=req.use_function_id or function_id,
+                    use_method_name=req.use_method_name,
                 ),
             )
         )
@@ -588,6 +590,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     function_name=function.function_name,
                     function_type=function.function_type,
                     web_url=function.web_url,
+                    use_function_id=function.use_function_id or function_id,
+                    use_method_name=function.use_method_name,
                 ),
             )
         )

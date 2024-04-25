@@ -55,6 +55,7 @@ class _Obj:
         self,
         user_cls: type,
         output_mgr: Optional[OutputManager],
+        class_function: _Function,
         base_functions: Dict[str, _Function],
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
@@ -67,9 +68,16 @@ class _Obj:
             check_valid_cls_constructor_arg(key, kwarg)
 
         self._functions = {}
-        for k, fun in base_functions.items():
-            self._functions[k] = fun.from_parametrized(self, from_other_workspace, options, args, kwargs)
-            self._functions[k]._set_output_mgr(output_mgr)
+        # first create the singular object function used by all methods on this parameterization
+        object_function = class_function.from_parametrized(self, from_other_workspace, options, args, kwargs)
+
+        for method_name, class_bound_method in base_functions.items():
+            # each bound *method* needs to refer to the object_function in its use_function_id
+            self._functions[method_name] = _Function.method_from_object_function(
+                object_function,
+                class_bound_method,
+            )
+            self._functions[method_name]._set_output_mgr(output_mgr)
 
         # Used for construction local object lazily
         self._inited = False
@@ -234,7 +242,11 @@ class _Cls(_Object, type_prefix="cs"):
                 app_id=resolver.app_id, existing_class_id=existing_object_id, class_function_id=cls_func.object_id
             )
             for f_name, f in functions.items():
-                req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
+                req.methods.append(
+                    api_pb2.ClassMethod(
+                        function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
+                    )
+                )
             resp = await resolver.client.stub.ClassCreate(req)
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
@@ -381,7 +393,14 @@ class _Cls(_Object, type_prefix="cs"):
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
         return _Obj(
-            self._user_cls, self._output_mgr, self._functions, self._from_other_workspace, self._options, args, kwargs
+            self._user_cls,
+            self._output_mgr,
+            self._class_function,
+            self._functions,
+            self._from_other_workspace,
+            self._options,
+            args,
+            kwargs,
         )
 
     def __getattr__(self, k):

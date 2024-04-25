@@ -99,11 +99,10 @@ class _Invocation:
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(
-        function_id: str, args, kwargs, *, client: _Client, method_name: Optional[str] = None
-    ) -> "_Invocation":
+    async def create(function: "_Function", args, kwargs, *, client: _Client) -> "_Invocation":
         assert client.stub
-        item = await _create_input(args, kwargs, client, method_name=method_name)
+        function_id = function._use_function_id
+        item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
 
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
@@ -276,18 +275,31 @@ class _Function(_Object, type_prefix="fu"):
     _build_args: dict
     _parent: "_Function"
 
-    _method_name: Optional[str]  # when this is the method of a class/object function - TODO: unify with _is_method?
+    # when this is the method of a class/object function, invocation of this function
+    # should be using another function id and supply the method name in the FunctionInput:
+    _use_function_id: Optional[str]
+    _use_method_name: Optional[str]
 
     @staticmethod
     def method_from_class_function(
-        class_function: "_Function", method_name: str, *, webhook_config: Optional[api_pb2.WebhookConfig] = None
+        class_function: "_Function",
+        method_name: str,
+        *,
+        webhook_config: Optional[api_pb2.WebhookConfig] = None,
+        is_generator: bool = False,
     ):
-        lookup_name = f"{class_function._function_name}.{method_name}"
+        full_name = f"{class_function._function_name}.{method_name}"
+
+        if is_generator:
+            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        else:
+            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
         async def _load(self: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
             function_definition = api_pb2.Function(
-                function_name=lookup_name,
+                function_name=full_name,
                 webhook_config=webhook_config,
+                function_type=function_type,
                 # TODO: schedule, retries?
                 is_method=True,
                 use_function_id=class_function.object_id,
@@ -305,15 +317,48 @@ class _Function(_Object, type_prefix="fu"):
                 response.handle_metadata,
             )
 
-        async def _preload():
-            # TODO: implement
-            pass
+        async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            assert resolver.client and resolver.client.stub
+
+            req = api_pb2.FunctionPrecreateRequest(
+                app_id=resolver.app_id,
+                function_name=full_name,
+                function_type=function_type,
+                webhook_config=webhook_config,
+                existing_function_id=existing_object_id or "",
+            )
+            response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
+            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         def _deps():
             return [class_function]
 
-        rep = f"Method({lookup_name})"
+        rep = f"Method({full_name})"
         return _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
+
+    @staticmethod
+    def method_from_object_function(
+        object_function: "_Function",  # this is the parameter-bound, but method-unbound base function
+        class_method: "_Function",  # this is the parameter-unbound, but method-bound base function
+    ):
+        def _deps():
+            return [object_function, class_method]
+
+        async def _load(self: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            # TODO: do an actual FunctionBindParams here to create a unique function id for the bound
+            #       method, so we can pass it around as an object etc. if we want to
+            # Hacky:
+            self._hydrate_from_other(class_method)
+            self._use_function_id = object_function.object_id
+
+        rep = f"ParametrizedMethod({class_method._function_name})"
+        fun = _Function._from_loader(_load, rep, deps=_deps)
+
+        if object_function.is_hydrated and class_method.is_hydrated:
+            fun._hydrate_from_other(class_method)
+            fun._use_function_id = object_function.object_id
+
+        return fun
 
     @staticmethod
     def from_args(
@@ -746,9 +791,10 @@ class _Function(_Object, type_prefix="fu"):
             response = await retry_transient_errors(self._parent._client.stub.FunctionBindParams, req)
             self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
 
-        fun = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
         if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
+            # if the instance didn't use explicit constructor arguments
             fun._hydrate_from_other(self)
         fun._is_remote_cls_method = True  # TODO(erikbern): deprecated
         fun._info = self._info
@@ -893,6 +939,8 @@ class _Function(_Object, type_prefix="fu"):
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
         self._is_method = metadata.is_method
+        self._use_function_id = metadata.use_function_id
+        self._use_method_name = metadata.use_method_name
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -905,6 +953,8 @@ class _Function(_Object, type_prefix="fu"):
                 else api_pb2.Function.FUNCTION_TYPE_FUNCTION
             ),
             web_url=self._web_url or "",
+            use_method_name=self._use_method_name,
+            use_function_id=self._use_function_id,
         )
 
     def _set_mute_cancellation(self, value: bool = True):
@@ -966,7 +1016,7 @@ class _Function(_Object, type_prefix="fu"):
             yield item
 
     async def _call_function(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, client=self._client)
+        invocation = await _Invocation.create(self, args, kwargs, client=self._client)
         try:
             return await invocation.run_function()
         except asyncio.CancelledError:
@@ -975,19 +1025,19 @@ class _Function(_Object, type_prefix="fu"):
                 raise
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
-        return await _Invocation.create(self.object_id, args, kwargs, client=self._client)
+        return await _Invocation.create(self, args, kwargs, client=self._client)
 
     @warn_if_generator_is_not_consumed()
     @live_method_gen
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, client=self._client)
+        invocation = await _Invocation.create(self, args, kwargs, client=self._client)
         async for res in invocation.run_generator():
             yield res
 
     @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
-        return await _Invocation.create(self.object_id, args, kwargs, client=self._client)
+        return await _Invocation.create(self, args, kwargs, client=self._client)
 
     @synchronizer.no_io_translation
     @live_method
