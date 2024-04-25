@@ -3,7 +3,6 @@ import asyncio
 import concurrent.futures
 import functools
 import inspect
-import sys
 import time
 import typing
 from contextlib import asynccontextmanager
@@ -87,11 +86,21 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
 
 
 class TaskContext:
-    """Simple thing to make sure we don't have stray tasks.
+    """A structured group that helps manage stray tasks.
+
+    This differs from the standard library `asyncio.TaskGroup` in that it cancels all tasks still
+    running after exiting the context manager, rather than waiting for them to finish.
+
+    A `TaskContext` can have an optional `grace` period in seconds, which will wait for a certain
+    amount of time before cancelling all remaining tasks. This is useful for allowing tasks to
+    gracefully exit when they determine that the context is shutting down.
 
     Usage:
+
+    ```python notest
     async with TaskContext() as task_context:
-        task = task_context.create(coro())
+        task = task_context.create_task(coro())
+    ```
     """
 
     _loops: Set[asyncio.Task]
@@ -144,11 +153,7 @@ class TaskContext:
                 if task.done() or task in self._loops:
                     continue
 
-                if sys.version_info >= (3, 11):
-                    already_cancelling = task.cancelling() > 0
-                    if not already_cancelling:
-                        logger.warning(f"Canceling remaining unfinished task: {task}")
-
+                # Cancel any remaining unfinished tasks.
                 task.cancel()
 
     async def __aexit__(self, exc_type, value, tb):
