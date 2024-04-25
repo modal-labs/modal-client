@@ -715,6 +715,11 @@ class _App:
 
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
+            # hacky - needed to get existing_function_id stability on the class-level function entry:
+            self._add_object(f"{tag}::class_function", cls._class_function)
+            for method_name, func in cls._functions.items():
+                self._add_object(f"{tag}.{method_name}", func)
+
             return cls
 
         return wrapper
