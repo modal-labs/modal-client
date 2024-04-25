@@ -16,7 +16,7 @@ container_cli = typer.Typer(name="container", help="Manage running containers.",
 
 @container_cli.command("list")
 @synchronizer.create_blocking
-async def list():
+async def list(json: bool = False):
     """List all containers that are currently running."""
     client = await _Client.from_env()
     res: api_pb2.TaskListResponse = await client.stub.TaskList(api_pb2.TaskListRequest())
@@ -30,11 +30,11 @@ async def list():
                 task_stats.task_id,
                 task_stats.app_id,
                 task_stats.app_description,
-                timestamp_to_local(task_stats.started_at) if task_stats.started_at else "Pending",
+                timestamp_to_local(task_stats.started_at, json) if task_stats.started_at else "Pending",
             ]
         )
 
-    display_table(column_names, rows, json=False, title="Active Containers")
+    display_table(column_names, rows, json=json, title="Active Containers")
 
 
 @container_cli.command("exec")
