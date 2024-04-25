@@ -28,12 +28,24 @@ def test_secret_from_dotenv(servicer, client):
     with tempfile.TemporaryDirectory() as tmpdirname:
         with open(os.path.join(tmpdirname, ".env"), "w") as f:
             f.write("# My settings\nUSER=user\nPASSWORD=abc123\n")
+
+        with open(os.path.join(tmpdirname, ".env-dev"), "w") as f:
+            f.write("# My settings\nUSER=user2\nPASSWORD=abc456\n")
+
         app = App()
         secret = Secret.from_dotenv(tmpdirname)
         app.function(secrets=[secret])(dummy)
         with app.run(client=client):
             assert secret.object_id == "st-0"
             assert servicer.secrets["st-0"] == {"USER": "user", "PASSWORD": "abc123"}
+
+        app = App()
+        secret = Secret.from_dotenv(tmpdirname, filename=".env-dev")
+        app.function(secrets=[secret])(dummy)
+        with app.run(client=client):
+            assert secret.object_id == "st-1"
+            assert servicer.secrets["st-1"] == {"USER": "user2", "PASSWORD": "abc456"}
+
 
 @mock.patch.dict(os.environ, {"FOO": "easy", "BAR": "1234"})
 def test_secret_from_local_environ(servicer, client):
@@ -46,7 +58,6 @@ def test_secret_from_local_environ(servicer, client):
 
     with pytest.raises(InvalidError, match="NOTFOUND"):
         Secret.from_local_environ(["FOO", "NOTFOUND"])
-
 
 
 def test_init_types():
