@@ -10,6 +10,18 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.114 (2024-04-25)
+
+* `Secret.from_dotenv` now accepts an optional filename keyword argument:
+
+    ```python
+    @app.function(secrets=[modal.Secret.from_dotenv(filename=".env-dev")])
+    def run():
+        ...
+    ```
+
+
+
 ### 0.62.110 (2024-04-25)
 
 - Passing a glob `**` argument to the `modal volume get` CLI has been deprecated — instead, simply download the desired directory path, or `/` for the entire volume.
