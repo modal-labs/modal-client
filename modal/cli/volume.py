@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -19,7 +18,7 @@ from modal._output import step_completed, step_progress
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli._download import _volume_download
-from modal.cli.utils import ENV_OPTION, display_table
+from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.exception import deprecation_warning
@@ -110,14 +109,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env_part = f" in environment '{env}'" if env else ""
     column_names = ["Name", "Created at"]
     rows = []
-    locale_tz = datetime.now().astimezone().tzinfo
     for item in response.items:
-        rows.append(
-            [
-                item.label,
-                str(datetime.fromtimestamp(item.created_at, tz=locale_tz)),
-            ]
-        )
+        rows.append([item.label, timestamp_to_local(item.created_at, json)])
     display_table(column_names, rows, json, title=f"Volumes{env_part}")
 
 
@@ -126,6 +119,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 async def ls(
     volume_name: str,
     path: str = Argument(default="/"),
+    json: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
@@ -147,7 +141,6 @@ async def ls(
         for name in ["filename", "type", "created/modified", "size"]:
             table.add_column(name)
 
-        locale_tz = datetime.now().astimezone().tzinfo
         for entry in entries:
             if entry.type == api_pb2.FileEntry.FileType.DIRECTORY:
                 filetype = "dir"
@@ -158,7 +151,7 @@ async def ls(
             table.add_row(
                 entry.path,
                 filetype,
-                str(datetime.fromtimestamp(entry.mtime, tz=locale_tz)),
+                timestamp_to_local(entry.mtime, False),
                 humanize_filesize(entry.size),
             )
         console.print(table)

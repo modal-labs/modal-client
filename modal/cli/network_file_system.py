@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -20,7 +19,7 @@ from modal._output import step_completed, step_progress
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli._download import _volume_download
-from modal.cli.utils import ENV_OPTION, display_table
+from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.network_file_system import _NetworkFileSystem
@@ -41,13 +40,12 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env_part = f" in environment '{env}'" if env else ""
     column_names = ["Name", "Location", "Created at"]
     rows = []
-    locale_tz = datetime.now().astimezone().tzinfo
     for item in response.items:
         rows.append(
             [
                 item.label,
                 display_location(item.cloud_provider),
-                str(datetime.fromtimestamp(item.created_at, tz=locale_tz)),
+                timestamp_to_local(item.created_at, json),
             ]
         )
     display_table(column_names, rows, json, title=f"Shared Volumes{env_part}")

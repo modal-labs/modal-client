@@ -45,8 +45,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
                 app_stats.app_id,
                 app_stats.description,
                 state,
-                timestamp_to_local(app_stats.created_at),
-                timestamp_to_local(app_stats.stopped_at),
+                timestamp_to_local(app_stats.created_at, json),
+                timestamp_to_local(app_stats.stopped_at, json),
             ]
         )
 
