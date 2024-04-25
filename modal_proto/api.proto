@@ -938,7 +938,9 @@ message FunctionHandleMetadata {
   Function.FunctionType function_type = 8;
   string web_url = 28;
   bool is_method = 39;
-  bool call_with_method_name = 40;
+
+  string use_function_id = 40; // used for methods
+  string use_method_name = 41; // used for methods
 }
 
 message FunctionCreateRequest {

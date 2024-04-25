@@ -288,8 +288,10 @@ class _Function(_Object, type_prefix="fu"):
             function_definition = api_pb2.Function(
                 function_name=lookup_name,
                 webhook_config=webhook_config,
-                # TODO: schedule, retries,
+                # TODO: schedule, retries?
                 is_method=True,
+                use_function_id=class_function.object_id,
+                use_method_name=method_name,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -298,7 +300,7 @@ class _Function(_Object, type_prefix="fu"):
             )
             response = await resolver.client.stub.FunctionCreate(request)
             self._hydrate(
-                class_function.object_id,  # note that this uses the object id of the "class function"
+                response.function_id,
                 resolver.client,
                 response.handle_metadata,
             )
