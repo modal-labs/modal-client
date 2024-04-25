@@ -61,7 +61,7 @@ def test_call_class_sync(client, servicer):
 
 # Reusing the app runs into an issue with stale function handles.
 # TODO (akshat): have all the client tests use separate apps, and throw
-# an exception if the user tries to reuse a app.
+# an exception if the user tries to reuse an app.
 app_remote = App()
 
 
