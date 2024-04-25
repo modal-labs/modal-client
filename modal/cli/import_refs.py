@@ -117,16 +117,16 @@ def get_by_object_path_try_possible_app_names(obj: Any, obj_path: Optional[str])
                 (2024, 4, 20),
                 "The symbol `app` is present at the module level but it's not a Modal app."
                 " We will use `stub` instead, but this will not work in future Modal versions."
-                " Suggestion: change the name of `app` to something else."
+                " Suggestion: change the name of `app` to something else.",
             )
             return stub
         elif isinstance(stub, App):
             # TODO(erikbern): enable this deprecation warning shortly
-            #deprecation_warning(
+            # deprecation_warning(
             #    (2024, 4, 20),
             #    "The symbol `app` is not present but `stub` is. This will not work in future"
             #    " Modal versions. Suggestion: change the name of `stub` to `app`."
-            #)
+            # )
             return stub
         else:
             return None
@@ -192,9 +192,9 @@ def _show_no_auto_detectable_app(app_ref: ImportRef) -> None:
 
     if object_path is None:
         guidance_msg = (
-            f"Expected to find a app variable named **`{DEFAULT_APP_NAME}`** (the default app name). If your `modal.App` is named differently, "
+            f"Expected to find an app variable named **`{DEFAULT_APP_NAME}`** (the default app name). If your `modal.App` is named differently, "
             "you must specify it in the app ref argument. "
-            f"For example a app variable `app_2 = modal.App()` in `{import_path}` would "
+            f"For example an App variable `app_2 = modal.App()` in `{import_path}` would "
             f"be specified as `{import_path}::app_2`."
         )
         md = Markdown(guidance_msg)
@@ -271,7 +271,7 @@ def import_function(
             )
         return app_or_function
     else:
-        raise click.UsageError(f"{app_or_function} is not a Modal entity (should be a App or Function)")
+        raise click.UsageError(f"{app_or_function} is not a Modal entity (should be an App or Function)")
 
 
 # For backwards compatibility - delete soon

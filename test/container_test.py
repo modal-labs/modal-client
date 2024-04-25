@@ -798,7 +798,8 @@ def test_multiapp_serialized_func(unix_servicer, caplog):
 
 @skip_github_non_linux
 def test_image_run_function_no_warn(unix_servicer, caplog):
-    # builder functions currently aren't tied to any modal app, so they shouldn't need to warn if they can't determine a app to use
+    # builder functions currently aren't tied to any modal app,
+    # so they shouldn't need to warn if they can't determine which app to use
     ret = _run_container(
         unix_servicer,
         "test.supports.image_run_function",
