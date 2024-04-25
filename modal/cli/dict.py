@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2024
-from datetime import datetime
 from typing import Optional
 
 import typer
@@ -9,7 +8,7 @@ from typer import Argument, Option, Typer
 from modal._resolver import Resolver
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.dict import _Dict
 from modal.environments import ensure_env
@@ -44,10 +43,7 @@ async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     request = api_pb2.DictListRequest(environment_name=env)
     response = await retry_transient_errors(client.stub.DictList, request)
 
-    def format_timestamp(t: float) -> str:
-        return datetime.strftime(datetime.fromtimestamp(t), "%Y-%m-%d %H:%M") + " UTC"
-
-    rows = [(d.name, format_timestamp(d.created_at)) for d in response.dicts]
+    rows = [(d.name, timestamp_to_local(d.created_at, json)) for d in response.dicts]
     display_table(["Name", "Created at"], rows, json)
 
 
