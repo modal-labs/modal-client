@@ -1,11 +1,9 @@
 # Copyright Modal Labs 2024
-import builtins
 from datetime import datetime
 from typing import Optional
 
 import typer
 from rich.console import Console
-from rich.json import JSON
 from typer import Argument, Option, Typer
 
 from modal._resolver import Resolver
@@ -87,14 +85,14 @@ async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
     console.print(val)
 
 
-@dict_cli.command(name="show")
+@dict_cli.command(name="items")
 @synchronizer.create_blocking
-async def show(
+async def items(
     name: str,
     n: int = Argument(default=20, help="Limit the number of entries shown"),
     *,
-    all: bool = Option(default=False, help="Ignore N and print all entries in the Dict (may be slow)"),
-    repr: bool = Option(default=False, help="Display items using repr() to see more details"),
+    all: bool = Option(False, "-a", "--all", help="Ignore N and print all entries in the Dict (may be slow)"),
+    use_repr: bool = Option(False, "-r", "--repr", help="Display items using `repr()` to see more details"),
     json: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
@@ -108,17 +106,15 @@ async def show(
     i, items = 0, []
     async for key, val in d.items():
         i += 1
-        if not all and i > n:
+        if not json and not all and i > n:
             items.append(("...", "..."))
             break
         else:
-            display_item = (builtins.repr(key), builtins.repr(val)) if repr else (str(key), str(val))
+            if json:
+                display_item = key, val
+            else:
+                cast = repr if use_repr else str
+                display_item = cast(key), cast(val)  # type: ignore  # mypy/issue/12056
             items.append(display_item)
 
-    if json:
-        # Note, we don't use the json= option of display_table because we want to display
-        # the dict itself as a JSON, rather than have a JSON representation of the table.
-        console = Console()
-        console.print(JSON.from_data(dict(items)))
-    else:
-        display_table(["Key", "Value"], [[str(k), str(v)] for k, v in items])
+    display_table(["Key", "Value"], items, json)

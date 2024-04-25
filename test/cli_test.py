@@ -695,15 +695,21 @@ def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
     servicer.deployed_dicts[key] = dict_id
     servicer.dicts[dict_id] = {dumps("a"): dumps(123), dumps("b"): dumps("blah")}
 
-    res = _run(["dict", "show", "baz-dict"])
+    res = _run(["dict", "items", "baz-dict"])
+    assert re.search(r" Key .+ Value", res.stdout)
     assert re.search(r" a .+ 123 ", res.stdout)
     assert re.search(r" b .+ blah ", res.stdout)
 
-    res = _run(["dict", "show", "baz-dict", "1"])
+    res = _run(["dict", "items", "baz-dict", "1"])
     assert re.search(r"\.\.\. .+ \.\.\.", res.stdout)
     assert "blah" not in res.stdout
 
-    res = _run(["dict", "show", "baz-dict", "2"])
+    res = _run(["dict", "items", "baz-dict", "2"])
+    assert "..." not in res.stdout
+
+    res = _run(["dict", "items", "baz-dict", "--json"])
+    assert '"Key": "a"' in res.stdout
+    assert '"Value": 123' in res.stdout
     assert "..." not in res.stdout
 
     assert _run(["dict", "get", "baz-dict", "a"]).stdout == "123\n"
