@@ -1,11 +1,8 @@
 # Copyright Modal Labs 2022
 import os
-import shutil
 import sys
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Optional
 
 import typer
@@ -22,7 +19,7 @@ from modal._location import display_location
 from modal._output import step_completed, step_progress
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli._download import _glob_download
+from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -119,9 +116,6 @@ async def ls(
             print(entry.path)
 
 
-PIPE_PATH = Path("-")
-
-
 @nfs_cli.command(
     name="put",
     help="""Upload a file or directory to a network file system.
@@ -177,8 +171,8 @@ async def get(
 ):
     """Download a file from a network file system.
 
-    Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download all matching *files*, preserving
-    the source directory structure for the matched files.
+    Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download
+    all matching files, preserving their directory structure.
 
     For example, to download an entire network file system into `dump_volume`:
 
@@ -186,47 +180,12 @@ async def get(
     modal nfs get <volume-name> "**" dump_volume
     ```
 
-    Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths).
+    Use "-" as LOCAL_DESTINATION to write file contents to standard output.
     """
     ensure_env(env)
     destination = Path(local_destination)
     volume = await _volume_from_name(volume_name)
-
-    if "*" in remote_path:
-        await _glob_download(volume, remote_path, destination, force)
-        return
-
-    if destination != PIPE_PATH:
-        if destination.is_dir():
-            destination = destination / remote_path.rsplit("/")[-1]
-
-        if destination.exists() and not force:
-            raise UsageError(f"'{destination}' already exists")
-
-        if not destination.parent.exists():
-            raise UsageError(f"Local directory '{destination.parent}' does not exist")
-
-    @contextmanager
-    def _destination_stream():
-        if destination == PIPE_PATH:
-            yield sys.stdout.buffer
-        else:
-            with NamedTemporaryFile(delete=False) as fp:
-                yield fp
-            shutil.move(fp.name, destination)
-
-    b = 0
-    try:
-        with _destination_stream() as fp:
-            async for chunk in volume.read_file(remote_path):
-                fp.write(chunk)
-                b += len(chunk)
-    except GRPCError as exc:
-        if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
-            raise UsageError(exc.message)
-
-    if destination != PIPE_PATH:
-        print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
+    await _volume_download(volume, remote_path, destination, force)
 
 
 @nfs_cli.command(name="rm", help="Delete a file or directory from a network file system.")

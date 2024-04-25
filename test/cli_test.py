@@ -454,7 +454,7 @@ def test_logs(servicer, server_url_env):
         assert res.stdout == "hello\n"
 
 
-def test_nfs_get(set_env_client):
+def test_nfs_get(set_env_client, servicer):
     nfs_name = "my-shared-nfs"
     _run(["nfs", "create", nfs_name])
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -490,7 +490,7 @@ def test_volume_get(servicer, set_env_client):
             assert f.read() == file_contents
 
     with tempfile.TemporaryDirectory() as tmpdir2:
-        _run(["volume", "get", vol_name, "**", tmpdir2])
+        _run(["volume", "get", vol_name, "/", tmpdir2])
         with open(os.path.join(tmpdir2, file_path.decode()), "rb") as f:
             assert f.read() == file_contents
 
@@ -542,7 +542,7 @@ def test_volume_rm(servicer, set_env_client):
             assert f.read() == file_contents
 
         _run(["volume", "rm", vol_name, file_path.decode()])
-        _run(["volume", "get", vol_name, file_path.decode()], expected_exit_code=2, expected_stderr=None)
+        _run(["volume", "get", vol_name, file_path.decode()], expected_exit_code=1, expected_stderr=None)
 
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])

@@ -346,7 +346,7 @@ def test_persisted(servicer, client, delete_as_instance_method):
 def test_ephemeral(servicer, client):
     assert servicer.n_vol_heartbeats == 0
     with modal.Volume.ephemeral(client=client, _heartbeat_sleep=1) as vol:
-        assert vol.listdir("**") == []
+        assert vol.listdir("/") == []
         # TODO(erikbern): perform some operations
         time.sleep(1.5)  # Make time for 2 heartbeats
     assert servicer.n_vol_heartbeats == 2
@@ -354,7 +354,7 @@ def test_ephemeral(servicer, client):
 
 def test_lazy_hydration_from_named(set_env_client):
     vol = modal.Volume.from_name("my-vol", create_if_missing=True)
-    assert vol.listdir("**") == []
+    assert vol.listdir("/") == []
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="needs /proc")
