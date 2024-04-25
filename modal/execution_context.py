@@ -17,6 +17,11 @@ def is_local() -> bool:
 
 
 async def _interact() -> None:
+    """Enable interactivity with user input inside a Modal container.
+
+    See the [interactivity guide](https://modal.com/docs/guide/developing-debugging#interactivity)
+    for more information on how to use this function.
+    """
     container_io_manager = _ContainerIOManager._singleton
     if not container_io_manager:
         raise InvalidError("Interactivity only works inside a Modal container.")
