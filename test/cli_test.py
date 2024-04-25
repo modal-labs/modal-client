@@ -715,5 +715,5 @@ def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
     assert _run(["dict", "get", "baz-dict", "a"]).stdout == "123\n"
     assert _run(["dict", "get", "baz-dict", "b"]).stdout == "blah\n"
 
-    res = _run(["dict", "clear", "baz-dict"])
+    res = _run(["dict", "clear", "baz-dict", "--yes"])
     assert servicer.dicts[dict_id] == {}

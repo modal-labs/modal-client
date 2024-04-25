@@ -49,9 +49,15 @@ async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
 
 @dict_cli.command("clear")
 @synchronizer.create_blocking
-async def clear(name: str, *, env: Optional[str] = ENV_OPTION):
+async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
     """Clear the contents of a named Dict by deleting all of its data."""
     d = await _Dict.lookup(name, environment_name=env)
+    if not yes:
+        typer.confirm(
+            f"Are you sure you want to irrevocably delete the contents of modal.Dict '{name}'?",
+            default=False,
+            abort=True,
+        )
     await d.clear()
 
 
@@ -59,6 +65,8 @@ async def clear(name: str, *, env: Optional[str] = ENV_OPTION):
 @synchronizer.create_blocking
 async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
     """Delete a named Dict object and all of its data."""
+    # Lookup first to validate the name, even though delete is a staticmethod
+    await _Dict.lookup(name, environment_name=env)
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Dict '{name}'?",
