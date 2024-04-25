@@ -1934,7 +1934,7 @@ message VolumeListFilesRequest {
   string volume_id = 1;
   string path = 2;
   bool recursive = 4;
-  optional int32 max_entries = 3;
+  optional uint32 max_entries = 3;
 }
 
 message VolumeListFilesResponse {
