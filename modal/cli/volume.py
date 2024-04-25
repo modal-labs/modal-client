@@ -18,7 +18,7 @@ from modal._output import step_completed, step_progress
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli._download import _volume_download
-from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.exception import deprecation_warning
@@ -249,7 +249,7 @@ async def cp(
 @synchronizer.create_blocking
 async def delete(
     volume_name: str = Argument(help="Name of the modal.Volume to be deleted. Case sensitive"),
-    yes: bool = Option(default=False, help="Delete without prompting for confirmation."),
+    yes: bool = YES_OPTION,
     confirm: bool = Option(default=False, help="DEPRECATED: See `--yes` option"),
     env: Optional[str] = ENV_OPTION,
 ):
