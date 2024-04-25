@@ -10,7 +10,7 @@ access to serverless cloud compute from Python scripts on your local computer.
 
 ## Documentation
 
-See the [online documentation](https://modal.com/docs/) for many
+See the [online documentation](https://modal.com/docs/guide) for many
 [example applications](https://modal.com/docs/examples),
 a [user guide](https://modal.com/docs/guide), and the detailed
 [API reference](https://modal.com/docs/reference).
