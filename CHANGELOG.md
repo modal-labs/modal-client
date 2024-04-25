@@ -10,6 +10,15 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.110 (2024-04-25)
+
+- Passing a glob `**` argument to the `modal volume get` CLI has been deprecated — instead, simply download the desired directory path, or `/` for the entire volume.
+- `Volume.listdir()` no longer takes trailing glob arguments. Use `recursive=True` instead.
+- `modal volume get` and `modal nfs get` performance is improved when downloading a single file. They also now work with multiple files when outputting to stdout.
+- Fixed a visual bug where `modal volume get` on a single file will incorrectly display the destination path.
+
+
+
 ### 0.62.109 (2024-04-24)
 
 - Improved feedback for deserialization failures when objects are being transferred between local / remote environments.
