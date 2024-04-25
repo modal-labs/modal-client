@@ -1,13 +1,14 @@
 # Copyright Modal Labs 2022
 import hashlib
 import os
+import platform
 import pytest
 import sys
 from pathlib import Path
 
-from modal import Stub
-from modal._blob_utils import LARGE_FILE_LIMIT
-from modal.exception import NotFoundError
+from modal import App
+from modal._utils.blob_utils import LARGE_FILE_LIMIT
+from modal.exception import ModuleNotMountable
 from modal.mount import Mount
 
 
@@ -25,18 +26,21 @@ async def test_get_files(servicer, client, tmpdir):
     async for upload_spec in Mount._get_files.aio(m.entries):
         files[upload_spec.mount_filename] = upload_spec
 
+    os.umask(umask := os.umask(0o022))  # Get the current umask
+    expected_mode = 0o644 if platform.system() == "Windows" else 0o666 - umask
+
     assert "/small.py" in files
     assert "/large.py" in files
     assert "/fluff" not in files
     assert files["/small.py"].use_blob is False
     assert files["/small.py"].content == small_content
     assert files["/small.py"].sha256_hex == hashlib.sha256(small_content).hexdigest()
-    assert files["/small.py"].mode == 0o644
+    assert files["/small.py"].mode == expected_mode
 
     assert files["/large.py"].use_blob is True
     assert files["/large.py"].content is None
     assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
-    assert files["/large.py"].mode == 0o644
+    assert files["/large.py"].mode == expected_mode
 
     await m._deploy.aio("my-mount", client=client)
     blob_id = max(servicer.blobs.keys())  # last uploaded one
@@ -60,7 +64,7 @@ def test_create_mount(servicer, client):
 
     m._deploy("my-mount", client=client)
 
-    assert m.object_id == "mo-123"
+    assert m.object_id == "mo-1"
     assert f"/foo/{cur_filename}" in servicer.files_name2sha
     sha256_hex = servicer.files_name2sha[f"/foo/{cur_filename}"]
     assert sha256_hex in servicer.files_sha2data
@@ -85,58 +89,55 @@ def dummy():
 
 
 def test_from_local_python_packages(servicer, client, test_dir):
-    stub = Stub()
+    app = App()
 
     sys.path.append((test_dir / "supports").as_posix())
 
-    stub.function(mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
+    app.function(mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         files = set(servicer.files_name2sha.keys())
-        assert {
-            # files that should be added
+        expected_files = {
             "/root/pkg_a/a.py",
             "/root/pkg_a/b/c.py",
             "/root/pkg_b/f.py",
             "/root/pkg_b/g/h.py",
             "/root/standalone_file.py",
-        } - files == set()
+        }
+        assert expected_files.issubset(files)
 
-        assert (
-            files
-            & {
-                # files that should not be added
-                "/root/pkg_c/i.py",
-                "/root/pkg_c/j/k.py",
-            }
-            == set()
-        )
+        assert "/root/pkg_c/i.py" not in files
+        assert "/root/pkg_c/j/k.py" not in files
 
 
-def test_stub_mounts(servicer, client, test_dir):
+def test_app_mounts(servicer, client, test_dir):
     sys.path.append((test_dir / "supports").as_posix())
 
-    stub = Stub(mounts=[Mount.from_local_python_packages("pkg_b")])
+    app = App(mounts=[Mount.from_local_python_packages("pkg_b")])
 
-    stub.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
+    app.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
 
-    with stub.run(client=client):
+    with app.run(client=client):
         files = set(servicer.files_name2sha.keys())
-        assert {
+        expected_files = {
             "/root/pkg_a/a.py",
             "/root/pkg_a/b/c.py",
             "/root/pkg_b/f.py",
             "/root/pkg_b/g/h.py",
-        } - files == set()
+        }
+        assert expected_files.issubset(files)
 
-        assert {"/root/pkg_c/i.py", "/root/pkg_c/j/k.py"} & files == set()
+        assert "/root/pkg_c/i.py" not in files
+        assert "/root/pkg_c/j/k.py" not in files
 
 
-def test_from_local_python_packages_missing_module(servicer, client, test_dir):
-    stub = Stub()
+def test_from_local_python_packages_missing_module(servicer, client, test_dir, server_url_env):
+    app = App()
+    app.function(mounts=[Mount.from_local_python_packages("nonexistent_package")])(dummy)
 
-    with pytest.raises(NotFoundError):
-        stub.function(mounts=[Mount.from_local_python_packages("nonexistent_package")])(dummy)
+    with pytest.raises(ModuleNotMountable):
+        with app.run(client=client):
+            pass
 
 
 def test_chained_entries(test_dir):

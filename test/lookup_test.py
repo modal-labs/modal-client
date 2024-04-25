@@ -1,17 +1,17 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import Function, Stub, Volume, web_endpoint
-from modal.exception import DeprecationError, ExecutionError, NotFoundError
-from modal.runner import deploy_stub
+from modal import App, Function, Volume, web_endpoint
+from modal.exception import ExecutionError, NotFoundError
+from modal.runner import deploy_app
 
 
 def test_persistent_object(servicer, client):
-    Volume.new()._deploy("my-volume", client=client)
+    volume_id = Volume.create_deployed("my-volume", client=client)
 
     v: Volume = Volume.lookup("my-volume", client=client)
     assert isinstance(v, Volume)
-    assert v.object_id == "vo-1"
+    assert v.object_id == volume_id
 
     with pytest.raises(NotFoundError):
         Volume.lookup("bazbazbaz", client=client)
@@ -23,10 +23,10 @@ def square(x):
 
 
 def test_lookup_function(servicer, client):
-    stub = Stub()
+    app = App()
 
-    stub.function()(square)
-    deploy_stub(stub, "my-function", client=client)
+    app.function()(square)
+    deploy_app(app, "my-function", client=client)
 
     f = Function.lookup("my-function", "square", client=client)
     assert f.object_id == "fu-1"
@@ -45,32 +45,26 @@ def test_lookup_function(servicer, client):
     with pytest.raises(ExecutionError):
         assert f.local(2, 4) == 20
 
-    # Make sure the old-style local calls raise an error
-    with pytest.raises(DeprecationError):
-        assert f(2, 4)
-
 
 def test_webhook_lookup(servicer, client):
-    stub = Stub()
-    stub.function()(web_endpoint(method="POST")(square))
-    deploy_stub(stub, "my-webhook", client=client)
+    app = App()
+    app.function()(web_endpoint(method="POST")(square))
+    deploy_app(app, "my-webhook", client=client)
 
     f = Function.lookup("my-webhook", "square", client=client)
     assert f.web_url
 
 
 def test_deploy_exists(servicer, client):
-    assert not Volume._exists("my-volume", client=client)
-    v1: Volume = Volume.new()
-    v1._deploy("my-volume", client=client)
-    assert Volume._exists("my-volume", client=client)
+    with pytest.raises(NotFoundError):
+        Volume.lookup("my-volume", client=client)
+    Volume.create_deployed("my-volume", client=client)
+    v1: Volume = Volume.lookup("my-volume", client=client)
     v2: Volume = Volume.lookup("my-volume", client=client)
     assert v1.object_id == v2.object_id
 
 
-def test_deploy_retain_id(servicer, client):
-    v1: Volume = Volume.new()
-    v2: Volume = Volume.new()
-    v1._deploy("my-volume", client=client)
-    v2._deploy("my-volume", client=client)
+def test_create_if_missing(servicer, client):
+    v1: Volume = Volume.lookup("my-volume", create_if_missing=True, client=client)
+    v2: Volume = Volume.lookup("my-volume", client=client)
     assert v1.object_id == v2.object_id

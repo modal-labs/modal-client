@@ -2,6 +2,7 @@
 import functools
 import traceback
 import warnings
+from types import TracebackType
 from typing import Any, Dict, Optional, Tuple
 
 from rich.console import Console, RenderResult, group
@@ -9,8 +10,8 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
 from rich.traceback import PathHighlighter, Stack, Traceback, install
-from tblib import Traceback as TBLibTraceback
 
+from ._vendor.tblib import Traceback as TBLibTraceback
 from .exception import DeprecationError
 
 TBDictType = Dict[str, Any]
@@ -64,6 +65,33 @@ def append_modal_tb(exc: BaseException, tb_dict: TBDictType, line_cache: LineCac
     exc.__traceback__ = tb
 
     setattr(exc, "__line_cache__", line_cache)
+
+
+def reduce_traceback_to_user_code(tb: TracebackType, user_source: str) -> TracebackType:
+    """Return a traceback that does not contain modal entrypoint or synchronicity frames."""
+    # Step forward all the way through the traceback and drop any synchronicity frames
+    tb_root = tb
+    while tb is not None:
+        while tb.tb_next is not None:
+            if "/site-packages/synchronicity/" in tb.tb_next.tb_frame.f_code.co_filename:
+                tb.tb_next = tb.tb_next.tb_next
+            else:
+                break
+        tb = tb.tb_next
+    tb = tb_root
+
+    # Now step forward again until we get to first frame of user code
+    if user_source.endswith(".py"):
+        while tb is not None and tb.tb_frame.f_code.co_filename != user_source:
+            tb = tb.tb_next
+    else:
+        while tb is not None and tb.tb_frame.f_code.co_name != "<module>":
+            tb = tb.tb_next
+    if tb is None:
+        # In case we didn't find a frame that matched the user source, revert to the original root
+        tb = tb_root
+
+    return tb
 
 
 @group()
@@ -204,12 +232,12 @@ def setup_rich_traceback() -> None:
     Traceback._render_stack = _render_stack  # type: ignore
     Traceback.from_exception = _from_exception  # type: ignore
 
+    import click
     import grpclib
     import synchronicity
+    import typer
 
-    import modal_utils
-
-    install(suppress=[synchronicity, modal_utils, grpclib], extra_lines=1)
+    install(suppress=[synchronicity, grpclib, click, typer], extra_lines=1)
 
 
 def highlight_modal_deprecation_warnings() -> None:
@@ -222,8 +250,8 @@ def highlight_modal_deprecation_warnings() -> None:
             date = content[:10]
             message = content[11:].strip()
             try:
-                with open(filename) as f:
-                    source = f.readlines()[lineno - 1].strip()
+                with open(filename, "rt", encoding="utf-8", errors="replace") as code_file:
+                    source = code_file.readlines()[lineno - 1].strip()
                 message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
             except OSError:
                 # e.g., when filename is "<unknown>"; raises FileNotFoundError on posix but OSError on windows

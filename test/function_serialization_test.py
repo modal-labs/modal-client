@@ -1,21 +1,21 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import Stub
+from modal import App
 from modal._serialization import deserialize
 
 
 @pytest.mark.asyncio
 async def test_serialize_deserialize_function(servicer, client):
-    stub = Stub()
+    app = App()
 
-    @stub.function(serialized=True, name="foo")
+    @app.function(serialized=True, name="foo")
     def foo():
         2 * foo.remote()
 
     assert foo.object_id is None
 
-    with stub.run(client=client):
+    with app.run(client=client):
         object_id = foo.object_id
 
     assert object_id is not None

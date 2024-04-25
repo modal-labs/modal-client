@@ -1,11 +1,7 @@
 # Copyright Modal Labs 2022
 import os
-import shutil
 import sys
-from contextlib import contextmanager
-from datetime import datetime
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Optional
 
 import typer
@@ -20,17 +16,14 @@ from typer import Typer
 import modal
 from modal._location import display_location
 from modal._output import step_completed, step_progress
-from modal.cli._download import _glob_download
-from modal.cli.utils import ENV_OPTION, display_table
+from modal._utils.async_utils import synchronizer
+from modal._utils.grpc_utils import retry_transient_errors
+from modal.cli._download import _volume_download
+from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.network_file_system import _NetworkFileSystem
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronizer
-from modal_utils.grpc_utils import retry_transient_errors
-
-FileType = api_pb2.SharedVolumeListFilesEntry.FileType
-
 
 nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
 
@@ -47,13 +40,12 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env_part = f" in environment '{env}'" if env else ""
     column_names = ["Name", "Location", "Created at"]
     rows = []
-    locale_tz = datetime.now().astimezone().tzinfo
     for item in response.items:
         rows.append(
             [
                 item.label,
                 display_location(item.cloud_provider),
-                str(datetime.fromtimestamp(item.created_at, tz=locale_tz)),
+                timestamp_to_local(item.created_at, json),
             ]
         )
     display_table(column_names, rows, json, title=f"Shared Volumes{env_part}")
@@ -61,7 +53,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 
 def gen_usage_code(label):
     return f"""
-@stub.function(network_file_systems={{"/my_vol": modal.NetworkFileSystem.from_name("{label}")}})
+@app.function(network_file_systems={{"/my_vol": modal.NetworkFileSystem.from_name("{label}")}})
 def some_func():
     os.listdir("/my_vol")
 """
@@ -73,8 +65,7 @@ def create(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = modal.NetworkFileSystem.new()
-    volume._deploy(name, environment_name=env)
+    modal.NetworkFileSystem.create_deployed(name, environment_name=env)
     console = Console()
     console.print(f"Created volume '{name}'. \n\nCode example:\n")
     usage = Syntax(gen_usage_code(name), "python")
@@ -115,15 +106,12 @@ async def ls(
         table.add_column("type")
 
         for entry in entries:
-            filetype = "dir" if entry.type == FileType.DIRECTORY else "file"
+            filetype = "dir" if entry.type == api_pb2.FileEntry.FileType.DIRECTORY else "file"
             table.add_row(entry.path, filetype)
         console.print(table)
     else:
         for entry in entries:
             print(entry.path)
-
-
-PIPE_PATH = Path("-")
 
 
 @nfs_cli.command(
@@ -181,8 +169,8 @@ async def get(
 ):
     """Download a file from a network file system.
 
-    Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download all matching *files*, preserving
-    the source directory structure for the matched files.
+    Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download
+    all matching files, preserving their directory structure.
 
     For example, to download an entire network file system into `dump_volume`:
 
@@ -190,56 +178,12 @@ async def get(
     modal nfs get <volume-name> "**" dump_volume
     ```
 
-    Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths).
+    Use "-" as LOCAL_DESTINATION to write file contents to standard output.
     """
     ensure_env(env)
     destination = Path(local_destination)
     volume = await _volume_from_name(volume_name)
-
-    def is_file_fn(entry):
-        return entry.type == FileType.FILE
-
-    if "*" in remote_path:
-        await _glob_download(
-            volume,
-            is_file_fn,
-            remote_path,
-            destination,
-            force,
-        )
-        return
-
-    if destination != PIPE_PATH:
-        if destination.is_dir():
-            destination = destination / remote_path.rsplit("/")[-1]
-
-        if destination.exists() and not force:
-            raise UsageError(f"'{destination}' already exists")
-
-        if not destination.parent.exists():
-            raise UsageError(f"Local directory '{destination.parent}' does not exist")
-
-    @contextmanager
-    def _destination_stream():
-        if destination == PIPE_PATH:
-            yield sys.stdout.buffer
-        else:
-            with NamedTemporaryFile(delete=False) as fp:
-                yield fp
-            shutil.move(fp.name, destination)
-
-    b = 0
-    try:
-        with _destination_stream() as fp:
-            async for chunk in volume.read_file(remote_path):
-                fp.write(chunk)
-                b += len(chunk)
-    except GRPCError as exc:
-        if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
-            raise UsageError(exc.message)
-
-    if destination != PIPE_PATH:
-        print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
+    await _volume_download(volume, remote_path, destination, force)
 
 
 @nfs_cli.command(name="rm", help="Delete a file or directory from a network file system.")

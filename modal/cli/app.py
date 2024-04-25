@@ -8,12 +8,12 @@ from grpclib import GRPCError, Status
 from rich.text import Text
 
 from modal._output import OutputManager, get_app_logs_loop
-from modal.app import _list_apps
+from modal._utils.async_utils import synchronizer
+from modal.app_utils import _list_apps
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronizer
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
@@ -32,12 +32,11 @@ APP_STATE_TO_MESSAGE = {
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     """List all running or recently running Modal apps for the current account"""
-    client = await _Client.from_env()
     env = ensure_env(env)
 
     column_names = ["App ID", "Name", "State", "Creation time", "Stop time"]
     rows: List[List[Union[Text, str]]] = []
-    apps = await _list_apps(env=env, client=client)
+    apps: List[api_pb2.AppStats] = await _list_apps(env)
     for app_stats in apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
 
@@ -46,8 +45,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
                 app_stats.app_id,
                 app_stats.description,
                 state,
-                timestamp_to_local(app_stats.created_at),
-                timestamp_to_local(app_stats.stopped_at),
+                timestamp_to_local(app_stats.created_at, json),
+                timestamp_to_local(app_stats.stopped_at, json),
             ]
         )
 

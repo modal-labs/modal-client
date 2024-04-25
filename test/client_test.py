@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
 import platform
 import pytest
+import subprocess
+import sys
 
 from google.protobuf.empty_pb2 import Empty
 
@@ -192,3 +194,10 @@ def test_implicit_default_profile_warning(servicer, modal_config):
     with modal_config(config):
         # A single profile should be fine, even if not explicitly active and named 'default'
         Client.verify(servicer.remote_addr, None)
+
+
+def test_import_modal_from_thread(supports_dir):
+    # this mainly ensures that we don't make any assumptions about which thread *imports* modal
+    # For example, in Python <3.10, creating loop-bound asyncio primitives in global scope would
+    # trigger an exception if there is no event loop in the thread (and it's not the main thread)
+    subprocess.check_call([sys.executable, supports_dir / "import_modal_from_thread.py"])

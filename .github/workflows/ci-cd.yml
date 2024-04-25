@@ -10,6 +10,7 @@ env:
 jobs:
   client-test:
     name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (protobuf=${{ matrix.proto-version }})
+    timeout-minutes: 20
 
     strategy:
       fail-fast: false
@@ -47,10 +48,40 @@ jobs:
         run: inv protoc
 
       - name: Run client tests
-        run: pytest -v -s
+        run: pytest
 
       - name: Run docstring tests
-        run: pytest -s --markdown-docs -m markdown-docs modal
+        env:
+          MODAL_ENVIRONMENT: client-doc-tests
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: pytest --markdown-docs -m markdown-docs modal
+
+  container-dependencies:
+    name: Check minimal container dependencies for ${{ matrix.python-version }}
+    runs-on: ubuntu-20.04
+    timeout-minutes: 4
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          pip install -r modal/requirements/2024.04.txt
+          pip install synchronicity
+
+      - name: Compile protos
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install grpcio-tools
+          python -m grpc_tools.protoc --python_out=. --grpclib_python_out=. --grpc_python_out=. -I . modal_proto/api.proto modal_proto/options.proto
+          deactivate
+
+      - name: Check entrypoint import
+        run: python -c 'import modal._container_entrypoint; import fastapi'
 
   publish-base-images:
     name: |
@@ -58,6 +89,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: [client-test]
     runs-on: ubuntu-20.04
+    timeout-minutes: 5
     env:
       MODAL_LOGLEVEL: DEBUG
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
@@ -66,14 +98,6 @@ jobs:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         image-name: ["debian_slim", "conda", "micromamba"]
-        exclude:
-          # Exclude base images that currently fail to build becasue multidict,
-          # a transitive dependency, has not published wheels for Python 3.12:
-          # https://github.com/aio-libs/multidict/issues/887
-          - python-version: 3.12
-            image-name: conda
-          - python-version: 3.12
-            image-name: micromamba
 
     steps:
       - uses: actions/checkout@v3
@@ -90,7 +114,7 @@ jobs:
 
       - name: Publish base images
         run: |
-          python -m modal_base_images.${{ matrix.image-name }} ${{ matrix.python-version }}
+          python -m modal_global_objects.images.${{ matrix.image-name }} ${{ matrix.python-version }}
 
   publish-client:
     name: Publish client package
@@ -99,6 +123,7 @@ jobs:
     needs: [client-test]
     runs-on: ubuntu-20.04
     concurrency: publish-client
+    timeout-minutes: 5
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -112,6 +137,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           token: ${{ steps.generate_token.outputs.token }}
+          ref: main
 
       - uses: ./.github/actions/setup-cached-python
 
@@ -119,11 +145,16 @@ jobs:
         run: inv update-build-number
 
       - name: Update the changelog
-        run: inv update-changelog
+        run: inv update-changelog --sha=$GITHUB_SHA
+
+      - name: Get the current client version
+        id: version
+        run: echo "client_version=`python -m modal_version`" >> "$GITHUB_OUTPUT"
 
       - uses: EndBug/add-and-commit@v9
         with:
           add: modal_version/_version_generated.py CHANGELOG.md
+          tag: v${{ steps.version.outputs.client_version }}
           message: "[auto-commit] [skip ci] Bump the build number"
           pull: "--rebase --autostash"
           default_author: github_actions
@@ -152,7 +183,7 @@ jobs:
           MODAL_LOGLEVEL: DEBUG
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: python -m modal_base_images.base_mounts
+        run: python -m modal_global_objects.mounts.modal_client_package
 
       - name: Upload to PyPI
         env:

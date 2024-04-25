@@ -4,11 +4,13 @@ import signal
 import sys
 import warnings
 from datetime import date
+from typing import Tuple
 
 
 class Error(Exception):
     """
-    Base error class for all Modal errors.
+    Base class for all Modal errors. See [`modal.exception`](/docs/reference/modal.exception) for the specialized
+    error classes.
 
     **Usage**
 
@@ -52,6 +54,10 @@ class VolumeUploadTimeoutError(TimeoutError):
     """Raised when a Volume upload times out."""
 
 
+class InteractiveTimeoutError(TimeoutError):
+    """Raised when interactive frontends time out while trying to connect to a container."""
+
+
 class AuthError(Error):
     """Raised when a client has missing or invalid authentication."""
 
@@ -76,6 +82,10 @@ class ExecutionError(Error):
     """Raised when something unexpected happened during runtime."""
 
 
+class DeserializationError(Error):
+    """Raised to provide more context when an error is encountered during deserialization."""
+
+
 class DeprecationError(UserWarning):
     """UserWarning category emitted when a deprecated Modal feature or API is used."""
 
@@ -86,8 +96,23 @@ class PendingDeprecationError(UserWarning):
     """Soon to be deprecated feature. Only used intermittently because of multi-repo concerns."""
 
 
-# TODO(erikbern): we have something similready in _function_utils.py
-_INTERNAL_MODULES = ["modal", "modal_utils", "synchronicity"]
+class _CliUserExecutionError(Exception):
+    """mdmd:hidden
+    Private wrapper for exceptions during when importing or running stubs from the CLI.
+
+    This intentionally does not inherit from `modal.exception.Error` because it
+    is a private type that should never bubble up to users. Exceptions raised in
+    the CLI at this stage will have tracebacks printed.
+    """
+
+    def __init__(self, user_source: str):
+        # `user_source` should be the filepath for the user code that is the source of the exception.
+        # This is used by our exception handler to show the traceback starting from that point.
+        self.user_source = user_source
+
+
+# TODO(erikbern): we have something similready in function_utils.py
+_INTERNAL_MODULES = ["modal", "synchronicity"]
 
 
 def _is_internal_frame(frame):
@@ -95,11 +120,13 @@ def _is_internal_frame(frame):
     return module in _INTERNAL_MODULES
 
 
-def deprecation_error(deprecated_on: date, msg: str):
-    raise DeprecationError(f"Deprecated on {deprecated_on}: {msg}")
+def deprecation_error(deprecated_on: Tuple[int, int, int], msg: str):
+    raise DeprecationError(f"Deprecated on {date(*deprecated_on)}: {msg}")
 
 
-def deprecation_warning(deprecated_on: date, msg: str, pending: bool = False, show_source: bool = True) -> None:
+def deprecation_warning(
+    deprecated_on: Tuple[int, int, int], msg: str, *, pending: bool = False, show_source: bool = True
+) -> None:
     """Utility for getting the proper stack entry.
 
     See the implementation of the built-in [warnings.warn](https://docs.python.org/3/library/warnings.html#available-functions).
@@ -120,7 +147,7 @@ def deprecation_warning(deprecated_on: date, msg: str, pending: bool = False, sh
     warning_cls: type = PendingDeprecationError if pending else DeprecationError
 
     # This is a lower-level function that warnings.warn uses
-    warnings.warn_explicit(f"{deprecated_on}: {msg}", warning_cls, filename, lineno)
+    warnings.warn_explicit(f"{date(*deprecated_on)}: {msg}", warning_cls, filename, lineno)
 
 
 def _simulate_preemption_interrupt(signum, frame):
@@ -131,8 +158,10 @@ def _simulate_preemption_interrupt(signum, frame):
 def simulate_preemption(wait_seconds: int, jitter_seconds: int = 0):
     """
     Utility for simulating a preemption interrupt after `wait_seconds` seconds.
-    The first interrupt is the SIGINT/SIGTERM signal. After 30 seconds a second
-    interrupt will trigger. This second interrupt simulates SIGKILL, and should not be caught.
+    The first interrupt is the SIGINT signal. After 30 seconds, a second
+    interrupt will trigger.
+
+    This second interrupt simulates SIGKILL, and should not be caught.
     Optionally add between zero and `jitter_seconds` seconds of additional waiting before first interrupt.
 
     **Usage:**
@@ -156,3 +185,16 @@ def simulate_preemption(wait_seconds: int, jitter_seconds: int = 0):
     signal.signal(signal.SIGALRM, _simulate_preemption_interrupt)
     jitter = random.randrange(0, jitter_seconds) if jitter_seconds else 0
     signal.alarm(wait_seconds + jitter)
+
+
+class InputCancellation(BaseException):
+    """Raised when the current input is cancelled by the task
+
+    Intentionally a BaseException instead of an Exception, so it won't get
+    caught by unspecified user exception clauses that might be used for retries and
+    other control flow.
+    """
+
+
+class ModuleNotMountable(Exception):
+    pass

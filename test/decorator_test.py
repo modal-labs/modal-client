@@ -1,46 +1,46 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import Stub, asgi_app, method, web_endpoint, wsgi_app
+from modal import App, asgi_app, method, web_endpoint, wsgi_app
 from modal.exception import InvalidError
 
 
 def test_local_entrypoint_forgot_parentheses():
-    stub = Stub()
+    app = App()
 
     with pytest.raises(InvalidError, match="local_entrypoint()"):
 
-        @stub.local_entrypoint  # type: ignore
+        @app.local_entrypoint  # type: ignore
         def f():
             pass
 
 
 def test_function_forgot_parentheses():
-    stub = Stub()
+    app = App()
 
     with pytest.raises(InvalidError, match="function()"):
 
-        @stub.function  # type: ignore
+        @app.function  # type: ignore
         def f():
             pass
 
 
 def test_cls_forgot_parentheses():
-    stub = Stub()
+    app = App()
 
     with pytest.raises(InvalidError, match="cls()"):
 
-        @stub.cls  # type: ignore
+        @app.cls  # type: ignore
         class XYZ:
             pass
 
 
 def test_method_forgot_parentheses():
-    stub = Stub()
+    app = App()
 
     with pytest.raises(InvalidError, match="method()"):
 
-        @stub.cls()
+        @app.cls()
         class XYZ:
             @method  # type: ignore
             def f(self):
@@ -48,36 +48,36 @@ def test_method_forgot_parentheses():
 
 
 def test_invalid_web_decorator_usage():
-    stub = Stub()
+    app = App()
 
     with pytest.raises(InvalidError, match="web_endpoint()"):
 
-        @stub.function()  # type: ignore
+        @app.function()  # type: ignore
         @web_endpoint  # type: ignore
         def my_handle():
             pass
 
     with pytest.raises(InvalidError, match="asgi_app()"):
 
-        @stub.function()  # type: ignore
+        @app.function()  # type: ignore
         @asgi_app  # type: ignore
         def my_handle_asgi():
             pass
 
     with pytest.raises(InvalidError, match="wsgi_app()"):
 
-        @stub.function()  # type: ignore
+        @app.function()  # type: ignore
         @wsgi_app  # type: ignore
         def my_handle_wsgi():
             pass
 
 
 def test_web_endpoint_method():
-    stub = Stub()
+    app = App()
 
     with pytest.raises(InvalidError, match="remove the `@method`"):
 
-        @stub.cls()
+        @app.cls()
         class Container:
             @method()  # type: ignore
             @web_endpoint()

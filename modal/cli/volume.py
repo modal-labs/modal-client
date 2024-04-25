@@ -1,13 +1,10 @@
 # Copyright Modal Labs 2022
 import os
-import shutil
 import sys
-from contextlib import contextmanager
-from datetime import datetime
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import List, Optional
 
+import typer
 from click import UsageError
 from grpclib import GRPCError, Status
 from rich.console import Console
@@ -18,28 +15,23 @@ from typer import Argument, Option, Typer
 
 import modal
 from modal._output import step_completed, step_progress
-from modal.cli._download import _glob_download
-from modal.cli.utils import ENV_OPTION, display_table
+from modal._utils.async_utils import synchronizer
+from modal._utils.grpc_utils import retry_transient_errors
+from modal.cli._download import _volume_download
+from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
+from modal.exception import deprecation_warning
 from modal.volume import _Volume, _VolumeUploadContextManager
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronizer
-from modal_utils.grpc_utils import retry_transient_errors
-
-FileType = api_pb2.VolumeListFilesEntry.FileType
-PIPE_PATH = Path("-")
 
 volume_cli = Typer(
     name="volume",
     no_args_is_help=True,
     help="""
-    [Beta] Read and edit `modal.Volume` volumes.
+    Read and edit `modal.Volume` volumes.
 
-    This command is in preview and may change in the future.
-
-    Previous users of `modal.NetworkFileSystem` should replace their usage with
-    the `modal nfs` command instead.
+    Note: users of `modal.NetworkFileSystem` should use the `modal nfs` command instead.
     """,
 )
 
@@ -66,10 +58,9 @@ def create(
     env: Optional[str] = ENV_OPTION,
 ):
     env_name = ensure_env(env)
-    volume = modal.Volume.new()
-    volume._deploy(name, environment_name=env)
+    modal.Volume.create_deployed(name, environment_name=env)
     usage_code = f"""
-@stub.function(volumes={{"/my_vol": modal.Volume.from_name("{name}")}})
+@app.function(volumes={{"/my_vol": modal.Volume.from_name("{name}")}})
 def some_func():
     os.listdir("/my_vol")
 """
@@ -89,56 +80,24 @@ async def get(
     force: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
-    """Download files from a modal.Volume.
+    """Download files from a Volume object.
 
-    Specifying a glob pattern (using any `*` or `**` patterns) as the `remote_path` will download all matching *files*, preserving
-    the source directory structure for the matched files.
+    If a folder is passed for REMOTE_PATH, the contents of the folder will be downloaded
+    recursively, including all subdirectories.
 
     **Example**
 
     ```bash
-    modal volume get <volume-name> logs/april-12-1.txt .
-    modal volume get <volume-name> "**" dump_volume
+    modal volume get <volume_name> logs/april-12-1.txt
+    modal volume get <volume_name> / volume_data_dump
     ```
 
-    Use "-" (a hyphen) as LOCAL_DESTINATION to write contents of file to stdout (only for non-glob paths).
+    Use "-" as LOCAL_DESTINATION to write file contents to standard output.
     """
     ensure_env(env)
     destination = Path(local_destination)
     volume = await _Volume.lookup(volume_name, environment_name=env)
-
-    def is_file_fn(entry):
-        return entry.type == FileType.FILE
-
-    if "*" in remote_path:
-        await _glob_download(volume, is_file_fn, remote_path, destination, force)
-        return
-
-    if destination != PIPE_PATH:
-        if destination.is_dir():
-            destination = destination / remote_path.rsplit("/")[-1]
-
-        if destination.exists() and not force:
-            raise UsageError(f"'{destination}' already exists")
-        elif not destination.parent.exists():
-            raise UsageError(f"Local directory '{destination.parent}' does not exist")
-
-    @contextmanager
-    def _destination_stream():
-        if destination == PIPE_PATH:
-            yield sys.stdout.buffer
-        else:
-            with NamedTemporaryFile(delete=False) as fp:
-                yield fp
-            shutil.move(fp.name, destination)
-
-    try:
-        with _destination_stream() as fp:
-            await volume.read_file_into_fileobj(remote_path.lstrip("/"), fileobj=fp, progress=destination != PIPE_PATH)
-    except FileNotFoundError as exc:
-        raise UsageError(str(exc))
-    except GRPCError as exc:
-        raise UsageError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+    await _volume_download(volume, remote_path, destination, force)
 
 
 @volume_cli.command(name="list", help="List the details of all modal.Volume volumes in an environment.")
@@ -150,14 +109,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env_part = f" in environment '{env}'" if env else ""
     column_names = ["Name", "Created at"]
     rows = []
-    locale_tz = datetime.now().astimezone().tzinfo
     for item in response.items:
-        rows.append(
-            [
-                item.label,
-                str(datetime.fromtimestamp(item.created_at, tz=locale_tz)),
-            ]
-        )
+        rows.append([item.label, timestamp_to_local(item.created_at, json)])
     display_table(column_names, rows, json, title=f"Volumes{env_part}")
 
 
@@ -166,6 +119,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 async def ls(
     volume_name: str,
     path: str = Argument(default="/"),
+    json: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
@@ -187,18 +141,17 @@ async def ls(
         for name in ["filename", "type", "created/modified", "size"]:
             table.add_column(name)
 
-        locale_tz = datetime.now().astimezone().tzinfo
         for entry in entries:
-            if entry.type == FileType.DIRECTORY:
+            if entry.type == api_pb2.FileEntry.FileType.DIRECTORY:
                 filetype = "dir"
-            elif entry.type == FileType.SYMLINK:
+            elif entry.type == api_pb2.FileEntry.FileType.SYMLINK:
                 filetype = "link"
             else:
                 filetype = "file"
             table.add_row(
                 entry.path,
                 filetype,
-                str(datetime.fromtimestamp(entry.mtime, tz=locale_tz)),
+                timestamp_to_local(entry.mtime, False),
                 humanize_filesize(entry.size),
             )
         console.print(table)
@@ -290,3 +243,29 @@ async def cp(
         raise UsageError("The specified app entity is not a modal.Volume")
     *src_paths, dst_path = paths
     await volume.copy_files(src_paths, dst_path)
+
+
+@volume_cli.command(name="delete", help="Delete a named, persistent modal.Volume.")
+@synchronizer.create_blocking
+async def delete(
+    volume_name: str = Argument(help="Name of the modal.Volume to be deleted. Case sensitive"),
+    yes: bool = Option(default=False, help="Delete without prompting for confirmation."),
+    confirm: bool = Option(default=False, help="DEPRECATED: See `--yes` option"),
+    env: Optional[str] = ENV_OPTION,
+):
+    if confirm:
+        deprecation_warning(
+            (2024, 4, 24),
+            "The `--confirm` option is deprecated; use `--yes` to delete without prompting.",
+            show_source=False,
+        )
+        yes = True
+
+    if not yes:
+        typer.confirm(
+            f"Are you sure you want to irrevocably delete the modal.Volume '{volume_name}'?",
+            default=False,
+            abort=True,
+        )
+
+    await _Volume.delete(label=volume_name, environment_name=env)

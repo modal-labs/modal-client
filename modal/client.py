@@ -2,25 +2,26 @@
 import asyncio
 import platform
 import warnings
-from typing import Awaitable, Callable, Dict, Optional, Tuple
+from typing import AsyncIterator, Awaitable, Callable, ClassVar, Dict, Optional, Tuple
 
+import grpclib.client
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
+from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_grpc, api_pb2
-from modal_utils import async_utils
-from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import create_channel, retry_transient_errors
-from modal_utils.http_utils import http_client_with_tls
 from modal_version import __version__
 
-from ._tracing import inject_tracing_context
+from ._utils import async_utils
+from ._utils.async_utils import synchronize_api
+from ._utils.grpc_utils import create_channel, retry_transient_errors
+from ._utils.http_utils import http_client_with_tls
 from .config import _check_config, config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
-HEARTBEAT_TIMEOUT: float = 10.1
+HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
 CLIENT_CREATE_ATTEMPT_TIMEOUT: float = 4.0
 CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 
@@ -76,31 +77,29 @@ async def _http_check(url: str, timeout: float) -> str:
 
 async def _grpc_exc_string(exc: GRPCError, method_name: str, server_url: str, timeout: float) -> str:
     http_status = await _http_check(server_url, timeout=timeout)
-    return f"{method_name}: {exc.message} [GRPC status: {exc.status.name}, {http_status}]"
+    return f"{method_name}: {exc.message} [gRPC status: {exc.status.name}, {http_status}]"
 
 
 class _Client:
-    _client_from_env = None
-    _client_from_env_lock = None
-
-    client_type: int
+    _client_from_env: ClassVar[Optional["_Client"]] = None
+    _client_from_env_lock: ClassVar[Optional[asyncio.Lock]] = None
 
     def __init__(
         self,
-        server_url,
-        client_type,
-        credentials,
-        version=__version__,
-        *,
-        no_verify=False,
+        server_url: str,
+        client_type: int,
+        credentials: Optional[Tuple[str, str]],
+        version: str = __version__,
     ):
+        """The Modal client object is not intended to be instantiated directly by users."""
         self.server_url = server_url
         self.client_type = client_type
         self.credentials = credentials
         self.version = version
-        self.no_verify = no_verify
+        self._authenticated = False
+        self.image_builder_version: Optional[str] = None
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
-        self._channel = None
+        self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[api_grpc.ModalClientStub] = None
 
     @property
@@ -108,14 +107,15 @@ class _Client:
         """mdmd:hidden"""
         return self._stub
 
+    @property
+    def authenticated(self) -> bool:
+        """mdmd:hidden"""
+        return self._authenticated
+
     async def _open(self):
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self.credentials, self.version)
-        self._channel = create_channel(
-            self.server_url,
-            metadata=metadata,
-            inject_tracing_context=inject_tracing_context,
-        )
+        self._channel = create_channel(self.server_url, metadata=metadata)
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 
     async def _close(self):
@@ -139,7 +139,8 @@ class _Client:
         # ref: github.com/modal-labs/modal-client/pull/108
         self._pre_stop = pre_stop
 
-    async def _verify(self):
+    async def _init(self):
+        """Connect to server and retrieve version information; raise appropriate error for various failures."""
         logger.debug("Client: Starting")
         _check_config()
         try:
@@ -153,10 +154,12 @@ class _Client:
             if resp.warning:
                 ALARM_EMOJI = chr(0x1F6A8)
                 warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
+            self._authenticated = True
+            self.image_builder_version = resp.image_builder_version
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
-                    f"The client version {self.version} is too old. Please update to the latest package on PyPi: https://pypi.org/project/modal"
+                    f"The client version ({self.version}) is too old. Please update (pip install --upgrade modal)."
                 )
             elif exc.status == Status.UNAUTHENTICATED:
                 raise AuthError(exc.message)
@@ -168,40 +171,42 @@ class _Client:
 
     async def __aenter__(self):
         await self._open()
-        if not self.no_verify:
-            try:
-                await self._verify()
-            except BaseException:
-                await self._close()
-                raise
+        try:
+            await self._init()
+        except BaseException:
+            await self._close()
+            raise
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
         await self._close()
 
     @classmethod
-    async def verify(cls, server_url, credentials):
-        """mdmd:hidden"""
-        async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials):
-            pass  # Will call ClientHello
-
-    @classmethod
-    async def unauthenticated_client(cls, server_url: str):
-        """mdmd:hidden"""
-        # Create a connection with no credentials
-        # To be used with the token flow
-        return _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, None, no_verify=True)
+    @asynccontextmanager
+    async def anonymous(cls, server_url: str) -> AsyncIterator["_Client"]:
+        """mdmd:hidden
+        Create a connection with no credentials; to be used for token creation.
+        """
+        logger.debug("Client: Starting client without authentication")
+        client = cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials=None)
+        try:
+            await client._open()
+            # Skip client._init
+            yield client
+        finally:
+            await client._close()
 
     @classmethod
     async def from_env(cls, _override_config=None) -> "_Client":
-        """mdmd:hidden"""
+        """mdmd:hidden
+        Singleton that is instantiated from the Modal config and reused on subsequent calls.
+        """
         if _override_config:
             # Only used for testing
             c = _override_config
         else:
             c = config
 
-        # Sets server_url to socket file path if proxy is available.
         server_url = c["server_url"]
 
         token_id = c["token_id"]
@@ -230,13 +235,13 @@ class _Client:
                 await client._open()
                 async_utils.on_shutdown(client._close())
                 try:
-                    await client._verify()
+                    await client._init()
                 except AuthError:
                     if not credentials:
                         creds_missing_msg = (
-                            "Token missing. Could not authenticate client. "
-                            "If you have token credentials, see modal.com/docs/reference/modal.config for setup help. "
-                            "If you are a new user, register an account at modal.com, then run `modal token new`."
+                            "Token missing. Could not authenticate client."
+                            " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
+                            " If you are a new user, register an account at modal.com, then run `modal token new`."
                         )
                         raise AuthError(creds_missing_msg)
                     else:
@@ -246,15 +251,29 @@ class _Client:
 
     @classmethod
     async def from_credentials(cls, token_id: str, token_secret: str) -> "_Client":
-        """mdmd:hidden"""
+        """mdmd:hidden
+        Constructor based on token credentials; useful for managing Modal on behalf of third-party users.
+        """
+        server_url = config["server_url"]
         client_type = api_pb2.CLIENT_TYPE_CLIENT
         credentials = (token_id, token_secret)
-        server_url = config["server_url"]
-
         client = _Client(server_url, client_type, credentials)
         await client._open()
+        try:
+            await client._init()
+        except BaseException:
+            await client._close()
+            raise
         async_utils.on_shutdown(client._close())
         return client
+
+    @classmethod
+    async def verify(cls, server_url: str, credentials: Tuple[str, str]) -> None:
+        """mdmd:hidden
+        Check whether can the client can connect to this server with these credentials; raise if not.
+        """
+        async with cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials):
+            pass  # Will call ClientHello RPC and possibly raise AuthError or ConnectionError
 
     @classmethod
     def set_env_client(cls, client: Optional["_Client"]):

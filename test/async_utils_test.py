@@ -7,8 +7,8 @@ import pytest
 
 from synchronicity import Synchronizer
 
-from modal_utils import async_utils
-from modal_utils.async_utils import (
+from modal._utils import async_utils
+from modal._utils.async_utils import (
     ConcurrencyPool,
     TaskContext,
     queue_batch_iterator,
@@ -157,7 +157,7 @@ async def test_queue_batch_iterator():
 
 @pytest.mark.asyncio
 async def test_warn_if_generator_is_not_consumed(caplog):
-    @warn_if_generator_is_not_consumed
+    @warn_if_generator_is_not_consumed()
     async def my_generator():
         yield 42
 
@@ -173,8 +173,25 @@ async def test_warn_if_generator_is_not_consumed(caplog):
 
 
 @pytest.mark.asyncio
+def test_warn_if_generator_is_not_consumed_sync(caplog):
+    @warn_if_generator_is_not_consumed()
+    def my_generator():
+        yield 42
+
+    with caplog.at_level(logging.WARNING):
+        g = my_generator()
+        assert "my_generator" in repr(g)
+        del g  # Force destructor
+
+    assert len(caplog.records) == 1
+    assert "my_generator" in caplog.text
+    assert "for" in caplog.text
+    assert "list" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_no_warn_if_generator_is_consumed(caplog):
-    @warn_if_generator_is_not_consumed
+    @warn_if_generator_is_not_consumed()
     async def my_generator():
         yield 42
 

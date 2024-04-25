@@ -1,23 +1,22 @@
 # Copyright Modal Labs 2022
 # Copyright (c) Modal Labs 2022
 
-import inspect
+import ast
+import datetime
+import importlib
+import os
+import pkgutil
 import re
 import subprocess
-
-if not hasattr(inspect, "getargspec"):
-    # Workaround until invoke supports Python 3.11
-    # https://github.com/pyinvoke/invoke/issues/833#issuecomment-1293148106
-    inspect.getargspec = inspect.getfullargspec  # type: ignore
-
-import datetime
-import os
 import sys
+from datetime import date
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import requests
 from invoke import task
+from rich.console import Console
+from rich.table import Table
 
 year = datetime.date.today().year
 copyright_header_start = "# Copyright Modal Labs"
@@ -41,13 +40,27 @@ def lint(ctx):
 
 
 @task
-def mypy(ctx):
-    mypy_allowlist = [
+def type_check(ctx):
+    # mypy will not check the *implementation* (.py) for files that also have .pyi type stubs
+    ctx.run("mypy . --exclude=playground --exclude=venv311 --exclude=venv38", pty=True)
+
+    # use pyright for checking implementation of those files
+    pyright_allowlist = [
         "modal/functions.py",
+        "modal/_utils/__init__.py",
+        "modal/_utils/app_utils.py",
+        "modal/_utils/async_utils.py",
+        "modal/_utils/grpc_testing.py",
+        "modal/_utils/hash_utils.py",
+        "modal/_utils/http_utils.py",
+        "modal/_utils/logger.py",
+        "modal/_utils/mount_utils.py",
+        "modal/_utils/package_utils.py",
+        "modal/_utils/rand_pb_testing.py",
+        "modal/_utils/shell_utils.py",
     ]
 
-    ctx.run("mypy .", pty=True)
-    ctx.run(f"mypy {' '.join(mypy_allowlist)} --follow-imports=skip", pty=True)
+    ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
 
 @task
@@ -55,11 +68,18 @@ def check_copyright(ctx, fix=False):
     invalid_files = []
     d = str(Path(__file__).parent)
     for root, dirs, files in os.walk(d):
-        # jupytext notebook formatted .py files can't be detected as notebooks if we put a copyright comment at the top
         fns = [
             os.path.join(root, fn)
             for fn in files
-            if fn.endswith(".py") and not fn.endswith(".notebook.py") and "/site-packages/" not in root
+            if (
+                fn.endswith(".py")
+                # jupytext notebook formatted .py files can't be detected as notebooks if we put a copyright comment at the top
+                and not fn.endswith(".notebook.py")
+                # vendored code has a different copyright
+                and "_vendor" not in root
+                # third-party code (i.e., in a local venv) has a different copyright
+                and "/site-packages/" not in root
+            )
         ]
         for fn in fns:
             first_line = open(fn).readline()
@@ -79,6 +99,21 @@ def check_copyright(ctx, fix=False):
         raise Exception(
             f"{len(invalid_files)} are missing copyright headers!" " Please run `inv check-copyright --fix`"
         )
+
+
+@task
+def publish_base_mounts(ctx, no_confirm=False):
+    from urllib.parse import urlparse
+
+    from modal import config
+
+    server_url = config.config["server_url"]
+    if "localhost" not in urlparse(server_url).netloc and not no_confirm:
+        answer = input(f"Modal server URL is '{server_url}' not localhost. Continue operation? [y/N]: ")
+        if answer.upper() not in ["Y", "YES"]:
+            exit("Aborting task.")
+    for mount in ["modal_client_package", "python_standalone"]:
+        ctx.run(f"{sys.executable} {Path(__file__).parent}/modal_global_objects/mounts/{mount}.py", pty=True)
 
 
 @task
@@ -148,35 +183,40 @@ build-backend = "setuptools.build_meta"
 
 @task
 def type_stubs(ctx):
-    # we only generate type stubs for modules that contain synchronicity wrapped types
-    # TODO(erikbern): can we automate this list?
-    modules = [
-        "modal.app",
-        "modal.client",
-        "modal.cls",
-        "modal.dict",
-        "modal.environments",
-        "modal.functions",
-        "modal.image",
-        "modal.mount",
-        "modal.network_file_system",
-        "modal.object",
-        "modal.partial_function",
-        "modal.proxy",
-        "modal.queue",
-        "modal.s3mount",
-        "modal.sandbox",
-        "modal.secret",
-        "modal.stub",
-        "modal.volume",
-    ]
+    # We only generate type stubs for modules that contain synchronicity wrapped types
+    from synchronicity.synchronizer import SYNCHRONIZER_ATTR
+
+    def find_modal_modules(root: str = "modal"):
+        modules = []
+        path = importlib.import_module(root).__path__
+        for _, name, is_pkg in pkgutil.iter_modules(path):
+            full_name = f"{root}.{name}"
+            if is_pkg:
+                modules.extend(find_modal_modules(full_name))
+            else:
+                modules.append(full_name)
+        return modules
+
+    def get_wrapped_types(module_name: str) -> List[str]:
+        module = importlib.import_module(module_name)
+        return [
+            name
+            for name, obj in vars(module).items()
+            if not module_name.startswith("modal.cli.")  # TODO we don't handle typer-wrapped functions well
+            and hasattr(obj, "__module__")
+            and obj.__module__ == module_name
+            and not name.startswith("_")  # Avoid deprecation of _App.__getattr__
+            and hasattr(obj, SYNCHRONIZER_ATTR)
+        ]
+
+    modules = [m for m in find_modal_modules() if len(get_wrapped_types(m))]
     subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
 
 
 @task
-def update_changelog(ctx):
-    # Parse the most recent commit message for a GitHub PR number
-    res = ctx.run("git log --pretty=format:%s -n 1", hide="stdout")
+def update_changelog(ctx, sha: str = ""):
+    # Parse a commit message for a GitHub PR number, defaulting to most recent commit
+    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout")
     m = re.search(r"\(#(\d+)\)$", res.stdout)
     if m:
         pull_number = m.group(1)
@@ -228,3 +268,86 @@ def update_changelog(ctx):
     final_content = f"{header}\n\n{new_section}\n\n{previous_changelog}"
     with open("CHANGELOG.md", "w") as fid:
         fid.write(final_content)
+
+
+@task
+def show_deprecations(ctx):
+    def get_modal_source_files() -> list[str]:
+        source_files: list[str] = []
+        for root, _, files in os.walk("modal"):
+            for file in files:
+                if file.endswith(".py"):
+                    source_files.append(os.path.join(root, file))
+        return source_files
+
+    class FunctionCallVisitor(ast.NodeVisitor):
+        def __init__(self, fname):
+            self.fname = fname
+            self.deprecations = []
+            self.assignments = {}
+            self.current_class = None
+            self.current_function = None
+
+        def visit_ClassDef(self, node):
+            self.current_class = node.name
+            self.generic_visit(node)
+            self.current_class = None
+
+        def visit_FunctionDef(self, node):
+            self.current_function = node.name
+            self.assignments["__doc__"] = ast.get_docstring(node)
+            self.generic_visit(node)
+            self.current_function = None
+            self.assignments.pop("__doc__", None)
+
+        def visit_Assign(self, node):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.assignments[target.id] = node.value
+            self.generic_visit(node)
+
+        def visit_Attribute(self, node):
+            self.assignments[node.attr] = node.value
+            self.generic_visit(node)
+
+        def visit_Call(self, node):
+            func_name_to_level = {
+                "deprecation_warning": "[yellow]warning[/yellow]",
+                "deprecation_error": "[red]error[/red]"
+            }
+            if isinstance(node.func, ast.Name) and node.func.id in func_name_to_level:
+                depr_date = date(*(elt.n for elt in node.args[0].elts))
+                function = (
+                    f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
+                )
+                message = node.args[1]
+                if isinstance(message, ast.Name):
+                    message = self.assignments.get(message.id, "")
+                if isinstance(message, ast.Attribute):
+                    message = self.assignments.get(message.attr, "")
+                if isinstance(message, ast.Constant):
+                    message = message.s
+                elif isinstance(message, ast.JoinedStr):
+                    message = "".join(v.s for v in message.values if isinstance(v, ast.Constant))
+                else:
+                    message = str(message)
+                message = message.replace("\n", " ")
+                if len(message) > (max_length := 80):
+                    message = message[:max_length] + "..."
+                level = func_name_to_level[node.func.id]
+                self.deprecations.append((str(depr_date), level, f"{self.fname}:{node.lineno}", function, message))
+
+    files = get_modal_source_files()
+    deprecations = []
+    for fname in files:
+        with open(fname) as f:
+            tree = ast.parse(f.read())
+        visitor = FunctionCallVisitor(fname)
+        visitor.visit(tree)
+        deprecations.extend(visitor.deprecations)
+
+    console = Console()
+    table = Table("Date", "Level", "Location", "Function", "Message")
+    for row in sorted(deprecations, key=lambda r: r[0]):
+        table.add_row(*row)
+    console.print(table)

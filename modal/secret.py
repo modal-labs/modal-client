@@ -1,17 +1,17 @@
 # Copyright Modal Labs 2022
 import os
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from grpclib import GRPCError, Status
 
-from modal._types import typechecked
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import retry_transient_errors
 
 from ._resolver import Resolver
+from ._utils.async_utils import synchronize_api
+from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
 from .exception import InvalidError, NotFoundError
+from .execution_context import is_local
 from .object import _get_environment_name, _Object
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, Union[str, None]]"
@@ -27,7 +27,6 @@ class _Secret(_Object, type_prefix="st"):
     See [the secrets guide page](/docs/guide/secrets) for more information.
     """
 
-    @typechecked
     @staticmethod
     def from_dict(
         env_dict: Dict[
@@ -38,7 +37,7 @@ class _Secret(_Object, type_prefix="st"):
 
         Usage:
         ```python
-        @stub.function(secrets=[modal.Secret.from_dict({"FOO": "bar"})])
+        @app.function(secrets=[modal.Secret.from_dict({"FOO": "bar"})])
         def run():
             print(os.environ["FOO"])
         ```
@@ -52,27 +51,44 @@ class _Secret(_Object, type_prefix="st"):
         if not all(isinstance(v, str) for v in env_dict_filtered.values()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
-            req = api_pb2.SecretCreateRequest(
-                app_id=resolver.app_id,
+        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+            req = api_pb2.SecretGetOrCreateRequest(
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 env_dict=env_dict_filtered,
-                existing_secret_id=existing_object_id,
+                app_id=resolver.app_id,
             )
             try:
-                resp = await resolver.client.stub.SecretCreate(req)
+                resp = await resolver.client.stub.SecretGetOrCreate(req)
             except GRPCError as exc:
                 if exc.status == Status.INVALID_ARGUMENT:
                     raise InvalidError(exc.message)
                 if exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
                 raise
-            provider._hydrate(resp.secret_id, resolver.client, None)
+            self._hydrate(resp.secret_id, resolver.client, None)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep)
 
     @staticmethod
-    def from_dotenv(path=None):
+    def from_local_environ(
+        env_keys: List[str],  # list of local env vars to be included for remote execution
+    ):
+        """Create secrets from local environment variables automatically."""
+
+        if is_local():
+            try:
+                return _Secret.from_dict({k: os.environ[k] for k in env_keys})
+            except KeyError as exc:
+                missing_key = exc.args[0]
+                raise InvalidError(
+                    f"Could not find local environment variable '{missing_key}' for Secret.from_local_env_vars"
+                )
+
+        return _Secret.from_dict({})
+
+    @staticmethod
+    def from_dotenv(path=None, *, filename=".env"):
         """Create secrets from a .env file automatically.
 
         If no argument is provided, it will use the current working directory as the starting
@@ -82,16 +98,25 @@ class _Secret(_Object, type_prefix="st"):
         If called with an argument, it will use that as a starting point for finding `.env` files.
         In particular, you can call it like this:
         ```python
-        @stub.function(secrets=[modal.Secret.from_dotenv(__file__)])
+        @app.function(secrets=[modal.Secret.from_dotenv(__file__)])
         def run():
             print(os.environ["USERNAME"])  # Assumes USERNAME is defined in your .env file
         ```
 
         This will use the location of the script calling `modal.Secret.from_dotenv` as a
         starting point for finding the `.env` file.
+
+        A file named `.env` is expected by default, but this can be overridden with the `filename`
+        keyword argument:
+
+        ```python
+        @app.function(secrets=[modal.Secret.from_dotenv(filename=".env-dev")])
+        def run():
+            ...
+        ```
         """
 
-        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             try:
                 from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
@@ -103,7 +128,7 @@ class _Secret(_Object, type_prefix="st"):
             if path is not None:
                 # This basically implements the logic in find_dotenv
                 for dirname in _walk_to_root(path):
-                    check_path = os.path.join(dirname, ".env")
+                    check_path = os.path.join(dirname, filename)
                     if os.path.isfile(check_path):
                         dotenv_path = check_path
                         break
@@ -113,18 +138,18 @@ class _Secret(_Object, type_prefix="st"):
                 # TODO(erikbern): dotenv tries to locate .env files based on the location of the file in the stack frame.
                 # Since the modal code "intermediates" this, a .env file in the user's local directory won't be picked up.
                 # To simplify this, we just support the cwd and don't do any automatic path inference.
-                dotenv_path = find_dotenv(usecwd=True)
+                dotenv_path = find_dotenv(filename, usecwd=True)
 
             env_dict = dotenv_values(dotenv_path)
 
-            req = api_pb2.SecretCreateRequest(
-                app_id=resolver.app_id,
+            req = api_pb2.SecretGetOrCreateRequest(
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 env_dict=env_dict,
-                existing_secret_id=existing_object_id,
+                app_id=resolver.app_id,
             )
-            resp = await resolver.client.stub.SecretCreate(req)
+            resp = await resolver.client.stub.SecretGetOrCreate(req)
 
-            provider._hydrate(resp.secret_id, resolver.client, None)
+            self._hydrate(resp.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()")
 
@@ -139,13 +164,13 @@ class _Secret(_Object, type_prefix="st"):
         ```python
         secret = modal.Secret.from_name("my-secret")
 
-        @stub.function(secrets=[secret])
+        @app.function(secrets=[secret])
         def run():
            ...
         ```
         """
 
-        async def _load(provider: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=label,
                 namespace=namespace,
@@ -158,7 +183,7 @@ class _Secret(_Object, type_prefix="st"):
                     raise NotFoundError(exc.message)
                 else:
                     raise
-            provider._hydrate(response.secret_id, resolver.client, None)
+            self._hydrate(response.secret_id, resolver.client, None)
 
         return _Secret._from_loader(_load, "Secret()")
 
@@ -192,6 +217,7 @@ class _Secret(_Object, type_prefix="st"):
         environment_name: Optional[str] = None,
         overwrite: bool = False,
     ) -> str:
+        """mdmd:hidden"""
         if client is None:
             client = await _Client.from_env()
         if overwrite:

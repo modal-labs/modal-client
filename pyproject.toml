@@ -11,9 +11,13 @@ no_strict_optional = true
 namespace_packages = true
 
 [[tool.mypy.overrides]]
-module = ["ddtrace.*"]
-check_untyped_defs = false
-follow_imports = "skip"
+module = [
+    "modal/_vendor/cloudpickle",
+    "modal/_vendor/tblib",
+    "modal/_vendor/a2wsgi_wsgi",
+]
+ignore_errors = true
+
 
 [tool.pytest.ini_options]
 timeout = 300
@@ -29,7 +33,15 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-exclude = ['.venv', '.git', '__pycache__', 'proto', 'build', 'modal_proto']
+exclude = [
+    '.venv',
+    '.git',
+    '__pycache__',
+    'proto',
+    'build',
+    'modal_proto',
+    'modal/_vendor',
+]
 line-length = 120
 lint.ignore = ['E501', 'E741']
 lint.select = ['E', 'F', 'W', 'I']
@@ -42,9 +54,8 @@ lint.select = ['E', 'F', 'W', 'I']
 combine-as-imports = true
 known-first-party = [
     "modal",
-    "modal_base_images",
+    "modal_global_objects",
     "modal_proto",
-    "modal_utils",
     "modal_version",
 ]
 extra-standard-library = ["pytest"]

@@ -1,13 +1,13 @@
 # Copyright Modal Labs 2022
-import importlib
-import os
 import pytest
-from unittest import mock
+from typing import Dict
 
-import modal.secret
-from modal import Dict, Stub
-from modal.app import container_app
-from modal.exception import InvalidError
+from google.protobuf.empty_pb2 import Empty
+from google.protobuf.message import Message
+
+from modal import App, interact
+from modal._container_io_manager import ContainerIOManager
+from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -19,37 +19,32 @@ def my_f_1(x):
 
 @skip_windows_unix_socket
 @pytest.mark.asyncio
-async def test_container_function_lazily_imported(unix_servicer, container_client):
-    unix_servicer.app_objects["ap-123"] = {
+async def test_container_function_lazily_imported(container_client):
+    tag_to_object_id: Dict[str, str] = {
         "my_f_1": "fu-123",
         "my_d": "di-123",
     }
-    unix_servicer.app_functions["fu-123"] = api_pb2.Function()
+    object_handle_metadata: Dict[str, Message] = {
+        "fu-123": api_pb2.FunctionHandleMetadata(),
+    }
+    container_app = RunningApp(
+        app_id="ap-123", tag_to_object_id=tag_to_object_id, object_handle_metadata=object_handle_metadata
+    )
+    app = App()
 
-    await container_app.init.aio(container_client, "ap-123")
-    stub = Stub()
+    # This is normally done in _container_entrypoint
+    app._init_container(container_client, container_app)
 
     # Now, let's create my_f after the app started running and make sure it works
-    my_f_container = stub.function()(my_f_1)
+    my_f_container = app.function()(my_f_1)
     assert await my_f_container.remote.aio(42) == 1764  # type: ignore
 
-    # Also make sure dicts work
-    my_d_container = Dict.new()
-    stub.my_d = my_d_container  # should trigger id assignment
-    assert my_d_container.object_id == "di-123"
 
+@skip_windows_unix_socket
+def test_interact(container_client, unix_servicer):
+    # Initialize container singleton
+    ContainerIOManager(api_pb2.ContainerArguments(), container_client)
 
-@pytest.mark.skip("runtime type checking has been temporarily disabled")
-def test_typechecking_not_enforced_in_container():
-    def incorrect_usage():
-        class InvalidType:
-            pass
-
-        modal.secret.Secret(env_dict={"foo": InvalidType()})  # type: ignore
-
-    with pytest.raises(InvalidError):
-        incorrect_usage()  # should throw when running locally
-
-    with mock.patch.dict(os.environ, {"MODAL_IMAGE_ID": "im-123"}):
-        importlib.reload(modal.secret)
-        incorrect_usage()  # should not throw in container, since typechecks add a lot of overhead on import
+    with unix_servicer.intercept() as ctx:
+        ctx.add_response("FunctionStartPtyShell", Empty())
+        interact()

@@ -1,13 +1,14 @@
 # Copyright Modal Labs 2023
-
+import pytest
 from typing import List
 
 from modal import Queue
-from modal._function_utils import FunctionInfo, get_referred_objects
+from modal._utils.function_utils import FunctionInfo, get_referred_objects, method_has_params
+from modal.exception import InvalidError
 from modal.object import Object
 
-q1 = Queue.new()
-q2 = Queue.new()
+q1 = Queue.from_name("q1", create_if_missing=True)
+q2 = Queue.from_name("q2", create_if_missing=True)
 
 
 def f1():
@@ -70,3 +71,31 @@ def test_is_nullary():
     assert FunctionInfo(noarg).is_nullary()
     assert FunctionInfo(defaultarg).is_nullary()
     assert FunctionInfo(wildcard_args).is_nullary()
+
+
+class Cls:
+    def foo(self):
+        pass
+
+    def bar(self, x):
+        pass
+
+    def buz(self, *args):
+        pass
+
+
+def test_method_has_params():
+    assert not method_has_params(Cls.foo)
+    assert not method_has_params(Cls().foo)
+    assert method_has_params(Cls.bar)
+    assert method_has_params(Cls().bar)
+    assert method_has_params(Cls.buz)
+    assert method_has_params(Cls().buz)
+
+
+def test_nonglobal_function():
+    def f():
+        ...
+
+    with pytest.raises(InvalidError, match=r"Cannot wrap `test_nonglobal_function.<locals>.f"):
+        FunctionInfo(f)

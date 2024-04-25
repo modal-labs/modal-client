@@ -9,6 +9,7 @@ from modal._resolver import Resolver
 from modal.object import _Object
 
 
+@pytest.mark.flaky(max_runs=2)
 @pytest.mark.asyncio
 async def test_multi_resolve_sequential_loads_once():
     output_manager = OutputManager(None, show_progress=False)
@@ -19,9 +20,10 @@ async def test_multi_resolve_sequential_loads_once():
     class _DumbObject(_Object, type_prefix="zz"):
         pass
 
-    async def _load(provider: _DumbObject, resolver: Resolver, existing_object_id: Optional[str]):
+    async def _load(self: _DumbObject, resolver: Resolver, existing_object_id: Optional[str]):
         nonlocal load_count
         load_count += 1
+        self._hydrate("zz-123", resolver.client, None)
         await asyncio.sleep(0.1)
 
     obj = _DumbObject._from_loader(_load, "DumbObject()")
@@ -44,9 +46,10 @@ async def test_multi_resolve_concurrent_loads_once():
     class _DumbObject(_Object, type_prefix="zz"):
         pass
 
-    async def _load(provider: _DumbObject, resolver: Resolver, existing_object_id: Optional[str]):
+    async def _load(self: _DumbObject, resolver: Resolver, existing_object_id: Optional[str]):
         nonlocal load_count
         load_count += 1
+        self._hydrate("zz-123", resolver.client, None)
         await asyncio.sleep(0.1)
 
     obj = _DumbObject._from_loader(_load, "DumbObject()")

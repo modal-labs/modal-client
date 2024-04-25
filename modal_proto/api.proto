@@ -83,17 +83,35 @@ enum ClientType {
   CLIENT_TYPE_WEB_SERVER = 5;
 }
 
+message CloudBucketMount {
+  enum BucketType {
+    UNSPECIFIED = 0;
+    S3 = 1;
+    R2 = 2;
+    GCP = 3;
+  }
+
+  string bucket_name = 1;
+  string mount_path = 2;
+  string credentials_secret_id = 3;
+  bool read_only = 4;
+  BucketType bucket_type = 5;
+  bool requester_pays = 6;
+  optional string bucket_endpoint_url = 7;
+}
+
 enum CloudProvider {
   CLOUD_PROVIDER_UNSPECIFIED = 0;
   CLOUD_PROVIDER_AWS = 1;
   CLOUD_PROVIDER_GCP = 2;
   CLOUD_PROVIDER_AUTO = 3;
   CLOUD_PROVIDER_OCI = 4;
+  CLOUD_PROVIDER_LAMBDA_LABS = 5;
 }
 
 // Which data format a binary message is encoded with.
 enum DataFormat {
-  DATA_FORMAT_UNSPECIFIED = 0; // Equivalent to PICKLE in client version 0.52 and earlier.
+  DATA_FORMAT_UNSPECIFIED = 0;
   DATA_FORMAT_PICKLE = 1; // Cloudpickle
   DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
   DATA_FORMAT_GENERATOR_DONE = 3; // "GeneratorDone" protobuf message
@@ -116,6 +134,20 @@ enum FileDescriptor {
   FILE_DESCRIPTOR_STDOUT = 1;
   FILE_DESCRIPTOR_STDERR = 2;
   FILE_DESCRIPTOR_INFO = 3;
+}
+
+// A file entry when listing files in a volume or network file system.
+message FileEntry {
+  enum FileType {
+    UNSPECIFIED = 0;
+    FILE = 1;
+    DIRECTORY = 2;
+    SYMLINK = 3;
+  }
+  string path = 1;
+  FileType type = 2;
+  uint64 mtime = 3;
+  uint64 size = 4;
 }
 
 enum FunctionCallType {
@@ -143,6 +175,8 @@ enum ObjectCreationType {
   OBJECT_CREATION_TYPE_CREATE_IF_MISSING = 1;
   OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS = 2;
   OBJECT_CREATION_TYPE_CREATE_OVERWRITE_IF_EXISTS = 3;
+  OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP = 4;  // deprecate at some point
+  OBJECT_CREATION_TYPE_EPHEMERAL = 5;
 }
 
 enum ProgressType {
@@ -184,6 +218,7 @@ enum WebhookType {
   WEBHOOK_TYPE_ASGI_APP = 1;
   WEBHOOK_TYPE_FUNCTION = 2;
   WEBHOOK_TYPE_WSGI_APP = 3;
+  WEBHOOK_TYPE_WEB_SERVER = 4;
 }
 
 enum WebhookAsyncMode {
@@ -530,6 +565,7 @@ message ClientCreateResponse {
 
 message ClientHelloResponse {
   string warning = 1;
+  string image_builder_version = 2;
 }
 
 message ClientHeartbeatRequest {
@@ -551,9 +587,18 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   optional string checkpoint_id = 14;
 }
 
+message CancelInputEvent {
+  repeated string input_ids = 1;
+}
+
+message ContainerHeartbeatResponse {
+  optional CancelInputEvent cancel_input_event = 1;
+}
+
 message ContainerHeartbeatRequest {
   string current_input_id = 1;
   double current_input_started_at = 2;
+  bool supports_graceful_input_cancellation = 3; // implicitly also means we support long polling. Can be removed once v0.57 is no longer supported
 }
 
 message ContainerCheckpointRequest {
@@ -564,6 +609,9 @@ message ContainerExecRequest {
   string task_id = 1;
   repeated string command = 2;
   PTYInfo pty_info = 3;
+  // Send SIGTERM to running container on exit of exec command.
+  bool terminate_container_on_exit = 4;
+  bool runtime_debug = 5; // For internal debugging use only.
 }
 
 message ContainerExecGetOutputRequest {
@@ -612,6 +660,14 @@ message DictContainsResponse {
   bool found = 1;
 }
 
+message DictContentsRequest {
+  string dict_id = 1;
+  // Setting these to True will populate the corresponding field in the response, otherwise it will be null
+  // This lets us support the keys/values/items SDK API through one RPC without unnecessary data transfer
+  bool keys = 2;
+  bool values = 3;
+}
+
 message DictCreateRequest {  // Will be superseded by DictGetOrCreateRequest
   repeated DictEntry data = 1;
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
@@ -619,6 +675,10 @@ message DictCreateRequest {  // Will be superseded by DictGetOrCreateRequest
 }
 
 message DictCreateResponse {  // Will be superseded by DictGetOrCreateResponse
+  string dict_id = 1;
+}
+
+message DictDeleteRequest {
   string dict_id = 1;
 }
 
@@ -649,12 +709,29 @@ message DictGetResponse {
   optional bytes value = 2;
 }
 
+message DictHeartbeatRequest {
+  string dict_id = 1;
+}
+
 message DictLenRequest {
   string dict_id = 1;
 }
 
 message DictLenResponse {
   int32 len = 1;
+}
+
+message DictListRequest {
+  string environment_name = 1;
+}
+
+message DictListResponse {
+  message DictInfo {
+    string name = 1;
+    double created_at = 2;
+  }
+
+  repeated DictInfo dicts = 1;
 }
 
 message DictPopRequest {
@@ -790,7 +867,7 @@ message Function {
 
   uint32 task_idle_timeout_secs = 25;
 
-  CloudProvider cloud_provider = 26;
+  optional CloudProvider cloud_provider = 26;
 
   uint32 warm_pool_size = 27;
 
@@ -800,7 +877,7 @@ message Function {
   // If set, overrides the runtime used by the function, either "runc" or "gvisor".
   string runtime = 30;
 
-  string stub_name = 31;
+  string app_name = 31;  // Formerly stub_name
 
   repeated VolumeMount volume_mounts = 33;
 
@@ -828,10 +905,26 @@ message Function {
   bool block_network = 44;
 
   uint32 max_inputs = 46;
-  
+
   repeated S3Mount s3_mounts = 47;
-  
+  repeated CloudBucketMount cloud_bucket_mounts = 51;
+
   bool _experimental_boost = 48;
+
+  // If set, tasks will be scheduled using the new scheduler, which also knows
+  // to look at fine-grained placement constraints.
+  bool _experimental_scheduler = 49;
+  optional SchedulerPlacement _experimental_scheduler_placement = 50;
+}
+
+message SchedulerPlacement {
+  // TODO(irfansharif):
+  // - Fold in cloud, resource needs here too.
+  // - Allow specifying list of regions, zones, cloud, fallback and alternative
+  //   GPU types.
+  optional string _region = 1;
+  optional string _zone = 2;
+  optional string _lifecycle = 3; // "on-demand" or "spot", else ignored
 }
 
 message FunctionHandleMetadata {
@@ -913,6 +1006,14 @@ message FunctionGetResponse {
   FunctionHandleMetadata handle_metadata = 2;
 }
 
+ 
+message FunctionUpdateSchedulingParamsRequest {
+  string function_id = 1;
+  uint32 warm_pool_size_override = 2;
+}
+
+message FunctionUpdateSchedulingParamsResponse {}
+
 message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
@@ -979,10 +1080,12 @@ message FunctionMapRequest {
   string parent_input_id = 2;
   bool return_exceptions = 3;
   FunctionCallType function_call_type = 4;
+  repeated FunctionPutInputsItem pipelined_inputs = 5;
 }
 
 message FunctionMapResponse {
   string function_call_id = 1;
+  repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
 }
 
 message FunctionPutInputsItem {
@@ -1136,6 +1239,12 @@ message GPUConfig {
   uint32 memory = 3;
 }
 
+message BuildFunction {
+  string definition = 1;
+  bytes globals = 2;
+  FunctionInput input = 3;
+}
+
 message Image {
   repeated BaseImage base_images = 5;
   repeated string dockerfile_commands = 6;
@@ -1151,13 +1260,15 @@ message Image {
   GPUConfig gpu_config = 16;
   ImageRegistryConfig image_registry_config = 17;
 
-  string build_function_def = 14;
-  bytes build_function_globals = 18;
+  string build_function_def = 14; // deprecated after 0.58.96
+  bytes build_function_globals = 18; // deprecated after 0.58.96
 
   // If set, overrides the runtime used by the function. Specify either "runc" or "gvisor".
   string runtime = 19;
   // Not included in image definition checksum as debug features do not affect built image.
   bool runtime_debug = 20;
+
+  BuildFunction build_function = 21;
 }
 
 message ImageContextFile {
@@ -1172,6 +1283,7 @@ message ImageGetOrCreateRequest {
   string build_function_id = 6;
   bool force_build = 7;
   DeploymentNamespace namespace = 8;
+  string builder_version = 9;
 }
 
 message ImageGetOrCreateResponse {
@@ -1229,6 +1341,7 @@ message MountGetOrCreateRequest {
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   repeated MountFile files = 5;
+  string app_id = 6;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
 }
 
 message MountGetOrCreateResponse {
@@ -1280,6 +1393,17 @@ message ObjectDependency {
   string object_id = 1;
 }
 
+message ProxyGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
+}
+
+message ProxyGetOrCreateResponse {
+  string proxy_id = 1;
+}
+
 message ProxyInfo {
   string elastic_ip = 1;
   string proxy_key = 2;
@@ -1302,13 +1426,16 @@ message PTYInfo {
   PTYType pty_type = 7;
 }
 
-
 message QueueCreateRequest {
   string app_id = 1;
   string existing_queue_id = 2;
 }
 
 message QueueCreateResponse {
+  string queue_id = 1;
+}
+
+message QueueDeleteRequest {
   string queue_id = 1;
 }
 
@@ -1327,23 +1454,47 @@ message QueueGetRequest {
   string queue_id = 1;
   float timeout = 3;
   int32 n_values = 4;
+  bytes partition_key = 5;
 }
 
 message QueueGetResponse {
   repeated bytes values = 2;
 }
 
+message QueueHeartbeatRequest {
+  string queue_id = 1;
+}
+
 message QueuePutRequest {
   string queue_id = 1;
   repeated bytes values = 4;
+  bytes partition_key = 5;
+  int32 partition_ttl_seconds = 6;
 }
 
 message QueueLenRequest {
   string queue_id = 1;
+  bytes partition_key = 2;
 }
 
 message QueueLenResponse {
   int32 len = 1;
+}
+
+message QueueNextItemsRequest {
+  string queue_id = 1;
+  bytes partition_key = 2;
+  string last_entry_id = 3;
+  float item_poll_timeout = 4; // seconds
+}
+
+message QueueItem {
+  bytes value = 1;
+  string entry_id = 2;
+}
+
+message QueueNextItemsResponse {
+  repeated QueueItem items = 1;
 }
 
 message RateLimit {
@@ -1352,9 +1503,10 @@ message RateLimit {
 }
 
 message Resources {
-  uint32 memory_mb = 2;
-  uint32 milli_cpu = 3;
+  uint32 memory_mb = 2; // MiB
+  uint32 milli_cpu = 3; // milli CPU cores
   GPUConfig gpu_config = 4;
+  uint32 memory_mb_max = 5; // MiB
 }
 
 message S3Mount {
@@ -1384,8 +1536,16 @@ message Sandbox {
   bool block_network = 11;
 
   repeated S3Mount s3_mounts = 12;
+  repeated CloudBucketMount cloud_bucket_mounts = 14;
 
   repeated VolumeMount volume_mounts = 13;
+
+  PTYInfo pty_info = 15;
+
+  // If set, tasks will be scheduled using the new scheduler, which also knows
+  // to look at fine-grained placement constraints.
+  bool _experimental_scheduler = 16;
+  optional SchedulerPlacement _experimental_scheduler_placement = 17;
 }
 
 message SandboxCreateRequest {
@@ -1410,6 +1570,16 @@ message SandboxGetLogsRequest {
   FileDescriptor file_descriptor = 2;
   float timeout = 3;
   string last_entry_id = 4;
+}
+
+message SandboxStdinWriteRequest {
+  string sandbox_id = 1;
+  bytes input = 2;
+  uint32 index = 3;
+  bool eof = 4;
+}
+
+message SandboxStdinWriteResponse {
 }
 
 message SandboxHandleMetadata {
@@ -1468,14 +1638,14 @@ message Schedule {
   }
 }
 
-message SecretCreateRequest {
+message SecretCreateRequest {  // Not used by client anymore
   map<string, string> env_dict = 1;
   string app_id = 2 [ (modal.options.audit_target_attr) = true ];
   string template_type = 3;  // todo: not used?
   string existing_secret_id = 4;
 }
 
-message SecretCreateResponse {
+message SecretCreateResponse {  // Not used by client anymore
   string secret_id = 1;
 }
 
@@ -1485,6 +1655,7 @@ message SecretGetOrCreateRequest {
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // Not used atm
   map<string, string> env_dict = 5;
+  string app_id = 6;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
 }
 
 message SecretGetOrCreateResponse {
@@ -1505,6 +1676,22 @@ message SecretListRequest {
 message SecretListResponse {
   repeated SecretListItem items = 1;
   string environment_name = 2; // the environment that was listed (useful when relying on "default" logic)
+}
+
+message SharedVolumeGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;
+  string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+}
+
+message SharedVolumeGetOrCreateResponse {
+  string shared_volume_id = 1;
+}
+
+message SharedVolumeHeartbeatRequest {
+  string shared_volume_id = 1;
 }
 
 message SharedVolumeCreateRequest {
@@ -1570,18 +1757,8 @@ message SharedVolumeRemoveFileRequest {
   bool recursive = 3;
 }
 
-message SharedVolumeListFilesEntry {
-  enum FileType {
-    UNSPECIFIED = 0;
-    FILE = 1;
-    DIRECTORY = 2;
-  }
-  string path = 1;
-  FileType type = 2;
-}
-
 message SharedVolumeListFilesResponse {
-  repeated SharedVolumeListFilesEntry entries = 1;
+  repeated FileEntry entries = 1;
 }
 
 message SharedVolumeMount {
@@ -1601,6 +1778,7 @@ message TaskInfo {
   double started_at = 2;
   double finished_at = 3;
   modal.client.GenericResult result = 4;
+  double enqueued_at = 5;
 }
 
 message TaskLogs {
@@ -1696,6 +1874,22 @@ message TunnelStopResponse {
   bool exists = 1;
 }
 
+message VolumeGetOrCreateRequest {
+  string deployment_name = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;
+  string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+}
+
+message VolumeGetOrCreateResponse {
+  string volume_id = 1;
+}
+
+message VolumeHeartbeatRequest {
+  string volume_id = 1;
+}
+
 message VolumeCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -1714,9 +1908,16 @@ message VolumeCommitResponse {
   bool skip_reload = 1;
 }
 
+message VolumeDeleteRequest {
+  string volume_id = 1;
+  string environment_name = 2 [deprecated=true];
+}
+
 message VolumeGetFileRequest {
   string volume_id = 1;
   bytes path = 2;
+  uint64 start = 3;
+  uint64 len = 4; // 0 is interpreted as 'read to end'
 }
 
 message VolumeGetFileResponse {
@@ -1724,29 +1925,20 @@ message VolumeGetFileResponse {
     bytes data = 1;
     string data_blob_id = 2;
   }
-  uint64 size = 3;
-}
-
-message VolumeListFilesEntry {
-  enum FileType {
-    UNSPECIFIED = 0;
-    FILE = 1;
-    DIRECTORY = 2;
-    SYMLINK = 3;
-  }
-  string path = 1;
-  FileType type = 2;
-  uint64 mtime = 3;
-  uint64 size = 4;
+  uint64 size = 3; // total file size
+  uint64 start = 4; // file position of first byte returned
+  uint64 len = 5; // number of bytes returned
 }
 
 message VolumeListFilesRequest {
   string volume_id = 1;
   string path = 2;
+  bool recursive = 4;
+  optional uint32 max_entries = 3;
 }
 
 message VolumeListFilesResponse {
-  repeated VolumeListFilesEntry entries = 1;
+  repeated FileEntry entries = 1;
 }
 
 message VolumeListItem {
@@ -1804,6 +1996,8 @@ message WebhookConfig {
   string requested_suffix = 4;
   WebhookAsyncMode async_mode = 5;
   repeated CustomDomainConfig custom_domains = 6;
+  uint32 web_server_port = 7;
+  float web_server_startup_timeout = 8;
 }
 
 message WebUrlInfo {
@@ -1813,7 +2007,7 @@ message WebUrlInfo {
 }
 
 message WorkspaceNameLookupResponse {
-  string workspace_name = 1;
+  string workspace_name = 1 [deprecated=true];
   string username = 2;
 }
 
@@ -1826,7 +2020,7 @@ message RuntimeOutputMessage {
 
 message RuntimeOutputBatch {
   repeated RuntimeOutputMessage items = 1;
-  uint64 batch_index = 2; 
+  uint64 batch_index = 2;
   // if an exit code is given, this is the final message that will be sent.
   optional int32 exit_code = 3;
 }
@@ -1866,7 +2060,7 @@ service ModalClient {
   rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
 
   // Container
-  rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (google.protobuf.Empty);
+  rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
   rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputBatch);
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
@@ -1876,13 +2070,17 @@ service ModalClient {
 
   // Dicts
   rpc DictClear(DictClearRequest) returns (google.protobuf.Empty);
-  rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
-  rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
-  rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
-  rpc DictGet(DictGetRequest) returns (DictGetResponse);
-  rpc DictPop(DictPopRequest) returns (DictPopResponse);
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
+  rpc DictContents(DictContentsRequest) returns (stream DictEntry);
+  rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
+  rpc DictDelete(DictDeleteRequest) returns (google.protobuf.Empty);
+  rpc DictGet(DictGetRequest) returns (DictGetResponse);
+  rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
+  rpc DictHeartbeat(DictHeartbeatRequest) returns (google.protobuf.Empty);
   rpc DictLen(DictLenRequest) returns (DictLenResponse);
+  rpc DictList(DictListRequest) returns (DictListResponse);
+  rpc DictPop(DictPopRequest) returns (DictPopResponse);
+  rpc DictUpdate(DictUpdateRequest) returns (DictUpdateResponse);
 
   // Domains
   rpc DomainCreate(DomainCreateRequest) returns (DomainCreateResponse);
@@ -1908,6 +2106,7 @@ service ModalClient {
   rpc FunctionPrecreate(FunctionPrecreateRequest) returns (FunctionPrecreateResponse);
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
+  rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
   // Function calls
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
@@ -1928,12 +2127,18 @@ service ModalClient {
   rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
 
+  // Proxies
+  rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
+
   // Queues
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
+  rpc QueueDelete(QueueDeleteRequest) returns (google.protobuf.Empty);
   rpc QueueGetOrCreate(QueueGetOrCreateRequest) returns (QueueGetOrCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
+  rpc QueueHeartbeat(QueueHeartbeatRequest) returns (google.protobuf.Empty);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
   rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
+  rpc QueueNextItems(QueueNextItemsRequest) returns (QueueNextItemsResponse);
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
@@ -1942,14 +2147,17 @@ service ModalClient {
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
+  rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
 
   // Secrets
-  rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);
+  rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);  // Not used by client anymore
   rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
   // SharedVolumes
+  rpc SharedVolumeGetOrCreate(SharedVolumeGetOrCreateRequest) returns (SharedVolumeGetOrCreateResponse);
   rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
+  rpc SharedVolumeHeartbeat(SharedVolumeHeartbeatRequest) returns (google.protobuf.Empty);
   rpc SharedVolumeList(SharedVolumeListRequest) returns (SharedVolumeListResponse);
   rpc SharedVolumeListFiles(SharedVolumeListFilesRequest) returns (SharedVolumeListFilesResponse);
   rpc SharedVolumeListFilesStream(SharedVolumeListFilesRequest) returns (stream SharedVolumeListFilesResponse);
@@ -1973,8 +2181,11 @@ service ModalClient {
   rpc TunnelStop(TunnelStopRequest) returns (TunnelStopResponse);
 
   // Volumes
+  rpc VolumeGetOrCreate(VolumeGetOrCreateRequest) returns (VolumeGetOrCreateResponse);
   rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
+  rpc VolumeHeartbeat(VolumeHeartbeatRequest) returns (google.protobuf.Empty);
   rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);
+  rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);

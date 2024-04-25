@@ -9,7 +9,7 @@ import platform
 import re
 import sys
 from datetime import timedelta
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console, Group, RenderableType
@@ -31,9 +31,9 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 from modal_proto import api_pb2
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
-from ._container_exec import handle_exec_input
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.shell_utils import stream_from_stdin
 from .client import _Client
 from .config import logger
 
@@ -141,13 +141,13 @@ class LineBufferedOutput(io.StringIO):
 class OutputManager:
     _visible_progress: bool
     _console: Console
-    _task_states: dict[str, int]
-    _task_progress_items: dict[tuple[str, int], TaskID]
+    _task_states: Dict[str, int]
+    _task_progress_items: Dict[Tuple[str, int], TaskID]
     _current_render_group: Optional[Group]
     _function_progress: Optional[Progress]
     _function_queueing_progress: Optional[Progress]
     _snapshot_progress: Optional[Progress]
-    _line_buffers: dict[int, LineBufferedOutput]
+    _line_buffers: Dict[int, LineBufferedOutput]
     _status_spinner: Spinner
     _app_page_url: Optional[str]
     _show_image_logs: bool
@@ -237,7 +237,7 @@ class OutputManager:
                 self._current_render_group.renderables.append(self._function_queueing_progress)
         return self._function_queueing_progress
 
-    def function_progress_callback(self, tag: str, total: int) -> Callable[[int, int], None]:
+    def function_progress_callback(self, tag: str, total: Optional[int]) -> Callable[[int, int], None]:
         """Adds a task to the current function_progress instance, and returns a callback
         to update task progress with new completed and total counts."""
 
@@ -382,13 +382,24 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
     """
     Streams stdin to the given exec id until finish_event is triggered
     """
-    async with handle_exec_input(client, exec_id, use_raw_terminal=True):
+
+    async def _handle_input(data: bytes, message_index: int):
+        await retry_transient_errors(
+            client.stub.ContainerExecPutInput,
+            api_pb2.ContainerExecPutInputRequest(
+                exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
+            ),
+            total_timeout=10,
+        )
+
+    async with stream_from_stdin(_handle_input, use_raw_terminal=True):
         await finish_event.wait()
 
 
 async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputManager):
     last_log_batch_entry_id = ""
     pty_shell_finish_event: Optional[asyncio.Event] = None
+    pty_shell_task_id: Optional[str] = None
 
     async def stop_pty_shell():
         nonlocal pty_shell_finish_event
@@ -420,7 +431,7 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
             await output_mgr.put_log_content(log)
 
     async def _get_logs():
-        nonlocal last_log_batch_entry_id, pty_shell_finish_event
+        nonlocal last_log_batch_entry_id, pty_shell_finish_event, pty_shell_task_id
 
         request = api_pb2.AppGetLogsRequest(
             app_id=app_id,
@@ -448,15 +459,17 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
                 if pty_shell_finish_event:
                     print("ERROR: concurrent PTY shells are not supported.")
                 else:
+                    output_mgr.flush_lines()
                     output_mgr.hide_status_spinner()
                     output_mgr._visible_progress = False
                     pty_shell_finish_event = asyncio.Event()
+                    pty_shell_task_id = log_batch.task_id
                     asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
             else:
                 for log in log_batch.items:
                     await _put_log(log_batch, log)
 
-            if log_batch.eof:
+            if log_batch.eof and log_batch.task_id == pty_shell_task_id:
                 await stop_pty_shell()
 
         output_mgr.flush_lines()

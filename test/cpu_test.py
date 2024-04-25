@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import Stub
+from modal import App
 from modal.exception import InvalidError
 
 
@@ -10,14 +10,14 @@ def dummy():
 
 
 def test_cpu_lower_bound(client, servicer):
-    stub = Stub()
+    app = App()
 
-    stub.function(cpu=0.0)(dummy)
+    app.function(cpu=0.0)(dummy)
 
     with pytest.raises(InvalidError):
-        with stub.run(client=client):
+        with app.run(client=client):
             pass
 
-    stub.function(cpu=42)(dummy)
-    with stub.run(client=client):
+    app.function(cpu=42)(dummy)
+    with app.run(client=client):
         pass

@@ -10,6 +10,365 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.114 (2024-04-25)
+
+* `Secret.from_dotenv` now accepts an optional filename keyword argument:
+
+    ```python
+    @app.function(secrets=[modal.Secret.from_dotenv(filename=".env-dev")])
+    def run():
+        ...
+    ```
+
+
+
+### 0.62.110 (2024-04-25)
+
+- Passing a glob `**` argument to the `modal volume get` CLI has been deprecated — instead, simply download the desired directory path, or `/` for the entire volume.
+- `Volume.listdir()` no longer takes trailing glob arguments. Use `recursive=True` instead.
+- `modal volume get` and `modal nfs get` performance is improved when downloading a single file. They also now work with multiple files when outputting to stdout.
+- Fixed a visual bug where `modal volume get` on a single file will incorrectly display the destination path.
+
+
+
+### 0.62.109 (2024-04-24)
+
+- Improved feedback for deserialization failures when objects are being transferred between local / remote environments.
+
+
+
+### 0.62.108 (2024-04-24)
+
+- Added `Dict.delete` and `Queue.delete` as API methods for deleting named storage objects:
+
+    ```
+    import modal
+    modal.Queue.delete("my-job-queue")
+   ```
+- Deprecated invoking `Volume.delete` as an instance method; it should now be invoked as a static method with the name of  the Volume to delete, as with the other methods.
+
+
+
+### 0.62.98 (2024-04-21)
+
+- The `modal.Dict` object now implements a `keys`/`values`/`items` API. Note that there are a few differences when compared to standard Python dicts:
+    - The return value is a simple iterator, whereas Python uses a dictionary view object with more features.
+    - The results are unordered.
+ - Additionally, there was no key data stored for items added to a `modal.Dict` prior to this release, so empty strings will be returned for these entries.
+
+
+
+### 0.62.81 (2024-04-18)
+
+* We are introducing `modal.App` as a replacement for `modal.Stub` and encouraging the use of "app" terminology over "stub" to reduce confusion between concepts used in the SDK and the Dashboard. Support for `modal.Stub` will be gradually deprecated over the next few months.
+
+
+
+### 0.62.72 (2024-04-16)
+
+* Specifying a hard memory limit for a `modal.Function` is now supported. Pass a tuple of `memory=(request, limit)`. Above the `limit`, which is specified in MiB, a Function's container will be OOM killed.
+
+
+
+### 0.62.70 (2024-04-16)
+
+* `modal.CloudBucketMount` now supports read-only access to Google Cloud Storage
+
+
+
+### 0.62.69 (2024-04-16)
+
+* Iterators passed to `Function.map()` and similar parallel execution primitives are now executed on the main thread, preventing blocking iterators from possibly locking up background Modal API calls, and risking task shutdowns.
+
+
+
+### 0.62.67 (2024-04-15)
+
+- The return type of `Volume.listdir()`, `Volume.iterdir()`, `NetworkFileSystem.listdir()`, and `NetworkFileSystem.iterdir()` is now a `FileEntry` dataclass from the `modal.volume` module. The fields of this data class are the same as the old protobuf object returned by these methods, so it should be mostly backwards-compatible.
+
+
+
+### 0.62.65 (2024-04-15)
+
+* Cloudflare R2 bucket support added to `modal.CloudBucketMount`
+
+
+
+### 0.62.55 (2024-04-11)
+
+- When Volume reloads fail due to an open file, we now try to identify and report the relevant path. Note that there may be some circumstances in which we are unable to identify the specific file blocking a reload and will report a generic error message in that case.
+
+
+
+### 0.62.53 (2024-04-10)
+
+- Values in the `modal.toml` config file that are spelled as `0`, `false`, `"False"`, or `"false"` will now be coerced in Python to`False`, whereas previously only `"0"` (as a string) would have the intended effect.
+
+
+
+### 0.62.25 (2024-04-01)
+
+- Fixed a recent regression that caused functions using `modal.interact()` to crash.
+
+
+
+### 0.62.15 (2024-03-29)
+
+- Queue methods `put`, `put_many`, `get`, `get_many` and `len` now support an optional `partition` argument (must be specified as a `kwarg`). When specified, users read and write from new partitions of the queue independently. `partition=None` corresponds to the default partition of the queue.
+
+
+
+### 0.62.3 (2024-03-27)
+
+- User can now mount S3 buckets using [Requester Pays](https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html). This can be done with `CloudBucketMount(..., requester_pays=True)`.
+
+
+### 0.62.1 (2024-03-27)
+
+- Raise an error on `@web_server(startup_timeout=0)`, which is an invalid configuration.
+
+
+
+### 0.62.0 (2024-03-26)
+
+- The `.new()` method has now been deprecated on all Modal objects. It should typically be replaced with `.from_name(...)` in Modal app code, or `.ephemeral()` in scripts that use Modal
+- Assignment of Modal objects to a `Stub` via subscription (`stub["object"]`) or attribute (`stub.object`) syntax is now deprecated. This syntax was only necessary when using `.new()`.
+
+
+
+
+## 0.61
+
+
+### 0.61.104 (2024-03-25)
+
+- Fixed a bug where images based on `micromamba` could fail to build if requesting Python 3.12 when a different version of Python was being used locally.
+
+
+
+### 0.61.76 (2024-03-19)
+
+- The `Sandbox`'s `LogsReader` is now an asynchronous iterable. It supports the `async for` statement to stream data from the sandbox's `stdout/stderr`.
+
+```python
+@stub.function()
+async def my_fn():
+    sandbox = stub.spawn_sandbox(
+      "bash", 
+      "-c", 
+      "while true; do echo foo; sleep 1; done"
+    )
+    async for message in sandbox.stdout:
+        print(f"Message: {message}")
+```
+
+### 0.61.57 (2024-03-15)
+
+- Add the `@web_server` decorator, which exposes a server listening on a container port as a web endpoint.
+
+### 0.61.56 (2024-03-15)
+
+- Allow users to write to the `Sandbox`'s `stdin` with `StreamWriter`.
+
+```python
+@stub.function()
+def my_fn():
+    sandbox = stub.spawn_sandbox(
+        "bash",
+        "-c",
+        "while read line; do echo $line; done",
+    )
+    sandbox.stdin.write(b"foo\\n")
+    sandbox.stdin.write(b"bar\\n")
+    sandbox.stdin.write_eof()
+    sandbox.stdin.drain()
+    sandbox.wait()
+```
+
+### 0.61.53 (2024-03-15)
+
+- Fixed an bug where` Mount` was failing to include symbolic links.
+
+
+
+### 0.61.45 (2024-03-13)
+
+When called from within a container, `modal.experimental.stop_fetching_inputs()` causes it to gracefully exit after the current input has been processed.
+
+
+
+### 0.61.35 (2024-03-12)
+
+- The `@wsgi_app()` decorator now uses a different backend based on `a2wsgi` that streams requests in chunks, rather than buffering the entire request body.
+
+
+
+### 0.61.32 (2024-03-11)
+
+* Stubs/apps can now be "composed" from several smaller stubs using `stub.include(...)`. This allows more ergonomic setup of multi-file Modal apps.
+
+
+
+### 0.61.31 (2024-03-08)
+
+- The `Image.extend` method has been deprecated. This is a low-level interface and can be replaced by other `Image` methods that offer more flexibility, such as `Image.from_dockerfile`, `Image.dockerfile_commands`, or `Image.run_commands`.
+
+
+
+### 0.61.24 (2024-03-06)
+
+- Fixes `modal volume put` to support uploading larger files, beyond 40 GiB.
+
+
+
+### 0.61.22 (2024-03-05)
+
+- Modal containers now display a warning message if lingering threads are present at container exit, which prevents runner shutdown.
+
+
+
+### 0.61.17 (2024-03-05)
+
+- Bug fix: Stopping an app while a container's `@exit()` lifecycle methods are being run no longer interrupts the lifecycle methods.
+- Bug fix: Worker preemptions no longer interrupt a container's `@exit()` lifecycle method (until 30 seconds later).
+- Bug fix: Async `@exit()` lifecycle methods are no longer skipped for sync functions.
+- Bug fix: Stopping a sync function with `allow_concurrent_inputs>1` now actually stops the container. Previously, it would not propagate the signal to worker threads, so they would continue running.
+- Bug fix: Input-level cancellation no longer skips the `@exit()` lifecycle method.
+- Improve stability of container entrypoint against race conditions in task cancellation.
+
+
+
+### 0.61.9 (2024-03-05)
+
+* Fix issue with pdm where all installed packages would be automounted when using package cache (MOD-2485)
+
+
+
+### 0.61.6 (2024-03-04)
+
+- For modal functions/classes with `concurrency_limit < keep_warm`, we'll raise an exception now. Previously we (silently) respected the `concurrency_limit` parameter.
+
+
+
+### 0.61.1 (2024-03-03)
+
+`modal run --interactive` or `modal run -i` run the app in "interactive mode". This allows any remote code to connect to the user's local terminal by calling `modal.interact()`.
+
+```python
+@stub.function()
+def my_fn(x):
+    modal.interact()
+
+    x = input()
+    print(f"Your number is {x}")
+```
+
+This means that you can dynamically start an IPython shell if desired for debugging:
+
+```python
+@stub.function()
+def my_fn(x):
+    modal.interact()
+
+    from IPython import embed
+    embed()
+```
+
+For convenience, breakpoints automatically call `interact()`:
+
+```python
+@stub.function()
+def my_fn(x):
+    breakpoint()
+```
+
+
+
+## 0.60
+
+
+### 0.60.0 (2024-02-29)
+
+- `Image.run_function` now allows you to pass args and kwargs to the function. Usage:
+
+```python
+def my_build_function(name, size, *, variant=None):
+    print(f"Building {name} {size} {variant}")
+
+
+image = modal.Image.debian_slim().run_function(
+    my_build_function, args=("foo", 10), kwargs={"variant": "bar"}
+)
+```
+
+
+
+## 0.59
+
+
+### 0.59.0 (2024-02-28)
+
+* Mounted packages are now deduplicated across functions in the same stub
+* Mounting of local Python packages are now marked as such in the mount creation output, e.g. `PythonPackage:my_package`
+* Automatic mounting now includes packages outside of the function file's own directory. Mounted packages are mounted in /root/<module path>
+
+
+
+## 0.58
+
+
+### 0.58.92 (2024-02-27)
+
+- Most errors raised through usage of the CLI will now print a simple error message rather than showing a traceback from inside the `modal` library.
+- Tracebacks originating from user code will include fewer frames from within `modal` itself.
+- The new `MODAL_TRACEBACK` environment variable (and `traceback` field in the Modal config file) can override these behaviors so that full tracebacks are always shown.
+
+
+### 0.58.90 (2024-02-27)
+
+- Fixed a bug that could cause `cls`-based functions to to ignore timeout signals.
+
+
+
+### 0.58.88 (2024-02-26)
+
+* `volume get` performance is improved for large (> 100MB) files
+
+
+
+### 0.58.79 (2024-02-23)
+
+* Support for function parameters in methods decorated with `@exit` has been deprecated. Previously, exit methods were required to accept three arguments containing exception information (akin to `__exit__` in the context manager protocol). However, due to a bug, these arguments were always null. Going forward, `@exit` methods are expected to have no parameters.
+
+
+
+### 0.58.75 (2024-02-23)
+
+* Function calls can now be cancelled without killing the container running the inputs. This allows new inputs by different function calls to the same function to be picked up immediately without having to cold-start new containers after cancelling calls.
+
+
+
+## 0.57
+
+
+### 0.57.62 (2024-02-21)
+
+- An `InvalidError` is now raised when a lifecycle decorator (`@build`, `@enter`, or `@exit`) is used in conjunction with `@method`. Previously, this was undefined and could produce confusing failures.
+
+
+
+### 0.57.61 (2024-02-21)
+
+- Reduced the amount of context for frames in modal's CLI framework when showing a traceback.
+
+
+
+### 0.57.60 (2024-02-21)
+
+- The "dunder method" approach for class lifecycle management (`__build__`, `__enter__`, `__exit__`, etc.) is now deprecated in favor of the modal `@build`, `@enter`, and `@exit` decorators.
+
+
+
 ### 0.57.52 (2024-02-17)
 
 - In `modal token new` and `modal token set`, the `--no-no-verify` flag has been removed in favor of a `--verify` flag. This remains the default behavior.
@@ -24,7 +383,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.57.42 (2024-02-14)
 
-Adds a new environment variable/config setting, `MODAL_FORCE_BUILD`/`force_build`, that coerces all images to be built from scratch, rather than loaded from cache.
+- Adds a new environment variable/config setting, `MODAL_FORCE_BUILD`/`force_build`, that coerces all images to be built from scratch, rather than loaded from cache.
 
 
 
@@ -39,7 +398,7 @@ Adds a new environment variable/config setting, `MODAL_FORCE_BUILD`/`force_build
 
 ### 0.57.31 (2024-02-12)
 
-Fixed an issue with displaying deprecation warnings on Windows systems.
+- Fixed an issue with displaying deprecation warnings on Windows systems.
 
 
 
