@@ -260,6 +260,18 @@ class _Queue(_Object, type_prefix="qu"):
         raise queue.Empty()
 
     @live_method
+    async def clear(self, *, partition: Optional[str] = None, all: bool = False) -> None:
+        """Clear the contents of a single partition or all partitions."""
+        if partition and all:
+            raise InvalidError("Partition must be null when requesting to clear all.")
+        request = api_pb2.QueueClearRequest(
+            queue_id=self.object_id,
+            partition_key=self.validate_partition_key(partition),
+            all_partitions=all,
+        )
+        await retry_transient_errors(self._client.stub.QueueClear, request)
+
+    @live_method
     async def get(
         self, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
     ) -> Optional[Any]:
@@ -391,11 +403,14 @@ class _Queue(_Object, type_prefix="qu"):
             raise queue.Full(exc.message) if exc.status == Status.RESOURCE_EXHAUSTED else exc
 
     @live_method
-    async def len(self, *, partition: Optional[str] = None) -> int:
+    async def len(self, *, partition: Optional[str] = None, total: bool = False) -> int:
         """Return the number of objects in the queue partition."""
+        if partition and total:
+            raise InvalidError("Partition must be null when requesting total length.")
         request = api_pb2.QueueLenRequest(
             queue_id=self.object_id,
             partition_key=self.validate_partition_key(partition),
+            total=total,
         )
         response = await retry_transient_errors(self._client.stub.QueueLen, request)
         return response.len
