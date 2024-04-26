@@ -330,26 +330,12 @@ class _Function(_Object, type_prefix="fu"):
                 response.handle_metadata,
             )
 
-        async def _preload(method_bound_function: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            assert resolver.client and resolver.client.stub
-            if parent._use_method_name:
-                raise RuntimeError("Can't bind method to already bound", method_bound_function)
-
-            req = api_pb2.FunctionPrecreateRequest(
-                app_id=parent._app.app_id,  #  TODO: should be able to use resolver.app_id
-                function_name=full_name,
-                function_type=function_type,
-                webhook_config=webhook_config,
-                existing_function_id=existing_object_id or "",
-            )
-            response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
-            method_bound_function._hydrate(response.function_id, resolver.client, response.handle_metadata)
-
         def _deps():
             return [parent]
 
         rep = f"Method({full_name})"
-        fun = _Function._from_loader(_load, rep, preload=_preload, hydrate_lazily=True, deps=_deps)
+        fun = _Function._from_loader(_load, rep, hydrate_lazily=True, deps=_deps)
+        # TODO: handle special case of parametrized class with no arguments - could be hydrated using parent directly
         return fun
 
     @staticmethod
@@ -766,27 +752,33 @@ class _Function(_Object, type_prefix="fu"):
         Specialize a function by adding instance params
         """
 
-        async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            if not self._parent.is_hydrated:
+        async def _load(parameter_bound_function: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            if not parameter_bound_function._parent.is_hydrated:
                 raise ExecutionError(
                     "Base function in class has not been hydrated. This might happen if an object is"
                     " defined on a different stub, or if it's on the same stub but it didn't get"
                     " created because it wasn't defined in global scope."
                 )
-            assert self._parent._client.stub
+            assert parameter_bound_function._parent._client.stub
             serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=self._parent._object_id,
+                function_id=parameter_bound_function._parent._object_id,
                 serialized_params=serialized_params,
                 function_options=options,
                 environment_name=environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
-            response = await retry_transient_errors(self._parent._client.stub.FunctionBindParams, req)
-            self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
+            response = await retry_transient_errors(
+                parameter_bound_function._parent._client.stub.FunctionBindParams, req
+            )
+            parameter_bound_function._hydrate(
+                response.bound_function_id, parameter_bound_function._parent._client, response.handle_metadata
+            )
 
         fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        if not self.is_hydrated:
+            raise Exception("wtf")
         if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
             # if the instance didn't use explicit constructor arguments

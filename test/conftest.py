@@ -504,16 +504,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
         assert request.serialized_params
         self.n_functions += 1
         function_id = f"fu-{self.n_functions}"
-        function = self.app_functions[request.function_id]
-        assert not function.use_method_name
+        base_function = self.app_functions[request.function_id]
+        assert not base_function.use_method_name
+
+        bound_func = api_pb2.Function()
+        bound_func.CopyFrom(base_function)
+        bound_func.function_name += "(parametrized)"  # hack
+        self.app_functions[function_id] = bound_func
 
         await stream.send_message(
             api_pb2.FunctionBindParamsResponse(
                 bound_function_id=function_id,
                 handle_metadata=api_pb2.FunctionHandleMetadata(
-                    function_name=function.function_name,
-                    function_type=function.function_type,
-                    web_url=function.web_url,
+                    function_name=base_function.function_name,
+                    function_type=base_function.function_type,
+                    web_url=base_function.web_url,
                     use_function_id=function_id,
                     use_method_name="",
                 ),

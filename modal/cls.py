@@ -73,10 +73,12 @@ class _Obj:
             self, from_other_workspace, options, args, kwargs
         )
 
+        assert instance_invocation_function.is_hydrated
+
         for method_name, class_bound_method in base_functions.items():
             # each bound *method* needs to refer to the object_function in its use_function_id
             self._functions[method_name] = instance_invocation_function._method_placeholder(
-                method_name + "(parametrized)",
+                method_name,
                 # TODO: webhook config, is_generator
             )
             self._functions[method_name]._set_output_mgr(output_mgr)
@@ -218,7 +220,6 @@ class _Cls(_Object, type_prefix="cs"):
         for method_name, partial_function in _find_partial_methods_for_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         ).items():
-            print("Binding method", method_name, "to", cls_func)
             method_function = cls_func._method_placeholder(
                 method_name, webhook_config=partial_function.webhook_config, is_generator=partial_function.is_generator
             )
@@ -232,19 +233,20 @@ class _Cls(_Object, type_prefix="cs"):
         callables: Dict[str, Callable] = _find_callables_for_cls(user_cls, ~_PartialFunctionFlags(0))
 
         def _deps() -> List[_Function]:
-            return [cls_func] + list(functions.values())
+            return list(functions.values())
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(
                 app_id=resolver.app_id, existing_class_id=existing_object_id, class_function_id=cls_func.object_id
             )
-            for f_name, f in functions.items():
+            for f_name, f in self._functions.items():
                 req.methods.append(
                     api_pb2.ClassMethod(
                         function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
                     )
                 )
             resp = await resolver.client.stub.ClassCreate(req)
+            print("Resolving cls", self._functions, list(self._functions.values())[0].object_id)
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"

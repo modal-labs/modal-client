@@ -118,7 +118,9 @@ class Resolver:
             async def loader():
                 # Wait for all its dependencies
                 # TODO(erikbern): do we need existing_object_id for those?
-                await asyncio.gather(*[self.load(dep) for dep in obj.deps()])
+                deps = obj.deps()
+                print("Parallel load of", deps)
+                await asyncio.gather(*[self.load(dep) for dep in deps])
 
                 # Load the object itself
                 try:
