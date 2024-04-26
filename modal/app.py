@@ -561,6 +561,7 @@ class _App:
                         raise InvalidError("interactive=True is not supported with web endpoint functions")
                     self._web_endpoints.append(info.get_tag())
             else:
+                # f here could be either a vanilla python function *or* a class
                 info = FunctionInfo(f, serialized=serialized, name_override=name, cls=_cls)
                 webhook_config = None
                 raw_f = f

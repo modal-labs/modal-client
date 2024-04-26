@@ -69,13 +69,15 @@ class _Obj:
 
         self._functions = {}
         # first create the singular object function used by all methods on this parameterization
-        object_function = class_function.from_parametrized(self, from_other_workspace, options, args, kwargs)
+        instance_invocation_function = class_function.from_parametrized(
+            self, from_other_workspace, options, args, kwargs
+        )
 
         for method_name, class_bound_method in base_functions.items():
             # each bound *method* needs to refer to the object_function in its use_function_id
-            self._functions[method_name] = _Function.method_from_object_function(
-                object_function,
-                class_bound_method,
+            self._functions[method_name] = instance_invocation_function._method_placeholder(
+                method_name + "(parametrized)",
+                # TODO: webhook config, is_generator
             )
             self._functions[method_name]._set_output_mgr(output_mgr)
 
@@ -206,7 +208,7 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
-    def from_local(user_cls, app, decorator: Callable[[PartialFunction, type], _Function]) -> "_Cls":
+    def from_local(user_cls, app, decorator: Callable[[Union[PartialFunction, None], type], _Function]) -> "_Cls":
         """mdmd:hidden"""
         functions: Dict[str, _Function] = {}
         # first create a function representing the whole class, this is the single function id that will be used
@@ -216,8 +218,9 @@ class _Cls(_Object, type_prefix="cs"):
         for method_name, partial_function in _find_partial_methods_for_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         ).items():
-            method_function = _Function.method_from_class_function(
-                cls_func, method_name, webhook_config=partial_function.webhook_config
+            print("Binding method", method_name, "to", cls_func)
+            method_function = cls_func._method_placeholder(
+                method_name, webhook_config=partial_function.webhook_config, is_generator=partial_function.is_generator
             )
             functions[method_name] = method_function
 

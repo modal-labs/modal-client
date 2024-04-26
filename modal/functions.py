@@ -87,6 +87,7 @@ from .volume import _Volume
 
 if TYPE_CHECKING:
     import modal.app
+    import modal.cls
     import modal.partial_function
 
 
@@ -280,84 +281,75 @@ class _Function(_Object, type_prefix="fu"):
     _use_function_id: Optional[str]
     _use_method_name: Optional[str]
 
-    @staticmethod
-    def method_from_class_function(
-        class_function: "_Function",
+    def _method_placeholder(
+        self,
         method_name: str,
         *,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: bool = False,
     ):
-        full_name = f"{class_function._function_name}.{method_name}"
+        """mdmd:hidden
+
+        Creates a function placeholder function that binds a specific method name to
+        this function for use when invoking the function.
+
+        Can be used both on both unparametized and parametrized functions, so long as they
+        aren't method bound.
+        """
+        # creates
+        full_name = f"{self.info.get_tag()}.{method_name}"
 
         if is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
         else:
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-        async def _load(self: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+        parent = self
+
+        async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            if parent._use_method_name:
+                raise RuntimeError("Can't bind method to already bound", parent)
+
             function_definition = api_pb2.Function(
                 function_name=full_name,
                 webhook_config=webhook_config,
                 function_type=function_type,
-                # TODO: schedule, retries?
                 is_method=True,
-                use_function_id=class_function.object_id,
+                use_function_id=parent.object_id,
                 use_method_name=method_name,
             )
             request = api_pb2.FunctionCreateRequest(
-                app_id=resolver.app_id,
+                app_id=parent._app.app_id,  #  TODO: should be able to use resolver.app_id, but can't with lazy hydration right now
                 function=function_definition,
                 existing_function_id=existing_object_id or "",
             )
             response = await resolver.client.stub.FunctionCreate(request)
-            self._hydrate(
+            method_bound_function._hydrate(
                 response.function_id,
                 resolver.client,
                 response.handle_metadata,
             )
 
-        async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _preload(method_bound_function: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
+            if parent._use_method_name:
+                raise RuntimeError("Can't bind method to already bound", method_bound_function)
 
             req = api_pb2.FunctionPrecreateRequest(
-                app_id=resolver.app_id,
+                app_id=parent._app.app_id,  #  TODO: should be able to use resolver.app_id
                 function_name=full_name,
                 function_type=function_type,
                 webhook_config=webhook_config,
                 existing_function_id=existing_object_id or "",
             )
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            method_bound_function._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         def _deps():
-            return [class_function]
+            return [parent]
 
         rep = f"Method({full_name})"
-        return _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
-
-    @staticmethod
-    def method_from_object_function(
-        object_function: "_Function",  # this is the parameter-bound, but method-unbound base function
-        class_method: "_Function",  # this is the parameter-unbound, but method-bound base function
-    ):
-        def _deps():
-            return [object_function, class_method]
-
-        async def _load(self: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            # TODO: do an actual FunctionBindParams here to create a unique function id for the bound
-            #       method, so we can pass it around as an object etc. if we want to
-            # Hacky:
-            self._hydrate_from_other(class_method)
-            self._use_function_id = object_function.object_id
-
-        rep = f"ParametrizedMethod({class_method._function_name})"
-        fun = _Function._from_loader(_load, rep, deps=_deps)
-
-        if object_function.is_hydrated and class_method.is_hydrated:
-            fun._hydrate_from_other(class_method)
-            fun._use_function_id = object_function.object_id
-
+        fun = _Function._from_loader(_load, rep, preload=_preload, hydrate_lazily=True, deps=_deps)
         return fun
 
     @staticmethod
@@ -763,13 +755,16 @@ class _Function(_Object, type_prefix="fu"):
 
     def from_parametrized(
         self,
-        obj,
+        obj: "modal.cls._Obj",
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args: Sized,
         kwargs: Dict[str, Any],
     ) -> "_Function":
-        """mdmd:hidden"""
+        """mdmd:hidden
+
+        Specialize a function by adding instance params
+        """
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             if not self._parent.is_hydrated:
@@ -802,6 +797,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._is_generator = self._is_generator
         fun._is_method = True
         fun._parent = self
+        fun._app = self.app
 
         return fun
 
