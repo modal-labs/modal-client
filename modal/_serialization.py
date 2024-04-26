@@ -54,6 +54,9 @@ def serialize(obj: Any) -> bytes:
 
 def deserialize(s: bytes, client) -> Any:
     """Deserializes object and replaces all client placeholders by self."""
+    from .execution_context import is_local  # Avoid circular import
+
+    env = "local" if is_local() else "remote"
     try:
         return Unpickler(client, io.BytesIO(s)).load()
     except AttributeError as exc:
@@ -72,11 +75,12 @@ def deserialize(s: bytes, client) -> Any:
                 " you have different versions of a library in your local and remote environments."
             ) from exc
     except ModuleNotFoundError as exc:
-        from .execution_context import is_local  # Avoid circular import
-
-        dest = "local" if is_local() else "remote"
         raise DeserializationError(
-            f"Deserialization failed because the '{exc.name}' module is not available in the {dest} environment."
+            f"Deserialization failed because the '{exc.name}' module is not available in the {env} environment."
+        ) from exc
+    except Exception as exc:
+        raise DeserializationError(
+            f"Encountered an error when deserializing an object in the {env} environment (see above for details)."
         ) from exc
 
 
