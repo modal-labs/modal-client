@@ -4,6 +4,7 @@ import pytest
 import re
 import sys
 import threading
+import time
 from hashlib import sha256
 from tempfile import NamedTemporaryFile
 from typing import List, Literal, get_args
@@ -812,3 +813,25 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
     )
     assert get_hash(img) == "a25dd4cc2e8d88f92bfdaf2e82b9d74144d1928926bf6be2ca1cdfbbf562189e"
+
+
+parallel_app = App()
+
+
+@parallel_app.function(image=Image.debian_slim().run_commands("sleep 1", "echo hi"))
+def f1():
+    pass
+
+
+@parallel_app.function(image=Image.debian_slim().run_commands("sleep 1", "echo bye"))
+def f2():
+    pass
+
+
+def test_image_parallel_build(builder_version, servicer, client):
+    servicer.image_join_sleep_duration = 0.5
+
+    t0 = time.time()
+    with parallel_app.run(client=client):
+        # The sleep duration applies 2x to each image, because it's per layer.
+        assert 1 < (time.time() - t0) < 2

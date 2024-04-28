@@ -145,9 +145,7 @@ async def _create_all_objects(
 
                 async def _load(tag, obj):
                     existing_object_id = tag_to_object_id.get(tag)
-                    print("LOADING", tag, existing_object_id)
                     await resolver.load(obj, existing_object_id)
-                    print("SETTING", tag, obj.object_id)
                     running_app.tag_to_object_id[tag] = obj.object_id
 
                 tg.create_task(_load(tag, obj))

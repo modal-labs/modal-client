@@ -177,6 +177,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_heartbeat_response = None
         self.container_heartbeat_abort = threading.Event()
 
+        self.image_join_sleep_duration = None
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -756,6 +758,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ImageJoinStreaming(self, stream):
         await stream.recv_message()
+
+        if self.image_join_sleep_duration is not None:
+            await asyncio.sleep(self.image_join_sleep_duration)
+
         task_log_1 = api_pb2.TaskLogs(data="hello, world\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
         task_log_2 = api_pb2.TaskLogs(
             task_progress=api_pb2.TaskProgress(
