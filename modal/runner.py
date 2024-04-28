@@ -126,19 +126,31 @@ async def _create_all_objects(
         # functions have ids assigned to them when the function is serialized.
         # Note: when handles/objs are merged, all objects will need to get ids pre-assigned
         # like this in order to be referrable within serialized functions
-        for tag, obj in indexed_objects.items():
-            existing_object_id = tag_to_object_id.get(tag)
-            # Note: preload only currently implemented for Functions, returns None otherwise
-            # this is to ensure that directly referenced functions from the global scope has
-            # ids associated with them when they are serialized into other functions
-            await resolver.preload(obj, existing_object_id)
-            if obj.object_id is not None:
-                tag_to_object_id[tag] = obj.object_id
+        async with asyncio.TaskGroup() as tg:
+            for tag, obj in indexed_objects.items():
 
-        for tag, obj in indexed_objects.items():
-            existing_object_id = tag_to_object_id.get(tag)
-            await resolver.load(obj, existing_object_id)
-            running_app.tag_to_object_id[tag] = obj.object_id
+                async def _preload(tag, obj):
+                    existing_object_id = tag_to_object_id.get(tag)
+                    # Note: preload only currently implemented for Functions, returns None otherwise
+                    # this is to ensure that directly referenced functions from the global scope has
+                    # ids associated with them when they are serialized into other functions
+                    await resolver.preload(obj, existing_object_id)
+                    if obj.object_id is not None:
+                        tag_to_object_id[tag] = obj.object_id
+
+                tg.create_task(_preload(tag, obj))
+
+        async with asyncio.TaskGroup() as tg:
+            for tag, obj in indexed_objects.items():
+
+                async def _load(tag, obj):
+                    existing_object_id = tag_to_object_id.get(tag)
+                    print("LOADING", tag, existing_object_id)
+                    await resolver.load(obj, existing_object_id)
+                    print("SETTING", tag, obj.object_id)
+                    running_app.tag_to_object_id[tag] = obj.object_id
+
+                tg.create_task(_load(tag, obj))
 
     # Create the app (and send a list of all tagged obs)
     # TODO(erikbern): we should delete objects from a previous version that are no longer needed
