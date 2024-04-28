@@ -217,6 +217,10 @@ class TaskContext:
                 )
             except asyncio.TimeoutError:
                 continue
+            except ValueError:
+                # The `add_done_callback` of the task races with the `wait`, raising a ValueError
+                # because `self._tasks` is empty.
+                break
             for task in done:
                 task.result()  # Raise exception if needed
                 if task in unfinished_tasks:
