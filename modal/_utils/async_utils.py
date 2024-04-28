@@ -224,6 +224,9 @@ class TaskContext:
                 if task in self._tasks:
                     self._tasks.remove(task)
 
+    async def wait_all(self):
+        await self.wait(*self._tasks)
+
 
 def run_coro_blocking(coro):
     """Fairly hacky thing that's needed in some extreme cases.

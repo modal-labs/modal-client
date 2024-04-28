@@ -126,7 +126,7 @@ async def _create_all_objects(
         # functions have ids assigned to them when the function is serialized.
         # Note: when handles/objs are merged, all objects will need to get ids pre-assigned
         # like this in order to be referrable within serialized functions
-        async with asyncio.TaskGroup() as tg:
+        async with TaskContext() as tc:
             for tag, obj in indexed_objects.items():
 
                 async def _preload(tag, obj):
@@ -138,9 +138,10 @@ async def _create_all_objects(
                     if obj.object_id is not None:
                         tag_to_object_id[tag] = obj.object_id
 
-                tg.create_task(_preload(tag, obj))
+                tc.create_task(_preload(tag, obj))
+            await tc.wait_all()
 
-        async with asyncio.TaskGroup() as tg:
+        async with TaskContext() as tc:
             for tag, obj in indexed_objects.items():
 
                 async def _load(tag, obj):
@@ -148,7 +149,8 @@ async def _create_all_objects(
                     await resolver.load(obj, existing_object_id)
                     running_app.tag_to_object_id[tag] = obj.object_id
 
-                tg.create_task(_load(tag, obj))
+                tc.create_task(_load(tag, obj))
+            await tc.wait_all()
 
     # Create the app (and send a list of all tagged obs)
     # TODO(erikbern): we should delete objects from a previous version that are no longer needed
