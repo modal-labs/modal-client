@@ -1427,6 +1427,12 @@ message PTYInfo {
   PTYType pty_type = 7;
 }
 
+message QueueClearRequest {
+  string queue_id = 1;
+  bytes partition_key = 2;
+  bool all_partitions = 3;
+}
+
 message QueueCreateRequest {
   string app_id = 1;
   string existing_queue_id = 2;
@@ -1476,10 +1482,28 @@ message QueuePutRequest {
 message QueueLenRequest {
   string queue_id = 1;
   bytes partition_key = 2;
+  bool total = 3;
 }
 
 message QueueLenResponse {
   int32 len = 1;
+}
+
+message QueueListRequest {
+  string environment_name = 1;
+  // Allow client to report a bounded total size to reduce the number of partitions that need to be checked
+  int32 total_size_limit = 2;
+}
+
+message QueueListResponse {
+  message QueueInfo {
+    string name = 1;
+    double created_at = 2;
+    int32 num_partitions = 3;
+    int32 total_size = 4;
+  }
+
+  repeated QueueInfo queues = 1;
 }
 
 message QueueNextItemsRequest {
@@ -2132,6 +2156,7 @@ service ModalClient {
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
 
   // Queues
+  rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
   rpc QueueDelete(QueueDeleteRequest) returns (google.protobuf.Empty);
   rpc QueueGetOrCreate(QueueGetOrCreateRequest) returns (QueueGetOrCreateResponse);
@@ -2139,6 +2164,7 @@ service ModalClient {
   rpc QueueHeartbeat(QueueHeartbeatRequest) returns (google.protobuf.Empty);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
   rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
+  rpc QueueList(QueueListRequest) returns (QueueListResponse);
   rpc QueueNextItems(QueueNextItemsRequest) returns (QueueNextItemsResponse);
 
   // Sandboxes
