@@ -916,7 +916,7 @@ class _Image(_Object, type_prefix="im"):
                 # .bashrc is explicitly sourced because RUN is a non-login shell and doesn't run bash.
                 "RUN . /root/.bashrc && conda activate base \\ ",
                 # Ensure that packaging tools are up to date and install client dependenices
-                f"&& python -m pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel'} \\ ",
+                f"&& python -m pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel uv'} \\ ",
                 f"&& python -m {_get_modal_requirements_command(version)}",
             ]
             if version > "2023.12":
@@ -1088,7 +1088,7 @@ class _Image(_Object, type_prefix="im"):
 
         modal_requirements_commands = [
             f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
-            f"RUN python -m pip install --upgrade {'pip' if builder_version == '2023.12' else 'pip wheel'}",
+            f"RUN python -m pip install --upgrade {'pip' if builder_version == '2023.12' else 'pip wheel uv'}",
             f"RUN python -m {_get_modal_requirements_command(builder_version)}",
         ]
         if builder_version > "2023.12":
@@ -1327,7 +1327,7 @@ class _Image(_Object, type_prefix="im"):
                 f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
                 "RUN apt-get update",
                 "RUN apt-get install -y gcc gfortran build-essential",
-                f"RUN pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel'}",
+                f"RUN pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel uv'}",
                 f"RUN {_get_modal_requirements_command(version)}",
                 # Set debian front-end to non-interactive to avoid users getting stuck with input prompts.
                 "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
