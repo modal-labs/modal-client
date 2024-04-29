@@ -140,7 +140,6 @@ class TaskContext:
             if gather_future:
                 try:
                     await gather_future
-                # pre Python3.8, CancelledErrors were a subclass of exception
                 except asyncio.CancelledError:
                     pass
 
@@ -150,7 +149,7 @@ class TaskContext:
                     # Only tasks without a done_callback will still be present in self._tasks
                     task.result()
 
-                if task.done() or task in self._loops:
+                if task.done() or task in self._loops:  # Note: Legacy code, we can probably cancel loops.
                     continue
 
                 # Cancel any remaining unfinished tasks.
@@ -180,9 +179,6 @@ class TaskContext:
                 t0 = time.time()
                 try:
                     await asyncio.wait_for(async_f(), timeout=timeout)
-                    # pre Python3.8, CancelledErrors were a subclass of exception
-                except asyncio.CancelledError:
-                    raise
                 except Exception:
                     time_elapsed = time.time() - t0
                     logger.exception(f"Loop attempt failed for {function_name} (time_elapsed={time_elapsed})")
