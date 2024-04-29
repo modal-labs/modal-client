@@ -829,13 +829,14 @@ def f2():
 
 
 def test_image_parallel_build(builder_version, servicer, client):
-    barrier = None
+    num_concurrent = 0
 
     async def MockImageJoinStreaming(self, stream):
-        nonlocal barrier
-        if barrier is None:
-            barrier = asyncio.Barrier(2)  # lazy assignment so it works on Python < 3.10 (?)
-        await barrier.wait()  # this would block indefinitely if images aren't loaded in parallel
+        nonlocal num_concurrent
+        num_concurrent += 1
+        while num_concurrent < 2:
+            await asyncio.sleep(0.01)
+
         await stream.send_message(
             api_pb2.ImageJoinStreamingResponse(
                 result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
