@@ -73,8 +73,6 @@ class _Obj:
             self, from_other_workspace, options, args, kwargs
         )
 
-        assert instance_invocation_function.is_hydrated
-
         for method_name, class_bound_method in base_functions.items():
             # each bound *method* needs to refer to the object_function in its use_function_id
             self._functions[method_name] = instance_invocation_function._method_placeholder(

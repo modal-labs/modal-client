@@ -274,7 +274,8 @@ class _Function(_Object, type_prefix="fu"):
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
-    _parent: "_Function"
+    _parent: "_Function" = None
+    _uses_parent: bool = False  # True when a parameterized Function uses its parent directly, since parameters are Null
 
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
@@ -309,7 +310,11 @@ class _Function(_Object, type_prefix="fu"):
         async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
             if parent._use_method_name:
                 raise RuntimeError("Can't bind method to already bound", parent)
-
+            # TODO: this needs its own RPC method in order to have function id stability
+            #  but we can probably get away with not having that since nothing should have
+            #  a relation to this placeholder function.from
+            #  However, creating a new proxy function for every app's first invocation of a method
+            #  would quickly add many new identical functions to the backend db which isn't great
             function_definition = api_pb2.Function(
                 function_name=full_name,
                 webhook_config=webhook_config,
@@ -333,9 +338,13 @@ class _Function(_Object, type_prefix="fu"):
         def _deps():
             return [parent]
 
-        rep = f"Method({full_name})"
+        if self._parent:
+            rep = f"ParameterizedMethod({full_name})"
+        else:
+            rep = f"Method({full_name})"
+
         fun = _Function._from_loader(_load, rep, hydrate_lazily=True, deps=_deps)
-        # TODO: handle special case of parametrized class with no arguments - could be hydrated using parent directly
+
         return fun
 
     @staticmethod
@@ -582,7 +591,7 @@ class _Function(_Object, type_prefix="fu"):
                 # Use cloudpickle. Used when working w/ Jupyter notebooks.
                 # serialize at _load time, not function decoration time
                 # otherwise we can't capture a surrounding class for lifetime methods etc.
-                function_serialized = info.serialized_function()
+                function_serialized = info.serialized_function() if info.raw_f else None
                 class_serialized = serialize(info.cls) if info.cls is not None else None
 
                 # Ensure that large data in global variables does not blow up the gRPC payload,
@@ -777,12 +786,11 @@ class _Function(_Object, type_prefix="fu"):
             )
 
         fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
-        if not self.is_hydrated:
-            raise Exception("wtf")
         if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
             # if the instance didn't use explicit constructor arguments
             fun._hydrate_from_other(self)
+
         fun._is_remote_cls_method = True  # TODO(erikbern): deprecated
         fun._info = self._info
         fun._obj = obj
@@ -790,7 +798,6 @@ class _Function(_Object, type_prefix="fu"):
         fun._is_method = True
         fun._parent = self
         fun._app = self.app
-
         return fun
 
     @live_method

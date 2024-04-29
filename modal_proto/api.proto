@@ -992,6 +992,16 @@ message FunctionBindParamsResponse {
   FunctionHandleMetadata handle_metadata = 2;
 }
 
+message FunctionBindMethodRequest {
+  string function_id = 1;
+  string method_name = 2;
+}
+
+message FunctionBindMethodResponse {
+  string bound_function_id = 1;
+  FunctionHandleMetadata handle_metadata = 3;
+}
+
 message FunctionCreateResponse {
   string function_id = 1;
   string web_url = 2;  // Deprecated - needed until 0.51 is the minimum version
