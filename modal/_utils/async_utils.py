@@ -294,6 +294,9 @@ class _WarnIfGeneratorIsNotConsumed:
                 f" Consider a for-loop like `for x in {self.function_name}(...)` or unpacking the generator using `list(...)`"
             )
 
+    async def athrow(self, exc):
+        return await self.gen.athrow(exc)
+
 
 synchronize_api(_WarnIfGeneratorIsNotConsumed)
 
