@@ -1139,6 +1139,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         await stream.send_message(api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id))
 
+    async def VolumeList(self, stream):
+        req = await stream.recv_message()
+        items = []
+        for (name, _, env_name), volume_id in self.deployed_volumes.items():
+            if env_name != req.environment_name:
+                continue
+            items.append(api_pb2.VolumeListItem(label=name, volume_id=volume_id, created_at=1))
+        resp = api_pb2.VolumeListResponse(items=items, environment_name=req.environment_name)
+        await stream.send_message(resp)
+
     async def VolumeHeartbeat(self, stream):
         await stream.recv_message()
         self.n_vol_heartbeats += 1

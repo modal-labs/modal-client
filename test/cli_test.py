@@ -546,6 +546,14 @@ def test_volume_rm(servicer, set_env_client):
         _run(["volume", "get", vol_name, file_path.decode()], expected_exit_code=1, expected_stderr=None)
 
 
+def test_volume_create_delete(servicer, server_url_env, set_env_client):
+    vol_name = "test-delete-vol"
+    _run(["volume", "create", vol_name])
+    assert vol_name in _run(["volume", "list"]).stdout
+    _run(["volume", "delete", "--yes", vol_name])
+    assert vol_name not in _run(["volume", "list"]).stdout
+
+
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
 @pytest.mark.usefixtures("set_env_client", "mock_shell_pty")
 @skip_windows("modal shell is not supported on Windows.")
