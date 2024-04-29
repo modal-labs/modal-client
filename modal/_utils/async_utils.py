@@ -217,19 +217,12 @@ class TaskContext:
                 )
             except asyncio.TimeoutError:
                 continue
-            except ValueError:
-                # The `add_done_callback` of the task races with the `wait`, raising a ValueError
-                # because `self._tasks` is empty.
-                break
             for task in done:
                 task.result()  # Raise exception if needed
                 if task in unfinished_tasks:
                     unfinished_tasks.remove(task)
                 if task in self._tasks:
                     self._tasks.remove(task)
-
-    async def wait_all(self):
-        await self.wait(*self._tasks)
 
 
 def run_coro_blocking(coro):
