@@ -99,7 +99,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
 
         # Run the ASGI app, while draining the send message queue at the same time,
         # and yielding results.
-        async with TaskContext(grace=0.01) as tc:
+        async with TaskContext() as tc:
             fetch_data_in_task = tc.create_task(fetch_data_in())
 
             async def receive():
@@ -107,33 +107,24 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
 
             app_task = tc.create_task(asgi_app(scope, receive, send))
             pop_task = None
-            try:
-                while True:
-                    pop_task = tc.create_task(messages_from_app.get())
+            while True:
+                pop_task = tc.create_task(messages_from_app.get())
 
-                    try:
-                        done, pending = await asyncio.wait([pop_task, app_task], return_when=asyncio.FIRST_COMPLETED)
-                    except asyncio.CancelledError:
-                        break
+                try:
+                    done, pending = await asyncio.wait([pop_task, app_task], return_when=asyncio.FIRST_COMPLETED)
+                except asyncio.CancelledError:
+                    break
 
-                    if pop_task in done:
-                        yield pop_task.result()
-                    else:
-                        pop_task.cancel()  # clean up the popping task, or we will leak unresolved tasks every loop iteration
+                if pop_task in done:
+                    yield pop_task.result()
+                else:
+                    pop_task.cancel()  # clean up the popping task, or we will leak unresolved tasks every loop iteration
 
-                    if app_task in done:
-                        while not messages_from_app.empty():
-                            yield messages_from_app.get_nowait()
-                        app_task.result()  # consume/raise exceptions if there are any!
-                        break
-            finally:
-                fetch_data_in_task.cancel()
-                # Only cancel tasks if they're not done. This lets tracebacks from potential errors
-                # still get displayed when the task gets garbage collected.
-                if not app_task.done():
-                    app_task.cancel()
-                if not pop_task.done():
-                    pop_task.cancel()
+                if app_task in done:
+                    while not messages_from_app.empty():
+                        yield messages_from_app.get_nowait()
+                    app_task.result()  # consume/raise exceptions if there are any!
+                    break
 
     return fn
 
@@ -246,19 +237,10 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
             if message["type"] == "http.disconnect":
                 proxy_response.connection.transport.abort()
 
-    try:
-        send_response_task = asyncio.create_task(send_response())
-        disconnect_task = asyncio.create_task(listen_for_disconnect())
+    async with TaskContext() as tc:
+        send_response_task = tc.create_task(send_response())
+        disconnect_task = tc.create_task(listen_for_disconnect())
         await asyncio.wait([send_response_task, disconnect_task], return_when=asyncio.FIRST_COMPLETED)
-    finally:
-        if send_response_task.done():
-            send_response_task.result()
-        else:
-            send_response_task.cancel()
-        if disconnect_task.done():
-            disconnect_task.result()
-        else:
-            disconnect_task.cancel()
 
 
 async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receive, send) -> None:
@@ -315,19 +297,10 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
                 else:
                     pass  # Ignore all other upstream WebSocket message types.
 
-        client_to_upstream_task = asyncio.create_task(client_to_upstream())
-        upstream_to_client_task = asyncio.create_task(upstream_to_client())
-        try:
+        async with TaskContext() as tc:
+            client_to_upstream_task = tc.create_task(client_to_upstream())
+            upstream_to_client_task = tc.create_task(upstream_to_client())
             await asyncio.wait([client_to_upstream_task, upstream_to_client_task], return_when=asyncio.FIRST_COMPLETED)
-        finally:
-            if client_to_upstream_task.done():
-                client_to_upstream_task.result()
-            else:
-                client_to_upstream_task.cancel()
-            if upstream_to_client_task.done():
-                upstream_to_client_task.result()
-            else:
-                upstream_to_client_task.cancel()
 
 
 def web_server_proxy(host: str, port: int):
