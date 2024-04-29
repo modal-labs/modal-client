@@ -100,7 +100,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
         # Run the ASGI app, while draining the send message queue at the same time,
         # and yielding results.
         async with TaskContext() as tc:
-            fetch_data_in_task = tc.create_task(fetch_data_in())
+            tc.create_task(fetch_data_in())
 
             async def receive():
                 return await messages_to_app.get()
