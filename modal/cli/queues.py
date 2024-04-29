@@ -44,7 +44,7 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 @queue_cli.command(name="delete")
 @synchronizer.create_blocking
 async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
-    """Delete a named Dict object and all of its data."""
+    """Delete a named Queue object and all of its data."""
     # Lookup first to validate the name, even though delete is a staticmethod
     await _Queue.lookup(name, environment_name=env)
     if not yes:
