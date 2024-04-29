@@ -1,10 +1,10 @@
 # Copyright Modal Labs 2022
+import asyncio
 import os
 import pytest
 import re
 import sys
 import threading
-import time
 from hashlib import sha256
 from tempfile import NamedTemporaryFile
 from typing import List, Literal, get_args
@@ -829,9 +829,20 @@ def f2():
 
 
 def test_image_parallel_build(builder_version, servicer, client):
-    servicer.image_join_sleep_duration = 0.5
+    barrier = None
 
-    t0 = time.time()
-    with parallel_app.run(client=client):
-        # The sleep duration applies 2x to each image, because it's per layer.
-        assert 1 < (time.time() - t0) < 2
+    async def MockImageJoinStreaming(self, stream):
+        nonlocal barrier
+        if barrier is None:
+            barrier = asyncio.Barrier(2)  # lazy assignment so it works on Python < 3.10 (?)
+        await barrier.wait()  # this would block indefinitely if images aren't loaded in parallel
+        await stream.send_message(
+            api_pb2.ImageJoinStreamingResponse(
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+            )
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ImageJoinStreaming", MockImageJoinStreaming)
+        with parallel_app.run(client=client):
+            pass
