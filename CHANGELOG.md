@@ -12,7 +12,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.62.116 (2024-04-26)
 
-* Added a command-line interface for interacting with modal.Dict objects. Run modal dict --help in your terminal to see what is available.
+* Added a command-line interface for interacting with `modal.Dict` objects. Run `modal dict --help` in your terminal to see what is available.
 
 
 
