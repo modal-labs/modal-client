@@ -51,8 +51,8 @@ def test_run_class(client, servicer):
     assert len(objects) == 3  # the class + two functions (one method-bound and one for the class)
     assert objects["Foo.bar"] == function_id
     assert objects["Foo"] == class_id
-    assert objects["Foo::class_function"].startswith("fu-")
-    assert objects["Foo::class_function"] != function_id
+    assert objects["Foo::method-unspecified"].startswith("fu-")
+    assert objects["Foo::method-unspecified"] != function_id
 
 
 def test_call_class_sync(client, servicer):

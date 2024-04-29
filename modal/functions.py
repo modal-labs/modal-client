@@ -748,7 +748,7 @@ class _Function(_Object, type_prefix="fu"):
 
         return obj
 
-    def from_parametrized(
+    def _bind_parameters(
         self,
         obj: "modal.cls._Obj",
         from_other_workspace: bool,

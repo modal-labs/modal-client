@@ -69,7 +69,7 @@ class _Obj:
 
         self._functions = {}
         # first create the singular object function used by all methods on this parameterization
-        instance_invocation_function = class_function.from_parametrized(
+        instance_invocation_function = class_function._bind_parameters(
             self, from_other_workspace, options, args, kwargs
         )
 
@@ -176,7 +176,7 @@ class _Cls(_Object, type_prefix="cs"):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
 
         if metadata.class_function_id:
-            # we don't have any hydration metadata on "class functions", for now
+            # we don't have any hydration metadata on "class function" themselves at the moment
             if self._class_function:
                 self._class_function._hydrate(metadata.class_function_id, self.client, None)
             else:

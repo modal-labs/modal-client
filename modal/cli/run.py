@@ -160,7 +160,7 @@ def _get_click_command_for_function(app: App, function_tag):
                 # TODO(erikbern): this code is a bit hacky
                 cls_kwargs = {k: kwargs[k] for k in cls_signature}
                 fun_kwargs = {k: kwargs[k] for k in fun_signature}
-                method = function.from_parametrized(None, False, None, tuple(), cls_kwargs)
+                method = function._bind_parameters(None, False, None, tuple(), cls_kwargs)
                 method.remote(**fun_kwargs)
 
     with_click_options = _add_click_options(f, signature)
