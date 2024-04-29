@@ -201,8 +201,8 @@ class TaskContext:
         return t
 
     @staticmethod
-    async def gather(*awaitables: Awaitable) -> Any:
-        """Wait for a sequence of awaitables to finish, concurrently.
+    async def gather(*coros: Awaitable) -> Any:
+        """Wait for a sequence of coroutines to finish, concurrently.
 
         This is similar to `asyncio.gather()`, but it uses TaskContext to cancel all remaining tasks
         if one fails with an exception other than `asyncio.CancelledError`. The native `asyncio`
@@ -231,7 +231,7 @@ class TaskContext:
         ```
         """
         async with TaskContext() as tc:
-            results = await asyncio.gather(*(tc.create_task(a) for a in awaitables))
+            results = await asyncio.gather(*(tc.create_task(coro) for coro in coros))
         return results
 
 
