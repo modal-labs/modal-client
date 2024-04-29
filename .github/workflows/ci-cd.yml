@@ -87,7 +87,7 @@ jobs:
 
   publish-base-images:
     name: |
-      Publish base images for ${{ matrix.image-name }} ${{ matrix.python-version }}
+      Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }} on ${{ matrix.python-version }}
     if: github.ref == 'refs/heads/main'
     needs: [client-test]
     runs-on: ubuntu-20.04
@@ -99,6 +99,7 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        image-builder-version: ["2023.12", "2024.04"]
         image-name: ["debian_slim", "conda", "micromamba"]
 
     steps:
@@ -118,6 +119,8 @@ jobs:
         run: modal config set-environment main
 
       - name: Publish base images
+        env:
+          MODAL_IMAGE_BUILDER_VERSION: ${{ matrix.image-builder-version }}
         run: |
           python -m modal_global_objects.images.${{ matrix.image-name }} ${{ matrix.python-version }}
 
