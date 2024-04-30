@@ -206,10 +206,9 @@ class _Object:
         elif not self._hydrate_lazily:
             object_type = self.__class__.__name__.strip("_")
             message = (
-                f"{object_type} object has not been hydrated with the metadata it needs to run on Modal."
-                " This might happen if an object is defined on a different stub,"
-                " or if it's on the same stub but it didn't get created because it"
-                " wasn't defined in global scope."
+                f"{object_type} has not been hydrated with the metadata it needs to run on Modal."
+                " This might happen if you are trying to call a Modal function without running or"
+                " deploying the app that it is attached to."
             )
             raise ExecutionError(message)
         else:
