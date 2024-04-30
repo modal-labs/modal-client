@@ -741,7 +741,7 @@ def test_queue_create_list_delete(servicer, server_url_env, set_env_client):
     assert "bar-queue" not in res.stdout
 
 
-def test_queue_next_len_clear(servicer, server_url_env, set_env_client):
+def test_queue_peek_len_clear(servicer, server_url_env, set_env_client):
     # Kind of hacky to be modifying the attributes on the servicer like this
     name = "queue-who"
     key = (name, api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, os.environ.get("MODAL_ENVIRONMENT", "main"))
@@ -749,19 +749,19 @@ def test_queue_next_len_clear(servicer, server_url_env, set_env_client):
     servicer.deployed_queues[key] = queue_id
     servicer.queue = {b"": [dumps("a"), dumps("b"), dumps("c")], b"alt": [dumps("x"), dumps("y")]}
 
-    assert _run(["queue", "next", name]).stdout == "a\n"
-    assert _run(["queue", "next", name, "-p", "alt"]).stdout == "x\n"
-    assert _run(["queue", "next", name, "3"]).stdout == "a\nb\nc\n"
-    assert _run(["queue", "next", name, "3", "--partition", "alt"]).stdout == "x\ny\n"
+    assert _run(["queue", "peek", name]).stdout == "a\n"
+    assert _run(["queue", "peek", name, "-p", "alt"]).stdout == "x\n"
+    assert _run(["queue", "peek", name, "3"]).stdout == "a\nb\nc\n"
+    assert _run(["queue", "peek", name, "3", "--partition", "alt"]).stdout == "x\ny\n"
 
     assert _run(["queue", "len", name]).stdout == "3\n"
     assert _run(["queue", "len", name, "--partition", "alt"]).stdout == "2\n"
     assert _run(["queue", "len", name, "--total"]).stdout == "5\n"
 
-    _run(["queue", "clear", name])
+    _run(["queue", "clear", name, "--yes"])
     assert _run(["queue", "len", name]).stdout == "0\n"
-    assert _run(["queue", "next", name, "--partition", "alt"]).stdout == "x\n"
+    assert _run(["queue", "peek", name, "--partition", "alt"]).stdout == "x\n"
 
-    _run(["queue", "clear", name, "--all"])
+    _run(["queue", "clear", name, "--all", "--yes"])
     assert _run(["queue", "len", name, "--total"]).stdout == "0\n"
-    assert _run(["queue", "next", name, "--partition", "alt"]).stdout == ""
+    assert _run(["queue", "peek", name, "--partition", "alt"]).stdout == ""

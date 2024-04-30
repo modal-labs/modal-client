@@ -85,11 +85,18 @@ async def clear(
     name: str,
     partition: Optional[str] = PARTITION_OPTION,
     all: bool = Option(False, "-a", "--all", help="Clear the contents of all partitions."),
+    yes: bool = YES_OPTION,
     *,
     env: Optional[str] = ENV_OPTION,
 ):
     """Clear the contents of a queue by removing all of its data."""
     q = await _Queue.lookup(name, environment_name=env)
+    if not yes:
+        typer.confirm(
+            f"Are you sure you want to irrevocably delete the contents of modal.Queue '{name}'?",
+            default=False,
+            abort=True,
+        )
     await q.clear(partition=partition, all=all)
 
 
