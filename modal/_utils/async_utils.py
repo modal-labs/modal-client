@@ -6,7 +6,7 @@ import inspect
 import time
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Callable, Iterator, List, Optional, Set, TypeVar, cast
+from typing import Any, AsyncGenerator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar, cast
 
 import synchronicity
 from typing_extensions import ParamSpec
@@ -140,7 +140,6 @@ class TaskContext:
             if gather_future:
                 try:
                     await gather_future
-                # pre Python3.8, CancelledErrors were a subclass of exception
                 except asyncio.CancelledError:
                     pass
 
@@ -150,7 +149,7 @@ class TaskContext:
                     # Only tasks without a done_callback will still be present in self._tasks
                     task.result()
 
-                if task.done() or task in self._loops:
+                if task.done() or task in self._loops:  # Note: Legacy code, we can probably cancel loops.
                     continue
 
                 # Cancel any remaining unfinished tasks.
@@ -180,9 +179,6 @@ class TaskContext:
                 t0 = time.time()
                 try:
                     await asyncio.wait_for(async_f(), timeout=timeout)
-                    # pre Python3.8, CancelledErrors were a subclass of exception
-                except asyncio.CancelledError:
-                    raise
                 except Exception:
                     time_elapsed = time.time() - t0
                     logger.exception(f"Loop attempt failed for {function_name} (time_elapsed={time_elapsed})")
@@ -200,29 +196,39 @@ class TaskContext:
         t.add_done_callback(self._loops.discard)
         return t
 
-    async def wait(self, *tasks):
-        # Waits until all of tasks have finished
-        # This is slightly different than asyncio.wait since the `tasks` argument
-        # may be a subset of all the tasks.
-        # If any of the task context's task raises, throw that exception
-        # This is probably O(n^2) sadly but I guess it's fine
-        unfinished_tasks = set(tasks)
-        while True:
-            unfinished_tasks &= self._tasks
-            if not unfinished_tasks:
-                break
-            try:
-                done, pending = await asyncio.wait_for(
-                    asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED), timeout=30.0
-                )
-            except asyncio.TimeoutError:
-                continue
-            for task in done:
-                task.result()  # Raise exception if needed
-                if task in unfinished_tasks:
-                    unfinished_tasks.remove(task)
-                if task in self._tasks:
-                    self._tasks.remove(task)
+    @staticmethod
+    async def gather(*coros: Awaitable) -> Any:
+        """Wait for a sequence of coroutines to finish, concurrently.
+
+        This is similar to `asyncio.gather()`, but it uses TaskContext to cancel all remaining tasks
+        if one fails with an exception other than `asyncio.CancelledError`. The native `asyncio`
+        function does not cancel remaining tasks in this case, which can lead to surprises.
+
+        For example, if you use `asyncio.gather(t1, t2, t3)` and t2 raises an exception, then t1 and
+        t3 would continue running. With `TaskContext.gather(t1, t2, t3)`, they are cancelled.
+
+        (It's still acceptable to use `asyncio.gather()` if you don't need cancellation — for
+        example, if you're just gathering quick coroutines with no side-effects. Or if you're
+        gathering the tasks with `return_exceptions=True`.)
+
+        Usage:
+
+        ```python notest
+        # Example 1: Await three coroutines
+        created_object, other_work, new_plumbing = await TaskContext.gather(
+            create_my_object(),
+            do_some_other_work(),
+            fix_plumbing(),
+        )
+
+        # Example 2: Gather a list of coroutines
+        coros = [a.load() for a in objects]
+        results = await TaskContext.gather(*coros)
+        ```
+        """
+        async with TaskContext() as tc:
+            results = await asyncio.gather(*(tc.create_task(coro) for coro in coros))
+        return results
 
 
 def run_coro_blocking(coro):
@@ -398,40 +404,6 @@ async def iterate_blocking(iterator: Iterator[T]) -> AsyncGenerator[T, None]:
         if obj is DONE:
             break
         yield cast(T, obj)
-
-
-class ConcurrencyPool:
-    def __init__(self, concurrency_limit: int):
-        self.semaphore = asyncio.Semaphore(concurrency_limit)
-
-    async def run_coros(self, coros: typing.Iterable[typing.Coroutine], return_exceptions=False):
-        async def blocking_wrapper(coro):
-            # Not using async with on the semaphore is intentional here - if return_exceptions=False
-            # manual release prevents starting extraneous tasks after exceptions.
-            try:
-                await self.semaphore.acquire()
-            except asyncio.CancelledError:
-                coro.close()  # avoid "coroutine was never awaited" warnings
-
-            try:
-                res = await coro
-                self.semaphore.release()
-                return res
-            except BaseException as e:
-                if return_exceptions:
-                    self.semaphore.release()
-                raise e
-
-        # asyncio.gather() is weird - it doesn't cancel outstanding awaitables on exceptions when
-        # return_exceptions=False --> wrap the coros in tasks are cancel them explicitly on exception.
-        tasks = [asyncio.create_task(blocking_wrapper(coro)) for coro in coros]
-        g = asyncio.gather(*tasks, return_exceptions=return_exceptions)
-        try:
-            return await g
-        except BaseException as e:
-            for t in tasks:
-                t.cancel()
-            raise e
 
 
 @asynccontextmanager

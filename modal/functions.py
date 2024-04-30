@@ -36,6 +36,7 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import serialize
 from ._utils.async_utils import (
+    TaskContext,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -1162,7 +1163,7 @@ async def _gather(*function_calls: _FunctionCall):
     ```
     """
     try:
-        return await asyncio.gather(*[fc.get() for fc in function_calls])
+        return await TaskContext.gather(*[fc.get() for fc in function_calls])
     except Exception as exc:
         # TODO: kill all running function calls
         raise exc
