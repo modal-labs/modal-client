@@ -4,7 +4,7 @@ import hashlib
 import io
 import pytest
 
-from modal._utils.app_utils import is_valid_app_name, is_valid_subdomain_label
+from modal._utils.app_utils import is_valid_object_name, is_valid_subdomain_label
 from modal._utils.blob_utils import BytesIOSegmentPayload
 
 
@@ -17,11 +17,11 @@ def test_subdomain_label():
 
 
 def test_app_name():
-    assert is_valid_app_name("baNaNa")
-    assert is_valid_app_name("foo-123_456")
-    assert is_valid_app_name("a" * 64)
-    assert not is_valid_app_name("hello world")
-    assert not is_valid_app_name("a" * 65)
+    assert is_valid_object_name("baNaNa")
+    assert is_valid_object_name("foo-123_456")
+    assert is_valid_object_name("a" * 64)
+    assert not is_valid_object_name("hello world")
+    assert not is_valid_object_name("a" * 65)
 
 
 @pytest.mark.asyncio

@@ -15,8 +15,7 @@ def replace_invalid_subdomain_chars(label: str) -> str:
     return re.sub("[^a-z0-9-]", "-", label.lower())
 
 
-def is_valid_app_name(name: str) -> bool:
-    # Note: uses archaic "app name" terminology as it is also used in the server
+def is_valid_object_name(name: str) -> bool:
     return len(name) <= 64 and re.match("^[a-zA-Z0-9-_.]+$", name) is not None
 
 
@@ -26,5 +25,8 @@ def check_object_name(name: str) -> None:
         " Object names may contain only alphanumeric characters, dashes, periods, and underscores,"
         " and must be shorter than 64 characters."
     )
-    if not is_valid_app_name(name):
+    if not is_valid_object_name(name):
         raise InvalidError(message)
+
+
+is_valid_app_name = is_valid_object_name  # TODO becaue we use the former in the server
