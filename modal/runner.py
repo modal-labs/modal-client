@@ -398,7 +398,7 @@ async def _deploy_app(
             'app = App("some-name")'
         )
     else:
-        check_object_name(name)
+        check_object_name(name, "App")
 
     if client is None:
         client = await _Client.from_env()
