@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import re
 
-from ..exception import InvalidError
+from ..exception import InvalidError, deprecation_warning
 
 # https://www.rfc-editor.org/rfc/rfc1035
 subdomain_regex = re.compile("^(?![0-9]+$)(?!-)[a-z0-9-]{,63}(?<!-)$")
@@ -19,14 +19,19 @@ def is_valid_object_name(name: str) -> bool:
     return len(name) <= 64 and re.match("^[a-zA-Z0-9-_.]+$", name) is not None
 
 
-def check_object_name(name: str) -> None:
+def check_object_name(name: str, object_type: str, warn: bool = False) -> None:
     message = (
-        f"Invalid object name: '{name}'."
-        " Object names may contain only alphanumeric characters, dashes, periods, and underscores,"
+        f"Invalid {object_type} name: '{name}'."
+        "\n\nNames may contain only alphanumeric characters, dashes, periods, and underscores,"
         " and must be shorter than 64 characters."
     )
+    if warn:
+        message += "\n\nThis will become an error in the future. Please rename your object to preserve access to it."
     if not is_valid_object_name(name):
-        raise InvalidError(message)
+        if warn:
+            deprecation_warning((2024, 4, 30), message, show_source=False)
+        else:
+            raise InvalidError(message)
 
 
 is_valid_app_name = is_valid_object_name  # TODO becaue we use the former in the server
