@@ -274,8 +274,6 @@ class _Function(_Object, type_prefix="fu"):
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
-    _parent: "_Function" = None
-    _uses_parent: bool = False  # True when a parameterized Function uses its parent directly, since parameters are Null
 
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
@@ -294,8 +292,8 @@ class _Function(_Object, type_prefix="fu"):
         Creates a function placeholder function that binds a specific method name to
         this function for use when invoking the function.
 
-        Can be used both on both unparametized and parametrized functions, so long as they
-        aren't method bound.
+        Should only be used on "class functions". For "instance functions", we don't create an actual backend function,
+        and instead do client-side "fake-hydration" only, see _bind_method_local
         """
         # creates
         full_name = f"{self.info.get_tag()}.{method_name}"
@@ -338,12 +336,42 @@ class _Function(_Object, type_prefix="fu"):
         def _deps():
             return [parent]
 
-        if self._parent:
-            rep = f"ParameterizedMethod({full_name})"
-        else:
-            rep = f"Method({full_name})"
+        rep = f"Method({full_name})"
 
+        # TODO: add preload?
+        # TODO: pass in and use existing_function_id so we don't spam new functions every deploy?
         fun = _Function._from_loader(_load, rep, hydrate_lazily=True, deps=_deps)
+
+        return fun
+
+    def _bind_method_local(self, method_name: str, *, is_generator: bool = False):
+        """mdmd:hidden"""
+
+        function_type = (
+            api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+        )
+
+        async def _load(loaded_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            loaded_function._hydrate(
+                "fu-fake",  # TODO: ugly, fix actual support for "placeholders"
+                resolver.client,
+                api_pb2.FunctionHandleMetadata(
+                    use_function_id=self.object_id,
+                    use_method_name=method_name,
+                    function_type=function_type,
+                ),
+            )
+
+        def _deps():
+            return []  # self]
+
+        rep = f"ParametrizedMethod({method_name})"
+        fun = _Function._from_loader(
+            _load,
+            rep,
+            hydrate_lazily=True,
+            deps=_deps,
+        )
 
         return fun
 

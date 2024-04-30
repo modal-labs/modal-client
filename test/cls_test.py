@@ -58,19 +58,18 @@ def test_run_class(client, servicer):
 def test_call_class_sync(client, servicer):
     with servicer.intercept() as ctx:
         with app.run(client=client):
-            assert len(ctx.get_requests("FunctionCreate")) == 2  # base function,
+            assert len(ctx.get_requests("FunctionCreate")) == 2  # one for base function, one for the method
             foo: Foo = Foo()
-            assert len(ctx.get_requests("FunctionCreate")) == 2
-            assert len(ctx.get_requests("FunctionBindParams")) == 0
+            assert len(ctx.get_requests("FunctionCreate")) == 2  # no additional creates for an instance
             ret: float = foo.bar.remote(42)
-
             assert ret == 1764
 
     # TODO: uncomment:
-    # assert len(ctx.get_requests("FunctionBindParams")) == 0  # shouldn't need one of these
+    assert (
+        len(ctx.get_requests("FunctionBindParams")) == 0
+    )  # shouldn't need to bind in case there are no instance args etc.
     function_creates_requests: typing.List[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
-    # TODO: uncomment:
-    # assert len(function_creates_requests) == 2  # one base, one method bound version - shouldn't need more!
+    assert len(function_creates_requests) == 2
     (class_create,) = ctx.get_requests("ClassCreate")
     assert class_create.class_function_id
     print([fc.function.function_name for fc in function_creates_requests])
@@ -80,7 +79,6 @@ def test_call_class_sync(client, servicer):
     assert foobar_def.is_method
     assert foobar_def.use_method_name == "bar"
     assert foobar_def.use_function_id == class_create.class_function_id
-
     (function_map_request,) = ctx.get_requests("FunctionMap")
     assert function_map_request.function_id == class_create.class_function_id
 

@@ -69,10 +69,7 @@ class _Obj:
 
         self._functions = {}
         # first create the singular object function used by all methods on this parameterization
-        instance_invocation_function = class_function._bind_parameters(
-            self, from_other_workspace, options, args, kwargs
-        )
-
+        instance_function = class_function._bind_parameters(self, from_other_workspace, options, args, kwargs)
         for method_name, class_bound_method in base_functions.items():
             # each bound *method* needs to refer to the object_function in its use_function_id
 
@@ -86,12 +83,12 @@ class _Obj:
 
             # If we had a way to associate all existing methods with the _Obj we could get
             # around this by loading with `existing_function_id` instead?
-
-            self._functions[method_name] = instance_invocation_function._bind_method(
+            method = instance_function._bind_method_local(
                 method_name,
                 # TODO: webhook config, is_generator
             )
-            self._functions[method_name]._set_output_mgr(output_mgr)
+            method._set_output_mgr(output_mgr)
+            self._functions[method_name] = method
 
         # Used for construction local object lazily
         self._inited = False
@@ -256,7 +253,6 @@ class _Cls(_Object, type_prefix="cs"):
                     )
                 )
             resp = await resolver.client.stub.ClassCreate(req)
-            print("Resolving cls", self._functions, list(self._functions.values())[0].object_id)
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
