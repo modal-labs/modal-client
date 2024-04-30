@@ -14,7 +14,7 @@ from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
 from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, RequestSizeError, deprecation_warning
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
@@ -375,7 +375,13 @@ class _Queue(_Object, type_prefix="qu"):
                 total_timeout=timeout,
             )
         except GRPCError as exc:
-            raise queue.Full(str(exc)) if exc.status == Status.RESOURCE_EXHAUSTED else exc
+            if exc.status == Status.RESOURCE_EXHAUSTED:
+                raise queue.Full(str(exc))
+            elif "status = '413'" in exc.message:
+                method = "put_many" if len(vs) > 1 else "put"
+                raise RequestSizeError(f"Queue.{method} request is too large") from exc
+            else:
+                raise exc
 
     async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: List[Any]):
         vs_encoded = [serialize(v) for v in vs]
@@ -388,7 +394,13 @@ class _Queue(_Object, type_prefix="qu"):
         try:
             await retry_transient_errors(self._client.stub.QueuePut, request)
         except GRPCError as exc:
-            raise queue.Full(exc.message) if exc.status == Status.RESOURCE_EXHAUSTED else exc
+            if exc.status == Status.RESOURCE_EXHAUSTED:
+                raise queue.Full(exc.message)
+            elif "status = '413'" in exc.message:
+                method = "put_many" if len(vs) > 1 else "put"
+                raise RequestSizeError(f"Queue.{method} request is too large") from exc
+            else:
+                raise exc
 
     @live_method
     async def len(self, *, partition: Optional[str] = None) -> int:
