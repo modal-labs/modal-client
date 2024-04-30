@@ -205,7 +205,7 @@ class TaskContext:
         function does not cancel remaining tasks in this case, which can lead to surprises.
 
         For example, if you use `asyncio.gather(t1, t2, t3)` and t2 raises an exception, then t1 and
-        t3 would continue running. With `TaskGroup.gather(t1, t2, t3)`, they are cancelled.
+        t3 would continue running. With `TaskContext.gather(t1, t2, t3)`, they are cancelled.
 
         (It's still acceptable to use `asyncio.gather()` if you don't need cancellation — for
         example, if you're just gathering quick coroutines with no side-effects. Or if you're
