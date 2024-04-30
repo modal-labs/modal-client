@@ -37,7 +37,7 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 @dict_cli.command(name="list")
 @synchronizer.create_blocking
 async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
-    """List all named Dict objects."""
+    """List all named Dicts."""
     env = ensure_env(env)
     client = await _Client.from_env()
     request = api_pb2.DictListRequest(environment_name=env)
@@ -64,7 +64,7 @@ async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_O
 @dict_cli.command(name="delete")
 @synchronizer.create_blocking
 async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
-    """Delete a named Dict object and all of its data."""
+    """Delete a named Dict and all of its data."""
     # Lookup first to validate the name, even though delete is a staticmethod
     await _Dict.lookup(name, environment_name=env)
     if not yes:

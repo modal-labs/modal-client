@@ -31,7 +31,7 @@ PARTITION_OPTION = Option(
 @queue_cli.command(name="create")
 @synchronizer.create_blocking
 async def create(name: str, *, env: Optional[str] = ENV_OPTION):
-    """Create a named Queue object.
+    """Create a named Queue.
 
     Note: This is a no-op when the Queue already exists.
     """
@@ -44,7 +44,7 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 @queue_cli.command(name="delete")
 @synchronizer.create_blocking
 async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
-    """Delete a named Queue object and all of its data."""
+    """Delete a named Queue and all of its data."""
     # Lookup first to validate the name, even though delete is a staticmethod
     await _Queue.lookup(name, environment_name=env)
     if not yes:
@@ -59,7 +59,7 @@ async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_
 @queue_cli.command(name="list")
 @synchronizer.create_blocking
 async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
-    """List all named Queue objects."""
+    """List all named Queues."""
     env = ensure_env(env)
 
     max_total_size = 100_000
