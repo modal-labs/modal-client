@@ -13,6 +13,7 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .exception import InvalidError, deprecation_warning
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
@@ -163,6 +164,7 @@ class _Queue(_Object, type_prefix="qu"):
         queue.put(123)
         ```
         """
+        check_object_name(label, "Queue", warn=True)
 
         async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.QueueGetOrCreateRequest(

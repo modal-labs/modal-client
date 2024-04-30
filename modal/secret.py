@@ -9,6 +9,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .exception import InvalidError, NotFoundError
 from .execution_context import is_local
@@ -169,6 +170,7 @@ class _Secret(_Object, type_prefix="st"):
            ...
         ```
         """
+        check_object_name(label, "Secret", warn=True)
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
