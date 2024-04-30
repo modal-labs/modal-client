@@ -5,7 +5,8 @@ import io
 import pytest
 
 from modal._utils.blob_utils import BytesIOSegmentPayload
-from modal._utils.name_utils import is_valid_object_name, is_valid_subdomain_label
+from modal._utils.name_utils import check_object_name, is_valid_object_name, is_valid_subdomain_label
+from modal.exception import DeprecationError, InvalidError
 
 
 def test_subdomain_label():
@@ -16,12 +17,16 @@ def test_subdomain_label():
     assert not is_valid_subdomain_label("ban/ana")
 
 
-def test_app_name():
+def test_object_name():
     assert is_valid_object_name("baNaNa")
     assert is_valid_object_name("foo-123_456")
     assert is_valid_object_name("a" * 64)
     assert not is_valid_object_name("hello world")
     assert not is_valid_object_name("a" * 65)
+    with pytest.raises(InvalidError, match="Invalid Volume name: 'foo/bar'"):
+        check_object_name("foo/bar", "Volume")
+    with pytest.warns(DeprecationError, match="Invalid Volume name: 'foo/bar'"):
+        check_object_name("foo/bar", "Volume", warn=True)
 
 
 @pytest.mark.asyncio
