@@ -16,7 +16,7 @@ from aiohttp.abc import AbstractStreamWriter
 from modal_proto import api_pb2
 
 from ..exception import ExecutionError
-from .async_utils import retry
+from .async_utils import TaskContext, retry
 from .grpc_utils import retry_transient_errors
 from .hash_utils import UploadHashes, get_sha256_hex, get_upload_hashes
 from .http_utils import http_client_with_tls
@@ -195,7 +195,7 @@ async def perform_multipart_upload(
         num_bytes_left -= part_length_bytes
         file_offset += part_length_bytes
 
-    part_etags = await asyncio.gather(*upload_coros)
+    part_etags = await TaskContext.gather(*upload_coros)
 
     # The body of the complete_multipart_upload command needs some data in xml format:
     completion_body = "<CompleteMultipartUpload>\n"
