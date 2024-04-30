@@ -75,7 +75,19 @@ class _Obj:
 
         for method_name, class_bound_method in base_functions.items():
             # each bound *method* needs to refer to the object_function in its use_function_id
-            self._functions[method_name] = instance_invocation_function._method_placeholder(
+
+            # We can't do class_bound_method._bind_parameters here, since that would clone the
+            # function definition, inluding `use_function_id`, of the class_bound_method, which
+            # would make any calls go to the unparameterized function.
+
+            # Instead we need to bind the method to the instance "object function" created for
+            # the object instance to serve as the executed function. In order to not create
+            # a new ƒunction for each hydration this needs to use a custom method.
+
+            # If we had a way to associate all existing methods with the _Obj we could get
+            # around this by loading with `existing_function_id` instead?
+
+            self._functions[method_name] = instance_invocation_function._bind_method(
                 method_name,
                 # TODO: webhook config, is_generator
             )
@@ -218,7 +230,7 @@ class _Cls(_Object, type_prefix="cs"):
         for method_name, partial_function in _find_partial_methods_for_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         ).items():
-            method_function = cls_func._method_placeholder(
+            method_function = cls_func._bind_method(
                 method_name, webhook_config=partial_function.webhook_config, is_generator=partial_function.is_generator
             )
             functions[method_name] = method_function

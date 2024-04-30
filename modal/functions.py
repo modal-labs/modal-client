@@ -282,7 +282,7 @@ class _Function(_Object, type_prefix="fu"):
     _use_function_id: Optional[str]
     _use_method_name: Optional[str]
 
-    def _method_placeholder(
+    def _bind_method(
         self,
         method_name: str,
         *,
