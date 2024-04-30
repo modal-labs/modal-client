@@ -286,15 +286,27 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
         )
     )
     assert servicer.n_mounts == 3
-    assert servicer.mount_contents["mo-1"].keys() == {"/root/mount_dedupe.py"}
-    pkg_a_mount = servicer.mount_contents["mo-2"]
-    for fn in pkg_a_mount.keys():
-        assert fn.startswith("/root/pkg_a")
-    assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount.keys()
 
-    custom_pkg_a_mount = servicer.mount_contents["mo-3"]
-    assert len(custom_pkg_a_mount) == len(pkg_a_mount) + 1
-    assert "/root/pkg_a/normally_not_included.pyc" in custom_pkg_a_mount.keys()
+    # mounts are loaded in parallel, but there
+    mounted_files_sets = set(frozenset(m.keys()) for m in servicer.mount_contents.values() if m)
+    assert {"/root/mount_dedupe.py"} in mounted_files_sets
+    mounted_files_sets.remove(frozenset({"/root/mount_dedupe.py"}))
+
+    # find one mount that includes normally_not_included.py
+    for mount_with_pyc in mounted_files_sets:
+        if "/root/pkg_a/normally_not_included.pyc" in mount_with_pyc:
+            break
+    else:
+        assert False, "could not find a mount with normally_not_included.pyc"
+    mounted_files_sets.remove(mount_with_pyc)
+
+    # and one without it
+    remaining_mount = list(mounted_files_sets)[0]
+    assert "/root/pkg_a/normally_not_included.pyc" not in remaining_mount
+    for fn in remaining_mount:
+        assert fn.startswith("/root/pkg_a")
+
+    assert len(mount_with_pyc) == len(remaining_mount) + 1
 
 
 @skip_windows("pip-installed pdm seems somewhat broken on windows")
