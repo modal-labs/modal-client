@@ -8,6 +8,7 @@ from typing import AsyncIterator, Optional, Tuple, Union
 
 from click import UsageError
 
+from modal._utils.async_utils import TaskContext
 from modal.network_file_system import _NetworkFileSystem
 from modal.volume import FileEntry, FileEntryType, _Volume
 
@@ -76,5 +77,5 @@ async def _volume_download(
                 q.task_done()
 
     consumers = [consumer() for _ in range(num_consumers)]
-    await asyncio.gather(producer(), *consumers)
+    await TaskContext.gather(producer(), *consumers)
     sys.stdout.flush()
