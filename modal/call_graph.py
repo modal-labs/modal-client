@@ -12,6 +12,7 @@ class InputStatus(IntEnum):
     PENDING = 0
     SUCCESS = api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     FAILURE = api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    INIT_FAILURE = api_pb2.GenericResult.GENERIC_STATUS_INIT_FAILURE
     TERMINATED = api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
     TIMEOUT = api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT
 
