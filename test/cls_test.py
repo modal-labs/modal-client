@@ -194,7 +194,6 @@ class FooLocal:
         return self.bar.local(y + 1)
 
 
-@pytest.mark.filterwarnings()
 def test_can_call_locally(client):
     foo = FooLocal()
     assert foo.bar.local(4) == 64
