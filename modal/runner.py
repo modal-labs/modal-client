@@ -15,7 +15,7 @@ from ._output import OutputManager, get_app_logs_loop, step_completed, step_prog
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._sandbox_shell import connect_to_sandbox
-from ._utils.app_utils import is_valid_app_name
+from ._utils.app_utils import check_object_name
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
@@ -397,11 +397,8 @@ async def _deploy_app(
             "or\n"
             'app = App("some-name")'
         )
-
-    if not is_valid_app_name(name):
-        raise InvalidError(
-            f"Invalid app name {name}. App names may only contain alphanumeric characters, dashes, periods, and underscores, and must be less than 64 characters in length. "
-        )
+    else:
+        check_object_name(name)
 
     if client is None:
         client = await _Client.from_env()
