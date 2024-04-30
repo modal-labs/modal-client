@@ -135,14 +135,14 @@ async def _create_all_objects(
             if obj.object_id is not None:
                 tag_to_object_id[tag] = obj.object_id
 
-        await asyncio.gather(*(_preload(tag, obj) for tag, obj in indexed_objects.items()))
+        await TaskContext.gather(*(_preload(tag, obj) for tag, obj in indexed_objects.items()))
 
         async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
             await resolver.load(obj, existing_object_id)
             running_app.tag_to_object_id[tag] = obj.object_id
 
-        await asyncio.gather(*(_load(tag, obj) for tag, obj in indexed_objects.items()))
+        await TaskContext.gather(*(_load(tag, obj) for tag, obj in indexed_objects.items()))
 
     # Create the app (and send a list of all tagged obs)
     # TODO(erikbern): we should delete objects from a previous version that are no longer needed
