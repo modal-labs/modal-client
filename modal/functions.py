@@ -680,11 +680,15 @@ class _Function(_Object, type_prefix="fu"):
         """mdmd:hidden"""
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            function_name = self._parent.info.function_name
             if not self._parent.is_hydrated:
+                if self._parent.app._running_app is None:
+                    reason = ", because the App it is defined on is not running."
+                else:
+                    reason = ""
                 raise ExecutionError(
-                    "Base function in class has not been hydrated. This might happen if an object is"
-                    " defined on a different stub, or if it's on the same stub but it didn't get"
-                    " created because it wasn't defined in global scope."
+                    f"The base {function_name} function has not been hydrated"
+                    f" with the metadata it needs to run on Modal{reason}."
                 )
             assert self._parent._client.stub
             serialized_params = serialize((args, kwargs))
