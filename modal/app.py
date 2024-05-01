@@ -831,7 +831,6 @@ class _Stub(_App):
             (2024, 4, 29),
             'The use of "Stub" has been deprecated in favor of "App".'
             " This is a pure name change with no other implications.",
-            pending=True,
         )
         return _App(*args, **kwargs)
 
