@@ -172,8 +172,19 @@ async def test_call_cls_remote_async(client):
 app_local = App()
 
 
-@app_local.cls(cpu=42)
+@app_local.cls(cpu=42, enable_memory_snapshot=True)
 class FooLocal:
+    def __init__(self):
+        self.side_effects = ["__init__"]
+
+    @enter(snap=True)
+    def presnap(self):
+        self.side_effects.append("presnap")
+
+    @enter()
+    def postsnap(self):
+        self.side_effects.append("postsnap")
+
     @method()
     def bar(self, x):
         return x**3
@@ -189,6 +200,7 @@ def test_can_call_locally(client):
     assert foo.baz.local(4) == 125
     with app_local.run(client=client):
         assert foo.baz.local(2) == 27
+        assert foo.side_effects == ["__init__", "presnap", "postsnap"]
 
 
 def test_can_call_remotely_from_local(client):
