@@ -691,7 +691,7 @@ class _Function(_Object, type_prefix="fu"):
                 else:
                     reason = ""
                 raise ExecutionError(
-                    f"The {identity} has not been hydrated" f" with the metadata it needs to run on Modal{reason}."
+                    f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
                 )
             assert self._parent._client.stub
             serialized_params = serialize((args, kwargs))
