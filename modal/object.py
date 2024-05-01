@@ -211,6 +211,7 @@ class _Object:
                 " wasn't defined in global scope."
             )
         else:
+            print("Lazy loading", self)
             # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
             resolver = Resolver(await _Client.from_env())
             await resolver.load(self)

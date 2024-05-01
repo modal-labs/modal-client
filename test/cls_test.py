@@ -156,7 +156,9 @@ def test_run_class_serialized(client, servicer):
     with app_ser.run(client=client):
         pass
 
-    assert servicer.n_functions == 1
+    print(servicer.app_functions.keys())
+    print(servicer.precreated_functions)
+    assert servicer.n_functions == 2
     (function_id,) = servicer.app_functions.keys()
     function = servicer.app_functions[function_id]
     assert function.function_name.endswith("FooSer.bar")  # because it's defined in a local scope

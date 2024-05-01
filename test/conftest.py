@@ -16,7 +16,7 @@ import threading
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Iterator, Optional, get_args
+from typing import Dict, Iterator, Optional, Tuple, get_args
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -130,7 +130,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.blob_multipart_threshold = 10_000_000
 
         self.precreated_functions = set()
+
         self.app_functions = {}
+        self.bound_functions: Dict[Tuple[str, bytes]] = {}
         self.fcidx = 0
 
         self.function_serialized = None
@@ -502,6 +504,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.FunctionBindParamsRequest = await stream.recv_message()
         assert request.function_id
         assert request.serialized_params
+        existing_func_id = self.bound_functions.get((request.function_id, request.serialized_params), None)
+        if existing_func_id:
+            return self.app_functions[existing_func_id]
+
         self.n_functions += 1
         function_id = f"fu-{self.n_functions}"
         base_function = self.app_functions[request.function_id]
@@ -511,6 +517,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         bound_func.CopyFrom(base_function)
         bound_func.function_name += "(parametrized)"  # hack
         self.app_functions[function_id] = bound_func
+        self.bound_functions[(request.function_id, request.serialized_params)] = function_id
 
         await stream.send_message(
             api_pb2.FunctionBindParamsResponse(
@@ -564,8 +571,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if not req.existing_function_id:
             self.n_functions += 1
             function_id = f"fu-{self.n_functions}"
+            print("Precreating new", function_id, req.function_name)
         else:
             function_id = req.existing_function_id
+            print("Precreating existing", function_id, req.function_name)
 
         self.precreated_functions.add(function_id)
 
@@ -592,6 +601,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             self.n_functions += 1
             function_id = f"fu-{self.n_functions}"
+            print("Creating without existing id", request.function.function_name, function_id)
         if request.schedule:
             self.function2schedule[function_id] = request.schedule
         function = api_pb2.Function()

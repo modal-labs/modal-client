@@ -303,11 +303,9 @@ class _Function(_Object, type_prefix="fu"):
         else:
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-        parent = self
+        class_function = self
 
         async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            if parent._use_method_name:
-                raise RuntimeError("Can't bind method to already bound", parent)
             # TODO: this needs its own RPC method in order to have function id stability
             #  but we can probably get away with not having that since nothing should have
             #  a relation to this placeholder function.from
@@ -318,13 +316,14 @@ class _Function(_Object, type_prefix="fu"):
                 webhook_config=webhook_config,
                 function_type=function_type,
                 is_method=True,
-                use_function_id=parent.object_id,
+                use_function_id=class_function.object_id,
                 use_method_name=method_name,
             )
             request = api_pb2.FunctionCreateRequest(
-                app_id=parent._app.app_id,  #  TODO: should be able to use resolver.app_id, but can't with lazy hydration right now
+                app_id=class_function._app.app_id,  #  TODO: should be able to use resolver.app_id, but can't with lazy hydration right now
                 function=function_definition,
-                existing_function_id=existing_object_id or "",
+                #  method_bound_function.object_id usually gets set by preload
+                existing_function_id=existing_object_id or method_bound_function.object_id or "",
             )
             response = await resolver.client.stub.FunctionCreate(request)
             method_bound_function._hydrate(
@@ -333,14 +332,28 @@ class _Function(_Object, type_prefix="fu"):
                 response.handle_metadata,
             )
 
+        async def _preload(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            if class_function._use_method_name:
+                raise RuntimeError("Can't bind method to already bound", class_function)
+
+            req = api_pb2.FunctionPrecreateRequest(
+                app_id=resolver.app_id,
+                function_name=full_name,
+                function_type=function_type,
+                webhook_config=webhook_config,
+                use_function_id=class_function.object_id,
+                use_method_name=method_name,
+                existing_function_id=existing_object_id or "",
+            )
+            response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
+            method_bound_function._hydrate(response.function_id, resolver.client, response.handle_metadata)
+
         def _deps():
-            return [parent]
+            return [class_function]
 
         rep = f"Method({full_name})"
 
-        # TODO: add preload?
-        # TODO: pass in and use existing_function_id so we don't spam new functions every deploy?
-        fun = _Function._from_loader(_load, rep, hydrate_lazily=True, deps=_deps)
+        fun = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
 
         return fun
 
@@ -365,7 +378,7 @@ class _Function(_Object, type_prefix="fu"):
         def _deps():
             return []  # self]
 
-        rep = f"ParametrizedMethod({method_name})"
+        rep = f"ParametrizedMethodPlaceholder({method_name})"
         fun = _Function._from_loader(
             _load,
             rep,
@@ -619,7 +632,7 @@ class _Function(_Object, type_prefix="fu"):
                 # Use cloudpickle. Used when working w/ Jupyter notebooks.
                 # serialize at _load time, not function decoration time
                 # otherwise we can't capture a surrounding class for lifetime methods etc.
-                function_serialized = info.serialized_function() if info.raw_f else None
+                function_serialized = info.serialized_function() if info.raw_f else ""
                 class_serialized = serialize(info.cls) if info.cls is not None else None
 
                 # Ensure that large data in global variables does not blow up the gRPC payload,

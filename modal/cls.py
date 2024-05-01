@@ -240,7 +240,7 @@ class _Cls(_Object, type_prefix="cs"):
         callables: Dict[str, Callable] = _find_callables_for_cls(user_cls, ~_PartialFunctionFlags(0))
 
         def _deps() -> List[_Function]:
-            return list(functions.values())
+            return [cls_func] + list(functions.values())
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(

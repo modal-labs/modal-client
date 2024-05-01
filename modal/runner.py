@@ -133,10 +133,12 @@ async def _create_all_objects(
             # ids associated with them when they are serialized into other functions
             await resolver.preload(obj, existing_object_id)
             if obj.object_id is not None:
+                print("Storing preloaded object id for", obj, obj.object_id)
                 tag_to_object_id[tag] = obj.object_id
 
         for tag, obj in indexed_objects.items():
             existing_object_id = tag_to_object_id.get(tag)
+            print(f"Calling load {obj=} {existing_object_id=}")
             await resolver.load(obj, existing_object_id)
             running_app.tag_to_object_id[tag] = obj.object_id
 
