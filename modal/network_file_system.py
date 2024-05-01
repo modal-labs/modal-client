@@ -16,6 +16,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.hash_utils import get_sha256_hex
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .exception import deprecation_warning
 from .object import (
@@ -133,6 +134,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             pass
         ```
         """
+        check_object_name(label, "NetworkFileSystem", warn=True)
 
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SharedVolumeGetOrCreateRequest(

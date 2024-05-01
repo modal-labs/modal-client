@@ -39,6 +39,7 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_path,
 )
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
 from .exception import deprecation_error
@@ -181,6 +182,7 @@ class _Volume(_Object, type_prefix="vo"):
             pass
         ```
         """
+        check_object_name(label, "Volume", warn=True)
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.VolumeGetOrCreateRequest(

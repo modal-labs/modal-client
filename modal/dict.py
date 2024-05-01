@@ -9,6 +9,7 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
 from .exception import deprecation_warning
@@ -134,6 +135,7 @@ class _Dict(_Object, type_prefix="di"):
         dict[123] = 456
         ```
         """
+        check_object_name(label, "Dict", warn=True)
 
         async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
