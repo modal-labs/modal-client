@@ -52,7 +52,7 @@ def humanize_filesize(value: int) -> str:
     return format % (base * bytes_ / unit) + s
 
 
-@volume_cli.command(name="create", help="Create a named, persistent modal.Volume.")
+@volume_cli.command(name="create", help="Create a named, persistent modal.Volume.", rich_help_panel="Management")
 def create(
     name: str,
     env: Optional[str] = ENV_OPTION,
@@ -71,7 +71,7 @@ def some_func():
     console.print(usage)
 
 
-@volume_cli.command(name="get")
+@volume_cli.command(name="get", rich_help_panel="File operations")
 @synchronizer.create_blocking
 async def get(
     volume_name: str,
@@ -100,7 +100,11 @@ async def get(
     await _volume_download(volume, remote_path, destination, force)
 
 
-@volume_cli.command(name="list", help="List the details of all modal.Volume volumes in an environment.")
+@volume_cli.command(
+    name="list",
+    help="List the details of all modal.Volume volumes in an environment.",
+    rich_help_panel="Management",
+)
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
@@ -114,7 +118,11 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     display_table(column_names, rows, json, title=f"Volumes{env_part}")
 
 
-@volume_cli.command(name="ls", help="List files and directories in a modal.Volume volume.")
+@volume_cli.command(
+    name="ls",
+    help="List files and directories in a modal.Volume volume.",
+    rich_help_panel="File operations",
+)
 @synchronizer.create_blocking
 async def ls(
     volume_name: str,
@@ -168,6 +176,7 @@ Remote parent directories will be created as needed.
 
 Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file will be uploaded with its current name under that directory.
 """,
+    rich_help_panel="File operations",
 )
 @synchronizer.create_blocking
 async def put(
@@ -208,7 +217,7 @@ async def put(
         console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
 
 
-@volume_cli.command(name="rm", help="Delete a file or directory from a volume.")
+@volume_cli.command(name="rm", help="Delete a file or directory from a volume.", rich_help_panel="File operations")
 @synchronizer.create_blocking
 async def rm(
     volume_name: str,
@@ -229,7 +238,9 @@ async def rm(
 
 
 @volume_cli.command(
-    name="cp", help="Copy source file to destination file or multiple source files to destination directory."
+    name="cp",
+    help="Copy source file to destination file or multiple source files to destination directory.",
+    rich_help_panel="File operations",
 )
 @synchronizer.create_blocking
 async def cp(
@@ -245,7 +256,11 @@ async def cp(
     await volume.copy_files(src_paths, dst_path)
 
 
-@volume_cli.command(name="delete", help="Delete a named, persistent modal.Volume.")
+@volume_cli.command(
+    name="delete",
+    help="Delete a named, persistent modal.Volume.",
+    rich_help_panel="Management",
+)
 @synchronizer.create_blocking
 async def delete(
     volume_name: str = Argument(help="Name of the modal.Volume to be deleted. Case sensitive"),
