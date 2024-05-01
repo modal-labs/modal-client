@@ -79,8 +79,15 @@ def deserialize(s: bytes, client) -> Any:
             f"Deserialization failed because the '{exc.name}' module is not available in the {env} environment."
         ) from exc
     except Exception as exc:
+        if env == "remote":
+            # We currently don't always package the full traceback from errors in the remote entrypoint logic.
+            # So try to include as much information as we can in the main error message.
+            more = f": {type(exc)}({str(exc)})"
+        else:
+            # When running locally, we can just rely on standard exception chaining.
+            more = " (see above for details)"
         raise DeserializationError(
-            f"Encountered an error when deserializing an object in the {env} environment (see above for details)."
+            f"Encountered an error when deserializing an object in the {env} environment{more}."
         ) from exc
 
 
