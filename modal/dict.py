@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 from typing import Any, AsyncIterator, Optional, Tuple, Type
 
+from grpclib import GRPCError
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
@@ -12,7 +13,7 @@ from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
-from .exception import deprecation_warning
+from .exception import RequestSizeError, deprecation_warning
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
@@ -252,7 +253,13 @@ class _Dict(_Object, type_prefix="di"):
         """Update the dictionary with additional items."""
         serialized = _serialize_dict(kwargs)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
-        await retry_transient_errors(self._client.stub.DictUpdate, req)
+        try:
+            await retry_transient_errors(self._client.stub.DictUpdate, req)
+        except GRPCError as exc:
+            if "status = '413'" in exc.message:
+                raise RequestSizeError("Dict.update request is too large") from exc
+            else:
+                raise exc
 
     @live_method
     async def put(self, key: Any, value: Any) -> None:
@@ -260,7 +267,13 @@ class _Dict(_Object, type_prefix="di"):
         updates = {key: value}
         serialized = _serialize_dict(updates)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
-        await retry_transient_errors(self._client.stub.DictUpdate, req)
+        try:
+            await retry_transient_errors(self._client.stub.DictUpdate, req)
+        except GRPCError as exc:
+            if "status = '413'" in exc.message:
+                raise RequestSizeError("Dict.put request is too large") from exc
+            else:
+                raise exc
 
     @live_method
     async def __setitem__(self, key: Any, value: Any) -> None:
