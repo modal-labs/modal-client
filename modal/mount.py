@@ -23,6 +23,7 @@ from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info
 from .client import _Client
 from .config import config, logger
@@ -584,6 +585,7 @@ class _Mount(_Object, type_prefix="mo"):
         environment_name: Optional[str] = None,
         client: Optional[_Client] = None,
     ) -> "_Mount":
+        check_object_name(deployment_name, "Mount")
         self._deployment_name = deployment_name
         self._namespace = namespace
         self._environment_name = environment_name
