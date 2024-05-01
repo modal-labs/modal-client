@@ -241,6 +241,22 @@ async def test_volume_upload_large_file(client, tmp_path, servicer, blob_server,
         _, blobs = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
+@pytest.mark.asyncio
+async def test_volume_upload_large_stream(client, servicer, blob_server, *args):
+    with mock.patch("modal._utils.blob_utils.LARGE_FILE_LIMIT", 10):
+        stream = io.BytesIO(b"hello world, this is a lot of text")
+
+        async with modal.Volume.ephemeral(client=client) as vol:
+            async with vol.batch_upload() as batch:
+                batch.put_file(stream, "/a")
+            object_id = vol.object_id
+
+        assert servicer.volume_files[object_id].keys() == {"/a"}
+        assert servicer.volume_files[object_id]["/a"].data == b""
+        assert servicer.volume_files[object_id]["/a"].data_blob_id == "bl-1"
+
+        _, blobs = blob_server
+        assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
 @pytest.mark.asyncio
 async def test_volume_upload_file_timeout(client, tmp_path, servicer, blob_server, *args):
