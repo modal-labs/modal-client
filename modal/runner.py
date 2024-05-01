@@ -20,7 +20,13 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import ExecutionError, InteractiveTimeoutError, InvalidError, _CliUserExecutionError
+from .exception import (
+    ExecutionError,
+    InteractiveTimeoutError,
+    InvalidError,
+    _CliUserExecutionError,
+    deprecation_warning,
+)
 from .execution_context import is_local
 from .object import _Object
 from .running_app import RunningApp
@@ -509,13 +515,19 @@ async def _interactive_shell(_app: _App, cmd: List[str], environment_name: str =
         await connect_to_sandbox(sb)
 
 
+def _run_stub(*args, **kwargs):
+    deprecation_warning((2024, 5, 1), "`run_stub` is deprecated. Please use `run_app` instead.", pending=True)
+    return _run_app(*args, **kwargs)
+
+
+def _deploy_stub(*args, **kwargs):
+    deprecation_warning((2024, 5, 1), "`deploy_stub` is deprecated. Please use `deploy_app` instead.", pending=True)
+    return _deploy_app(*args, **kwargs)
+
+
 run_app = synchronize_api(_run_app)
 serve_update = synchronize_api(_serve_update)
 deploy_app = synchronize_api(_deploy_app)
 interactive_shell = synchronize_api(_interactive_shell)
-
-# Soon-to-be-deprecated ones, add warning soon
-_run_stub = _run_app
-run_stub = run_app
-_deploy_stub = _deploy_app
-deploy_stub = deploy_app
+run_stub = synchronize_api(_run_stub)
+deploy_stub = synchronize_api(_deploy_stub)

@@ -5,7 +5,7 @@ import modal
 # rather than complaining about the type of `app`
 app = 123
 
-stub = modal.Stub()
+stub = modal.App()
 
 
 @stub.function()
