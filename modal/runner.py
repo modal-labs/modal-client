@@ -516,12 +516,12 @@ async def _interactive_shell(_app: _App, cmd: List[str], environment_name: str =
 
 
 def _run_stub(*args, **kwargs):
-    deprecation_warning((2024, 4, 29), "`run_stub` is deprecated. Please use `run_app` instead.", pending=True)
+    deprecation_warning((2024, 5, 1), "`run_stub` is deprecated. Please use `run_app` instead.", pending=True)
     return _run_app(*args, **kwargs)
 
 
 def _deploy_stub(*args, **kwargs):
-    deprecation_warning((2024, 4, 29), "`deploy_stub` is deprecated. Please use `deploy_app` instead.", pending=True)
+    deprecation_warning((2024, 5, 1), "`deploy_stub` is deprecated. Please use `deploy_app` instead.", pending=True)
     return _deploy_app(*args, **kwargs)
 
 

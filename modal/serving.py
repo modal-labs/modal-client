@@ -129,7 +129,7 @@ async def _serve_app(
 
 
 def _serve_stub(*args, **kwargs):
-    deprecation_warning((2024, 4, 29), "`serve_stub` is deprecated. Please use `serve_app` instead.", pending=True)
+    deprecation_warning((2024, 5, 1), "`serve_stub` is deprecated. Please use `serve_app` instead.", pending=True)
     return _run_app(*args, **kwargs)
 
 
