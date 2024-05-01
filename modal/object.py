@@ -205,12 +205,15 @@ class _Object:
             return
         elif not self._hydrate_lazily:
             object_type = self.__class__.__name__.strip("_")
-            message = (
-                f"{object_type} has not been hydrated with the metadata it needs to run on Modal."
-                " This might happen if you are trying to call a Modal function without running or"
-                " deploying the app that it is attached to."
+            if hasattr(self, "_app") and getattr(self._app, "_running_app", "") is None:
+                # The most common cause of this error: e.g., user called a Function without using App.run()
+                reason = ", because the App it is defined on is not running."
+            else:
+                # Technically possible, but with an ambiguous cause.
+                reason = ""
+            raise ExecutionError(
+                f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}."
             )
-            raise ExecutionError(message)
         else:
             # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
             resolver = Resolver(await _Client.from_env())
