@@ -734,3 +734,43 @@ def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
 
     res = _run(["dict", "clear", "baz-dict", "--yes"])
     assert servicer.dicts[dict_id] == {}
+
+
+def test_queue_create_list_delete(servicer, server_url_env, set_env_client):
+    _run(["queue", "create", "foo-queue"])
+    _run(["queue", "create", "bar-queue"])
+    res = _run(["queue", "list"])
+    assert "foo-queue" in res.stdout
+    assert "bar-queue" in res.stdout
+
+    _run(["queue", "delete", "bar-queue", "--yes"])
+
+    res = _run(["queue", "list"])
+    assert "foo-queue" in res.stdout
+    assert "bar-queue" not in res.stdout
+
+
+def test_queue_peek_len_clear(servicer, server_url_env, set_env_client):
+    # Kind of hacky to be modifying the attributes on the servicer like this
+    name = "queue-who"
+    key = (name, api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, os.environ.get("MODAL_ENVIRONMENT", "main"))
+    queue_id = "qu-abc123"
+    servicer.deployed_queues[key] = queue_id
+    servicer.queue = {b"": [dumps("a"), dumps("b"), dumps("c")], b"alt": [dumps("x"), dumps("y")]}
+
+    assert _run(["queue", "peek", name]).stdout == "a\n"
+    assert _run(["queue", "peek", name, "-p", "alt"]).stdout == "x\n"
+    assert _run(["queue", "peek", name, "3"]).stdout == "a\nb\nc\n"
+    assert _run(["queue", "peek", name, "3", "--partition", "alt"]).stdout == "x\ny\n"
+
+    assert _run(["queue", "len", name]).stdout == "3\n"
+    assert _run(["queue", "len", name, "--partition", "alt"]).stdout == "2\n"
+    assert _run(["queue", "len", name, "--total"]).stdout == "5\n"
+
+    _run(["queue", "clear", name, "--yes"])
+    assert _run(["queue", "len", name]).stdout == "0\n"
+    assert _run(["queue", "peek", name, "--partition", "alt"]).stdout == "x\n"
+
+    _run(["queue", "clear", name, "--all", "--yes"])
+    assert _run(["queue", "len", name, "--total"]).stdout == "0\n"
+    assert _run(["queue", "peek", name, "--partition", "alt"]).stdout == ""
