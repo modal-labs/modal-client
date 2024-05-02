@@ -10,9 +10,21 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.131 (2024-05-01)
+
+* Added a deprecation warning when object names are invalid. This applies to `Dict`, `NetworkFileSystem`, `Secret`, `Queue`, and `Volume` objects. Names must be shorter than 64 characters and may contain only alphanumeric characters, dashes, periods, and underscores. These rules were previously enforced, but the check had inadvertently been dropped in a recent refactor.  Please update the names of your objects and transfer any data to retain access, as invalid names will become an error in a future release.
+
+
+
+### 0.62.130 (2024-05-01)
+
+- Added a command-line interface for interacting with `modal.Queue` objects. Run `modal queue --help` in your terminal to see what is available.
+
+
+
 ### 0.62.116 (2024-04-26)
 
-* Added a command-line interface for interacting with modal.Dict objects. Run modal dict --help in your terminal to see what is available.
+* Added a command-line interface for interacting with `modal.Dict` objects. Run `modal dict --help` in your terminal to see what is available.
 
 
 

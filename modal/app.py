@@ -534,7 +534,7 @@ class _App:
 
         if interactive:
             deprecation_error(
-                (2024, 2, 29), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+                (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
             )
 
         if image is None:
@@ -827,12 +827,12 @@ class _Stub(_App):
     """
 
     def __new__(cls, *args, **kwargs):
-        # TODO(erikbern): enable this warning soon!
-        # deprecation_warning(
-        #    (2024, 4, 19),
-        #   "The use of \"Stub\" has been deprecated in favor of \"App\"."
-        #    " This is a pure name change with no other implications."
-        # )
+        deprecation_warning(
+            (2024, 4, 29),
+            "The use of \"Stub\" has been deprecated in favor of \"App\"."
+            " This is a pure name change with no other implications.",
+            pending=True
+        )
         return _App(*args, **kwargs)
 
 

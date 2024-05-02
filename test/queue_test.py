@@ -4,7 +4,7 @@ import queue
 import time
 
 from modal import Queue
-from modal.exception import NotFoundError
+from modal.exception import DeprecationError, NotFoundError
 
 from .supports.skip import skip_macos, skip_windows
 
@@ -113,3 +113,9 @@ def test_queue_lazy_hydrate_from_name(set_env_client):
     q = Queue.from_name("foo", create_if_missing=True)
     q.put(123)
     assert q.get() == 123
+
+
+@pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
+def test_invalid_name(servicer, client, name):
+    with pytest.raises(DeprecationError, match="Invalid Queue name"):
+        Queue.lookup(name)

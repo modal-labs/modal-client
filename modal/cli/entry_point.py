@@ -17,6 +17,7 @@ from .environment import environment_cli
 from .launch import launch_cli
 from .network_file_system import nfs_cli
 from .profile import profile_cli
+from .queues import queue_cli
 from .secret import secret_cli
 from .token import _new_token, token_cli
 from .volume import volume_cli
@@ -92,6 +93,7 @@ entrypoint_cli_typer.add_typer(nfs_cli)
 entrypoint_cli_typer.add_typer(profile_cli)
 entrypoint_cli_typer.add_typer(secret_cli)
 entrypoint_cli_typer.add_typer(token_cli)
+entrypoint_cli_typer.add_typer(queue_cli)
 entrypoint_cli_typer.add_typer(volume_cli)
 
 entrypoint_cli_typer.command("deploy", help="Deploy a Modal stub as an application.", no_args_is_help=True)(run.deploy)

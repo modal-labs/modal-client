@@ -16,7 +16,7 @@ import threading
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Iterator, Optional, get_args
+from typing import Dict, Iterator, List, Optional, get_args
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -86,7 +86,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_outputs = []
         self.fc_data_in = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.fc_data_out = defaultdict(lambda: asyncio.Queue())  # unbounded
-        self.queue = []
+        self.queue: Dict[bytes, List[bytes]] = {b"": []}
         self.deployed_apps = {
             client_mount_name(): "ap-x",
         }
@@ -172,7 +172,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
         self.token_flow_localhost_port = None
-        self.queue_max_len = 1_00
+        self.queue_max_len = 100
 
         self.container_heartbeat_response = None
         self.container_heartbeat_abort = threading.Event()
@@ -822,6 +822,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Queue
 
+    async def QueueClear(self, stream):
+        request: api_pb2.QueueClearRequest = await stream.recv_message()
+        if request.all_partitions:
+            self.queue = {b"": []}
+        else:
+            if request.partition_key in self.queue:
+                self.queue[request.partition_key] = []
+        await stream.send_message(Empty())
+
     async def QueueCreate(self, stream):
         request: api_pb2.QueueCreateRequest = await stream.recv_message()
         if request.existing_queue_id:
@@ -840,6 +849,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
             self.deployed_queues[k] = queue_id
+            self.deployed_apps[request.deployment_name] = f"ap-{queue_id}"
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
@@ -859,28 +869,46 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()
-        if len(self.queue) >= self.queue_max_len:
+        if sum(map(len, self.queue.values())) >= self.queue_max_len:
             raise GRPCError(Status.RESOURCE_EXHAUSTED, f"Hit servicer's max len for Queues: {self.queue_max_len}")
-        self.queue += request.values
+        q = self.queue.setdefault(request.partition_key, [])
+        q += request.values
         await stream.send_message(Empty())
 
     async def QueueGet(self, stream):
-        await stream.recv_message()
-        if len(self.queue) > 0:
-            values = [self.queue.pop(0)]
+        request: api_pb2.QueueGetRequest = await stream.recv_message()
+        q = self.queue.get(request.partition_key, [])
+        if len(q) > 0:
+            values = [q.pop(0)]
         else:
             values = []
         await stream.send_message(api_pb2.QueueGetResponse(values=values))
 
     async def QueueLen(self, stream):
-        await stream.recv_message()
-        await stream.send_message(api_pb2.QueueLenResponse(len=len(self.queue)))
+        request = await stream.recv_message()
+        if request.total:
+            value = sum(map(len, self.queue.values()))
+        else:
+            q = self.queue.get(request.partition_key, [])
+            value = len(q)
+        await stream.send_message(api_pb2.QueueLenResponse(len=value))
+
+    async def QueueList(self, stream):
+        # TODO Note that the actual self.queue holding the data assumes we have a single queue
+        # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
+        queues = [
+            api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1)
+            for name, _, _ in self.deployed_queues
+            if name in self.deployed_apps
+        ]
+        await stream.send_message(api_pb2.QueueListResponse(queues=queues))
 
     async def QueueNextItems(self, stream):
         request: api_pb2.QueueNextItemsRequest = await stream.recv_message()
         next_item_idx = int(request.last_entry_id) + 1 if request.last_entry_id else 0
-        if next_item_idx < len(self.queue):
-            item = api_pb2.QueueItem(value=self.queue[next_item_idx], entry_id=f"{next_item_idx}")
+        q = self.queue.get(request.partition_key, [])
+        if next_item_idx < len(q):
+            item = api_pb2.QueueItem(value=q[next_item_idx], entry_id=f"{next_item_idx}")
             await stream.send_message(api_pb2.QueueNextItemsResponse(items=[item]))
         else:
             if request.item_poll_timeout > 0:
