@@ -3,6 +3,7 @@ import json
 import os
 import pytest
 from typing import Dict
+from unittest import mock
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -58,10 +59,11 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
         ),
         encoding="utf-8",
     )
-    os.environ["MODAL_RESTORE_STATE_PATH"] = str(restore_path)
-    os.environ["MODAL_SERVER_URL"] = servicer.remote_addr
-    io_manager.checkpoint()
-    assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
+    with mock.patch.dict(
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.remote_addr}
+    ):
+        io_manager.checkpoint()
+        assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
 
 
 @skip_windows_unix_socket
