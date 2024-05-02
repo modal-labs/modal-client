@@ -28,7 +28,7 @@ from modal_proto import api_pb2
 nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
 
 
-@nfs_cli.command(name="list", help="List the names of all network file systems.")
+@nfs_cli.command(name="list", help="List the names of all network file systems.", rich_help_panel="Management")
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
@@ -59,7 +59,7 @@ def some_func():
 """
 
 
-@nfs_cli.command(name="create", help="Create a named network file system.")
+@nfs_cli.command(name="create", help="Create a named network file system.", rich_help_panel="Management")
 def create(
     name: str,
     env: Optional[str] = ENV_OPTION,
@@ -81,7 +81,11 @@ async def _volume_from_name(deployment_name: str) -> _NetworkFileSystem:
     return network_file_system
 
 
-@nfs_cli.command(name="ls", help="List files and directories in a network file system.")
+@nfs_cli.command(
+    name="ls",
+    help="List files and directories in a network file system.",
+    rich_help_panel="File operations",
+)
 @synchronizer.create_blocking
 async def ls(
     volume_name: str,
@@ -122,6 +126,7 @@ Remote parent directories will be created as needed.
 
 Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file will be uploaded with its current name under that directory.
 """,
+    rich_help_panel="File operations",
 )
 @synchronizer.create_blocking
 async def put(
@@ -158,7 +163,7 @@ class CliError(Exception):
         self.message = message
 
 
-@nfs_cli.command(name="get")
+@nfs_cli.command(name="get", rich_help_panel="File operations")
 @synchronizer.create_blocking
 async def get(
     volume_name: str,
@@ -186,7 +191,9 @@ async def get(
     await _volume_download(volume, remote_path, destination, force)
 
 
-@nfs_cli.command(name="rm", help="Delete a file or directory from a network file system.")
+@nfs_cli.command(
+    name="rm", help="Delete a file or directory from a network file system.", rich_help_panel="File operations"
+)
 @synchronizer.create_blocking
 async def rm(
     volume_name: str,
