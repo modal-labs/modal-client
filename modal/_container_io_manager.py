@@ -580,7 +580,7 @@ class _ContainerIOManager:
         )
 
         self._waiting_for_checkpoint = True
-        await self._client._close()
+        await self._client._close(forget_credentials=True)
 
         logger.debug("Checkpointing request sent. Connection closed.")
         await self.restore()
