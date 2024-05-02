@@ -94,7 +94,7 @@ class _Client:
         """The Modal client object is not intended to be instantiated directly by users."""
         self.server_url = server_url
         self.client_type = client_type
-        self.credentials = credentials
+        self._credentials = credentials
         self.version = version
         self._authenticated = False
         self.image_builder_version: Optional[str] = None
@@ -112,19 +112,30 @@ class _Client:
         """mdmd:hidden"""
         return self._authenticated
 
+    @property
+    def credentials(self) -> tuple:
+        """mdmd:hidden"""
+        if self._credentials is None and self.client_type == api_pb2.CLIENT_TYPE_CONTAINER:
+            logger.debug("restoring credentials for memory snapshotted client instance")
+            self._credentials = (config["task_id"], config["task_secret"])
+        return self._credentials
+
     async def _open(self):
         assert self._stub is None
-        metadata = _get_metadata(self.client_type, self.credentials, self.version)
+        metadata = _get_metadata(self.client_type, self._credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 
-    async def _close(self):
+    async def _close(self, forget_credentials: bool = False):
         if self._pre_stop is not None:
             logger.debug("Client: running pre-stop coroutine before shutting down")
             await self._pre_stop()  # type: ignore
 
         if self._channel is not None:
             self._channel.close()
+
+        if forget_credentials:
+            self._credentials = None
 
         # Remove cached client.
         self.set_env_client(None)
