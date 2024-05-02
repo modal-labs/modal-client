@@ -211,7 +211,6 @@ class _Cls(_Object, type_prefix="cs"):
         cls._functions = functions
         cls._callables = callables
         cls._from_other_workspace = False
-        print("hello from from_local")
         setattr(cls._user_cls, "_modal_functions", functions)  # Needed for PartialFunction.__get__
         return cls
 

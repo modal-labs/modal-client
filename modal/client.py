@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import asyncio
-import os
 import platform
 import warnings
 from typing import AsyncIterator, Awaitable, Callable, ClassVar, Dict, Optional, Tuple
@@ -106,11 +105,6 @@ class _Client:
     @property
     def stub(self) -> Optional[api_grpc.ModalClientStub]:
         """mdmd:hidden"""
-        metadata = _get_metadata(self.client_type, self._credentials, self.version)
-        curr_task_id = metadata.get("x-modal-task-id")
-        env_task_id = os.environ.get("MODAL_TASK_ID")
-        if curr_task_id and env_task_id != curr_task_id:
-            print(f"{metadata} {env_task_id=} {curr_task_id=} {id(self)=}")
         return self._stub
 
     @property

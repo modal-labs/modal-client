@@ -94,10 +94,6 @@ class _Object:
         pass
 
     def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
-        import os
-
-        env_task_id = os.environ.get("MODAL_TASK_ID")
-        print(f"hydrating {object_id} {env_task_id} {client._credentials} {id(client)=}")
         assert isinstance(object_id, str)
         if not object_id.startswith(self._type_prefix):
             raise ExecutionError(
