@@ -14,7 +14,6 @@ from typing import (
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.function_utils import method_has_params
 from .config import logger
 from .exception import InvalidError, deprecation_warning
 from .functions import _Function
@@ -493,6 +492,8 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "exit")
+        from ._utils.function_utils import method_has_params
+
         if method_has_params(f):
             message = (
                 "Support for decorating parameterized methods with `@exit` has been deprecated."

@@ -176,9 +176,24 @@ class FunctionInfo:
         #       otherwise the serialized function won't have access to variables/side effect
         #        defined after it in the same file
         assert self.is_serialized()
-        serialized_bytes = serialize(self.raw_f)
-        logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
-        return serialized_bytes
+        if self.raw_f:
+            serialized_bytes = serialize(self.raw_f)
+            logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
+            return serialized_bytes
+        else:
+            assert self.cls
+            # class function
+            raw_methods = {}
+            from ..partial_function import (  # TODO: fix circular dep
+                _find_partial_methods_for_cls,
+                _PartialFunctionFlags,
+            )
+
+            for method_name, partial_function in _find_partial_methods_for_cls(
+                self.cls, _PartialFunctionFlags.FUNCTION
+            ).items():
+                raw_methods[method_name] = partial_function.raw_f
+            return serialize(raw_methods)
 
     def get_globals(self) -> Dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals
@@ -230,6 +245,10 @@ class FunctionInfo:
         return []
 
     def get_tag(self):
+        if self.cls and not self.raw_f:
+            # class function:
+            return f"{self.function_name}::method-unspecified"
+
         return self.function_name
 
     def is_nullary(self):

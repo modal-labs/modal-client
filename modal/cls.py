@@ -227,9 +227,8 @@ class _Cls(_Object, type_prefix="cs"):
         for method_name, partial_function in _find_partial_methods_for_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         ).items():
-            method_function = cls_func._bind_method(
-                method_name, webhook_config=partial_function.webhook_config, is_generator=partial_function.is_generator
-            )
+            method_function = cls_func._bind_method(method_name, partial_function)
+            app._add_function(method_function)
             functions[method_name] = method_function
 
         # Disable the warning that these are not wrapped

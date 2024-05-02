@@ -2,7 +2,8 @@
 import pytest
 from typing import List
 
-from modal import Queue
+from modal import Queue, method, web_endpoint
+from modal._serialization import deserialize
 from modal._utils.function_utils import FunctionInfo, get_referred_objects, method_has_params
 from modal.exception import InvalidError
 from modal.object import Object
@@ -99,3 +100,29 @@ def test_nonglobal_function():
 
     with pytest.raises(InvalidError, match=r"Cannot wrap `test_nonglobal_function.<locals>.f"):
         FunctionInfo(f)
+
+
+class Foo:
+    def __init__(self):
+        pass
+
+    @method()
+    def bar(self):
+        return "hello"
+
+    @web_endpoint()
+    def web(self):
+        pass
+
+
+def test_serialized_function_for_class():
+    # The serialized function for the "class function" itself
+    # should be a dict of all the *raw* modal-executable methods, to be used
+    # within the container entrypoint
+    info = FunctionInfo(None, cls=Foo, serialized=True)
+
+    serialized_function = info.serialized_function()
+    revived_function = deserialize(serialized_function, None)
+    assert isinstance(revived_function, dict)
+    assert revived_function.keys() == {"bar", "web"}
+    assert revived_function["bar"](Foo()) == "hello"

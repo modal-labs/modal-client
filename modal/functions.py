@@ -283,9 +283,7 @@ class _Function(_Object, type_prefix="fu"):
     def _bind_method(
         self,
         method_name: str,
-        *,
-        webhook_config: Optional[api_pb2.WebhookConfig] = None,
-        is_generator: bool = False,
+        partial_function: "modal.partial_function._PartialFunction",
     ):
         """mdmd:hidden
 
@@ -296,9 +294,9 @@ class _Function(_Object, type_prefix="fu"):
         and instead do client-side "fake-hydration" only, see _bind_method_local
         """
         # creates
-        full_name = f"{self.info.get_tag()}.{method_name}"
+        full_name = f"{self.info.function_name}.{method_name}"
 
-        if is_generator:
+        if partial_function.is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
         else:
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
@@ -313,7 +311,7 @@ class _Function(_Object, type_prefix="fu"):
             #  would quickly add many new identical functions to the backend db which isn't great
             function_definition = api_pb2.Function(
                 function_name=full_name,
-                webhook_config=webhook_config,
+                webhook_config=partial_function.webhook_config,
                 function_type=function_type,
                 is_method=True,
                 use_function_id=class_function.object_id,
@@ -340,7 +338,7 @@ class _Function(_Object, type_prefix="fu"):
                 app_id=resolver.app_id,
                 function_name=full_name,
                 function_type=function_type,
-                webhook_config=webhook_config,
+                webhook_config=partial_function.webhook_config,
                 use_function_id=class_function.object_id,
                 use_method_name=method_name,
                 existing_function_id=existing_object_id or "",
@@ -354,6 +352,9 @@ class _Function(_Object, type_prefix="fu"):
         rep = f"Method({full_name})"
 
         fun = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
+        fun._tag = full_name
+        fun._raw_f = partial_function.raw_f
+        # TODO: set more attributes?
 
         return fun
 
@@ -632,9 +633,8 @@ class _Function(_Object, type_prefix="fu"):
                 # Use cloudpickle. Used when working w/ Jupyter notebooks.
                 # serialize at _load time, not function decoration time
                 # otherwise we can't capture a surrounding class for lifetime methods etc.
-                function_serialized = info.serialized_function() if info.raw_f else ""
+                function_serialized = info.serialized_function()
                 class_serialized = serialize(info.cls) if info.cls is not None else None
-
                 # Ensure that large data in global variables does not blow up the gRPC payload,
                 # which has maximum size 100 MiB. We set the limit lower for performance reasons.
                 if len(function_serialized) > 16 << 20:  # 16 MiB
@@ -1196,10 +1196,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
-        if not self._info:
-            raise AttributeError("_info has not been set on this FunctionHandle and not available in this context")
-
-        return self._info.raw_f
+        return self._raw_f
 
     @live_method
     async def get_current_stats(self) -> FunctionStats:

@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import functools
 import pytest
 import threading
 import typing
@@ -159,17 +160,16 @@ def test_run_class_serialized(client, servicer):
     print(servicer.app_functions.keys())
     print(servicer.precreated_functions)
     assert servicer.n_functions == 2
-    (function_id,) = servicer.app_functions.keys()
-    function = servicer.app_functions[function_id]
-    assert function.function_name.endswith("FooSer.bar")  # because it's defined in a local scope
-    assert function.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-    cls = deserialize(function.class_serialized, client)
-    fun = deserialize(function.function_serialized, client)
+    function_id, *_ = servicer.app_functions.keys()  # "class function" should be created first
+    class_function = servicer.app_functions[function_id]
+    assert class_function.function_name.endswith("FooSer")  # because it's defined in a local scope
+    assert class_function.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+    cls = deserialize(class_function.class_serialized, client)
+    fun = deserialize(class_function.function_serialized, client)
 
     # Create bound method
     obj = cls()
-    meth = fun.__get__(obj, cls)
-
+    meth = functools.partial(fun["bar"], obj)
     # Make sure it's callable
     assert meth(100) == 1000000
 

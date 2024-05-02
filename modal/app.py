@@ -230,6 +230,8 @@ class _App:
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, self._client, metadata)
 
+        print("Add object", obj, "as", tag)
+        # traceback.print_stack(limit=5, file=sys.stdout)
         self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
@@ -716,12 +718,6 @@ class _App:
 
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
-            # hacky - needed to get existing_function_id stability on the class-level function entry:
-            unspecified_method_function_name = f"{tag}::method-unspecified"
-            self._add_object(unspecified_method_function_name, cls._class_function)
-            for method_name, func in cls._functions.items():
-                self._add_object(f"{tag}.{method_name}", func)
-
             return cls
 
         return wrapper
