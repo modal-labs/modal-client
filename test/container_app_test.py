@@ -64,7 +64,7 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
     with mock.patch.dict(
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.remote_addr}
     ):
-        io_manager.checkpoint()
+        io_manager.memory_snapshot()
         # In-memory Client instance should have update credentials, not old credentials
         assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
 

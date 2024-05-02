@@ -519,10 +519,10 @@ def test_handlers():
     pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.BUILD)
     assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]
 
-    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
     assert list(pfs.keys()) == ["my_memory_snapshot"]
 
-    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
     assert list(pfs.keys()) == ["my_enter", "my_build_and_enter"]
 
     pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.EXIT)
@@ -587,7 +587,7 @@ def test_deprecated_sync_methods():
     obj = ClsWithDeprecatedSyncMethods()
 
     with pytest.warns(DeprecationError, match="Using `__enter__`.+`modal.enter` decorator"):
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
     assert [meth() for meth in enter_methods.values()] == [42, 43]
 
     with pytest.warns(DeprecationError, match="Using `__exit__`.+`modal.exit` decorator"):
@@ -621,7 +621,7 @@ async def test_deprecated_async_methods():
     obj = ClsWithDeprecatedAsyncMethods()
 
     with pytest.warns(DeprecationError, match=r"Using `__aenter__`.+`modal.enter` decorator \(on an async method\)"):
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
     assert [await meth() for meth in enter_methods.values()] == [42, 43]
 
     with pytest.warns(DeprecationError, match=r"Using `__aexit__`.+`modal.exit` decorator \(on an async method\)"):
