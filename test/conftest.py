@@ -73,7 +73,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.app_state_history = defaultdict(list)
         self.app_heartbeats: Dict[str, int] = defaultdict(int)
-        self.container_checkpoint_requests = 0
+        self.container_snapshot_requests = 0
         self.n_blobs = 0
         self.blob_host = blob_host
         self.blobs = blobs  # shared dict
@@ -320,7 +320,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ContainerCheckpoint(self, stream):
         request: api_pb2.ContainerCheckpointRequest = await stream.recv_message()
         self.requests.append(request)
-        self.container_checkpoint_requests += 1
+        self.container_snapshot_requests += 1
         await stream.send_message(Empty())
 
     ### Blob
