@@ -101,8 +101,8 @@ class _Obj:
                 self._local_obj.__enter__()
 
             for method_flag in (
-                _PartialFunctionFlags.ENTER_PRE_CHECKPOINT,
-                _PartialFunctionFlags.ENTER_POST_CHECKPOINT,
+                _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
+                _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
             ):
                 for enter_method in _find_callables_for_obj(self._local_obj, method_flag).values():
                     enter_method()

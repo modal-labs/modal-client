@@ -522,15 +522,15 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 metadata: Message = container_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, _client, metadata)
 
-        # Identify all "enter" methods that need to run before we checkpoint.
+        # Identify all "enter" methods that need to run before we snapshot.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-            pre_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
-            call_lifecycle_functions(event_loop, container_io_manager, list(pre_checkpoint_methods.values()))
+            pre_snapshot_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+            call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and innitialization. Checkpointed containers run from this point onwards.
         if container_args.function_def.is_checkpointing_function:
-            container_io_manager.checkpoint()
+            container_io_manager.memory_snapshot()
 
         # Install hooks for interactive functions.
         if container_args.function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
@@ -544,10 +544,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
             sys.breakpointhook = breakpoint_wrapper
 
-        # Identify the "enter" methods to run after resuming from a checkpoint.
+        # Identify the "enter" methods to run after resuming from a snapshot.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-            post_checkpoint_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
-            call_lifecycle_functions(event_loop, container_io_manager, list(post_checkpoint_methods.values()))
+            post_snapshot_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
+            call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
 
         # Execute the function.
         try:

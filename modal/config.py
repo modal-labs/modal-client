@@ -242,7 +242,7 @@ class Config:
             os.environ["MODAL_" + key.upper()] = value
         except KeyError:
             # Override env vars not available in config, e.g. NVIDIA_VISIBLE_DEVICES.
-            # This is used for restoring env vars from a checkpoint.
+            # This is used for restoring env vars from a memory snapshot.
             os.environ[key.upper()] = value
 
     def __getitem__(self, key):
