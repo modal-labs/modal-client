@@ -357,11 +357,15 @@ def test_micromamba_install(builder_version, servicer, client):
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
 
-        print(layers[0].dockerfile_commands)
-        assert any("COPY /test-conda-environment.yml" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any(
+            "COPY /test-conda-environment.yml /test-conda-environment.yml" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
         assert any("micromamba install -f /test-conda-environment.yml" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("pip install scikit-learn" in cmd for cmd in layers[1].dockerfile_commands)
-        assert any("micromamba install pymc3 theano --yes" in cmd for cmd in layers[2].dockerfile_commands)
+        assert any(
+            "micromamba install pymc3 theano -c conda-forge --yes" in cmd for cmd in layers[2].dockerfile_commands
+        )
         assert any("pip install numpy" in cmd for cmd in layers[3].dockerfile_commands)
         assert any(b"foo=1.0" in f.data for f in layers[0].context_files)
         assert any(b"bar=2.1" in f.data for f in layers[0].context_files)
