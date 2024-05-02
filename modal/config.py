@@ -195,7 +195,6 @@ _SETTINGS = {
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
     "automount": _Setting(True, transform=_to_boolean),
-    "profiling_enabled": _Setting(False, transform=_to_boolean),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
     "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.
@@ -243,7 +242,7 @@ class Config:
             os.environ["MODAL_" + key.upper()] = value
         except KeyError:
             # Override env vars not available in config, e.g. NVIDIA_VISIBLE_DEVICES.
-            # This is used for restoring env vars from a checkpoint.
+            # This is used for restoring env vars from a memory snapshot.
             os.environ[key.upper()] = value
 
     def __getitem__(self, key):

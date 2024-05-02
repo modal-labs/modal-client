@@ -186,3 +186,9 @@ def test_nfs_lazy_hydration_from_name(set_env_client):
     nfs = modal.NetworkFileSystem.from_name("nfs", create_if_missing=True)
     bio = BytesIO(b"content")
     nfs.write_file("blah", bio)
+
+
+@pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
+def test_invalid_name(servicer, client, name):
+    with pytest.raises(DeprecationError, match="Invalid NetworkFileSystem name"):
+        modal.NetworkFileSystem.lookup(name)

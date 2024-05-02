@@ -23,8 +23,8 @@ from .functions import _Function
 class _PartialFunctionFlags(enum.IntFlag):
     FUNCTION: int = 1
     BUILD: int = 2
-    ENTER_PRE_CHECKPOINT: int = 4
-    ENTER_POST_CHECKPOINT: int = 8
+    ENTER_PRE_SNAPSHOT: int = 4
+    ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
 
 
@@ -104,7 +104,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
     check_attrs: List[str] = []
     if flags & _PartialFunctionFlags.BUILD:
         check_attrs += ["__build__", "__abuild__"]
-    if flags & _PartialFunctionFlags.ENTER_POST_CHECKPOINT:
+    if flags & _PartialFunctionFlags.ENTER_POST_SNAPSHOT:
         check_attrs += ["__enter__", "__aenter__"]
     if flags & _PartialFunctionFlags.EXIT:
         check_attrs += ["__exit__", "__aexit__"]
@@ -461,9 +461,9 @@ def _enter(
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
 
     if snap:
-        flag = _PartialFunctionFlags.ENTER_PRE_CHECKPOINT
+        flag = _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
     else:
-        flag = _PartialFunctionFlags.ENTER_POST_CHECKPOINT
+        flag = _PartialFunctionFlags.ENTER_POST_SNAPSHOT
 
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):

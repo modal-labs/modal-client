@@ -62,7 +62,7 @@ class _ContainerIOManager:
     _input_concurrency: Optional[int]
     _semaphore: Optional[asyncio.Semaphore]
     _environment_name: str
-    _waiting_for_checkpoint: bool
+    _waiting_for_memory_snapshot: bool
     _heartbeat_loop: Optional[asyncio.Task]
 
     _is_interactivity_enabled: bool
@@ -90,7 +90,7 @@ class _ContainerIOManager:
 
         self._semaphore = None
         self._environment_name = container_args.environment_name
-        self._waiting_for_checkpoint = False
+        self._waiting_for_memory_snapshot = False
         self._heartbeat_loop = None
 
         self._is_interactivity_enabled = False
@@ -137,7 +137,7 @@ class _ContainerIOManager:
         # Don't send heartbeats for tasks waiting to be checkpointed.
         # Calling gRPC methods open new connections which block the
         # checkpointing process.
-        if self._waiting_for_checkpoint:
+        if self._waiting_for_memory_snapshot:
             return False
 
         request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
@@ -534,7 +534,7 @@ class _ContainerIOManager:
         )
         await self.complete_call(started_at)
 
-    async def restore(self) -> None:
+    async def memory_restore(self) -> None:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
         # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
@@ -568,22 +568,22 @@ class _ContainerIOManager:
         self.current_input_started_at = None
 
         self._client = await _Client.from_env()
-        self._waiting_for_checkpoint = False
+        self._waiting_for_memory_snapshot = False
 
-    async def checkpoint(self) -> None:
+    async def memory_snapshot(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
         if self.checkpoint_id:
-            logger.debug(f"Checkpoint ID: {self.checkpoint_id}")
+            logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
 
         await self._client.stub.ContainerCheckpoint(
             api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
         )
 
-        self._waiting_for_checkpoint = True
-        await self._client._close()
+        self._waiting_for_memory_snapshot = True
+        await self._client._close(forget_credentials=True)
 
-        logger.debug("Checkpointing request sent. Connection closed.")
-        await self.restore()
+        logger.debug("Memory snapshot request sent. Connection closed.")
+        await self.memory_restore()
 
     async def volume_commit(self, volume_ids: List[str]) -> None:
         """

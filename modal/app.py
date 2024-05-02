@@ -701,7 +701,7 @@ class _App:
             cls: _Cls = _Cls.from_local(user_cls, self, decorator)
 
             if (
-                _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
+                _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
                 and not enable_memory_snapshot
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
@@ -829,9 +829,9 @@ class _Stub(_App):
     def __new__(cls, *args, **kwargs):
         deprecation_warning(
             (2024, 4, 29),
-            "The use of \"Stub\" has been deprecated in favor of \"App\"."
+            'The use of "Stub" has been deprecated in favor of "App".'
             " This is a pure name change with no other implications.",
-            pending=True
+            pending=True,
         )
         return _App(*args, **kwargs)
 

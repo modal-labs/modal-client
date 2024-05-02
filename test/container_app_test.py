@@ -1,6 +1,9 @@
 # Copyright Modal Labs 2022
+import json
+import os
 import pytest
 from typing import Dict
+from unittest import mock
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -41,10 +44,35 @@ async def test_container_function_lazily_imported(container_client):
 
 
 @skip_windows_unix_socket
+@pytest.mark.asyncio
+async def test_container_snapshot_restore(container_client, tmpdir, servicer):
+    # Get a reference to a Client instance in memory
+    old_client = container_client
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    restore_path = tmpdir.join("fake-restore-state.json")
+    # Write out a restore file so that snapshot+restore will complete
+    restore_path.write_text(
+        json.dumps(
+            {
+                "task_id": "ta-i-am-restored",
+                "task_secret": "ts-i-am-restored",
+                "function_id": "fu-i-am-restored",
+            }
+        ),
+        encoding="utf-8",
+    )
+    with mock.patch.dict(
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.remote_addr}
+    ):
+        io_manager.memory_snapshot()
+        # In-memory Client instance should have update credentials, not old credentials
+        assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
+
+
+@skip_windows_unix_socket
 def test_interact(container_client, unix_servicer):
     # Initialize container singleton
     ContainerIOManager(api_pb2.ContainerArguments(), container_client)
-
     with unix_servicer.intercept() as ctx:
         ctx.add_response("FunctionStartPtyShell", Empty())
         interact()

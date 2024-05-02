@@ -47,11 +47,11 @@ def type_check(ctx):
     pyright_allowlist = [
         "modal/functions.py",
         "modal/_utils/__init__.py",
-        "modal/_utils/app_utils.py",
         "modal/_utils/async_utils.py",
         "modal/_utils/grpc_testing.py",
         "modal/_utils/hash_utils.py",
         "modal/_utils/http_utils.py",
+        "modal/_utils/name_utils.py",
         "modal/_utils/logger.py",
         "modal/_utils/mount_utils.py",
         "modal/_utils/package_utils.py",
@@ -312,7 +312,7 @@ def show_deprecations(ctx):
         def visit_Call(self, node):
             func_name_to_level = {
                 "deprecation_warning": "[yellow]warning[/yellow]",
-                "deprecation_error": "[red]error[/red]"
+                "deprecation_error": "[red]error[/red]",
             }
             if isinstance(node.func, ast.Name) and node.func.id in func_name_to_level:
                 depr_date = date(*(elt.n for elt in node.args[0].elts))

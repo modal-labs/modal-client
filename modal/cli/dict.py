@@ -21,7 +21,7 @@ dict_cli = Typer(
 )
 
 
-@dict_cli.command(name="create")
+@dict_cli.command(name="create", rich_help_panel="Management")
 @synchronizer.create_blocking
 async def create(name: str, *, env: Optional[str] = ENV_OPTION):
     """Create a named Dict object.
@@ -34,10 +34,10 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
     await resolver.load(d)
 
 
-@dict_cli.command(name="list")
+@dict_cli.command(name="list", rich_help_panel="Management")
 @synchronizer.create_blocking
 async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
-    """List all named Dict objects."""
+    """List all named Dicts."""
     env = ensure_env(env)
     client = await _Client.from_env()
     request = api_pb2.DictListRequest(environment_name=env)
@@ -47,7 +47,7 @@ async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     display_table(["Name", "Created at"], rows, json)
 
 
-@dict_cli.command("clear")
+@dict_cli.command("clear", rich_help_panel="Management")
 @synchronizer.create_blocking
 async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
     """Clear the contents of a named Dict by deleting all of its data."""
@@ -61,10 +61,10 @@ async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_O
     await d.clear()
 
 
-@dict_cli.command(name="delete")
+@dict_cli.command(name="delete", rich_help_panel="Management")
 @synchronizer.create_blocking
 async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
-    """Delete a named Dict object and all of its data."""
+    """Delete a named Dict and all of its data."""
     # Lookup first to validate the name, even though delete is a staticmethod
     await _Dict.lookup(name, environment_name=env)
     if not yes:
@@ -76,7 +76,7 @@ async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_
     await _Dict.delete(name, environment_name=env)
 
 
-@dict_cli.command(name="get")
+@dict_cli.command(name="get", rich_help_panel="Inspection")
 @synchronizer.create_blocking
 async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
     """Print the value for a specific key.
@@ -89,7 +89,7 @@ async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
     console.print(val)
 
 
-@dict_cli.command(name="items")
+@dict_cli.command(name="items", rich_help_panel="Inspection")
 @synchronizer.create_blocking
 async def items(
     name: str,
