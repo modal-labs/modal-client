@@ -107,7 +107,7 @@ entrypoint_cli_typer.add_typer(profile_cli, rich_help_panel="Configuration")
 entrypoint_cli_typer.add_typer(token_cli, rich_help_panel="Configuration")
 
 # Hide setup from help as it's redundant with modal token new, but nicer for onboarding
-entrypoint_cli_typer.command("setup", help="Bootstrap Modal's configuration.", hidden=True)(setup)
+entrypoint_cli_typer.command("setup", help="Bootstrap Modal's configuration.", rich_help_panel="Onboarding")(setup)
 
 # Special handling for modal run, which is more complicated
 entrypoint_cli = typer.main.get_command(entrypoint_cli_typer)
