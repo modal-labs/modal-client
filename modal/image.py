@@ -232,7 +232,7 @@ class _Image(_Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
     Do not construct this class directly; instead use one of its static factory methods,
-    such as `modal.Image.debian_slim`, `modal.Image.from_registry`, or `modal.Image.conda`.
+    such as `modal.Image.debian_slim`, `modal.Image.from_registry`, or `modal.Image.micromamba`.
     """
 
     force_build: bool
@@ -869,9 +869,16 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def conda(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """
-        A Conda base image, using miniconda3 and derived from the official Docker Hub image.
-        In most cases, using [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install) is recommended over `Image.conda()`, as it leads to significantly faster image build times.
+        DEPRECATED A Conda base image, using miniconda3.
+
+        This constructor has been deprecated in favor of [`Image.micromamba()`](/docs/reference/modal.Image#micromamba),
+        which can be used with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install).
+        Images will build faster and more reliably with `micromamba`.
         """
+        msg = (
+            "The `Image.conda` constructor has deprecated in favor of the faster and more reliable `Image.micromamba`."
+        )
+        deprecation_warning((2024, 5, 2), msg)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             nonlocal python_version
@@ -948,8 +955,15 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Install a list of additional packages using Conda. Note that in most cases, using [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install)
-        is recommended over `conda_install`, as it leads to significantly faster image build times."""
+        """DEPRECATED Install additional packages using Conda.
+
+        This method has been deprecated in favor of [`micromamba_install`](/docs/reference/modal.Image#micromamba_install),
+        which should be used with the [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) constructor.
+        Images will build faster and more reliably with `micromamba`.
+        """
+
+        msg = "The `Image.conda_install` method has deprecated in favor of the faster and more reliable `Image.micromamba_install`."
+        deprecation_warning((2024, 5, 2), msg)
 
         pkgs = _flatten_str_args("conda_install", "packages", packages)
         if not pkgs:
@@ -982,7 +996,16 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Update a Conda environment using dependencies from a given environment.yml file."""
+        """DEPRECATED Update a Conda environment using dependencies from a given environment.yml file.
+
+        This method has been deprecated in favor of the faster and more reliable `Image.micromamba_install`
+        method and its `spec_file` parameter.
+        """
+        msg = (
+            "The `Image.conda_install_update_from_environment` method has deprecated in favor of the faster"
+            " and more reliable `Image.micromamba_install` and its `spec_file` parameter."
+        )
+        deprecation_warning((2024, 5, 2), msg)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             context_files = {"/environment.yml": os.path.expanduser(environment_yml)}
@@ -1008,10 +1031,7 @@ class _Image(_Object, type_prefix="im"):
         python_version: Optional[str] = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
-        """
-        A Micromamba base image. Micromamba allows for fast building of small Conda-based containers.
-        In most cases it will be faster than using [`Image.conda()`](/docs/reference/modal.Image#conda).
-        """
+        """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers."""
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             nonlocal python_version
@@ -1040,27 +1060,36 @@ class _Image(_Object, type_prefix="im"):
         self,
         # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         *packages: Union[str, List[str]],
-        # A list of Conda channels, eg. ["conda-forge", "nvidia"]
+        # A local path to a file containing package specifications
+        spec_file: Optional[str] = None,
+        # A list of Conda channels, eg. ["conda-forge", "nvidia"]. Uses "conda-forge" when not specified.
         channels: List[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of additional packages using micromamba."""
-
         pkgs = _flatten_str_args("micromamba_install", "packages", packages)
-        if not pkgs:
+        if not pkgs and spec_file is None:
             return self
+        channels = channels or ["conda-forge"]
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
             channel_args = "".join(f" -c {channel}" for channel in channels)
 
+            space = " " if package_args else ""
+            remote_spec_file = "" if spec_file is None else f"/{os.path.basename(spec_file)}"
+            file_arg = "" if spec_file is None else f"{space}-f {remote_spec_file}"
+            copy_commands = [] if spec_file is None else [f"COPY {remote_spec_file} {remote_spec_file}"]
+
             commands = [
                 "FROM base",
-                f"RUN micromamba install {package_args}{channel_args} --yes",
+                *copy_commands,
+                f"RUN micromamba install {package_args}{file_arg}{channel_args} --yes",
             ]
-            return DockerfileSpec(commands=commands, context_files={})
+            context_files = {} if spec_file is None else {remote_spec_file: os.path.expanduser(spec_file)}
+            return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
             base_images={"base": self},
@@ -1462,16 +1491,14 @@ class _Image(_Object, type_prefix="im"):
         )
 
     def env(self, vars: Dict[str, str]) -> "_Image":
-        """Sets the environmental variables of the image.
+        """Sets the environment variables in an Image.
 
         **Example**
 
         ```python
         image = (
-            modal.Image.conda()
-                .env({"CONDA_OVERRIDE_CUDA": "11.2"})
-                .conda_install("jax", "cuda-nvcc", channels=["conda-forge", "nvidia"])
-                .pip_install("dm-haiku", "optax")
+            modal.Image.debian_slim()
+            .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
         )
         ```
         """
