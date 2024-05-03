@@ -126,8 +126,7 @@ jobs:
 
   publish-client:
     name: Publish client package
-    # Prevent it from going into an infinite loop.
-    if: github.actor != 'modal-pr-review-automation[bot]' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     needs: [client-test]
     runs-on: ubuntu-20.04
     concurrency: publish-client
