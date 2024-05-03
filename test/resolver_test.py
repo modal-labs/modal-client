@@ -57,3 +57,30 @@ async def test_multi_resolve_concurrent_loads_once():
     await asyncio.gather(resolver.load(obj), resolver.load(obj))
     assert 0.08 < time.monotonic() - t0 < 0.17
     assert load_count == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_hydrated_deps():
+    output_manager = OutputManager(None, show_progress=False)
+    resolver = Resolver(None, output_mgr=output_manager, environment_name="", app_id=None)
+
+    class _DumbObject(_Object, type_prefix="zz"):
+        pass
+
+    side_effects = []
+
+    async def _load_child(self: _DumbObject, resolver: Resolver, existing_object_id: Optional[str]):
+        side_effects.append("child_loaded")
+        self._hydrate("zz-123", None, None)
+
+    async def _load_parent(self: _DumbObject, resolver: Resolver, existing_object_id: Optional[str]):
+        side_effects.append("parent_loaded")
+        self._hydrate("zz-456", None, None)
+
+    already_hydrated_child = _DumbObject._from_loader(_load_child, "Child")
+    already_hydrated_child._hydrate("zz-123", None, None)
+
+    parent = _DumbObject._from_loader(_load_parent, "Parent", deps=lambda: [already_hydrated_child])
+    res = await resolver.load(parent)
+    assert res.is_hydrated
+    assert side_effects == ["parent_loaded"]

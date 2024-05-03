@@ -119,7 +119,7 @@ class Resolver:
             async def loader():
                 # Wait for all its dependencies
                 # TODO(erikbern): do we need existing_object_id for those?
-                await TaskContext.gather(*[self.load(dep) for dep in obj.deps()])
+                await TaskContext.gather(*[self.load(dep) for dep in obj.deps() if not dep.is_hydrated])
 
                 # Load the object itself
                 try:
