@@ -104,7 +104,6 @@ def test_image_base(builder_version, servicer, client, test_dir):
         (Image.debian_slim, ()),
         (Image.from_registry, ("ubuntu",)),
         (Image.from_dockerfile, (test_dir / "supports" / "test-dockerfile",)),
-        (Image.conda, ()),
         (Image.micromamba, ()),
     ]
     for meth, args in constructors:
@@ -133,13 +132,12 @@ def test_python_version(builder_version, servicer, client, python_version):
         commands = get_all_dockerfile_commands(app.image.object_id, servicer)
         assert re.match(rf"FROM python:{expected_dockerhub_python}-slim-{expected_dockerhub_debian}", commands)
 
-    for constructor in [Image.conda, Image.micromamba]:
-        app.image = constructor() if python_version is None else constructor(python_version)
-        if python_version is None and builder_version == "2023.12":
-            expected_python = "3.9"
-        with app.run(client):
-            commands = get_all_dockerfile_commands(app.image.object_id, servicer)
-            assert re.search(rf"install.* python={expected_python}", commands)
+    app.image = Image.micromamba() if python_version is None else Image.micromamba(python_version)
+    if python_version is None and builder_version == "2023.12":
+        expected_python = "3.9"
+    with app.run(client):
+        commands = get_all_dockerfile_commands(app.image.object_id, servicer)
+        assert re.search(rf"install.* python={expected_python}", commands)
 
 
 def test_image_python_packages(builder_version, servicer, client):
@@ -216,7 +214,7 @@ def test_empty_install(builder_version, servicer, client):
         .pip_install([], [], [], [])
         .apt_install([])
         .run_commands()
-        .conda_install()
+        .micromamba_install()
     )
 
     with app.run(client=client):
@@ -307,17 +305,6 @@ def test_image_pip_install_private_repos(builder_version, servicer, client):
         )
 
 
-def test_conda_install(builder_version, servicer, client):
-    app = App(image=Image.conda().pip_install("numpy").conda_install("pymc3", "theano").pip_install("scikit-learn"))
-
-    with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
-
-        assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
-        assert any("conda install pymc3 theano --yes" in cmd for cmd in layers[1].dockerfile_commands)
-        assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
-
-
 def test_dockerfile_image(builder_version, servicer, client):
     path = os.path.join(os.path.dirname(__file__), "supports/test-dockerfile")
 
@@ -329,15 +316,57 @@ def test_dockerfile_image(builder_version, servicer, client):
         assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
 
 
+def test_conda_install(builder_version, servicer, client):
+    with pytest.warns(DeprecationError, match="Image.micromamba"):
+        image = Image.conda().pip_install("numpy").conda_install("pymc3", "theano").pip_install("scikit-learn")
+    app = App(image=image)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+
+        assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any("conda install pymc3 theano --yes" in cmd for cmd in layers[1].dockerfile_commands)
+        assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
+
+
 def test_conda_update_from_environment(builder_version, servicer, client):
     path = os.path.join(os.path.dirname(__file__), "supports/test-conda-environment.yml")
 
-    app = App(image=Image.conda().conda_update_from_environment(path))
+    with pytest.warns(DeprecationError, match="Image.micromamba"):
+        app = App(image=Image.conda().conda_update_from_environment(path))
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
 
         assert any("RUN conda env update" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any(b"foo=1.0" in f.data for f in layers[0].context_files)
+        assert any(b"bar=2.1" in f.data for f in layers[0].context_files)
+
+
+def test_micromamba_install(builder_version, servicer, client):
+    spec_file = os.path.join(os.path.dirname(__file__), "supports/test-conda-environment.yml")
+    image = (
+        Image.micromamba()
+        .pip_install("numpy")
+        .micromamba_install("pymc3", "theano", channels=["conda-forge"])
+        .pip_install("scikit-learn")
+        .micromamba_install(spec_file=spec_file)
+    )
+    app = App(image=image)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+
+        assert any(
+            "COPY /test-conda-environment.yml /test-conda-environment.yml" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+        assert any("micromamba install -f /test-conda-environment.yml" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any("pip install scikit-learn" in cmd for cmd in layers[1].dockerfile_commands)
+        assert any(
+            "micromamba install pymc3 theano -c conda-forge --yes" in cmd for cmd in layers[2].dockerfile_commands
+        )
+        assert any("pip install numpy" in cmd for cmd in layers[3].dockerfile_commands)
         assert any(b"foo=1.0" in f.data for f in layers[0].context_files)
         assert any(b"bar=2.1" in f.data for f in layers[0].context_files)
 
@@ -776,7 +805,8 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         img = Image.from_registry("ubuntu:22.04")
         assert get_hash(img) == "b5f1cc544a412d1b23a5ebf9a8859ea9a86975ecbc7325b83defc0ce3fe956d3"
 
-        img = Image.conda()
+        with pytest.warns(DeprecationError):
+            img = Image.conda()
         assert get_hash(img) == "f69d6af66fb5f1a2372a61836e6166ce79ebe2cd628d12addea8e8e80cc98dc1"
 
         img = Image.micromamba()
@@ -785,7 +815,8 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
         assert get_hash(img) == "0aec2f66f28ee7511c1b36604214ae7b40d9bc1fa3e6b8883001e933a966ff78"
 
-    img = Image.conda(python_version="3.12")
+    with pytest.warns(DeprecationError):
+        img = Image.conda(python_version="3.12")
     assert get_hash(img) == "c4b3f7350116d323dded29c9c9b78b62593f0fc943ccf83a09b27185bfdc2a07"
 
     img = Image.micromamba(python_version="3.12")
@@ -799,13 +830,15 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
     assert get_hash(img) == "2a4fa8e3b32c70a41b3a3efd5416540b1953430543f6c27c984e7f969c2ca874"
 
-    img = base.conda_install("torch=2.2", "transformers<4.23.0", channels=["conda-forge", "my-channel"])
+    with pytest.warns(DeprecationError):
+        img = base.conda_install("torch=2.2", "transformers<4.23.0", channels=["conda-forge", "my-channel"])
     assert get_hash(img) == "dd6f27f636293996a64a98c250161d8092cb23d02629d9070493f00aad8d7266"
 
     img = base.pip_install_from_requirements(test_dir / "supports" / "test-requirements.txt")
     assert get_hash(img) == "69d41e699d4ecef399e51e8460f8857aa0ec57f71f00eca81c8886ec062e5c2b"
 
-    img = base.conda_update_from_environment(test_dir / "supports" / "test-conda-environment.yml")
+    with pytest.warns(DeprecationError):
+        img = base.conda_update_from_environment(test_dir / "supports" / "test-conda-environment.yml")
     assert get_hash(img) == "00940e0ee2998bfe0a337f51a5fdf5f4b29bf9d42dda3635641d44bfeb42537e"
 
     img = base.poetry_install_from_file(

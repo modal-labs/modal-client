@@ -100,7 +100,7 @@ jobs:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         image-builder-version: ["2023.12", "2024.04"]
-        image-name: ["debian_slim", "conda", "micromamba"]
+        image-name: ["debian_slim", "micromamba"]
 
     steps:
       - uses: actions/checkout@v3
