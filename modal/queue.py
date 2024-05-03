@@ -13,8 +13,9 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.name_utils import check_object_name
 from .client import _Client
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, RequestSizeError, deprecation_warning
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
@@ -163,6 +164,7 @@ class _Queue(_Object, type_prefix="qu"):
         queue.put(123)
         ```
         """
+        check_object_name(label, "Queue", warn=True)
 
         async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.QueueGetOrCreateRequest(
@@ -210,6 +212,12 @@ class _Queue(_Object, type_prefix="qu"):
         await resolver.load(obj)
         return obj
 
+    @staticmethod
+    async def delete(label: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        obj = await _Queue.lookup(label, client=client, environment_name=environment_name)
+        req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.QueueDelete, req)
+
     async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> List[Any]:
         request = api_pb2.QueueGetRequest(
             queue_id=self.object_id,
@@ -252,6 +260,18 @@ class _Queue(_Object, type_prefix="qu"):
                 break
 
         raise queue.Empty()
+
+    @live_method
+    async def clear(self, *, partition: Optional[str] = None, all: bool = False) -> None:
+        """Clear the contents of a single partition or all partitions."""
+        if partition and all:
+            raise InvalidError("Partition must be null when requesting to clear all.")
+        request = api_pb2.QueueClearRequest(
+            queue_id=self.object_id,
+            partition_key=self.validate_partition_key(partition),
+            all_partitions=all,
+        )
+        await retry_transient_errors(self._client.stub.QueueClear, request)
 
     @live_method
     async def get(
@@ -369,7 +389,13 @@ class _Queue(_Object, type_prefix="qu"):
                 total_timeout=timeout,
             )
         except GRPCError as exc:
-            raise queue.Full(str(exc)) if exc.status == Status.RESOURCE_EXHAUSTED else exc
+            if exc.status == Status.RESOURCE_EXHAUSTED:
+                raise queue.Full(str(exc))
+            elif "status = '413'" in exc.message:
+                method = "put_many" if len(vs) > 1 else "put"
+                raise RequestSizeError(f"Queue.{method} request is too large") from exc
+            else:
+                raise exc
 
     async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: List[Any]):
         vs_encoded = [serialize(v) for v in vs]
@@ -382,14 +408,23 @@ class _Queue(_Object, type_prefix="qu"):
         try:
             await retry_transient_errors(self._client.stub.QueuePut, request)
         except GRPCError as exc:
-            raise queue.Full(exc.message) if exc.status == Status.RESOURCE_EXHAUSTED else exc
+            if exc.status == Status.RESOURCE_EXHAUSTED:
+                raise queue.Full(exc.message)
+            elif "status = '413'" in exc.message:
+                method = "put_many" if len(vs) > 1 else "put"
+                raise RequestSizeError(f"Queue.{method} request is too large") from exc
+            else:
+                raise exc
 
     @live_method
-    async def len(self, *, partition: Optional[str] = None) -> int:
+    async def len(self, *, partition: Optional[str] = None, total: bool = False) -> int:
         """Return the number of objects in the queue partition."""
+        if partition and total:
+            raise InvalidError("Partition must be null when requesting total length.")
         request = api_pb2.QueueLenRequest(
             queue_id=self.object_id,
             partition_key=self.validate_partition_key(partition),
+            total=total,
         )
         response = await retry_transient_errors(self._client.stub.QueueLen, request)
         return response.len

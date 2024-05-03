@@ -319,7 +319,8 @@ async def test_volume_copy_2(client, tmp_path, servicer):
     assert returned_file_data[Path("test_dir/file2.txt")].data == b"test copy"
 
 
-def test_persisted(servicer, client):
+@pytest.mark.parametrize("delete_as_instance_method", [True, False])
+def test_persisted(servicer, client, delete_as_instance_method):
     # Lookup should fail since it doesn't exist
     with pytest.raises(NotFoundError):
         modal.Volume.lookup("xyz", client=client)
@@ -331,7 +332,11 @@ def test_persisted(servicer, client):
     v = modal.Volume.lookup("xyz", client=client)
 
     # Delete it
-    v.delete()
+    if delete_as_instance_method:
+        with pytest.warns(DeprecationError):
+            v.delete()
+    else:
+        modal.Volume.delete("xyz", client=client)
 
     # Lookup should fail again
     with pytest.raises(NotFoundError):
@@ -341,7 +346,7 @@ def test_persisted(servicer, client):
 def test_ephemeral(servicer, client):
     assert servicer.n_vol_heartbeats == 0
     with modal.Volume.ephemeral(client=client, _heartbeat_sleep=1) as vol:
-        assert vol.listdir("**") == []
+        assert vol.listdir("/") == []
         # TODO(erikbern): perform some operations
         time.sleep(1.5)  # Make time for 2 heartbeats
     assert servicer.n_vol_heartbeats == 2
@@ -349,7 +354,7 @@ def test_ephemeral(servicer, client):
 
 def test_lazy_hydration_from_named(set_env_client):
     vol = modal.Volume.from_name("my-vol", create_if_missing=True)
-    assert vol.listdir("**") == []
+    assert vol.listdir("/") == []
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="needs /proc")
@@ -390,3 +395,9 @@ async def test_open_files_error_annotation(tmp_path):
     proc.kill()
     await proc.wait()
     assert _open_files_error_annotation(tmp_path) is None
+
+
+@pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
+def test_invalid_name(servicer, client, name):
+    with pytest.raises(DeprecationError, match="Invalid Volume name"):
+        modal.Volume.lookup(name)

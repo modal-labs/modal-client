@@ -15,12 +15,18 @@ from ._output import OutputManager, get_app_logs_loop, step_completed, step_prog
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._sandbox_shell import connect_to_sandbox
-from ._utils.app_utils import is_valid_app_name
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.name_utils import check_object_name
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import ExecutionError, InteractiveTimeoutError, InvalidError, _CliUserExecutionError
+from .exception import (
+    ExecutionError,
+    InteractiveTimeoutError,
+    InvalidError,
+    _CliUserExecutionError,
+    deprecation_warning,
+)
 from .execution_context import is_local
 from .object import _Object
 from .running_app import RunningApp
@@ -126,7 +132,7 @@ async def _create_all_objects(
         # functions have ids assigned to them when the function is serialized.
         # Note: when handles/objs are merged, all objects will need to get ids pre-assigned
         # like this in order to be referrable within serialized functions
-        for tag, obj in indexed_objects.items():
+        async def _preload(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
             # Note: preload only currently implemented for Functions, returns None otherwise
             # this is to ensure that directly referenced functions from the global scope has
@@ -137,11 +143,15 @@ async def _create_all_objects(
                 print("Storing preloaded object id for", obj, obj.object_id)
                 tag_to_object_id[tag] = obj.object_id
 
-        for tag, obj in indexed_objects.items():
+        await TaskContext.gather(*(_preload(tag, obj) for tag, obj in indexed_objects.items()))
+
+        async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
             print(f"Toplevel load {obj=} {existing_object_id=}")
             await resolver.load(obj, existing_object_id)
             running_app.tag_to_object_id[tag] = obj.object_id
+
+        await TaskContext.gather(*(_load(tag, obj) for tag, obj in indexed_objects.items()))
 
     # Create the app (and send a list of all tagged obs)
     # TODO(erikbern): we should delete objects from a previous version that are no longer needed
@@ -400,11 +410,8 @@ async def _deploy_app(
             "or\n"
             'app = App("some-name")'
         )
-
-    if not is_valid_app_name(name):
-        raise InvalidError(
-            f"Invalid app name {name}. App names may only contain alphanumeric characters, dashes, periods, and underscores, and must be less than 64 characters in length. "
-        )
+    else:
+        check_object_name(name, "App")
 
     if client is None:
         client = await _Client.from_env()
@@ -508,13 +515,19 @@ async def _interactive_shell(_app: _App, cmd: List[str], environment_name: str =
         await connect_to_sandbox(sb)
 
 
+def _run_stub(*args, **kwargs):
+    deprecation_warning((2024, 5, 1), "`run_stub` is deprecated. Please use `run_app` instead.", pending=True)
+    return _run_app(*args, **kwargs)
+
+
+def _deploy_stub(*args, **kwargs):
+    deprecation_warning((2024, 5, 1), "`deploy_stub` is deprecated. Please use `deploy_app` instead.", pending=True)
+    return _deploy_app(*args, **kwargs)
+
+
 run_app = synchronize_api(_run_app)
 serve_update = synchronize_api(_serve_update)
 deploy_app = synchronize_api(_deploy_app)
 interactive_shell = synchronize_api(_interactive_shell)
-
-# Soon-to-be-deprecated ones, add warning soon
-_run_stub = _run_app
-run_stub = run_app
-_deploy_stub = _deploy_app
-deploy_stub = deploy_app
+run_stub = synchronize_api(_run_stub)
+deploy_stub = synchronize_api(_deploy_stub)

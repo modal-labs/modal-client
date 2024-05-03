@@ -34,8 +34,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
         rows.append(
             [
                 item.label,
-                timestamp_to_local(item.created_at),
-                timestamp_to_local(item.last_used_at) if item.last_used_at else "-",
+                timestamp_to_local(item.created_at, json),
+                timestamp_to_local(item.last_used_at, json) if item.last_used_at else "-",
             ]
         )
 

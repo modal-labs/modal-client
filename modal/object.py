@@ -204,11 +204,15 @@ class _Object:
         if self._is_hydrated:
             return
         elif not self._hydrate_lazily:
+            object_type = self.__class__.__name__.strip("_")
+            if hasattr(self, "_app") and getattr(self._app, "_running_app", "") is None:
+                # The most common cause of this error: e.g., user called a Function without using App.run()
+                reason = ", because the App it is defined on is not running."
+            else:
+                # Technically possible, but with an ambiguous cause.
+                reason = ""
             raise ExecutionError(
-                "Object has not been hydrated and doesn't support lazy hydration."
-                " This might happen if an object is defined on a different stub,"
-                " or if it's on the same stub but it didn't get created because it"
-                " wasn't defined in global scope."
+                f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}."
             )
         else:
             print("Lazy loading", self)

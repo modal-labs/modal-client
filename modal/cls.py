@@ -24,6 +24,7 @@ from .gpu import GPU_T
 from .object import _get_environment_name, _Object
 from .partial_function import (
     _find_callables_for_cls,
+    _find_callables_for_obj,
     _find_partial_methods_for_cls,
     _Function,
     _PartialFunctionFlags,
@@ -113,6 +114,14 @@ class _Obj:
         if not self._entered:
             if hasattr(self._local_obj, "__enter__"):
                 self._local_obj.__enter__()
+
+            for method_flag in (
+                _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
+                _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
+            ):
+                for enter_method in _find_callables_for_obj(self._local_obj, method_flag).values():
+                    enter_method()
+
         self._entered = True
 
     @property
@@ -219,7 +228,7 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
-    def from_local(user_cls, app, decorator_args: Dict) -> "_Cls":
+    def from_local(user_cls, app: "modal.app._App", decorator_args: Dict) -> "_Cls":
         """mdmd:hidden"""
         functions: Dict[str, _Function] = {}
         # first create a function representing the whole class, this is the single function id that will be used

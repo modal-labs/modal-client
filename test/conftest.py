@@ -16,7 +16,7 @@ import threading
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Tuple, get_args
+from typing import Dict, Iterator, List, Optional, Tuple, get_args
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -73,7 +73,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.app_state_history = defaultdict(list)
         self.app_heartbeats: Dict[str, int] = defaultdict(int)
-        self.container_checkpoint_requests = 0
+        self.container_snapshot_requests = 0
         self.n_blobs = 0
         self.blob_host = blob_host
         self.blobs = blobs  # shared dict
@@ -86,7 +86,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_outputs = []
         self.fc_data_in = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.fc_data_out = defaultdict(lambda: asyncio.Queue())  # unbounded
-        self.queue = []
+        self.queue: Dict[bytes, List[bytes]] = {b"": []}
         self.deployed_apps = {
             client_mount_name(): "ap-x",
         }
@@ -174,10 +174,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
         self.token_flow_localhost_port = None
-        self.queue_max_len = 1_00
+        self.queue_max_len = 100
 
         self.container_heartbeat_response = None
         self.container_heartbeat_abort = threading.Event()
+
+        self.image_join_sleep_duration = None
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -329,7 +331,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ContainerCheckpoint(self, stream):
         request: api_pb2.ContainerCheckpointRequest = await stream.recv_message()
         self.requests.append(request)
-        self.container_checkpoint_requests += 1
+        self.container_snapshot_requests += 1
         await stream.send_message(Empty())
 
     ### Blob
@@ -471,16 +473,22 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
             self.deployed_dicts[k] = dict_id
+            self.deployed_apps[request.deployment_name] = f"ap-{dict_id}"
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
         else:
-            raise GRPCError(Status.NOT_FOUND, "Queue not found")
+            raise GRPCError(Status.NOT_FOUND, "Dict not found")
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
 
     async def DictHeartbeat(self, stream):
         await stream.recv_message()
         self.n_dict_heartbeats += 1
+        await stream.send_message(Empty())
+
+    async def DictDelete(self, stream):
+        request: api_pb2.DictDeleteRequest = await stream.recv_message()
+        self.deployed_dicts = {k: v for k, v in self.deployed_dicts.items() if v != request.dict_id}
         await stream.send_message(Empty())
 
     async def DictClear(self, stream):
@@ -496,6 +504,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def DictLen(self, stream):
         request: api_pb2.DictLenRequest = await stream.recv_message()
         await stream.send_message(api_pb2.DictLenResponse(len=len(self.dicts[request.dict_id])))
+
+    async def DictList(self, stream):
+        dicts = [
+            api_pb2.DictListResponse.DictInfo(name=name, created_at=1)
+            for name, _, _ in self.deployed_dicts
+            if name in self.deployed_apps
+        ]
+        await stream.send_message(api_pb2.DictListResponse(dicts=dicts))
 
     async def DictUpdate(self, stream):
         request: api_pb2.DictUpdateRequest = await stream.recv_message()
@@ -784,6 +800,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ImageJoinStreaming(self, stream):
         await stream.recv_message()
+
+        if self.image_join_sleep_duration is not None:
+            await asyncio.sleep(self.image_join_sleep_duration)
+
         task_log_1 = api_pb2.TaskLogs(data="hello, world\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
         task_log_2 = api_pb2.TaskLogs(
             task_progress=api_pb2.TaskProgress(
@@ -844,6 +864,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Queue
 
+    async def QueueClear(self, stream):
+        request: api_pb2.QueueClearRequest = await stream.recv_message()
+        if request.all_partitions:
+            self.queue = {b"": []}
+        else:
+            if request.partition_key in self.queue:
+                self.queue[request.partition_key] = []
+        await stream.send_message(Empty())
+
     async def QueueCreate(self, stream):
         request: api_pb2.QueueCreateRequest = await stream.recv_message()
         if request.existing_queue_id:
@@ -862,12 +891,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
             self.deployed_queues[k] = queue_id
+            self.deployed_apps[request.deployment_name] = f"ap-{queue_id}"
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
         else:
             raise GRPCError(Status.NOT_FOUND, "Queue not found")
         await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
+
+    async def QueueDelete(self, stream):
+        request: api_pb2.QueueDeleteRequest = await stream.recv_message()
+        self.deployed_queues = {k: v for k, v in self.deployed_queues.items() if v != request.queue_id}
+        await stream.send_message(Empty())
 
     async def QueueHeartbeat(self, stream):
         await stream.recv_message()
@@ -876,28 +911,46 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()
-        if len(self.queue) >= self.queue_max_len:
+        if sum(map(len, self.queue.values())) >= self.queue_max_len:
             raise GRPCError(Status.RESOURCE_EXHAUSTED, f"Hit servicer's max len for Queues: {self.queue_max_len}")
-        self.queue += request.values
+        q = self.queue.setdefault(request.partition_key, [])
+        q += request.values
         await stream.send_message(Empty())
 
     async def QueueGet(self, stream):
-        await stream.recv_message()
-        if len(self.queue) > 0:
-            values = [self.queue.pop(0)]
+        request: api_pb2.QueueGetRequest = await stream.recv_message()
+        q = self.queue.get(request.partition_key, [])
+        if len(q) > 0:
+            values = [q.pop(0)]
         else:
             values = []
         await stream.send_message(api_pb2.QueueGetResponse(values=values))
 
     async def QueueLen(self, stream):
-        await stream.recv_message()
-        await stream.send_message(api_pb2.QueueLenResponse(len=len(self.queue)))
+        request = await stream.recv_message()
+        if request.total:
+            value = sum(map(len, self.queue.values()))
+        else:
+            q = self.queue.get(request.partition_key, [])
+            value = len(q)
+        await stream.send_message(api_pb2.QueueLenResponse(len=value))
+
+    async def QueueList(self, stream):
+        # TODO Note that the actual self.queue holding the data assumes we have a single queue
+        # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
+        queues = [
+            api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1)
+            for name, _, _ in self.deployed_queues
+            if name in self.deployed_apps
+        ]
+        await stream.send_message(api_pb2.QueueListResponse(queues=queues))
 
     async def QueueNextItems(self, stream):
         request: api_pb2.QueueNextItemsRequest = await stream.recv_message()
         next_item_idx = int(request.last_entry_id) + 1 if request.last_entry_id else 0
-        if next_item_idx < len(self.queue):
-            item = api_pb2.QueueItem(value=self.queue[next_item_idx], entry_id=f"{next_item_idx}")
+        q = self.queue.get(request.partition_key, [])
+        if next_item_idx < len(q):
+            item = api_pb2.QueueItem(value=q[next_item_idx], entry_id=f"{next_item_idx}")
             await stream.send_message(api_pb2.QueueNextItemsResponse(items=[item]))
         else:
             if request.item_poll_timeout > 0:
@@ -1077,9 +1130,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SharedVolumeListFilesStream(self, stream):
         req: api_pb2.SharedVolumeListFilesRequest = await stream.recv_message()
         for path in self.nfs_files[req.shared_volume_id].keys():
-            entry = api_pb2.FileEntry(path=path)
+            entry = api_pb2.FileEntry(path=path, type=api_pb2.FileEntry.FileType.FILE)
             response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
-            await stream.send_message(response)
+            if req.path == "**" or req.path == "/" or req.path == path:  # hack
+                await stream.send_message(response)
 
     ### Task
 
@@ -1161,6 +1215,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         await stream.send_message(api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id))
 
+    async def VolumeList(self, stream):
+        req = await stream.recv_message()
+        items = []
+        for (name, _, env_name), volume_id in self.deployed_volumes.items():
+            if env_name != req.environment_name:
+                continue
+            items.append(api_pb2.VolumeListItem(label=name, volume_id=volume_id, created_at=1))
+        resp = api_pb2.VolumeListResponse(items=items, environment_name=req.environment_name)
+        await stream.send_message(resp)
+
     async def VolumeHeartbeat(self, stream):
         await stream.recv_message()
         self.n_vol_heartbeats += 1
@@ -1213,11 +1277,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeListFiles(self, stream):
         req = await stream.recv_message()
-        if req.path != "**":
-            raise NotImplementedError("Only '**' listing is supported.")
+        path = req.path if req.path else "/"
+        if path.startswith("/"):
+            path = path[1:]
+        if path.endswith("/"):
+            path = path[:-1]
+
+        found_file = False  # empty directory detection is not handled here!
         for k, vol_file in self.volume_files[req.volume_id].items():
-            entries = [api_pb2.FileEntry(path=k, type=api_pb2.FileEntry.FileType.FILE, size=len(vol_file.data))]
-            await stream.send_message(api_pb2.VolumeListFilesResponse(entries=entries))
+            if not path or k == path or (k.startswith(path + "/") and (req.recursive or "/" not in k[len(path) + 1 :])):
+                entry = api_pb2.FileEntry(path=k, type=api_pb2.FileEntry.FileType.FILE, size=len(vol_file.data))
+                await stream.send_message(api_pb2.VolumeListFilesResponse(entries=[entry]))
+                found_file = True
+
+        if path and not found_file:
+            raise GRPCError(Status.NOT_FOUND, "No such file")
 
     async def VolumePutFiles(self, stream):
         req = await stream.recv_message()

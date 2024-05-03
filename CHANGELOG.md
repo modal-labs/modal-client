@@ -10,6 +10,63 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.131 (2024-05-01)
+
+* Added a deprecation warning when object names are invalid. This applies to `Dict`, `NetworkFileSystem`, `Secret`, `Queue`, and `Volume` objects. Names must be shorter than 64 characters and may contain only alphanumeric characters, dashes, periods, and underscores. These rules were previously enforced, but the check had inadvertently been dropped in a recent refactor.  Please update the names of your objects and transfer any data to retain access, as invalid names will become an error in a future release.
+
+
+
+### 0.62.130 (2024-05-01)
+
+- Added a command-line interface for interacting with `modal.Queue` objects. Run `modal queue --help` in your terminal to see what is available.
+
+
+
+### 0.62.116 (2024-04-26)
+
+* Added a command-line interface for interacting with `modal.Dict` objects. Run `modal dict --help` in your terminal to see what is available.
+
+
+
+### 0.62.114 (2024-04-25)
+
+* `Secret.from_dotenv` now accepts an optional filename keyword argument:
+
+    ```python
+    @app.function(secrets=[modal.Secret.from_dotenv(filename=".env-dev")])
+    def run():
+        ...
+    ```
+
+
+
+### 0.62.110 (2024-04-25)
+
+- Passing a glob `**` argument to the `modal volume get` CLI has been deprecated — instead, simply download the desired directory path, or `/` for the entire volume.
+- `Volume.listdir()` no longer takes trailing glob arguments. Use `recursive=True` instead.
+- `modal volume get` and `modal nfs get` performance is improved when downloading a single file. They also now work with multiple files when outputting to stdout.
+- Fixed a visual bug where `modal volume get` on a single file will incorrectly display the destination path.
+
+
+
+### 0.62.109 (2024-04-24)
+
+- Improved feedback for deserialization failures when objects are being transferred between local / remote environments.
+
+
+
+### 0.62.108 (2024-04-24)
+
+- Added `Dict.delete` and `Queue.delete` as API methods for deleting named storage objects:
+
+    ```
+    import modal
+    modal.Queue.delete("my-job-queue")
+   ```
+- Deprecated invoking `Volume.delete` as an instance method; it should now be invoked as a static method with the name of  the Volume to delete, as with the other methods.
+
+
+
 ### 0.62.98 (2024-04-21)
 
 - The `modal.Dict` object now implements a `keys`/`values`/`items` API. Note that there are a few differences when compared to standard Python dicts:

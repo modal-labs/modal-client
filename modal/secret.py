@@ -9,6 +9,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .exception import InvalidError, NotFoundError
 from .execution_context import is_local
@@ -88,7 +89,7 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret.from_dict({})
 
     @staticmethod
-    def from_dotenv(path=None):
+    def from_dotenv(path=None, *, filename=".env"):
         """Create secrets from a .env file automatically.
 
         If no argument is provided, it will use the current working directory as the starting
@@ -105,6 +106,15 @@ class _Secret(_Object, type_prefix="st"):
 
         This will use the location of the script calling `modal.Secret.from_dotenv` as a
         starting point for finding the `.env` file.
+
+        A file named `.env` is expected by default, but this can be overridden with the `filename`
+        keyword argument:
+
+        ```python
+        @app.function(secrets=[modal.Secret.from_dotenv(filename=".env-dev")])
+        def run():
+            ...
+        ```
         """
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
@@ -119,7 +129,7 @@ class _Secret(_Object, type_prefix="st"):
             if path is not None:
                 # This basically implements the logic in find_dotenv
                 for dirname in _walk_to_root(path):
-                    check_path = os.path.join(dirname, ".env")
+                    check_path = os.path.join(dirname, filename)
                     if os.path.isfile(check_path):
                         dotenv_path = check_path
                         break
@@ -129,7 +139,7 @@ class _Secret(_Object, type_prefix="st"):
                 # TODO(erikbern): dotenv tries to locate .env files based on the location of the file in the stack frame.
                 # Since the modal code "intermediates" this, a .env file in the user's local directory won't be picked up.
                 # To simplify this, we just support the cwd and don't do any automatic path inference.
-                dotenv_path = find_dotenv(usecwd=True)
+                dotenv_path = find_dotenv(filename, usecwd=True)
 
             env_dict = dotenv_values(dotenv_path)
 
@@ -160,6 +170,10 @@ class _Secret(_Object, type_prefix="st"):
            ...
         ```
         """
+        # Unlike other objects, you can't create secrets through this method, but we will still
+        # warn here so that people get the message when they *look up* secrets with illegal names.
+        # We can just remove the check after the deprecation period, instead of converting to an error.
+        check_object_name(label, "Secret", warn=True)
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(

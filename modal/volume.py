@@ -6,7 +6,6 @@ import os
 import platform
 import re
 import time
-from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import (
@@ -27,7 +26,7 @@ import aiostream
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal.exception import VolumeUploadTimeoutError, deprecation_warning
+from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_warning
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -40,6 +39,7 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_path,
 )
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
 from .exception import deprecation_error
@@ -182,6 +182,7 @@ class _Volume(_Object, type_prefix="vo"):
             pass
         ```
         """
+        check_object_name(label, "Volume", warn=True)
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.VolumeGetOrCreateRequest(
@@ -332,27 +333,42 @@ class _Volume(_Object, type_prefix="vo"):
             raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
 
     @live_method_gen
-    async def iterdir(self, path: str) -> AsyncIterator[FileEntry]:
+    async def iterdir(self, path: str, *, recursive: bool = True) -> AsyncIterator[FileEntry]:
         """Iterate over all files in a directory in the volume.
 
-        * Passing a directory path lists all files in the directory (names are relative to the directory)
-        * Passing a file path returns a list containing only that file's listing description
-        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        Passing a directory path lists all files in the directory. For a file path, return only that
+        file's description. If `recursive` is set to True, list all files and folders under the path
+        recursively.
         """
-        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path)
+        from modal_version import major_number, minor_number
+
+        # This allows us to remove the server shim after 0.62 is no longer supported.
+        deprecation = deprecation_warning if (major_number, minor_number) <= (0, 62) else deprecation_error
+        if path.endswith("**"):
+            deprecation(
+                (2024, 4, 23),
+                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please pass recursive=True instead. For the CLI, just remove the glob suffix.",
+            )
+        elif path.endswith("*"):
+            deprecation(
+                (2024, 4, 23),
+                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please remove the glob `*` suffix.",
+            )
+
+        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
         async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
             for entry in batch.entries:
                 yield FileEntry._from_proto(entry)
 
     @live_method
-    async def listdir(self, path: str) -> List[FileEntry]:
+    async def listdir(self, path: str, *, recursive: bool = False) -> List[FileEntry]:
         """List all files under a path prefix in the modal.Volume.
 
-        * Passing a directory path lists all files in the directory
-        * Passing a file path returns a list containing only that file's listing description
-        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        Passing a directory path lists all files in the directory. For a file path, return only that
+        file's description. If `recursive` is set to True, list all files and folders under the path
+        recursively.
         """
-        return [entry async for entry in self.iterdir(path)]
+        return [entry async for entry in self.iterdir(path, recursive=recursive)]
 
     @live_method_gen
     async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
@@ -385,24 +401,14 @@ class _Volume(_Object, type_prefix="vo"):
                 yield data
 
     @live_method
-    async def read_file_into_fileobj(self, path: Union[str, bytes], fileobj: IO[bytes], progress: bool = False) -> int:
+    async def read_file_into_fileobj(self, path: Union[str, bytes], fileobj: IO[bytes]) -> int:
         """mdmd:hidden
 
-        Read volume file into file-like IO object, with support for progress display.
-        Used by modal CLI. In future will replace current generator implementation of `read_file` method.
+        Read volume file into file-like IO object.
+        In the future, this will replace the current generator implementation of the `read_file` method.
         """
         if isinstance(path, str):
             path = path.encode("utf-8")
-
-        if progress:
-            from ._output import download_progress_bar
-
-            progress_bar = download_progress_bar()
-            task_id = progress_bar.add_task("download", path=path.decode(), start=False)
-            progress_bar.console.log(f"Requesting {path.decode()}")
-        else:
-            progress_bar = nullcontext()
-            task_id = None
 
         chunk_size_bytes = 8 * 1024 * 1024
         start = 0
@@ -418,45 +424,30 @@ class _Volume(_Object, type_prefix="vo"):
         if n != len(response.data):
             raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
         elif n == response.size:
-            if progress:
-                progress_bar.console.log(f"Wrote {n} bytes to '{path.decode()}'")
             return response.size
         elif n > response.size:
             raise RuntimeError(f"length of returned data exceeds reported filesize: {n} > {response.size}")
         # else: there's more data to read. continue reading with further ranged GET requests.
-        start = n
         file_size = response.size
         written = n
 
-        if progress:
-            progress_bar.update(task_id, total=int(file_size))
-            progress_bar.start_task(task_id)
+        while True:
+            req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path, start=written, len=chunk_size_bytes)
+            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+            if response.WhichOneof("data_oneof") != "data":
+                raise RuntimeError("expected to receive 'data' in response")
+            if len(response.data) > chunk_size_bytes:
+                raise RuntimeError(f"received more data than requested: {len(response.data)} > {chunk_size_bytes}")
+            elif (written + len(response.data)) > file_size:
+                raise RuntimeError(f"received data exceeds filesize of {chunk_size_bytes}")
 
-        with progress_bar:
-            while True:
-                req = api_pb2.VolumeGetFileRequest(
-                    volume_id=self.object_id, path=path, start=start, len=chunk_size_bytes
-                )
-                response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
-                if response.WhichOneof("data_oneof") != "data":
-                    raise RuntimeError("expected to receive 'data' in response")
-                if len(response.data) > chunk_size_bytes:
-                    raise RuntimeError(f"received more data than requested: {len(response.data)} > {chunk_size_bytes}")
-                elif (written + len(response.data)) > file_size:
-                    raise RuntimeError(f"received data exceeds filesize of {chunk_size_bytes}")
+            n = fileobj.write(response.data)
+            if n != len(response.data):
+                raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
+            written += n
+            if written == file_size:
+                break
 
-                n = fileobj.write(response.data)
-                if n != len(response.data):
-                    raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
-                start += n
-                written += n
-                if progress:
-                    progress_bar.update(task_id, advance=n)
-                if written == file_size:
-                    break
-
-        if progress:
-            progress_bar.console.log(f"Wrote {written} bytes to '{path.decode()}'")
         return written
 
     @live_method
@@ -521,10 +512,37 @@ class _Volume(_Object, type_prefix="vo"):
         return _VolumeUploadContextManager(self.object_id, self._client, force=force)
 
     @live_method
-    async def delete(self):
+    async def _instance_delete(self):
         await retry_transient_errors(
             self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id)
         )
+
+    # @staticmethod  # TODO uncomment when enforcing deprecation of instance method invocation
+    async def delete(*args, label: str = "", client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        # -- Backwards-compatibility section
+        # TODO(michael) Upon enforcement of this deprecation, remove *args and the default argument for label=.
+        if args:
+            if isinstance(self := args[0], _Volume):
+                msg = (
+                    "Calling Volume.delete as an instance method is deprecated."
+                    " Please update your code to call it as a static method, passing"
+                    " the name of the volume to delete, e.g. `modal.Volume.delete('my-volume')`."
+                )
+                deprecation_warning((2024, 4, 23), msg)
+                await self._instance_delete()
+                return
+            elif isinstance(args[0], type):
+                args = args[1:]
+
+            if isinstance(args[0], str):
+                if label:
+                    raise InvalidError("`label` specified as both positional and keyword argument")
+                label = args[0]
+        # -- Backwards-compatibility code ends here
+
+        obj = await _Volume.lookup(label, client=client, environment_name=environment_name)
+        req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.VolumeDelete, req)
 
 
 class _VolumeUploadContextManager:

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import traceback
+from pickle import dumps
 from typing import List, Optional
 from unittest import mock
 
@@ -128,7 +129,16 @@ def test_run(servicer, set_env_client, test_dir):
 
 def test_run_stub(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "app_was_once_stub.py"
-    _run(["run", app_file.as_posix()])
+    with pytest.warns(match="App"):
+        _run(["run", app_file.as_posix()])
+    with pytest.warns(match="App"):
+        _run(["run", app_file.as_posix() + "::foo"])
+
+
+def test_run_stub_2(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "app_run_tests" / "app_was_once_stub_2.py"
+    with pytest.warns(match="`app`"):
+        _run(["run", app_file.as_posix()])
     _run(["run", app_file.as_posix() + "::stub"])
     _run(["run", app_file.as_posix() + "::foo"])
 
@@ -454,7 +464,7 @@ def test_logs(servicer, server_url_env):
         assert res.stdout == "hello\n"
 
 
-def test_nfs_get(set_env_client):
+def test_nfs_get(set_env_client, servicer):
     nfs_name = "my-shared-nfs"
     _run(["nfs", "create", nfs_name])
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -490,7 +500,7 @@ def test_volume_get(servicer, set_env_client):
             assert f.read() == file_contents
 
     with tempfile.TemporaryDirectory() as tmpdir2:
-        _run(["volume", "get", vol_name, "**", tmpdir2])
+        _run(["volume", "get", vol_name, "/", tmpdir2])
         with open(os.path.join(tmpdir2, file_path.decode()), "rb") as f:
             assert f.read() == file_contents
 
@@ -542,7 +552,15 @@ def test_volume_rm(servicer, set_env_client):
             assert f.read() == file_contents
 
         _run(["volume", "rm", vol_name, file_path.decode()])
-        _run(["volume", "get", vol_name, file_path.decode()], expected_exit_code=2, expected_stderr=None)
+        _run(["volume", "get", vol_name, file_path.decode()], expected_exit_code=1, expected_stderr=None)
+
+
+def test_volume_create_delete(servicer, server_url_env, set_env_client):
+    vol_name = "test-delete-vol"
+    _run(["volume", "create", vol_name])
+    assert vol_name in _run(["volume", "list"]).stdout
+    _run(["volume", "delete", "--yes", vol_name])
+    assert vol_name not in _run(["volume", "list"]).stdout
 
 
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
@@ -672,3 +690,87 @@ def test_list_apps(servicer, mock_dir, set_env_client):
 
     res = _run(["app", "list"])
     assert "my_app_foo" in res.stdout
+
+
+def test_dict_create_list_delete(servicer, server_url_env, set_env_client):
+    _run(["dict", "create", "foo-dict"])
+    _run(["dict", "create", "bar-dict"])
+    res = _run(["dict", "list"])
+    assert "foo-dict" in res.stdout
+    assert "bar-dict" in res.stdout
+
+    _run(["dict", "delete", "bar-dict", "--yes"])
+    res = _run(["dict", "list"])
+    assert "foo-dict" in res.stdout
+    assert "bar-dict" not in res.stdout
+
+
+def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
+    # Kind of hacky to be modifying the attributes on the servicer like this
+    key = ("baz-dict", api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, os.environ.get("MODAL_ENVIRONMENT", "main"))
+    dict_id = "di-abc123"
+    servicer.deployed_dicts[key] = dict_id
+    servicer.dicts[dict_id] = {dumps("a"): dumps(123), dumps("b"): dumps("blah")}
+
+    res = _run(["dict", "items", "baz-dict"])
+    assert re.search(r" Key .+ Value", res.stdout)
+    assert re.search(r" a .+ 123 ", res.stdout)
+    assert re.search(r" b .+ blah ", res.stdout)
+
+    res = _run(["dict", "items", "baz-dict", "1"])
+    assert re.search(r"\.\.\. .+ \.\.\.", res.stdout)
+    assert "blah" not in res.stdout
+
+    res = _run(["dict", "items", "baz-dict", "2"])
+    assert "..." not in res.stdout
+
+    res = _run(["dict", "items", "baz-dict", "--json"])
+    assert '"Key": "a"' in res.stdout
+    assert '"Value": 123' in res.stdout
+    assert "..." not in res.stdout
+
+    assert _run(["dict", "get", "baz-dict", "a"]).stdout == "123\n"
+    assert _run(["dict", "get", "baz-dict", "b"]).stdout == "blah\n"
+
+    res = _run(["dict", "clear", "baz-dict", "--yes"])
+    assert servicer.dicts[dict_id] == {}
+
+
+def test_queue_create_list_delete(servicer, server_url_env, set_env_client):
+    _run(["queue", "create", "foo-queue"])
+    _run(["queue", "create", "bar-queue"])
+    res = _run(["queue", "list"])
+    assert "foo-queue" in res.stdout
+    assert "bar-queue" in res.stdout
+
+    _run(["queue", "delete", "bar-queue", "--yes"])
+
+    res = _run(["queue", "list"])
+    assert "foo-queue" in res.stdout
+    assert "bar-queue" not in res.stdout
+
+
+def test_queue_peek_len_clear(servicer, server_url_env, set_env_client):
+    # Kind of hacky to be modifying the attributes on the servicer like this
+    name = "queue-who"
+    key = (name, api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, os.environ.get("MODAL_ENVIRONMENT", "main"))
+    queue_id = "qu-abc123"
+    servicer.deployed_queues[key] = queue_id
+    servicer.queue = {b"": [dumps("a"), dumps("b"), dumps("c")], b"alt": [dumps("x"), dumps("y")]}
+
+    assert _run(["queue", "peek", name]).stdout == "a\n"
+    assert _run(["queue", "peek", name, "-p", "alt"]).stdout == "x\n"
+    assert _run(["queue", "peek", name, "3"]).stdout == "a\nb\nc\n"
+    assert _run(["queue", "peek", name, "3", "--partition", "alt"]).stdout == "x\ny\n"
+
+    assert _run(["queue", "len", name]).stdout == "3\n"
+    assert _run(["queue", "len", name, "--partition", "alt"]).stdout == "2\n"
+    assert _run(["queue", "len", name, "--total"]).stdout == "5\n"
+
+    _run(["queue", "clear", name, "--yes"])
+    assert _run(["queue", "len", name]).stdout == "0\n"
+    assert _run(["queue", "peek", name, "--partition", "alt"]).stdout == "x\n"
+
+    _run(["queue", "clear", name, "--all", "--yes"])
+    assert _run(["queue", "len", name, "--total"]).stdout == "0\n"
+    assert _run(["queue", "peek", name, "--partition", "alt"]).stdout == ""

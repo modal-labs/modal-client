@@ -536,7 +536,7 @@ class _App:
 
         if interactive:
             deprecation_error(
-                (2024, 2, 29), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+                (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
             )
 
         if image is None:
@@ -704,7 +704,7 @@ class _App:
             cls: _Cls = _Cls.from_local(user_cls, self, decorator_args)
 
             if (
-                _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
+                _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
                 and not enable_memory_snapshot
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
@@ -743,6 +743,10 @@ class _App:
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         _allow_background_volume_commits: bool = False,
         pty_info: Optional[api_pb2.PTYInfo] = None,
+        _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
+        _experimental_scheduler_placement: Optional[
+            SchedulerPlacement
+        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -775,6 +779,8 @@ class _App:
             volumes=volumes,
             allow_background_volume_commits=_allow_background_volume_commits,
             pty_info=pty_info,
+            _experimental_scheduler=_experimental_scheduler,
+            _experimental_scheduler_placement=_experimental_scheduler_placement,
         )
         await resolver.load(obj)
         return obj
@@ -824,12 +830,12 @@ class _Stub(_App):
     """
 
     def __new__(cls, *args, **kwargs):
-        # TODO(erikbern): enable this warning soon!
-        # deprecation_warning(
-        #    (2024, 4, 19),
-        #   "The use of \"Stub\" has been deprecated in favor of \"App\"."
-        #    " This is a pure name change with no other implications."
-        # )
+        deprecation_warning(
+            (2024, 4, 29),
+            'The use of "Stub" has been deprecated in favor of "App".'
+            " This is a pure name change with no other implications.",
+            pending=True,
+        )
         return _App(*args, **kwargs)
 
 

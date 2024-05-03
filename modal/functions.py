@@ -36,6 +36,7 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import serialize
 from ._utils.async_utils import (
+    TaskContext,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -278,7 +279,7 @@ class _Function(_Object, type_prefix="fu"):
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
     _use_function_id: Optional[str]
-    _use_method_name: Optional[str]
+    _use_method_name: Optional[str] = ""
 
     def _bind_method(
         self,
@@ -328,7 +329,7 @@ class _Function(_Object, type_prefix="fu"):
 
         async def _preload(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
             if class_function._use_method_name:
-                raise RuntimeError("Can't bind method to already bound", class_function)
+                raise ExecutionError(f"Can't bind method to already bound {class_function}")
 
             req = api_pb2.FunctionPrecreateRequest(
                 app_id=resolver.app_id,
@@ -818,29 +819,32 @@ class _Function(_Object, type_prefix="fu"):
         Binds a class-function to a specific instance of (init params, options) or a new workspace
         """
 
-        async def _load(parameter_bound_function: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            if not parameter_bound_function._parent.is_hydrated:
+        async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            try:
+                identity = f"base {self._parent.info.function_name} function"
+            except Exception:
+                # Can't always look up the function name that way, so fall back to generic message
+                identity = "base function for parameterized class"
+            if not self._parent.is_hydrated:
+                if self._parent.app._running_app is None:
+                    reason = ", because the App it is defined on is not running."
+                else:
+                    reason = ""
                 raise ExecutionError(
-                    "Base function in class has not been hydrated. This might happen if an object is"
-                    " defined on a different stub, or if it's on the same stub but it didn't get"
-                    " created because it wasn't defined in global scope."
+                    f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
                 )
-            assert parameter_bound_function._parent._client.stub
+            assert self._parent._client.stub
             serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=parameter_bound_function._parent._object_id,
+                function_id=self._parent._object_id,
                 serialized_params=serialized_params,
                 function_options=options,
                 environment_name=environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
-            response = await retry_transient_errors(
-                parameter_bound_function._parent._client.stub.FunctionBindParams, req
-            )
-            parameter_bound_function._hydrate(
-                response.bound_function_id, parameter_bound_function._parent._client, response.handle_metadata
-            )
+            response = await retry_transient_errors(self._parent._client.stub.FunctionBindParams, req)
+            self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
 
         fun: _Function = _Function._from_loader(
             _load, "Function(parametrized, method-unspecified)", hydrate_lazily=True
@@ -1314,7 +1318,7 @@ async def _gather(*function_calls: _FunctionCall):
     ```
     """
     try:
-        return await asyncio.gather(*[fc.get() for fc in function_calls])
+        return await TaskContext.gather(*[fc.get() for fc in function_calls])
     except Exception as exc:
         # TODO: kill all running function calls
         raise exc

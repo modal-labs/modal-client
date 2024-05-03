@@ -18,7 +18,7 @@ def load_ipython_extension(ipython):
     logger.addHandler(logging.StreamHandler(stream=sys.stdout))
     logger.setLevel(config["loglevel"])
 
-    # Create a app and provide it in the IPython app
+    # Create an app and provide it in the IPython app
     app = App()
     ipython.push({"app": app})
 

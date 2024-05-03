@@ -508,7 +508,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -551,7 +551,7 @@ class _Image(_Object, type_prefix="im"):
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         gpu: GPU_T = None,
         secrets: Sequence[_Secret] = [],
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
         """
         Install a list of Python packages from private git repositories using pip.
@@ -646,7 +646,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -686,7 +686,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -745,7 +745,7 @@ class _Image(_Object, type_prefix="im"):
         ignore_lockfile: bool = False,
         # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
         old_installer: bool = False,
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         # Selected optional dependency groups to install (See https://python-poetry.org/docs/cli/#install)
         with_: List[str] = [],
         # Selected optional dependency groups to exclude (See https://python-poetry.org/docs/cli/#install)
@@ -824,7 +824,7 @@ class _Image(_Object, type_prefix="im"):
         gpu: GPU_T = None,
         # modal.Mount with local files to supply as build context for COPY commands
         context_mount: Optional[_Mount] = None,
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
         """Extend an image with arbitrary Dockerfile-like commands."""
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
@@ -848,7 +848,7 @@ class _Image(_Object, type_prefix="im"):
         *commands: Union[str, List[str]],
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
         """Extend an image with a list of shell commands to run."""
         cmds = _flatten_str_args("run_commands", "commands", commands)
@@ -916,7 +916,7 @@ class _Image(_Object, type_prefix="im"):
                 # .bashrc is explicitly sourced because RUN is a non-login shell and doesn't run bash.
                 "RUN . /root/.bashrc && conda activate base \\ ",
                 # Ensure that packaging tools are up to date and install client dependenices
-                f"&& python -m pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel'} \\ ",
+                f"&& python -m pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel uv'} \\ ",
                 f"&& python -m {_get_modal_requirements_command(version)}",
             ]
             if version > "2023.12":
@@ -944,7 +944,7 @@ class _Image(_Object, type_prefix="im"):
         self,
         *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -977,7 +977,7 @@ class _Image(_Object, type_prefix="im"):
     def conda_update_from_environment(
         self,
         environment_yml: str,
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -1006,7 +1006,7 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def micromamba(
         python_version: Optional[str] = None,
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
         """
         A Micromamba base image. Micromamba allows for fast building of small Conda-based containers.
@@ -1042,7 +1042,7 @@ class _Image(_Object, type_prefix="im"):
         *packages: Union[str, List[str]],
         # A list of Conda channels, eg. ["conda-forge", "nvidia"]
         channels: List[str] = [],
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -1088,7 +1088,7 @@ class _Image(_Object, type_prefix="im"):
 
         modal_requirements_commands = [
             f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
-            f"RUN python -m pip install --upgrade {'pip' if builder_version == '2023.12' else 'pip wheel'}",
+            f"RUN python -m pip install --upgrade {'pip' if builder_version == '2023.12' else 'pip wheel uv'}",
             f"RUN python -m {_get_modal_requirements_command(builder_version)}",
         ]
         if builder_version > "2023.12":
@@ -1107,7 +1107,7 @@ class _Image(_Object, type_prefix="im"):
         *,
         secret: Optional[_Secret] = None,
         setup_dockerfile_commands: List[str] = [],
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
@@ -1166,7 +1166,7 @@ class _Image(_Object, type_prefix="im"):
         secret: Optional[_Secret] = None,
         *,
         setup_dockerfile_commands: List[str] = [],
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
@@ -1211,7 +1211,7 @@ class _Image(_Object, type_prefix="im"):
         secret: Optional[_Secret] = None,
         *,
         setup_dockerfile_commands: List[str] = [],
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
@@ -1253,7 +1253,7 @@ class _Image(_Object, type_prefix="im"):
         context_mount: Optional[
             _Mount
         ] = None,  # modal.Mount with local files to supply as build context for COPY commands
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -1327,7 +1327,7 @@ class _Image(_Object, type_prefix="im"):
                 f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
                 "RUN apt-get update",
                 "RUN apt-get install -y gcc gfortran build-essential",
-                f"RUN pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel'}",
+                f"RUN pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel uv'}",
                 f"RUN {_get_modal_requirements_command(version)}",
                 # Set debian front-end to non-interactive to avoid users getting stuck with input prompts.
                 "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
@@ -1345,7 +1345,7 @@ class _Image(_Object, type_prefix="im"):
     def apt_install(
         self,
         *packages: Union[str, List[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -1390,7 +1390,7 @@ class _Image(_Object, type_prefix="im"):
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
-        force_build: bool = False,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`.
         args: Sequence[Any] = (),  # Positional arguments to the function.
         kwargs: Dict[str, Any] = {},  # Keyword arguments to the function.

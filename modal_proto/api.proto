@@ -107,6 +107,7 @@ enum CloudProvider {
   CLOUD_PROVIDER_AUTO = 3;
   CLOUD_PROVIDER_OCI = 4;
   CLOUD_PROVIDER_LAMBDA_LABS = 5;
+  CLOUD_PROVIDER_FLUIDSTACK = 6;  // experimental
 }
 
 // Which data format a binary message is encoded with.
@@ -678,6 +679,10 @@ message DictCreateRequest {  // Will be superseded by DictGetOrCreateRequest
 }
 
 message DictCreateResponse {  // Will be superseded by DictGetOrCreateResponse
+  string dict_id = 1;
+}
+
+message DictDeleteRequest {
   string dict_id = 1;
 }
 
@@ -1444,12 +1449,22 @@ message PTYInfo {
   PTYType pty_type = 7;
 }
 
+message QueueClearRequest {
+  string queue_id = 1;
+  bytes partition_key = 2;
+  bool all_partitions = 3;
+}
+
 message QueueCreateRequest {
   string app_id = 1;
   string existing_queue_id = 2;
 }
 
 message QueueCreateResponse {
+  string queue_id = 1;
+}
+
+message QueueDeleteRequest {
   string queue_id = 1;
 }
 
@@ -1489,10 +1504,28 @@ message QueuePutRequest {
 message QueueLenRequest {
   string queue_id = 1;
   bytes partition_key = 2;
+  bool total = 3;
 }
 
 message QueueLenResponse {
   int32 len = 1;
+}
+
+message QueueListRequest {
+  string environment_name = 1;
+  // Allow client to report a bounded total size to reduce the number of partitions that need to be checked
+  int32 total_size_limit = 2;
+}
+
+message QueueListResponse {
+  message QueueInfo {
+    string name = 1;
+    double created_at = 2;
+    int32 num_partitions = 3;
+    int32 total_size = 4;
+  }
+
+  repeated QueueInfo queues = 1;
 }
 
 message QueueNextItemsRequest {
@@ -1555,6 +1588,11 @@ message Sandbox {
   repeated VolumeMount volume_mounts = 13;
 
   PTYInfo pty_info = 15;
+
+  // If set, tasks will be scheduled using the new scheduler, which also knows
+  // to look at fine-grained placement constraints.
+  bool _experimental_scheduler = 16;
+  optional SchedulerPlacement _experimental_scheduler_placement = 17;
 }
 
 message SandboxCreateRequest {
@@ -1787,6 +1825,7 @@ message TaskInfo {
   double started_at = 2;
   double finished_at = 3;
   modal.client.GenericResult result = 4;
+  double enqueued_at = 5;
 }
 
 message TaskLogs {
@@ -1942,7 +1981,7 @@ message VolumeListFilesRequest {
   string volume_id = 1;
   string path = 2;
   bool recursive = 4;
-  optional int32 max_entries = 3;
+  optional uint32 max_entries = 3;
 }
 
 message VolumeListFilesResponse {
@@ -2081,6 +2120,7 @@ service ModalClient {
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictContents(DictContentsRequest) returns (stream DictEntry);
   rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
+  rpc DictDelete(DictDeleteRequest) returns (google.protobuf.Empty);
   rpc DictGet(DictGetRequest) returns (DictGetResponse);
   rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
   rpc DictHeartbeat(DictHeartbeatRequest) returns (google.protobuf.Empty);
@@ -2138,12 +2178,15 @@ service ModalClient {
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
 
   // Queues
+  rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);
   rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
+  rpc QueueDelete(QueueDeleteRequest) returns (google.protobuf.Empty);
   rpc QueueGetOrCreate(QueueGetOrCreateRequest) returns (QueueGetOrCreateResponse);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueueHeartbeat(QueueHeartbeatRequest) returns (google.protobuf.Empty);
   rpc QueuePut(QueuePutRequest) returns (google.protobuf.Empty);
   rpc QueueLen(QueueLenRequest) returns (QueueLenResponse);
+  rpc QueueList(QueueListRequest) returns (QueueListResponse);
   rpc QueueNextItems(QueueNextItemsRequest) returns (QueueNextItemsResponse);
 
   // Sandboxes

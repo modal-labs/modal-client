@@ -263,7 +263,7 @@ def run(ctx, detach, quiet, interactive, env):
 
 
 def deploy(
-    app_ref: str = typer.Argument(..., help="Path to a Python file with a app."),
+    app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
     public: bool = typer.Option(
@@ -291,7 +291,7 @@ def deploy(
 
 
 def serve(
-    app_ref: str = typer.Argument(..., help="Path to a Python file with a app."),
+    app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     timeout: Optional[float] = None,
     env: str = ENV_OPTION,
 ):
@@ -323,7 +323,7 @@ def serve(
 def shell(
     func_ref: Optional[str] = typer.Argument(
         default=None,
-        help="Path to a Python file with a App or Modal function whose container to run.",
+        help="Path to a Python file with an App or Modal function whose container to run.",
         metavar="FUNC_REF",
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),

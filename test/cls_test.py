@@ -86,7 +86,7 @@ def test_call_class_sync(client, servicer):
 
 # Reusing the app runs into an issue with stale function handles.
 # TODO (akshat): have all the client tests use separate apps, and throw
-# an exception if the user tries to reuse a app.
+# an exception if the user tries to reuse an app.
 app_remote = App()
 
 
@@ -198,8 +198,19 @@ async def test_call_cls_remote_async(client):
 app_local = App()
 
 
-@app_local.cls(cpu=42)
+@app_local.cls(cpu=42, enable_memory_snapshot=True)
 class FooLocal:
+    def __init__(self):
+        self.side_effects = ["__init__"]
+
+    @enter(snap=True)
+    def presnap(self):
+        self.side_effects.append("presnap")
+
+    @enter()
+    def postsnap(self):
+        self.side_effects.append("postsnap")
+
     @method()
     def bar(self, x):
         return x**3
@@ -215,6 +226,7 @@ def test_can_call_locally(client):
     assert foo.baz.local(4) == 125
     with app_local.run(client=client):
         assert foo.baz.local(2) == 27
+        assert foo.side_effects == ["__init__", "presnap", "postsnap"]
 
 
 def test_can_call_remotely_from_local(client):
@@ -474,8 +486,8 @@ class XYZ:
 def test_method_args(servicer, client):
     with app_method_args.run(client=client):
         funcs = servicer.app_functions.values()
-        assert [f.function_name for f in funcs] == ["XYZ", "XYZ.foo", "XYZ.bar"]
-        assert [f.warm_pool_size for f in funcs] == [5, 0, 0]
+        assert {f.function_name for f in funcs} == {"XYZ", "XYZ.foo", "XYZ.bar"}
+        assert {f.warm_pool_size for f in funcs} == {5, 0}
 
 
 def test_keep_warm_depr():
@@ -523,10 +535,10 @@ def test_handlers():
     pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.BUILD)
     assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]
 
-    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
     assert list(pfs.keys()) == ["my_memory_snapshot"]
 
-    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
     assert list(pfs.keys()) == ["my_enter", "my_build_and_enter"]
 
     pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.EXIT)
@@ -592,7 +604,7 @@ def test_deprecated_sync_methods():
     obj = ClsWithDeprecatedSyncMethods()
 
     with pytest.warns(DeprecationError, match="Using `__enter__`.+`modal.enter` decorator"):
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
     assert [meth() for meth in enter_methods.values()] == [42, 43]
 
     with pytest.warns(DeprecationError, match="Using `__exit__`.+`modal.exit` decorator"):
@@ -626,7 +638,7 @@ async def test_deprecated_async_methods():
     obj = ClsWithDeprecatedAsyncMethods()
 
     with pytest.warns(DeprecationError, match=r"Using `__aenter__`.+`modal.enter` decorator \(on an async method\)"):
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_CHECKPOINT)
+        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
     assert [await meth() for meth in enter_methods.values()] == [42, 43]
 
     with pytest.warns(DeprecationError, match=r"Using `__aexit__`.+`modal.exit` decorator \(on an async method\)"):

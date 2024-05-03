@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import os
 import pytest
 import re
@@ -812,3 +813,37 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
     )
     assert get_hash(img) == "a25dd4cc2e8d88f92bfdaf2e82b9d74144d1928926bf6be2ca1cdfbbf562189e"
+
+
+parallel_app = App()
+
+
+@parallel_app.function(image=Image.debian_slim().run_commands("sleep 1", "echo hi"))
+def f1():
+    pass
+
+
+@parallel_app.function(image=Image.debian_slim().run_commands("sleep 1", "echo bye"))
+def f2():
+    pass
+
+
+def test_image_parallel_build(builder_version, servicer, client):
+    num_concurrent = 0
+
+    async def MockImageJoinStreaming(self, stream):
+        nonlocal num_concurrent
+        num_concurrent += 1
+        while num_concurrent < 2:
+            await asyncio.sleep(0.01)
+
+        await stream.send_message(
+            api_pb2.ImageJoinStreamingResponse(
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+            )
+        )
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ImageJoinStreaming", MockImageJoinStreaming)
+        with parallel_app.run(client=client):
+            pass

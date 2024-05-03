@@ -3,6 +3,7 @@ import pytest
 import time
 
 from modal import Dict
+from modal.exception import DeprecationError, NotFoundError
 
 
 def test_dict_app(servicer, client):
@@ -25,6 +26,10 @@ def test_dict_app(servicer, client):
     d["foo"] = None
     assert d["foo"] is None
 
+    Dict.delete("my-amazing-dict", client=client)
+    with pytest.raises(NotFoundError):
+        Dict.lookup("my-amazing-dict", client=client)
+
 
 def test_dict_ephemeral(servicer, client):
     assert servicer.n_dict_heartbeats == 0
@@ -44,3 +49,9 @@ def test_dict_lazy_hydrate_named(set_env_client, servicer):
         d["foo"] = 42
         assert d["foo"] == 42
         assert len(ctx.get_requests("DictGetOrCreate")) == 1  # just sanity check that object is only hydrated once...
+
+
+@pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
+def test_invalid_name(servicer, client, name):
+    with pytest.raises(DeprecationError, match="Invalid Dict name"):
+        Dict.lookup(name)

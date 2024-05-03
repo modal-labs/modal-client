@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
 
 from grpclib import GRPCError, Status
 
-import modal
 from modal_proto import api_pb2
 
+from ._utils.async_utils import TaskContext
 from .exception import ExecutionError, NotFoundError
 
 if TYPE_CHECKING:
@@ -119,10 +119,7 @@ class Resolver:
             async def loader():
                 # Wait for all its dependencies
                 # TODO(erikbern): do we need existing_object_id for those?
-                deps = obj.deps()
-                if isinstance(obj, modal.functions._Function):
-                    print(f"Loading {obj=} deps {len(deps)=} {existing_object_id=}")
-                await asyncio.gather(*[self.load(dep) for dep in deps])
+                await TaskContext.gather(*[self.load(dep) for dep in obj.deps()])
 
                 # Load the object itself
                 try:

@@ -15,8 +15,9 @@ def deploy_app_externally(
     env={},
     capture_output=True,
 ) -> Optional[str]:
-    # deploys a app from another interpreter to prevent leaking state from client into a container process (apart from what goes through the servicer)
-    # also has the advantage that no modules imported by the test files themselves will be added to sys.modules and included in mounts etc.
+    # deploys an app from another interpreter to prevent leaking state from client into a container process
+    # (apart from what goes through the servicer) also has the advantage that no modules imported by the
+    # test files themselves will be added to sys.modules and included in mounts etc.
     windows_support: dict[str, str] = {}
 
     if sys.platform == "win32":
