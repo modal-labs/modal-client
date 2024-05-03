@@ -370,23 +370,31 @@ class _Function(_Object, type_prefix="fu"):
         )
         method_name = class_bound_method._use_method_name
 
+        def hydrate_from_instance_function(obj):
+            obj._hydrate_from_other(instance_bound_function)
+            obj._obj = instance_bound_function._obj
+            obj._use_method_name = method_name
+            obj._use_function_id = instance_bound_function.object_id
+
         async def _load(self: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            self._hydrate_from_other(instance_bound_function)
-            self._obj = instance_bound_function._obj
-            self._use_method_name = method_name
-            self._use_function_id = instance_bound_function.object_id
+            hydrate_from_instance_function(self)
 
         def _deps():
-            return [instance_bound_function, class_bound_method]
+            return [instance_bound_function]
 
         rep = f"ParametrizedMethodPlaceholder({method_name})"
-        print("Using rep", rep)
+
         fun = _Function._from_loader(
             _load,
             rep,
             deps=_deps,
             hydrate_lazily=True,
         )
+        if instance_bound_function.is_hydrated:
+            # skip loading in the arg-less instance case - in which case the instance_bound_function
+            # has *also* skipped loading and is already hydrated
+            # Note: not sure if this could trigger due to stale state in reruns of apps?
+            hydrate_from_instance_function(fun)
 
         fun._info = class_bound_method._info
         fun._obj = instance_bound_function._obj
