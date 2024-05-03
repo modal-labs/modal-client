@@ -142,7 +142,7 @@ def _method(
     # Set this to True if it's a non-generator function returning
     # a [sync/async] generator object
     is_generator: Optional[bool] = None,
-    keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
+    keep_warm: Optional[int] = None,  # Deprecated: Use keep_warm on @app.cls() instead
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for methods that should be transformed into a Modal Function registered against this class's app.
 
@@ -160,12 +160,20 @@ def _method(
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
 
+    if keep_warm is not None:
+        deprecation_warning(
+            (2024, 5, 3),
+            "keep_warm is no longer supported per-method on Modal classes. Use keep_warm via the @app.cls() decorator instead. All methods/web endpoints of classes use the same containers",
+            pending=True,
+        )
+
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
                 "Web endpoints on classes should not be wrapped by `@method`. Suggestion: remove the `@method` decorator."
             )
+
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
 
     return wrapper

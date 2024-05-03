@@ -9,7 +9,8 @@ from typing_extensions import assert_type
 
 from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
 from modal._serialization import deserialize
-from modal.exception import DeprecationError, ExecutionError, InvalidError
+from modal._utils.async_utils import synchronizer
+from modal.exception import DeprecationError, ExecutionError, InvalidError, PendingDeprecationError
 from modal.partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_cls,
@@ -459,7 +460,7 @@ def test_unhydrated():
 app_method_args = App()
 
 
-@app_method_args.cls()
+@app_method_args.cls(keep_warm=5)
 class XYZ:
     @method(keep_warm=3)
     def foo(self):
@@ -473,34 +474,24 @@ class XYZ:
 def test_method_args(servicer, client):
     with app_method_args.run(client=client):
         funcs = servicer.app_functions.values()
-        assert [f.function_name for f in funcs] == ["XYZ.foo", "XYZ.bar"]
-        assert [f.warm_pool_size for f in funcs] == [3, 7]
-
-
-class ClsWith1Method:
-    @method()
-    def foo(self):
-        ...
-
-
-class ClsWith2Methods:
-    @method()
-    def foo(self):
-        ...
-
-    @method()
-    def bar(self):
-        ...
+        assert [f.function_name for f in funcs] == ["XYZ", "XYZ.foo", "XYZ.bar"]
+        assert [f.warm_pool_size for f in funcs] == [5, 0, 0]
 
 
 def test_keep_warm_depr():
     app = App()
 
-    # This should be fine
-    app.cls(keep_warm=2)(ClsWith1Method)
+    with pytest.warns(PendingDeprecationError, match="keep_warm"):
 
-    with pytest.warns(DeprecationError, match="@method"):
-        app.cls(keep_warm=2)(ClsWith2Methods)
+        @app.cls(serialized=True)
+        class ClsWithKeepWarmMethod:
+            @method(keep_warm=2)
+            def foo(self):
+                ...
+
+            @method()
+            def bar(self):
+                ...
 
 
 class ClsWithHandlers:
@@ -561,7 +552,8 @@ class ClsWithBuild:
 
 def test_build_image(client, servicer):
     with handler_app.run(client=client):
-        f_def = servicer.app_functions[ClsWithBuild.method.object_id]
+        unwrapped_cls = synchronizer._translate_in(ClsWithBuild)
+        f_def = servicer.app_functions[unwrapped_cls._class_function.object_id]
         # The function image should have added a new layer with original image as the parent
         f_image = servicer.images[f_def.image_id]
         assert f_image.base_images[0].image_id == image.object_id
