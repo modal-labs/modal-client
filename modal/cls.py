@@ -23,7 +23,6 @@ from .functions import (
 from .gpu import GPU_T
 from .object import _get_environment_name, _Object
 from .partial_function import (
-    PartialFunction,
     _find_callables_for_cls,
     _find_partial_methods_for_cls,
     _Function,
@@ -184,9 +183,13 @@ class _Cls(_Object, type_prefix="cs"):
         if metadata.class_function_id:
             # we don't have any hydration metadata on "class function" themselves at the moment
             if self._class_function:
-                self._class_function._hydrate(metadata.class_function_id, self.client, None)
+                self._class_function._hydrate(
+                    metadata.class_function_id, self._client, metadata.class_function_metadata
+                )
             else:
-                self._class_function = _Function._new_hydrated(metadata.class_function_id, self._client, None)
+                self._class_function = _Function._new_hydrated(
+                    metadata.class_function_id, self._client, metadata.class_function_metadata
+                )
 
         for method in metadata.methods:
             if method.function_name in self._functions:
@@ -216,17 +219,17 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
-    def from_local(user_cls, app, decorator: Callable[[Union[PartialFunction, None], type], _Function]) -> "_Cls":
+    def from_local(user_cls, app, decorator_args: Dict) -> "_Cls":
         """mdmd:hidden"""
         functions: Dict[str, _Function] = {}
         # first create a function representing the whole class, this is the single function id that will be used
         # by containers running methods
-        cls_func = decorator(None, user_cls)
+        cls_func = app.function(**decorator_args)(None, user_cls)
 
         for method_name, partial_function in _find_partial_methods_for_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         ).items():
-            method_function = cls_func._bind_method(user_cls, method_name, partial_function)
+            method_function = cls_func._bind_method(user_cls, method_name, partial_function, decorator_args)
             app._add_function(method_function)
             functions[method_name] = method_function
 

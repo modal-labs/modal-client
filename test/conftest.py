@@ -204,14 +204,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     def get_class_metadata(self, object_id: str) -> api_pb2.ClassHandleMetadata:
-        class_handle_metadata = api_pb2.ClassHandleMetadata()
+        class_function_id = self.classes[object_id]["method-unspecified"]
+        class_handle_metadata = api_pb2.ClassHandleMetadata(
+            class_function_id=self.classes[object_id]["method-unspecified"],
+            class_function_metadata=self.get_function_metadata(class_function_id),
+        )
         for f_name, f_id in self.classes[object_id].items():
+            if f_name == "method-unspecified":
+                continue
             function_handle_metadata = self.get_function_metadata(f_id)
             class_handle_metadata.methods.append(
                 api_pb2.ClassMethod(
                     function_name=f_name, function_id=f_id, function_handle_metadata=function_handle_metadata
                 )
             )
+
         return class_handle_metadata
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -373,6 +380,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ClassCreateRequest = await stream.recv_message()
         assert request.app_id
         methods: dict[str, str] = {method.function_name: method.function_id for method in request.methods}
+        methods["method-unspecified"] = request.class_function_id
         class_id = "cs-" + str(len(self.classes))
         self.classes[class_id] = methods
         await stream.send_message(

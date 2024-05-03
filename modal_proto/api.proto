@@ -544,6 +544,7 @@ message ClassGetResponse {
 message ClassHandleMetadata {
   repeated ClassMethod methods = 1;
   string class_function_id = 2;
+  FunctionHandleMetadata class_function_metadata = 3;
 }
 
 message ClassMethod {

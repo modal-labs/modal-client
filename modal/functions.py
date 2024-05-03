@@ -1,9 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import inspect
-import sys
 import time
-import traceback
 import warnings
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -287,6 +285,7 @@ class _Function(_Object, type_prefix="fu"):
         user_cls,
         method_name: str,
         partial_function: "modal.partial_function._PartialFunction",
+        decorator_args: Dict,  # args for @app.function
     ):
         """mdmd:hidden
 
@@ -351,7 +350,9 @@ class _Function(_Object, type_prefix="fu"):
         fun = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
         fun._tag = full_name
         fun._raw_f = partial_function.raw_f
-        fun._info = FunctionInfo(partial_function.raw_f, cls=user_cls)
+        fun._info = FunctionInfo(
+            partial_function.raw_f, cls=user_cls, serialized=decorator_args["serialized"]
+        )  # needed for .local()
         fun._use_method_name = method_name
         # TODO: set more attributes?
 
@@ -401,7 +402,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._is_generator = instance_bound_function._is_generator
         fun._is_method = True
         fun._parent = instance_bound_function._parent
-        fun._app = instance_bound_function._app
+        #        fun._app = instance_bound_function._app
         return fun
 
     @staticmethod
@@ -856,7 +857,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._is_generator = self._is_generator
         fun._is_method = True
         fun._parent = self
-        fun._app = self.app
+        #        fun._app = self.app
         return fun
 
     @live_method
@@ -994,8 +995,6 @@ class _Function(_Object, type_prefix="fu"):
         self._function_name = metadata.function_name
         self._is_method = metadata.is_method
         self._use_function_id = metadata.use_function_id
-        print(f"Hydrating {metadata.function_name} using", metadata.use_method_name)
-        traceback.print_stack(limit=3, file=sys.stdout)
         self._use_method_name = metadata.use_method_name
 
     def _get_metadata(self):

@@ -31,7 +31,7 @@ from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
-from .partial_function import PartialFunction, _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
+from .partial_function import _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
 from .proxy import _Proxy
 from .retries import Retries
 from .runner import _run_app
@@ -669,7 +669,7 @@ class _App:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
-        decorator: Callable[[Union[PartialFunction, None], type], _Function] = self.function(
+        decorator_args = dict(
             image=image,
             secret=secret,
             secrets=secrets,
@@ -701,7 +701,7 @@ class _App:
         )
 
         def wrapper(user_cls: CLS_T) -> _Cls:
-            cls: _Cls = _Cls.from_local(user_cls, self, decorator)
+            cls: _Cls = _Cls.from_local(user_cls, self, decorator_args)
 
             if (
                 _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_CHECKPOINT)
