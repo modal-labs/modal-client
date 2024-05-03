@@ -1062,7 +1062,7 @@ class _Image(_Object, type_prefix="im"):
         *packages: Union[str, List[str]],
         # A local path to a file containing package specifications
         spec_file: Optional[str] = None,
-        # A list of Conda channels, eg. ["conda-forge", "nvidia"]. Uses "conda-forge" when not specified.
+        # A list of Conda channels, eg. ["conda-forge", "nvidia"].
         channels: List[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
@@ -1072,7 +1072,6 @@ class _Image(_Object, type_prefix="im"):
         pkgs = _flatten_str_args("micromamba_install", "packages", packages)
         if not pkgs and spec_file is None:
             return self
-        channels = channels or ["conda-forge"]
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)

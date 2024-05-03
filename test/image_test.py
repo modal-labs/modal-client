@@ -348,7 +348,7 @@ def test_micromamba_install(builder_version, servicer, client):
     image = (
         Image.micromamba()
         .pip_install("numpy")
-        .micromamba_install("pymc3", "theano")
+        .micromamba_install("pymc3", "theano", channels=["conda-forge"])
         .pip_install("scikit-learn")
         .micromamba_install(spec_file=spec_file)
     )
