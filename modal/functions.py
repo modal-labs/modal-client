@@ -362,7 +362,10 @@ class _Function(_Object, type_prefix="fu"):
     def _bind_method_local(instance_bound_function, class_bound_method: "_Function"):
         """mdmd:hidden
 
-        Binds an instance-bound function (as "class function" with an instance object) to a specific method.
+        Binds an instance-bound function (a "class function" with an instance object) to a specific method.
+        This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
+        it does it forward invocations to the underlying instance_bound_function with the specified method,
+        and we don't support web_config for parameterized methods at the moment.
         """
         print(
             "Creating instance and method bound",
@@ -403,7 +406,6 @@ class _Function(_Object, type_prefix="fu"):
         fun._is_generator = instance_bound_function._is_generator
         fun._is_method = True
         fun._parent = instance_bound_function._parent
-        #        fun._app = instance_bound_function._app
         return fun
 
     @staticmethod

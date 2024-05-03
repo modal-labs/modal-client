@@ -709,13 +709,6 @@ class _App:
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
-            # if len(cls._functions) > 1 and keep_warm is not None:
-            #     deprecation_warning(
-            #         (2023, 10, 20),
-            #         "`@app.cls(keep_warm=...)` is deprecated when there is more than 1 method."
-            #         " Use `@method(keep_warm=...)` on each method instead!",
-            #     )
-
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
             return cls
