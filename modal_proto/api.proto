@@ -1286,7 +1286,7 @@ message ImageGetOrCreateRequest {
   DeploymentNamespace namespace = 8;
   string builder_version = 9;
   // Only admins can publish global images, but this provides an extra failsafe
-  bool global_deployment_allowed = 10;
+  bool allow_global_deployment = 10;
 }
 
 message ImageGetOrCreateResponse {
