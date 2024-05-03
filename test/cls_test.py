@@ -65,7 +65,6 @@ def test_call_class_sync(client, servicer):
             ret: float = foo.bar.remote(42)
             assert ret == 1764
 
-    # TODO: uncomment:
     assert (
         len(ctx.get_requests("FunctionBindParams")) == 0
     )  # shouldn't need to bind in case there are no instance args etc.

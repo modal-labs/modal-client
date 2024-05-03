@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2023
 import asyncio
 import inspect
+import sys
 import time
+import traceback
 import warnings
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -282,6 +284,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def _bind_method(
         self,
+        user_cls,
         method_name: str,
         partial_function: "modal.partial_function._PartialFunction",
     ):
@@ -293,7 +296,6 @@ class _Function(_Object, type_prefix="fu"):
         Should only be used on "class functions". For "instance functions", we don't create an actual backend function,
         and instead do client-side "fake-hydration" only, see _bind_method_local
         """
-        # creates
         full_name = f"{self.info.function_name}.{method_name}"
 
         if partial_function.is_generator:
@@ -304,11 +306,6 @@ class _Function(_Object, type_prefix="fu"):
         class_function = self
 
         async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            # TODO: this needs its own RPC method in order to have function id stability
-            #  but we can probably get away with not having that since nothing should have
-            #  a relation to this placeholder function.from
-            #  However, creating a new proxy function for every app's first invocation of a method
-            #  would quickly add many new identical functions to the backend db which isn't great
             function_definition = api_pb2.Function(
                 function_name=full_name,
                 webhook_config=partial_function.webhook_config,
@@ -349,44 +346,54 @@ class _Function(_Object, type_prefix="fu"):
         def _deps():
             return [class_function]
 
-        rep = f"Method({full_name})"
+        rep = f"Method({full_name, method_name})"
 
         fun = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
         fun._tag = full_name
         fun._raw_f = partial_function.raw_f
+        fun._info = FunctionInfo(partial_function.raw_f, cls=user_cls)
+        fun._use_method_name = method_name
         # TODO: set more attributes?
 
         return fun
 
-    def _bind_method_local(self, method_name: str, *, is_generator: bool = False):
-        """mdmd:hidden"""
+    def _bind_method_local(instance_bound_function, class_bound_method: "_Function"):
+        """mdmd:hidden
 
-        function_type = (
-            api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+        Binds an instance-bound function (as "class function" with an instance object) to a specific method.
+        """
+        print(
+            "Creating instance and method bound",
+            repr(class_bound_method._use_method_name),
+            instance_bound_function,
+            class_bound_method,
         )
+        method_name = class_bound_method._use_method_name
 
-        async def _load(loaded_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            loaded_function._hydrate(
-                "fu-fake",  # TODO: ugly, fix actual support for "placeholders"
-                resolver.client,
-                api_pb2.FunctionHandleMetadata(
-                    use_function_id=self.object_id,
-                    use_method_name=method_name,
-                    function_type=function_type,
-                ),
-            )
+        async def _load(self: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            self._hydrate_from_other(instance_bound_function)
+            self._obj = instance_bound_function._obj
+            self._use_method_name = method_name
+            self._use_function_id = instance_bound_function.object_id
 
         def _deps():
-            return []  # self]
+            return [instance_bound_function, class_bound_method]
 
         rep = f"ParametrizedMethodPlaceholder({method_name})"
+        print("Using rep", rep)
         fun = _Function._from_loader(
             _load,
             rep,
-            hydrate_lazily=True,
             deps=_deps,
+            hydrate_lazily=True,
         )
 
+        fun._info = class_bound_method._info
+        fun._obj = instance_bound_function._obj
+        fun._is_generator = instance_bound_function._is_generator
+        fun._is_method = True
+        fun._parent = instance_bound_function._parent
+        fun._app = instance_bound_function._app
         return fun
 
     @staticmethod
@@ -799,7 +806,7 @@ class _Function(_Object, type_prefix="fu"):
     ) -> "_Function":
         """mdmd:hidden
 
-        Specialize a function by adding instance params
+        Binds a class-function to a specific instance of (init params, options) or a new workspace
         """
 
         async def _load(parameter_bound_function: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -826,8 +833,11 @@ class _Function(_Object, type_prefix="fu"):
                 response.bound_function_id, parameter_bound_function._parent._client, response.handle_metadata
             )
 
-        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        fun: _Function = _Function._from_loader(
+            _load, "Function(parametrized, method-unspecified)", hydrate_lazily=True
+        )
         if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
+            print(f"Hydrating from other, should not load {self} {args}")
             # Edge case that lets us hydrate all objects right away
             # if the instance didn't use explicit constructor arguments
             fun._hydrate_from_other(self)
@@ -976,6 +986,8 @@ class _Function(_Object, type_prefix="fu"):
         self._function_name = metadata.function_name
         self._is_method = metadata.is_method
         self._use_function_id = metadata.use_function_id
+        print(f"Hydrating {metadata.function_name} using", metadata.use_method_name)
+        traceback.print_stack(limit=3, file=sys.stdout)
         self._use_method_name = metadata.use_method_name
 
     def _get_metadata(self):
@@ -1163,6 +1175,7 @@ class _Function(_Object, type_prefix="fu"):
         else:
             # This is a method on a class, so bind the self to the function
             local_obj = obj.get_local_obj()
+
             fun = info.raw_f.__get__(local_obj)
 
             if is_async(info.raw_f):

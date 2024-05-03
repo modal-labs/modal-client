@@ -56,7 +56,7 @@ class _Obj:
         user_cls: type,
         output_mgr: Optional[OutputManager],
         class_function: _Function,
-        base_functions: Dict[str, _Function],
+        classbound_methods: Dict[str, _Function],
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args,
@@ -70,23 +70,20 @@ class _Obj:
         self._functions = {}
         # first create the singular object function used by all methods on this parameterization
         instance_function = class_function._bind_parameters(self, from_other_workspace, options, args, kwargs)
-        for method_name, class_bound_method in base_functions.items():
+        for method_name, class_bound_method in classbound_methods.items():
             # each bound *method* needs to refer to the object_function in its use_function_id
 
             # We can't do class_bound_method._bind_parameters here, since that would clone the
             # function definition, inluding `use_function_id`, of the class_bound_method, which
             # would make any calls go to the unparameterized function.
 
-            # Instead we need to bind the method to the instance "object function" created for
+            # Instead we need to bind the method to the instance "instance function" created for
             # the object instance to serve as the executed function. In order to not create
             # a new ƒunction for each hydration this needs to use a custom method.
 
             # If we had a way to associate all existing methods with the _Obj we could get
             # around this by loading with `existing_function_id` instead?
-            method = instance_function._bind_method_local(
-                method_name,
-                # TODO: webhook config, is_generator
-            )
+            method = instance_function._bind_method_local(class_bound_method)
             method._set_output_mgr(output_mgr)
             self._functions[method_name] = method
 
@@ -193,6 +190,8 @@ class _Cls(_Object, type_prefix="cs"):
 
         for method in metadata.methods:
             if method.function_name in self._functions:
+                # This happens when the class is loaded locally
+                # since each function will already be a loaded dependency _Function
                 self._functions[method.function_name]._hydrate(
                     method.function_id, self._client, method.function_handle_metadata
                 )
@@ -227,7 +226,7 @@ class _Cls(_Object, type_prefix="cs"):
         for method_name, partial_function in _find_partial_methods_for_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         ).items():
-            method_function = cls_func._bind_method(method_name, partial_function)
+            method_function = cls_func._bind_method(user_cls, method_name, partial_function)
             app._add_function(method_function)
             functions[method_name] = method_function
 
