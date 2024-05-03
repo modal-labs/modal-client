@@ -596,7 +596,7 @@ if __name__ == "__main__":
             "You are using Python 3.8 in your remote environment. Modal will soon drop support for this version,"
             " and you will be unable to use this Image. Please update your Image definition."
         )
-        deprecation_warning((2024, 5, 2), msg, show_source=False)
+        deprecation_warning((2024, 5, 2), msg, show_source=False, pending=True)
 
     container_args = api_pb2.ContainerArguments()
     container_args.ParseFromString(base64.b64decode(sys.argv[1]))
