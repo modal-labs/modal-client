@@ -443,7 +443,7 @@ def test_image_run_function(builder_version, servicer, client):
         Image.debian_slim().run_function(lambda x: x)
 
     with pytest.raises(InvalidError, match="must be a function"):
-        Image.debian_slim().run_function([])
+        Image.debian_slim().run_function([])  # type: ignore  # Testing runtime error for bad type
 
 
 def test_image_run_function_interactivity(builder_version, servicer, client):
