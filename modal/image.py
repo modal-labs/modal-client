@@ -8,7 +8,7 @@ import typing
 import warnings
 from dataclasses import dataclass
 from inspect import isfunction
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, get_args
 
 from google.protobuf.message import Message
@@ -26,7 +26,6 @@ from .config import config, logger, user_config_path
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
-from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret
 
@@ -1385,8 +1384,6 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
@@ -1424,12 +1421,6 @@ class _Image(_Object, type_prefix="im"):
 
         info = FunctionInfo(raw_f)
 
-        if shared_volumes or network_file_systems:
-            warnings.warn(
-                "Mounting NetworkFileSystems or Volumes is usually not advised with `run_function`."
-                " If you are trying to download model weights, downloading it to the image itself is recommended and sufficient."
-            )
-
         function = _Function.from_args(
             info,
             app=None,
@@ -1438,7 +1429,6 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
             gpu=gpu,
             mounts=mounts,
-            network_file_systems=network_file_systems,
             memory=memory,
             timeout=timeout,
             cpu=cpu,
