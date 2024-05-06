@@ -12,7 +12,7 @@ from rich.text import Text
 from rich.traceback import PathHighlighter, Stack, Traceback, install
 
 from ._vendor.tblib import Traceback as TBLibTraceback
-from .exception import DeprecationError
+from .exception import DeprecationError, PendingDeprecationError
 
 TBDictType = Dict[str, Any]
 LineCacheType = Dict[Tuple[str, str], str]
@@ -245,7 +245,7 @@ def highlight_modal_deprecation_warnings() -> None:
     base_showwarning = warnings.showwarning
 
     def showwarning(warning, category, filename, lineno, file=None, line=None):
-        if issubclass(category, DeprecationError):
+        if issubclass(category, (DeprecationError, PendingDeprecationError)):
             content = str(warning)
             date = content[:10]
             message = content[11:].strip()

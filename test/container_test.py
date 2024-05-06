@@ -720,8 +720,9 @@ def test_cli(unix_servicer):
     if ret.returncode != 0:
         raise Exception(f"Failed with {ret.returncode} stdout: {stdout} stderr: {stderr}")
 
-    assert stdout == ""
-    assert stderr == ""
+    if sys.version_info[:2] != (3, 8):  # Skip on Python 3.8 as we'll have PendingDeprecationError messages
+        assert stdout == ""
+        assert stderr == ""
 
 
 @skip_github_non_linux
