@@ -848,6 +848,93 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     assert get_hash(img) == "a25dd4cc2e8d88f92bfdaf2e82b9d74144d1928926bf6be2ca1cdfbbf562189e"
 
 
+@pytest.fixture
+def force_2024_04(modal_config):
+    with mock.patch("test.conftest.ImageBuilderVersion", Literal["2024.04"]):
+        with modal_config():
+            yield
+
+
+@skip_windows("Different hash values for context file paths")
+def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
+    def get_hash(img: Image) -> str:
+        app = App(image=img)
+        with app.run(client=client):
+            layers = get_image_layers(app.image.object_id, servicer)
+            commands = [layer.dockerfile_commands for layer in layers]
+            context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
+        return sha256(repr(list(zip(commands, context_files))).encode()).hexdigest()
+
+    if sys.version_info[:2] == (3, 11):
+        # Matches my development environment — default is to match Python version from local system
+        img = Image.debian_slim()
+        assert get_hash(img) == "b8f887744fa285250c72fccbecbca8b946726ec27b6acb804cd66cb2fe02cc63"
+
+    img = Image.debian_slim(python_version="3.12")
+    assert get_hash(img) == "6d01817be6e04444fe2ec8fa13615ec9e2aae4e415c5db2464ecd9f42ed2ed91"
+
+    img = Image.from_registry("ubuntu:22.04")
+    assert get_hash(img) == "285272f4049c812a72e1deecd4c98ac41be516670738214d2e7c4eb98a8f1ce8"
+
+    img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
+    assert get_hash(img) == "a683ed2a2fd9ca960d818aebd7459932494da63aa27d5d84443c578a5ba3fe05"
+
+    with pytest.warns(DeprecationError):
+        img = Image.conda()
+    if sys.version_info[:2] == (3, 11):
+        assert get_hash(img) == "404e1d80bd639321d1115ae00b8d1b6f3d257be7d400bad46d3c39da09c193c8"
+    elif sys.version_info[:2] == (3, 10):
+        # Assert that we follow the local Python, which is a new behavior in 2024.04
+        assert get_hash(img) == "9299b7935461e021ea6a3749adac8ea4de333fd443e74192739fbdd60da3b0b5"
+
+    with pytest.warns(DeprecationError):
+        img = Image.conda(python_version="3.12")
+    assert get_hash(img) == "113d959483ff099ba161438f02a370322bc53a68d5c5989245f4002b08e3be9d"
+
+    img = Image.micromamba()
+    if sys.version_info[:2] == (3, 11):
+        assert get_hash(img) == "8c0a30c7d14eb709953161cae39aa7d39afe3bb5014b7c6cf5dd93de56dcb32b"
+    elif sys.version_info[:2] == (3, 10):
+        # Assert that we follow the local Python, which is a new behavior in 2024.04
+        assert get_hash(img) == "4a6e9d94e3b9a15158dd97eeaf0275c8f5a80733f5acfdc8ad1a88094468dd5e"
+
+    img = Image.micromamba(python_version="3.12")
+    assert get_hash(img) == "966e1d1f3f652cfc2cd9dd7054b14a9883163d139311429857ecff7a9190b319"
+
+    base = Image.debian_slim(python_version="3.12")
+
+    img = base.run_commands("echo 'Hello Modal'", "rm /usr/local/bin/kubectl")
+    assert get_hash(img) == "acd4db6d206ea605f1bad4727acd654fb32c28e1f2fe7e9fe9a602ed54723828"
+
+    img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "4e8cea916369fc545a5139312a9633691f7624ec2b6d4075014a7602b23584c0"
+
+    with pytest.warns(DeprecationError):
+        img = base.conda_install("torch=2.2", "transformers<4.23.0", channels=["conda-forge", "my-channel"])
+    assert get_hash(img) == "bd9fb2b86a39886d618b37950d1a7c4d8826048f191fa00c5f87c71be88bf8f7"
+
+    img = base.pip_install_from_requirements(test_dir / "supports" / "test-requirements.txt")
+    assert get_hash(img) == "78392aca4ea135ab53b9d183eedbb2a7e32f9b3c0cfb42b03a7bd7c4f013f3c8"
+
+    with pytest.warns(DeprecationError):
+        img = base.conda_update_from_environment(test_dir / "supports" / "test-conda-environment.yml")
+    assert get_hash(img) == "4bb5fd232956050e66256d7e00c088e1c7cd4d7217bc0d15bcc4fbd08aa2f3b6"
+
+    img = base.micromamba_install(
+        "torch=2.2",
+        "transformers<4.23.0",
+        spec_file=test_dir / "supports" / "test-conda-environment.yml",
+        channels=["conda-forge", "my-channel"],
+    )
+    assert get_hash(img) == "cf6c956e7639afb51dcc46d98eb9aabb6472c0751ada28f41d2e7ad88275b9a0"
+
+    img = base.poetry_install_from_file(
+        test_dir / "supports" / "test-pyproject.toml",
+        poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
+    )
+    assert get_hash(img) == "bfce5811c04c1243f12cbb9cca1522cb901f52410986925bcfa3b3c2d7adc7a0"
+
+
 parallel_app = App()
 
 
