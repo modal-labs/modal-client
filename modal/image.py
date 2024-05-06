@@ -368,6 +368,9 @@ class _Image(_Object, type_prefix="im"):
                 force_build=config.get("force_build") or force_build,
                 namespace=_namespace,
                 builder_version=builder_version,
+                # Failsafe mechanism to prevent inadvertant updates to the global images.
+                # Only admins can publish to the global namespace, but they have to additionally request it.
+                allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT", "0") == "1",
             )
             resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
             image_id = resp.image_id
