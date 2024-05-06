@@ -121,6 +121,7 @@ jobs:
       - name: Publish base images
         env:
           MODAL_IMAGE_BUILDER_VERSION: ${{ matrix.image-builder-version }}
+          MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT: "1"
         run: |
           python -m modal_global_objects.images.${{ matrix.image-name }} ${{ matrix.python-version }}
 
