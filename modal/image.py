@@ -1450,6 +1450,12 @@ class _Image(_Object, type_prefix="im"):
         """
         from .functions import _Function
 
+        if not callable(raw_f):
+            raise InvalidError(f"Argument to Image.run_function must be a function, not {type(raw_f).__name__}.")
+        elif raw_f.__name__ == "<lambda>":
+            # It may be possible to support lambdas eventually, but for now we don't handle them well, so reject quickly
+            raise InvalidError("Image.run_function does not support lambda functions.")
+
         info = FunctionInfo(raw_f)
 
         if shared_volumes or network_file_systems:

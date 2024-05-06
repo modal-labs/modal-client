@@ -439,6 +439,12 @@ def test_image_run_function(builder_version, servicer, client):
     assert servicer.app_functions[function_id].function_name == "run_f"
     assert len(servicer.app_functions[function_id].secret_ids) == 1
 
+    with pytest.raises(InvalidError, match="does not support lambda functions"):
+        Image.debian_slim().run_function(lambda x: x)
+
+    with pytest.raises(InvalidError, match="must be a function"):
+        Image.debian_slim().run_function([])
+
 
 def test_image_run_function_interactivity(builder_version, servicer, client):
     app = App()
