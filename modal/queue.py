@@ -87,7 +87,9 @@ class _Queue(_Object, type_prefix="qu"):
     def new():
         """`Queue.new` is deprecated.
 
-        Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues.
+        You can switch this out for `Queue.from_name("some-queue-identifier")` for persisted dicts.
+        You can also take a look at the documentation for `Queue.ephemeral` for another option,
+        although it might require more code changes if you're coming from `Queue.new`.
         """
         deprecation_warning((2024, 3, 19), Queue.new.__doc__)
 

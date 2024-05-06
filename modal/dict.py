@@ -60,7 +60,9 @@ class _Dict(_Object, type_prefix="di"):
     def new(data: Optional[dict] = None) -> "_Dict":
         """`Dict.new` is deprecated.
 
-        Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts.
+        You can switch this out for `Dict.from_name("some-dict-identifier")` for persisted dicts.
+        You can also take a look at the documentation for `Dict.ephemeral` for another option,
+        although it might require more code changes if you're coming from `Dict.new`.
         """
         deprecation_warning((2024, 3, 19), Dict.new.__doc__)
 

@@ -139,7 +139,9 @@ class _Volume(_Object, type_prefix="vo"):
     def new() -> "_Volume":
         """`Volume.new` is deprecated.
 
-        Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes.
+        You can switch this out for `Volume.from_name("some-volume-identifier")` for persisted dicts.
+        You can also take a look at the documentation for `Volume.ephemeral` for another option,
+        although it might require more code changes if you're coming from `Volume.new`.
         """
         deprecation_warning((2024, 3, 20), Volume.new.__doc__)
 
