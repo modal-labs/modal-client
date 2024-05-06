@@ -920,6 +920,14 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
         img = base.conda_update_from_environment(test_dir / "supports" / "test-conda-environment.yml")
     assert get_hash(img) == "4bb5fd232956050e66256d7e00c088e1c7cd4d7217bc0d15bcc4fbd08aa2f3b6"
 
+    img = base.micromamba_install(
+        "torch=2.2",
+        "transformers<4.23.0",
+        spec_file=test_dir / "supports" / "test-conda-environment.yml",
+        channels=["conda-forge", "my-channel"],
+    )
+    assert get_hash(img) == "cf6c956e7639afb51dcc46d98eb9aabb6472c0751ada28f41d2e7ad88275b9a0"
+
     img = base.poetry_install_from_file(
         test_dir / "supports" / "test-pyproject.toml",
         poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
