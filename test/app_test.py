@@ -279,7 +279,7 @@ def test_function_decorator_on_class():
     app = App()
     with pytest.raises(TypeError):
 
-        @app.function
+        @app.function()
         class Foo:
             pass
 
