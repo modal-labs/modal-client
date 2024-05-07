@@ -275,6 +275,15 @@ def test_function_image_positional():
     assert "function(image=image)" in str(excinfo.value)
 
 
+def test_function_decorator_on_class():
+    app = App()
+    with pytest.raises(TypeError):
+
+        @app.function
+        class Foo:
+            pass
+
+
 @pytest.mark.asyncio
 async def test_deploy_disconnect(servicer, client):
     app = App()
@@ -356,6 +365,7 @@ def test_function_named_app():
     app = App()
 
     with pytest.warns(match="app"):
+
         @app.function(serialized=True)
         def app():
             ...
