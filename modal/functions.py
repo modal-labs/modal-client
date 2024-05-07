@@ -250,6 +250,7 @@ class _FunctionSpec:
     cloud: Optional[str]
     cpu: Optional[float]
     memory: Optional[Union[int, Tuple[int, int]]]
+    scheduler_placement: Optional[SchedulerPlacement]
 
 
 class _Function(_Object, type_prefix="fu"):
@@ -303,7 +304,7 @@ class _Function(_Object, type_prefix="fu"):
         cloud: Optional[str] = None,
         _experimental_boost: bool = False,
         _experimental_scheduler: bool = False,
-        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
+        scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
@@ -374,6 +375,7 @@ class _Function(_Object, type_prefix="fu"):
             cloud=cloud,
             cpu=cpu,
             memory=memory,
+            scheduler_placement=scheduler_placement,
         )
 
         if info.cls and not is_auto_snapshot:
@@ -397,7 +399,7 @@ class _Function(_Object, type_prefix="fu"):
                     cpu=cpu,
                     is_builder_function=True,
                     is_auto_snapshot=True,
-                    _experimental_scheduler_placement=_experimental_scheduler_placement,
+                    scheduler_placement=scheduler_placement,
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
@@ -596,9 +598,7 @@ class _Function(_Object, type_prefix="fu"):
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 _experimental_boost=_experimental_boost,
                 _experimental_scheduler=_experimental_scheduler,
-                _experimental_scheduler_placement=_experimental_scheduler_placement.proto
-                if _experimental_scheduler_placement
-                else None,
+                scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,

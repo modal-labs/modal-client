@@ -508,6 +508,7 @@ class _App:
             bool
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
@@ -579,6 +580,12 @@ class _App:
             if is_generator is None:
                 is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
+            scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
+            if region:
+                if scheduler_placement:
+                    raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
+                scheduler_placement = SchedulerPlacement(region=region)
+
             function = _Function.from_args(
                 info,
                 app=self,
@@ -608,9 +615,9 @@ class _App:
                 allow_background_volume_commits=_allow_background_volume_commits,
                 block_network=block_network,
                 max_inputs=max_inputs,
+                scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
                 _experimental_scheduler=_experimental_scheduler,
-                _experimental_scheduler_placement=_experimental_scheduler_placement,
             )
 
             self._add_function(function)
@@ -646,6 +653,7 @@ class _App:
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
@@ -687,6 +695,7 @@ class _App:
             interactive=interactive,
             keep_warm=keep_warm,
             cloud=cloud,
+            region=region,
             enable_memory_snapshot=enable_memory_snapshot,
             checkpointing_enabled=checkpointing_enabled,
             block_network=block_network,
@@ -730,6 +739,7 @@ class _App:
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[
             Union[int, Tuple[int, int]]
@@ -769,6 +779,7 @@ class _App:
             workdir=workdir,
             gpu=gpu,
             cloud=cloud,
+            region=region,
             cpu=cpu,
             memory=memory,
             network_file_systems=network_file_systems,
