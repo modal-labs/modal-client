@@ -277,11 +277,13 @@ def test_function_image_positional():
 
 def test_function_decorator_on_class():
     app = App()
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError) as excinfo:
 
         @app.function()
         class Foo:
             pass
+
+    assert "cannot be used on a class" in str(excinfo.value)
 
 
 @pytest.mark.asyncio
