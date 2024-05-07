@@ -349,6 +349,11 @@ def test_list_apps(client):
     assert set(apps_1) - set(apps_0) == set(["foobar"])
 
 
+def test_non_string_app_name():
+    with pytest.raises(InvalidError):
+        App(Image.debian_slim())
+
+
 def test_function_named_app():
     # Make sure we have a helpful warning when a user's function is named "app"
     # as it might collide with the App variable name (in particular if people
@@ -356,6 +361,7 @@ def test_function_named_app():
     app = App()
 
     with pytest.warns(match="app"):
+
         @app.function(serialized=True)
         def app():
             ...
