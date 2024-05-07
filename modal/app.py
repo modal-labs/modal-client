@@ -549,9 +549,9 @@ class _App:
         ) -> _Function:
             nonlocal keep_warm, is_generator
 
-            # Check if the decorated object is a class and does not have a __call__ method
-            if inspect.isclass(f) and not hasattr(f, "__call__"):
-                raise TypeError("The @app.function decorator cannot be used on a class without a __call__ method.")
+            # Check if the decorated object is a class
+            if inspect.isclass(f):
+                raise TypeError("The @app.function decorator cannot be used on a class.")
 
             if isinstance(f, _PartialFunction):
                 f.wrapped = True
