@@ -149,6 +149,8 @@ class _App:
         app = modal.App(image=image, mounts=[mount], secrets=[secret], volumes={"/mnt/data": volume})
         ```
         """
+        if name is not None and not isinstance(name, str):
+            raise InvalidError("Invalid value for `name`: Must be string.")
 
         self._name = name
         self._description = name
