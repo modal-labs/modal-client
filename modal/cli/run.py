@@ -344,7 +344,11 @@ def shell(
     ),
     cloud: Optional[str] = typer.Option(
         default=None,
-        help="Cloud provider to run the function on. Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF).",
+        help="Cloud provider to run the shell on. Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF).",
+    ),
+    region: Optional[str] = typer.Option(
+        default=None,
+        help="Region(s) to run the shell on. Can be a single region or a comma-separated list to choose from (if not using FUNC_REF).",
     ),
 ):
     """Run an interactive shell inside a Modal image.
@@ -392,10 +396,19 @@ def shell(
             cpu=function_spec.cpu,
             memory=function_spec.memory,
             volumes=function_spec.volumes,
+            region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
             _allow_background_volume_commits=True,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
-        start_shell = partial(interactive_shell, image=modal_image, cpu=cpu, memory=memory, gpu=gpu, cloud=cloud)
+        start_shell = partial(
+            interactive_shell,
+            image=modal_image,
+            cpu=cpu,
+            memory=memory,
+            gpu=gpu,
+            cloud=cloud,
+            region=region.split(",") if region else [],
+        )
 
     start_shell(app, cmd=[cmd], environment_name=env, timeout=3600)
