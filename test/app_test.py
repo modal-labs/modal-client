@@ -351,7 +351,7 @@ def test_list_apps(client):
 
 def test_non_string_app_name():
     with pytest.raises(InvalidError):
-        App(Image.debian_slim())
+        App(Image.debian_slim())  # type: ignore
 
 
 def test_function_named_app():
