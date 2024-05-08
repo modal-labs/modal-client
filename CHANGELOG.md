@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.149 (2024-05-08)
+
+The @app.function decorator now raises an error when it is used to decorate a class.
+
+
+
 ### 0.62.148 (2024-05-08)
 
 - The `modal app list` output has been improved in several ways:
