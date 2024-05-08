@@ -111,7 +111,7 @@ class TaskContext:
 
     async def start(self):
         # TODO: this only exists as a standalone method because Client doesn't have a proper ctx mgr
-        self._tasks: set[asyncio.Future] = set()
+        self._tasks: set[asyncio.Task] = set()
         self._exited: asyncio.Event = asyncio.Event()  # Used to stop infinite loops
 
     @property
@@ -159,7 +159,7 @@ class TaskContext:
         await self.stop()
 
     def create_task(self, coro_or_task) -> asyncio.Task:
-        if isinstance(coro_or_task, asyncio.Future):
+        if isinstance(coro_or_task, asyncio.Task):
             task = coro_or_task
         elif asyncio.iscoroutine(coro_or_task):
             loop = asyncio.get_event_loop()

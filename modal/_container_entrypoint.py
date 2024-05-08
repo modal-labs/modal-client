@@ -1,14 +1,13 @@
 # Copyright Modal Labs 2022
 import asyncio
 import base64
-import datetime
 import importlib
 import inspect
+import queue
 import signal
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Sequence, Type
 
@@ -62,6 +61,47 @@ class ImportedFunction:
     function: _Function
 
 
+class DaemonizedThreadPool:
+    def __init__(self, max_threads):
+        self.max_threads = max_threads
+
+    def __enter__(self):
+        self.spawned_workers = 0
+        self.inputs: queue.Queue[Any] = queue.Queue()
+        self.finished = threading.Event()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        print("Exit handler", exc_type)
+        self.finished.set()
+
+        if exc_type == KeyboardInterrupt:
+            print("Exit without thread join!")
+            return
+        self.inputs.join()
+
+    def submit(self, func, *args):
+        def worker_thread():
+            while not self.finished.is_set():
+                try:
+                    _func, _args = self.inputs.get(timeout=1)
+                except queue.Empty:
+                    continue
+                try:
+                    _func(*_args)
+                except BaseException:
+                    # This should basically never happen, since only KeyboardInterrupt is the only error that can
+                    # bubble out of from handle_input_exception and those wouldn't be raised outside the main thread
+                    print("Exception!?")
+                self.inputs.task_done()
+
+        if self.spawned_workers < self.max_threads:
+            threading.Thread(target=worker_thread, daemon=True).start()
+            self.spawned_workers += 1
+
+        self.inputs.put((func, args))
+
+
 class UserCodeEventLoop:
     """Run an async event loop as a context manager and handle signals.
 
@@ -83,9 +123,7 @@ class UserCodeEventLoop:
     def __exit__(self, exc_type, exc_value, traceback):
         self.loop.run_until_complete(self.loop.shutdown_asyncgens())
         if sys.version_info[:2] >= (3, 9):
-            print("Shutting down executor")
             self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
-            print("Done")
         self.loop.close()
 
     def run(self, coro):
@@ -120,7 +158,6 @@ class UserCodeEventLoop:
             return self.loop.run_until_complete(task)
         except asyncio.CancelledError:
             if self._sigints > 0:
-                print("Raising keyboard interrupt in thread", threading.current_thread())
                 raise KeyboardInterrupt()
         finally:
             self.loop.remove_signal_handler(signal.SIGUSR1)
@@ -221,32 +258,25 @@ def call_function(
         # all run_input coroutines will have completed by the time we leave the execution context
         # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
         # for them to resolve gracefully:
-        sync_executor = ThreadPoolExecutor()
 
-        async def run_concurrent_inputs():
-            async with TaskContext(0.01) as task_context:
-                async for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs.aio(
-                    imp_fun.input_concurrency
-                ):
-                    # Note that run_inputs_outputs will not return until the concurrency semaphore has
-                    # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
-                    # This prevents leaving the task_context before outputs have been created
-                    # TODO: refactor to make this a bit more easy to follow?
-                    if imp_fun.is_async:
-                        task_context.create_task(run_input_async(input_id, function_call_id, args, kwargs))
-                    else:
-                        # run sync input in thread
-                        task_context.create_task(
-                            asyncio.get_running_loop().run_in_executor(
-                                sync_executor, run_input_sync, input_id, function_call_id, args, kwargs
-                            )
-                        )
+        with DaemonizedThreadPool(max_threads=imp_fun.input_concurrency) as thread_pool:
 
-        try:
+            async def run_concurrent_inputs():
+                async with TaskContext(0.01) as task_context:
+                    async for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs.aio(
+                        imp_fun.input_concurrency
+                    ):
+                        # Note that run_inputs_outputs will not return until the concurrency semaphore has
+                        # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
+                        # This prevents leaving the task_context before outputs have been created
+                        # TODO: refactor to make this a bit more easy to follow?
+                        if imp_fun.is_async:
+                            task_context.create_task(run_input_async(input_id, function_call_id, args, kwargs))
+                        else:
+                            # run sync input in thread
+                            thread_pool.submit(run_input_sync, input_id, function_call_id, args, kwargs)
+
             user_code_event_loop.run(run_concurrent_inputs())
-        except KeyboardInterrupt:
-            print("Got keyboard interrupt")
-            sync_executor.shutdown(wait=False, cancel_futures=True)
     else:
         for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs(
             imp_fun.input_concurrency
@@ -540,7 +570,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         try:
             call_function(event_loop, container_io_manager, imp_fun)
         finally:
-            print("Exiting", datetime.datetime.now())
             # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
             # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
             # may have been sent to cancel inputs.
@@ -563,7 +592,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 # test runs `main()` multiple times in the same process.
                 signal.signal(signal.SIGINT, int_handler)
                 signal.signal(signal.SIGUSR1, usr1_handler)
-            print("Exiting2", datetime.datetime.now())
 
 
 if __name__ == "__main__":

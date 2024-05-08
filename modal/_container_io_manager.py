@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2024
 import asyncio
-import datetime
 import json
 import math
 import os
@@ -168,7 +167,6 @@ class _ContainerIOManager:
                     # there are concurrent inputs, we cannot interrupt the thread pool, but the
                     # interpreter stops waiting for daemon threads and exits. On async functions,
                     # this signal lands outside the event loop, stopping `run_until_complete()`.
-                    print("SENDING SIGINT", datetime.datetime.now())
                     os.kill(os.getpid(), signal.SIGINT)
 
                 elif self.current_input_id in input_ids_to_cancel:
