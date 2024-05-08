@@ -549,6 +549,10 @@ class _App:
         ) -> _Function:
             nonlocal keep_warm, is_generator
 
+            # Check if the decorated object is a class
+            if inspect.isclass(f):
+                raise TypeError("The @app.function decorator cannot be used on a class. Please use @app.cls instead.")
+
             if isinstance(f, _PartialFunction):
                 f.wrapped = True
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name, cls=_cls)
