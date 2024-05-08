@@ -11,7 +11,7 @@ from modal.cli.utils import display_table, timestamp_to_local
 from modal.client import _Client
 from modal_proto import api_pb2
 
-container_cli = typer.Typer(name="container", help="Manage running containers.", no_args_is_help=True)
+container_cli = typer.Typer(name="container", help="Manage and connect to running containers.", no_args_is_help=True)
 
 
 @container_cli.command("list")

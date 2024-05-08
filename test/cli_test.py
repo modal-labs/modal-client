@@ -691,6 +691,10 @@ def test_list_apps(servicer, mock_dir, set_env_client):
     res = _run(["app", "list"])
     assert "my_app_foo" in res.stdout
 
+    _run(["volume", "create", "my-vol"])
+    res = _run(["app", "list"])
+    assert "my-vol" not in res.stdout
+
 
 def test_dict_create_list_delete(servicer, server_url_env, set_env_client):
     _run(["dict", "create", "foo-dict"])
