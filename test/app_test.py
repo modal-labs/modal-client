@@ -350,9 +350,8 @@ def test_list_apps(client):
 
 
 def test_non_string_app_name():
-    with pytest.raises(InvalidError) as excinfo:
+    with pytest.raises(InvalidError, match="Must be string"):
         App(Image.debian_slim())  # type: ignore
-    assert "Must be string" in str(excinfo.value)
 
 
 def test_function_named_app():
