@@ -1,12 +1,14 @@
 # Copyright Modal Labs 2022
 import asyncio
 import base64
+import datetime
 import importlib
 import inspect
 import signal
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Sequence, Type
 
@@ -81,7 +83,9 @@ class UserCodeEventLoop:
     def __exit__(self, exc_type, exc_value, traceback):
         self.loop.run_until_complete(self.loop.shutdown_asyncgens())
         if sys.version_info[:2] >= (3, 9):
+            print("Shutting down executor")
             self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
+            print("Done")
         self.loop.close()
 
     def run(self, coro):
@@ -99,6 +103,7 @@ class UserCodeEventLoop:
                 # first sigint is graceful
                 task.cancel()
                 return
+
             raise KeyboardInterrupt()  # this should normally not happen, but the second sigint would "hard kill" the event loop!
 
         ignore_sigint = signal.getsignal(signal.SIGINT) == signal.SIG_IGN
@@ -115,6 +120,7 @@ class UserCodeEventLoop:
             return self.loop.run_until_complete(task)
         except asyncio.CancelledError:
             if self._sigints > 0:
+                print("Raising keyboard interrupt in thread", threading.current_thread())
                 raise KeyboardInterrupt()
         finally:
             self.loop.remove_signal_handler(signal.SIGUSR1)
@@ -122,102 +128,12 @@ class UserCodeEventLoop:
                 self.loop.remove_signal_handler(signal.SIGINT)
 
 
-def call_function_sync(
+def call_function(
+    user_code_event_loop: UserCodeEventLoop,
     container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
     imp_fun: ImportedFunction,
 ):
-    def run_input(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
-        started_at = time.time()
-        reset_context = _set_current_context_ids(input_id, function_call_id)
-        with container_io_manager.handle_input_exception(input_id, started_at):
-            logger.debug(f"Starting input {input_id} (sync)")
-            res = imp_fun.fun(*args, **kwargs)
-            logger.debug(f"Finished input {input_id} (sync)")
-
-            # TODO(erikbern): any exception below shouldn't be considered a user exception
-            if imp_fun.is_generator:
-                if not inspect.isgenerator(res):
-                    raise InvalidError(f"Generator function returned value of type {type(res)}")
-
-                # Send up to this many outputs at a time.
-                generator_queue: asyncio.Queue[Any] = container_io_manager._queue_create(1024)
-                generator_output_task = container_io_manager.generator_output_task(
-                    function_call_id,
-                    imp_fun.data_format,
-                    generator_queue,
-                    _future=True,  # Synchronicity magic to return a future.
-                )
-
-                item_count = 0
-                for value in res:
-                    container_io_manager._queue_put(generator_queue, value)
-                    item_count += 1
-
-                container_io_manager._queue_put(generator_queue, _ContainerIOManager._GENERATOR_STOP_SENTINEL)
-                generator_output_task.result()  # Wait to finish sending generator outputs.
-                message = api_pb2.GeneratorDone(items_total=item_count)
-                container_io_manager.push_output(input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
-            else:
-                if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
-                    raise InvalidError(
-                        f"Sync (non-generator) function return value of type {type(res)}."
-                        " You might need to use @app.function(..., is_generator=True)."
-                    )
-                container_io_manager.push_output(input_id, started_at, res, imp_fun.data_format)
-        reset_context()
-
-    if imp_fun.input_concurrency > 1:
-        # We can't use `concurrent.futures.ThreadPoolExecutor` here because in Python 3.11+, this
-        # class has no workaround that allows us to exit the Python interpreter process without
-        # waiting for the worker threads to finish. We need this behavior on SIGINT.
-
-        import queue
-        import threading
-
-        spawned_workers = 0
-        inputs: queue.Queue[Any] = queue.Queue()
-        finished = threading.Event()
-
-        def worker_thread():
-            while not finished.is_set():
-                try:
-                    args = inputs.get(timeout=1)
-                except queue.Empty:
-                    continue
-                try:
-                    run_input(*args)
-                except BaseException:
-                    # This should basically never happen, since only KeyboardInterrupt is the only error that can
-                    # bubble out of from handle_input_exception and those wouldn't be raised outside the main thread
-                    pass
-                inputs.task_done()
-
-        for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs(
-            imp_fun.input_concurrency
-        ):
-            if spawned_workers < imp_fun.input_concurrency:
-                threading.Thread(target=worker_thread, daemon=True).start()
-                spawned_workers += 1
-            inputs.put((input_id, function_call_id, args, kwargs))
-
-        finished.set()
-        inputs.join()
-
-    else:
-        for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs(
-            imp_fun.input_concurrency
-        ):
-            try:
-                run_input(input_id, function_call_id, args, kwargs)
-            except:
-                raise
-
-
-async def call_function_async(
-    container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
-    imp_fun: ImportedFunction,
-):
-    async def run_input(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
+    async def run_input_async(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
         started_at = time.time()
         reset_context = _set_current_context_ids(input_id, function_call_id)
         async with container_io_manager.handle_input_exception.aio(input_id, started_at):
@@ -261,24 +177,95 @@ async def call_function_async(
                 await container_io_manager.push_output.aio(input_id, started_at, value, imp_fun.data_format)
         reset_context()
 
+    def run_input_sync(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
+        started_at = time.time()
+        reset_context = _set_current_context_ids(input_id, function_call_id)
+        with container_io_manager.handle_input_exception(input_id, started_at):
+            logger.debug(f"Starting input {input_id} (sync)")
+            res = imp_fun.fun(*args, **kwargs)
+            logger.debug(f"Finished input {input_id} (sync)")
+
+            # TODO(erikbern): any exception below shouldn't be considered a user exception
+            if imp_fun.is_generator:
+                if not inspect.isgenerator(res):
+                    raise InvalidError(f"Generator function returned value of type {type(res)}")
+
+                # Send up to this many outputs at a time.
+                generator_queue: asyncio.Queue[Any] = container_io_manager._queue_create(1024)
+                generator_output_task = container_io_manager.generator_output_task(
+                    function_call_id,
+                    imp_fun.data_format,
+                    generator_queue,
+                    _future=True,  # Synchronicity magic to return a future.
+                )
+
+                item_count = 0
+                for value in res:
+                    container_io_manager._queue_put(generator_queue, value)
+                    item_count += 1
+
+                container_io_manager._queue_put(generator_queue, _ContainerIOManager._GENERATOR_STOP_SENTINEL)
+                generator_output_task.result()  # Wait to finish sending generator outputs.
+                message = api_pb2.GeneratorDone(items_total=item_count)
+                container_io_manager.push_output(input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
+            else:
+                if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
+                    raise InvalidError(
+                        f"Sync (non-generator) function return value of type {type(res)}."
+                        " You might need to use @app.function(..., is_generator=True)."
+                    )
+                container_io_manager.push_output(input_id, started_at, res, imp_fun.data_format)
+        reset_context()
+
     if imp_fun.input_concurrency > 1:
         # all run_input coroutines will have completed by the time we leave the execution context
         # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
         # for them to resolve gracefully:
-        async with TaskContext(0.01) as task_context:
-            async for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs.aio(
-                imp_fun.input_concurrency
-            ):
-                # Note that run_inputs_outputs will not return until the concurrency semaphore has
-                # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
-                # This prevents leaving the task_context before outputs have been created
-                # TODO: refactor to make this a bit more easy to follow?
-                task_context.create_task(run_input(input_id, function_call_id, args, kwargs))
+        sync_executor = ThreadPoolExecutor()
+
+        async def run_concurrent_inputs():
+            async with TaskContext(0.01) as task_context:
+                async for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs.aio(
+                    imp_fun.input_concurrency
+                ):
+                    # Note that run_inputs_outputs will not return until the concurrency semaphore has
+                    # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
+                    # This prevents leaving the task_context before outputs have been created
+                    # TODO: refactor to make this a bit more easy to follow?
+                    if imp_fun.is_async:
+                        task_context.create_task(run_input_async(input_id, function_call_id, args, kwargs))
+                    else:
+                        # run sync input in thread
+                        task_context.create_task(
+                            asyncio.get_running_loop().run_in_executor(
+                                sync_executor, run_input_sync, input_id, function_call_id, args, kwargs
+                            )
+                        )
+
+        try:
+            user_code_event_loop.run(run_concurrent_inputs())
+        except KeyboardInterrupt:
+            print("Got keyboard interrupt")
+            sync_executor.shutdown(wait=False, cancel_futures=True)
     else:
-        async for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs.aio(
+        for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs(
             imp_fun.input_concurrency
         ):
-            await run_input(input_id, function_call_id, args, kwargs)
+            if imp_fun.is_async:
+                user_code_event_loop.run(run_input_async(input_id, function_call_id, args, kwargs))
+            else:
+                # Set up a custom signal handler for `SIGUSR1`, which gets translated to an InputCancellation
+                # during function execution. This is sent to cancel inputs from the user
+                def _cancel_input_signal_handler(signum, stackframe):
+                    raise InputCancellation("Input was cancelled by user")
+
+                usr1_handler = signal.signal(signal.SIGUSR1, _cancel_input_signal_handler)
+                # run this sync code in the main thread, blocking the "userland" event loop
+                # this lets us cancel it using a signal handler that raises an exception
+                try:
+                    run_input_sync(input_id, function_call_id, args, kwargs)
+                finally:
+                    signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
 
 
 def import_function(
@@ -551,18 +538,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Execute the function.
         try:
-            if imp_fun.is_async:
-                event_loop.run(call_function_async(container_io_manager, imp_fun))
-            else:
-                # Set up a signal handler for `SIGUSR1`, which gets translated to an InputCancellation
-                # during function execution. This is sent to cancel inputs from the user.
-                def _cancel_input_signal_handler(signum, stackframe):
-                    raise InputCancellation("Input was cancelled by user")
-
-                signal.signal(signal.SIGUSR1, _cancel_input_signal_handler)
-
-                call_function_sync(container_io_manager, imp_fun)
+            call_function(event_loop, container_io_manager, imp_fun)
         finally:
+            print("Exiting", datetime.datetime.now())
             # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
             # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
             # may have been sent to cancel inputs.
@@ -585,6 +563,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 # test runs `main()` multiple times in the same process.
                 signal.signal(signal.SIGINT, int_handler)
                 signal.signal(signal.SIGUSR1, usr1_handler)
+            print("Exiting2", datetime.datetime.now())
 
 
 if __name__ == "__main__":
