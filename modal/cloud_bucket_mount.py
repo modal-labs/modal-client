@@ -26,6 +26,7 @@ class _CloudBucketMount:
     secret = modal.Secret.from_dict({
         "AWS_ACCESS_KEY_ID": "...",
         "AWS_SECRET_ACCESS_KEY": "...",
+        "AWS_REGION": "...",
     })
     @app.function(
         volumes={
