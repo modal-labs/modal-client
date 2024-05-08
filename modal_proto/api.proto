@@ -920,8 +920,9 @@ message Function {
   bool _experimental_scheduler = 49;
   optional SchedulerPlacement _experimental_scheduler_placement = 50;
 
-  string use_function_id= 52;  // for "object functions" - use this function id instead when calling
-  string use_method_name = 53;  // for "object functions" - this method name needs to be included in the FunctionInput
+  bool is_class = 52;  // True this "Function" is actually grouping multiple methods
+  string use_function_id= 53;  // for "class functions" - use this function id instead for invocations - the referenced function should have is_class=True
+  string use_method_name = 54;  // for "class functions" - this method name needs to be included in the FunctionInput
 }
 
 message SchedulerPlacement {

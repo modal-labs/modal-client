@@ -187,7 +187,7 @@ def call_function_sync(
                 try:
                     run_input(*args)
                 except BaseException:
-                    # This should basically never happen, since only KeyboardInterrupt is the only error that can
+                    # This should basically never happen, since KeyboardInterrupt is the only error that can
                     # bubble out of from handle_input_exception and those wouldn't be raised outside the main thread
                     pass
                 inputs.task_done()
@@ -311,8 +311,8 @@ def import_function(
     thread. This is so that any user code running in global scope (which executes as a part of
     the import) runs on the right thread.
     """
-    module: Optional[ModuleType] = None
-    cls: Optional[Type] = None
+    module: Optional[ModuleType]
+    cls: Optional[Type]
     fun: Callable
     function: Optional[_Function] = None
     active_app: Optional[_App] = None
@@ -473,6 +473,10 @@ def call_lifecycle_functions(
                 event_loop.run(res)
 
 
+def import_class(function_def, ser_cls, ser_fun, serialized_params, container_io_manager, client):
+    pass
+
+
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
@@ -487,14 +491,24 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
-            imp_fun = import_function(
-                container_args.function_def,
-                ser_cls,
-                ser_fun,
-                container_args.serialized_params,
-                container_io_manager,
-                client,
-            )
+            if container_args.function_def.is_class:
+                imp_fun = import_class(
+                    container_args.function_def,
+                    ser_cls,
+                    ser_fun,
+                    container_args.serialized_params,
+                    container_io_manager,
+                    client,
+                )
+            else:
+                imp_fun = import_function(
+                    container_args.function_def,
+                    ser_cls,
+                    ser_fun,
+                    container_args.serialized_params,
+                    container_io_manager,
+                    client,
+                )
 
         # Get ids and metadata for objects (primarily functions and classes) on the app
         container_app: RunningApp = container_io_manager.get_app_objects()

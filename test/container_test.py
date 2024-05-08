@@ -44,9 +44,14 @@ SLEEP_DELAY = 0.1
 
 
 def _get_inputs(
-    args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1, kill_switch=True
+    args: Tuple[Tuple, Dict] = ((42,), {}),
+    n: int = 1,
+    kill_switch=True,
+    method_name: Optional[str] = None,
 ) -> List[api_pb2.FunctionGetInputsResponse]:
-    input_pb = api_pb2.FunctionInput(args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE)
+    input_pb = api_pb2.FunctionInput(
+        args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+    )
     inputs = [
         *(
             api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
@@ -95,6 +100,7 @@ def _container_args(
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
+    is_class: bool = False,
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -156,6 +162,7 @@ def _run_container(
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
+    is_class: bool = False,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -172,6 +179,7 @@ def _run_container(
         volume_mounts,
         is_auto_snapshot,
         max_inputs,
+        is_class=is_class,
     )
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -574,7 +582,9 @@ def test_webhook_streaming_async(unix_servicer):
 
 @skip_github_non_linux
 def test_cls_function(unix_servicer):
-    ret = _run_container(unix_servicer, "test.supports.functions", "Cls.f")
+    ret = _run_container(
+        unix_servicer, "test.supports.functions", "Cls", is_class=True, inputs=_get_inputs(method_name="f")
+    )
     assert _unwrap_scalar(ret) == 42 * 111
 
 
