@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import time
 from typing import List, Optional, Union
 
 import typer
@@ -31,20 +32,36 @@ APP_STATE_TO_MESSAGE = {
 @app_cli.command("list")
 @synchronizer.create_blocking
 async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
-    """List all running or recently running Modal apps for the current account"""
+    """List Modal apps that are currently deployed/running or recently stopped."""
     env = ensure_env(env)
 
-    column_names = ["App ID", "Name", "State", "Creation time", "Stop time"]
+    column_names = ["App ID", "Description", "State", "Tasks", "Created at", "Stopped at"]
     rows: List[List[Union[Text, str]]] = []
     apps: List[api_pb2.AppStats] = await _list_apps(env)
+    now = time.time()
     for app_stats in apps:
-        state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
+        if (
+            # Previously, all deployed objects (Dicts, Volumes, etc.) created an entry in the App table.
+            # We are waiting to roll off support for old clients before we can clean up the database.
+            # Until then, we filter deployed "single-object apps" from this output based on the object entity.
+            (app_stats.object_entity and app_stats.object_entity != "ap")
+            # AppList always returns up to the 250 most-recently stopped apps, which is a lot for the CLI
+            # (it is also used in the web interface, where apps are organized by tabs and paginated).
+            # So we semi-arbitrarily limit the stopped apps to those stopped within the past 2 hours.
+            or (
+                app_stats.state in {api_pb2.AppState.APP_STATE_STOPPED, api_pb2.AppState.APP_STATE_DERIVED}
+                and (now - app_stats.stopped_at) > (2 * 60 * 60)
+            )
+        ):
+            continue
 
+        state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
         rows.append(
             [
                 app_stats.app_id,
                 app_stats.description,
                 state,
+                str(app_stats.n_running_tasks),
                 timestamp_to_local(app_stats.created_at, json),
                 timestamp_to_local(app_stats.stopped_at, json),
             ]
