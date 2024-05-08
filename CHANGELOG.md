@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.150 (2024-05-08)
+
+Added validation that App `name`, if provided, is a string.
+
+
+
 ### 0.62.149 (2024-05-08)
 
 The @app.function decorator now raises an error when it is used to decorate a class.
