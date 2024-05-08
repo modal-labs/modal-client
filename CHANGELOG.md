@@ -10,6 +10,15 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.148 (2024-05-08)
+
+- The `modal app list` output has been improved in several ways:
+    - Persistent storage objects like Volumes or Dicts are no longer included (these objects receive an app ID internally, but this is an implementation detail and subject to future change). You can use the dedicated CLI for each object (e.g. `modal volume list`) instead.
+    - For Apps in a *stopped* state, the output is now limited to those stopped within the past 2 hours.
+    - The number of tasks running for each App is now shown.
+
+
+
 ### 0.62.144 (2024-05-06)
 
 * Added deprecation warnings when using Python 3.8 locally or in a container. Python 3.8 is nearing EOL, and Modal will be dropping support for it soon.
