@@ -1205,7 +1205,6 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
             function_name,
             inputs=[((20,), {})],
             allow_concurrent_inputs=2,
-            print=True,
         )
         input_lock.wait()
 
