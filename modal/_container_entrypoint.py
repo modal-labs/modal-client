@@ -62,6 +62,9 @@ class ImportedFunction:
 
 
 class DaemonizedThreadPool:
+    # Used instead of ThreadPoolExecutor, since the latter won't allow
+    # the interpreter to shut down before the currently running tasks
+    # have finished
     def __init__(self, max_threads):
         self.max_threads = max_threads
 
@@ -258,13 +261,12 @@ def call_function(
         reset_context()
 
     if imp_fun.input_concurrency > 1:
-        # all run_input coroutines will have completed by the time we leave the execution context
-        # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
-        # for them to resolve gracefully:
-
         with DaemonizedThreadPool(max_threads=imp_fun.input_concurrency) as thread_pool:
 
             async def run_concurrent_inputs():
+                # all run_input coroutines will have completed by the time we leave the execution context
+                # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
+                # for them to resolve gracefully:
                 async with TaskContext(0.01) as task_context:
                     async for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs.aio(
                         imp_fun.input_concurrency
