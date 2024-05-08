@@ -72,11 +72,14 @@ class DaemonizedThreadPool:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        print("Exit handler", exc_type)
         self.finished.set()
 
         if exc_type == KeyboardInterrupt:
-            print("Exit without thread join!")
+            # special case - allows us to exit the
+            if self.inputs.unfinished_tasks:
+                logger.warning(
+                    f"Exiting input handling threadpool with {self.inputs.unfinished_tasks} active inputs due to KeyboardInterrupt"
+                )
             return
         self.inputs.join()
 
@@ -92,7 +95,7 @@ class DaemonizedThreadPool:
                 except BaseException:
                     # This should basically never happen, since only KeyboardInterrupt is the only error that can
                     # bubble out of from handle_input_exception and those wouldn't be raised outside the main thread
-                    print("Exception!?")
+                    logger.exception("Unexpected exception in input worker!")
                 self.inputs.task_done()
 
         if self.spawned_workers < self.max_threads:
