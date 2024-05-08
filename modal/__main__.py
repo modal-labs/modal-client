@@ -36,9 +36,10 @@ def main():
 
         from rich.console import Console
         from rich.panel import Panel
+        from rich.text import Text
 
         console = Console(stderr=True)
-        panel = Panel(str(exc), border_style="red", title="Error", title_align="left")
+        panel = Panel(Text(str(exc)), border_style="red", title="Error", title_align="left")
         console.print(panel, highlight=False)
         sys.exit(1)
 
