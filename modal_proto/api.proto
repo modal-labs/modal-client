@@ -325,6 +325,15 @@ message AppListResponse {
   repeated AppStats apps = 1;
 }
 
+message AppLookupRequest {
+  string app_name = 2;
+  string environment_name = 3;
+}
+
+message AppLookupResponse {
+  string app_id = 1;
+}
+
 message AppLookupObjectRequest {
   DeploymentNamespace namespace = 2;
   string app_name = 3;
@@ -2068,6 +2077,7 @@ service ModalClient {
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
   rpc AppList(AppListRequest) returns (AppListResponse);
+  rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
   rpc AppDeploySingleObject(AppDeploySingleObjectRequest) returns (AppDeploySingleObjectResponse);
