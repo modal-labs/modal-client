@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from datetime import datetime
-from typing import List, Sequence, Union
+from typing import Sequence, Union
 
 import typer
 from rich.console import Console
@@ -26,7 +26,7 @@ def _plain(text: Union[Text, str]) -> str:
 
 
 def display_table(
-    columns: List[Union[str, Column]],
+    columns: Sequence[Union[Column, str]],
     rows: Sequence[Sequence[Union[Text, str]]],
     json: bool = False,
     title: str = None,

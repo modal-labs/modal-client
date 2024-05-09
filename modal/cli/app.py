@@ -36,7 +36,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     """List Modal apps that are currently deployed/running or recently stopped."""
     env = ensure_env(env)
 
-    columns = [
+    columns: List[Union[Column, str]] = [
         Column("App ID", min_width=25),  # Ensure that App ID is not truncated in slim terminals
         "Description",
         "State",
