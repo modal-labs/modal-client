@@ -8,6 +8,7 @@ from click import UsageError
 from grpclib import GRPCError, Status
 from rich.table import Column
 from rich.text import Text
+from typer import Argument, Option
 
 from modal._output import OutputManager, get_app_logs_loop
 from modal._utils.async_utils import synchronizer
@@ -15,6 +16,7 @@ from modal.app_utils import _list_apps
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
+from modal.exception import NotFoundError
 from modal_proto import api_pb2
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
@@ -79,14 +81,48 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     display_table(columns, rows, json, title=f"Apps{env_part}")
 
 
-@app_cli.command("logs")
-def app_logs(app_id: str):
-    """Output logs for a running app."""
+@app_cli.command("logs", no_args_is_help=True)
+def logs(
+    app_id: str = Argument("", help="Look up any App by its ID"),
+    *,
+    name: Optional[str] = Option(None, "-n", "--name", help="Look up a deployed App by its name"),
+    env: Optional[str] = ENV_OPTION,
+):
+    """Show the logs from deployed, running, or stopped apps.
+
+    **Examples:**
+
+    Get the logs based on an app ID:
+
+    ```bash
+    modal app logs ap-123456
+    ```
+
+    Get the logs for a currently deployed App based on its name:
+
+    ```bash
+    modal app logs --name my-app
+    ```
+
+    """
+    if not bool(app_id) ^ bool(name):
+        raise UsageError("Must pass either an ID or a name.")
 
     @synchronizer.create_blocking
     async def sync_command():
         client = await _Client.from_env()
         output_mgr = OutputManager(None, None, "Tailing logs for {app_id}")
+        nonlocal app_id
+        if not app_id:
+            env_name = ensure_env(env)
+            request = api_pb2.AppGetByDeploymentNameRequest(
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, name=name, environment_name=env_name
+            )
+            resp = await client.stub.AppGetByDeploymentName(request)
+            if not resp.app_id:
+                env_comment = f" in the '{env_name}' environment" if env_name else ""
+                raise NotFoundError(f"Could not find a deployed app named '{name}'{env_comment}.")
+            app_id = resp.app_id
         try:
             with output_mgr.show_status_spinner():
                 await get_app_logs_loop(app_id, client, output_mgr)
