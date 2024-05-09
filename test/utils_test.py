@@ -5,7 +5,12 @@ import io
 import pytest
 
 from modal._utils.blob_utils import BytesIOSegmentPayload
-from modal._utils.name_utils import check_object_name, is_valid_object_name, is_valid_subdomain_label
+from modal._utils.name_utils import (
+    check_object_name,
+    is_valid_environment_name,
+    is_valid_object_name,
+    is_valid_subdomain_label,
+)
 from modal.exception import DeprecationError, InvalidError
 
 
@@ -27,6 +32,13 @@ def test_object_name():
         check_object_name("foo/bar", "Volume")
     with pytest.warns(DeprecationError, match="Invalid Volume name: 'foo/bar'"):
         check_object_name("foo/bar", "Volume", warn=True)
+
+
+def test_environment_name():
+    assert is_valid_environment_name("AB13/root:env1")
+    assert not is_valid_environment_name("--help")
+    assert not is_valid_environment_name(":env")
+    assert not is_valid_environment_name("/env")
 
 
 @pytest.mark.asyncio
