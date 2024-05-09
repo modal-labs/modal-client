@@ -99,18 +99,15 @@ def app_logs(
         output_mgr = OutputManager(None, None, "Tailing logs for {app_id}")
         nonlocal app_id
         if not app_id:
-            # We don't have an RPC to look up an App by name.
-            # So the somewhat clumsy approach here is to do an AppList and then try to find
-            # an entry with a name that matches. We could improve this with a new RPC.
             env_name = ensure_env(env)
-            resp = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env_name))
-            for app_info in resp.apps:
-                if app_info.state == api_pb2.APP_STATE_DEPLOYED and app_info.name == name:
-                    app_id = app_info.app_id
-                    break
-            else:
+            request = api_pb2.AppGetByDeploymentNameRequest(
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, name=name, environment_name=env_name
+            )
+            resp = await client.stub.AppGetByDeploymentName(request)
+            if not resp.app_id:
                 env_comment = f" in the '{env_name}' environment" if env_name else ""
                 raise NotFoundError(f"Could not find a deployed app named '{name}'{env_comment}.")
+            app_id = resp.app_id
         try:
             with output_mgr.show_status_spinner():
                 await get_app_logs_loop(app_id, client, output_mgr)
