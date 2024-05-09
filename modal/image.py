@@ -1082,7 +1082,7 @@ class _Image(_Object, type_prefix="im"):
 
             space = " " if package_args else ""
             remote_spec_file = "" if spec_file is None else f"/{os.path.basename(spec_file)}"
-            file_arg = "" if spec_file is None else f"{space}-f {remote_spec_file}"
+            file_arg = "" if spec_file is None else f"{space}-f {remote_spec_file} -n base"
             copy_commands = [] if spec_file is None else [f"COPY {remote_spec_file} {remote_spec_file}"]
 
             commands = [

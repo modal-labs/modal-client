@@ -932,7 +932,7 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
         spec_file=test_dir / "supports" / "test-conda-environment.yml",
         channels=["conda-forge", "my-channel"],
     )
-    assert get_hash(img) == "cf6c956e7639afb51dcc46d98eb9aabb6472c0751ada28f41d2e7ad88275b9a0"
+    assert get_hash(img) == "d9d4c9fe24769ce587877b9752a64486e8f7d8520731110bd2fa666de82f43fd"
 
     img = base.poetry_install_from_file(
         test_dir / "supports" / "test-pyproject.toml",
