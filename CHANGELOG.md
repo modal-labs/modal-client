@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.156 (2024-05-09)
+
+- Added support for looking up a deployed App by its deployment name in `modal app logs`
+
+
+
 ### 0.62.150 (2024-05-08)
 
 Added validation that App `name`, if provided, is a string.
