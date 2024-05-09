@@ -3,6 +3,7 @@ import asyncio
 import functools
 import inspect
 import re
+import shlex
 import sys
 import time
 from functools import partial
@@ -411,4 +412,4 @@ def shell(
             region=region.split(",") if region else [],
         )
 
-    start_shell(app, cmd=[cmd], environment_name=env, timeout=3600)
+    start_shell(app, cmd=shlex.split(cmd), environment_name=env, timeout=3600)
