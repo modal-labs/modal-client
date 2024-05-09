@@ -8,6 +8,7 @@ from click import UsageError
 from grpclib import GRPCError, Status
 from rich.table import Column
 from rich.text import Text
+from typer import Argument, Option
 
 from modal._output import OutputManager, get_app_logs_loop
 from modal._utils.async_utils import synchronizer
@@ -15,6 +16,7 @@ from modal.app_utils import _list_apps
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
+from modal.exception import NotFoundError
 from modal_proto import api_pb2
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
@@ -79,14 +81,36 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     display_table(columns, rows, json, title=f"Apps{env_part}")
 
 
-@app_cli.command("logs")
-def app_logs(app_id: str):
+@app_cli.command("logs", no_args_is_help=True)
+def app_logs(
+    app_id: str = Argument("", help="Look up any App by its ID"),
+    *,
+    name: Optional[str] = Option(None, "-n", "--name", help="Look up a deployed App by its name"),
+    env: Optional[str] = ENV_OPTION,
+):
     """Output logs for a running app."""
+
+    if app_id and name:
+        raise UsageError("Cannot use both `app_id` and `name`.")
 
     @synchronizer.create_blocking
     async def sync_command():
         client = await _Client.from_env()
         output_mgr = OutputManager(None, None, "Tailing logs for {app_id}")
+        nonlocal app_id
+        if not app_id:
+            # We don't have an RPC to look up an App by name.
+            # So the somewhat clumsy approach here is to do an AppList and then try to find
+            # an entry with a name that matches. We could improve this with a new RPC.
+            env_name = ensure_env(env)
+            resp = await client.stub.AppList(api_pb2.AppListRequest(environment_name=env_name))
+            for app_info in resp.apps:
+                if app_info.state == api_pb2.APP_STATE_DEPLOYED and app_info.name == name:
+                    app_id = app_info.app_id
+                    break
+            else:
+                env_comment = f" in the '{env_name}' environment" if env_name else ""
+                raise NotFoundError(f"Could not find a deployed app named '{name}'{env_comment}.")
         try:
             with output_mgr.show_status_spinner():
                 await get_app_logs_loop(app_id, client, output_mgr)
