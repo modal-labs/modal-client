@@ -312,7 +312,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.recv_message()
         apps = []
         for app_name, app_id in self.deployed_apps.items():
-            apps.append(api_pb2.AppStats(name=app_name, description=app_name, app_id=app_id))
+            apps.append(
+                api_pb2.AppStats(
+                    name=app_name,
+                    description=app_name,
+                    app_id=app_id,
+                    state=api_pb2.APP_STATE_DEPLOYED,
+                )
+            )
         await stream.send_message(api_pb2.AppListResponse(apps=apps))
 
     ### Checkpoint
