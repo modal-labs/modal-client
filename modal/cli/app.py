@@ -6,6 +6,7 @@ from typing import List, Optional, Union
 import typer
 from click import UsageError
 from grpclib import GRPCError, Status
+from rich.table import Column
 from rich.text import Text
 
 from modal._output import OutputManager, get_app_logs_loop
@@ -35,7 +36,14 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     """List Modal apps that are currently deployed/running or recently stopped."""
     env = ensure_env(env)
 
-    column_names = ["App ID", "Description", "State", "Tasks", "Created at", "Stopped at"]
+    columns = [
+        Column("App ID", min_width=25),  # Ensure that App ID is not truncated in slim terminals
+        "Description",
+        "State",
+        "Tasks",
+        "Created at",
+        "Stopped at",
+    ]
     rows: List[List[Union[Text, str]]] = []
     apps: List[api_pb2.AppStats] = await _list_apps(env)
     now = time.time()
@@ -68,7 +76,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
         )
 
     env_part = f" in environment '{env}'" if env else ""
-    display_table(column_names, rows, json, title=f"Apps{env_part}")
+    display_table(columns, rows, json, title=f"Apps{env_part}")
 
 
 @app_cli.command("logs")
