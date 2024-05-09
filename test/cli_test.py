@@ -475,7 +475,7 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
     _run(
         ["app", "logs", "app-123", "-n", "my-app"],
         expected_exit_code=2,
-        expected_stderr="Cannot use both `app_id` and `name`",
+        expected_stderr="Must pass either an ID or a name",
     )
 
     _run(

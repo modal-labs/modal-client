@@ -82,16 +82,31 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 
 
 @app_cli.command("logs", no_args_is_help=True)
-def app_logs(
+def logs(
     app_id: str = Argument("", help="Look up any App by its ID"),
     *,
     name: Optional[str] = Option(None, "-n", "--name", help="Look up a deployed App by its name"),
     env: Optional[str] = ENV_OPTION,
 ):
-    """Output logs for a running app."""
+    """Show the logs from deployed, running, or stopped apps.
 
-    if app_id and name:
-        raise UsageError("Cannot use both `app_id` and `name`.")
+    **Examples:**
+
+    Get the logs based on an app ID:
+
+    ```bash
+    modal app logs ap-123456
+    ```
+
+    Get the logs for a currently deployed App based on its name:
+
+    ```bash
+    modal app logs --name my-app
+    ```
+
+    """
+    if not bool(app_id) ^ bool(name):
+        raise UsageError("Must pass either an ID or a name.")
 
     @synchronizer.create_blocking
     async def sync_command():
