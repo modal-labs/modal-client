@@ -5,7 +5,7 @@ from typing import List, Sequence, Union
 import typer
 from rich.console import Console
 from rich.json import JSON
-from rich.table import Table
+from rich.table import Column, Table
 from rich.text import Text
 
 
@@ -26,14 +26,17 @@ def _plain(text: Union[Text, str]) -> str:
 
 
 def display_table(
-    column_names: List[str], rows: Sequence[Sequence[Union[Text, str]]], json: bool = False, title: str = None
+    columns: List[Union[str, Column]],
+    rows: Sequence[Sequence[Union[Text, str]]],
+    json: bool = False,
+    title: str = None,
 ):
     console = Console()
     if json:
-        json_data = [{col: _plain(row[i]) for i, col in enumerate(column_names)} for row in rows]
+        json_data = [{col: _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
         console.print(JSON.from_data(json_data))
     else:
-        table = Table(*column_names, title=title)
+        table = Table(*columns, title=title)
         for row in rows:
             table.add_row(*row)
         console.print(table)
