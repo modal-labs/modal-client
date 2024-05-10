@@ -294,7 +294,7 @@ def deploy(
     if stream_logs:
         from modal.cli.app import logs
 
-        logs(name=name, env=env)
+        logs("", name=name, env=env)
 
 
 def serve(
