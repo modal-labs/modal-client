@@ -23,7 +23,7 @@ from ..image import Image
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from .import_refs import import_app, import_function
-from .utils import ENV_OPTION, ENV_OPTION_HELP
+from .utils import ENV_OPTION, ENV_OPTION_HELP, stream_app_logs
 
 
 class ParameterMetadata(TypedDict):
@@ -289,12 +289,10 @@ def deploy(
         ):
             return
 
-    deploy_app(app, name=name, environment_name=env, public=public)
+    res = deploy_app(app, name=name, environment_name=env, public=public)
 
     if stream_logs:
-        from modal.cli.app import logs
-
-        logs("", name=name, env=env)
+        stream_app_logs(res.app_id)
 
 
 def serve(
