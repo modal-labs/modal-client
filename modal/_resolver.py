@@ -53,7 +53,7 @@ class Resolver:
 
     def __init__(
         self,
-        client: Optional[_Client] = None,
+        client: _Client,
         *,
         output_mgr: Optional[OutputManager] = None,
         environment_name: Optional[str] = None,
@@ -79,7 +79,6 @@ class Resolver:
 
     @property
     def client(self):
-        assert self._client
         return self._client
 
     @property
