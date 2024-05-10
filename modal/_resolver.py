@@ -8,7 +8,9 @@ from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 
+from ._output import OutputManager
 from ._utils.async_utils import TaskContext
+from .client import _Client
 from .exception import ExecutionError, NotFoundError
 
 if TYPE_CHECKING:
@@ -51,9 +53,9 @@ class Resolver:
 
     def __init__(
         self,
-        client=None,
+        client: Optional[_Client] = None,
         *,
-        output_mgr=None,
+        output_mgr: Optional[OutputManager] = None,
         environment_name: Optional[str] = None,
         app_id: Optional[str] = None,
     ):
@@ -77,6 +79,7 @@ class Resolver:
 
     @property
     def client(self):
+        assert self._client
         return self._client
 
     @property

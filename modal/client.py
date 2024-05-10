@@ -103,8 +103,9 @@ class _Client:
         self._stub: Optional[api_grpc.ModalClientStub] = None
 
     @property
-    def stub(self) -> Optional[api_grpc.ModalClientStub]:
+    def stub(self) -> api_grpc.ModalClientStub:
         """mdmd:hidden"""
+        assert self._stub
         return self._stub
 
     @property

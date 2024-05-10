@@ -9,6 +9,8 @@ import uuid
 from typing import (
     Any,
     AsyncIterator,
+    Awaitable,
+    Callable,
     Dict,
     Optional,
     TypeVar,
@@ -52,6 +54,7 @@ class Subchannel:
         return True
 
 
+T = TypeVar("T")
 _SendType = TypeVar("_SendType")
 _RecvType = TypeVar("_RecvType")
 
@@ -120,7 +123,7 @@ async def unary_stream(
 
 
 async def retry_transient_errors(
-    fn,
+    fn: Callable[..., Awaitable[T]],
     *args,
     base_delay: float = 0.1,
     max_delay: float = 1,
@@ -130,7 +133,7 @@ async def retry_transient_errors(
     attempt_timeout: Optional[float] = None,  # timeout for each attempt
     total_timeout: Optional[float] = None,  # timeout for the entire function call
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
-):
+) -> T:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
 

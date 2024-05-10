@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import uuid
 from functools import wraps
-from typing import Awaitable, Callable, ClassVar, Dict, Hashable, List, Optional, Type, TypeVar
+from typing import Awaitable, Callable, ClassVar, Dict, Generic, Hashable, List, Optional, Type, TypeVar
 
 from google.protobuf.message import Message
 
@@ -14,8 +14,9 @@ from .exception import ExecutionError, InvalidError
 O = TypeVar("O", bound="_Object")
 
 _BLOCKING_O = synchronize_api(O)
+_BLOCKING_GENERIC = synchronize_api(Generic)
 
-EPHEMERAL_OBJECT_HEARTBEAT_SLEEP = 300
+EPHEMERAL_OBJECT_HEARTBEAT_SLEEP: int = 300
 
 
 def _get_environment_name(environment_name: Optional[str], resolver: Optional[Resolver] = None) -> Optional[str]:
@@ -27,7 +28,7 @@ def _get_environment_name(environment_name: Optional[str], resolver: Optional[Re
         return config.get("environment")
 
 
-class _Object:
+class _Object(Generic[O]):
     _type_prefix: ClassVar[Optional[str]] = None
     _prefix_to_type: ClassVar[Dict[str, type]] = {}
 
@@ -114,7 +115,7 @@ class _Object:
         # return the necessary metadata from this handle to be able to re-hydrate in another context if one is needed
         # used to provide a handle's handle_metadata for serializing/pickling a live handle
         # the object_id is already provided by other means
-        return
+        return None
 
     def _init_from_other(self, other: O):
         # Transient use case, see Dict, Queue, and SharedVolume
@@ -166,7 +167,7 @@ class _Object:
 
         # Instantiate provider
         obj_cls = cls._prefix_to_type[prefix]
-        obj = _Object.__new__(obj_cls)
+        obj: O = _Object.__new__(obj_cls)
         rep = f"Object({object_id})"  # TODO(erikbern): dumb
         obj._init(rep, is_another_app=is_another_app)
         obj._hydrate(object_id, client, handle_metadata)
@@ -197,7 +198,9 @@ class _Object:
     @property
     def deps(self) -> Callable[..., List["_Object"]]:
         """mdmd:hidden"""
-        return self._deps if self._deps is not None else lambda: []
+        if self._deps is None:
+            return self._deps
+        return lambda: []
 
     async def resolve(self):
         """mdmd:hidden"""
