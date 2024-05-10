@@ -467,10 +467,8 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
         assert res.stdout == "hello\n"
 
         with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
-            _run(["deploy", "myapp.py", "--name", "my-app"])
-            print(_run(["app", "list"]).stdout)
-            res = _run(["app", "logs", "-n", "my-app"])
-            assert res.stdout == "hello\n"
+            res = _run(["deploy", "myapp.py", "--name", "my-app", "--stream-logs"])
+            assert res.stdout.endswith("hello\n")
 
     _run(
         ["app", "logs", "app-123", "-n", "my-app"],

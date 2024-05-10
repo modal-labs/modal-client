@@ -23,7 +23,7 @@ from ..image import Image
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from .import_refs import import_app, import_function
-from .utils import ENV_OPTION, ENV_OPTION_HELP
+from .utils import ENV_OPTION, ENV_OPTION_HELP, stream_app_logs
 
 
 class ParameterMetadata(TypedDict):
@@ -271,6 +271,7 @@ def deploy(
         False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
     ),
     skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
+    stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -288,7 +289,10 @@ def deploy(
         ):
             return
 
-    deploy_app(app, name=name, environment_name=env, public=public)
+    res = deploy_app(app, name=name, environment_name=env, public=public)
+
+    if stream_logs:
+        stream_app_logs(res.app_id)
 
 
 def serve(
