@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.159 (2024-05-10)
+
+Added a `--stream-logs` flag to `modal deploy` that if True, begins streaming the app logs once deployment is complete.
+
+
+
 ### 0.62.156 (2024-05-09)
 
 - Added support for looking up a deployed App by its deployment name in `modal app logs`
