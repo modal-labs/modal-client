@@ -199,8 +199,8 @@ class _Object(Generic[O]):
     def deps(self) -> Callable[..., List["_Object"]]:
         """mdmd:hidden"""
         if self._deps is None:
-            return self._deps
-        return lambda: []
+            return lambda: []
+        return self._deps
 
     async def resolve(self):
         """mdmd:hidden"""
