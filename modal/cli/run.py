@@ -271,6 +271,7 @@ def deploy(
         False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
     ),
     skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
+    stream_logs: bool = typer.Option(False, help="Stream logs from the deployment."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -289,6 +290,11 @@ def deploy(
             return
 
     deploy_app(app, name=name, environment_name=env, public=public)
+
+    if stream_logs:
+        from modal.cli.app import logs
+
+        logs(name=name, env=env)
 
 
 def serve(
