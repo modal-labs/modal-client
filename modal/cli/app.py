@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import asyncio
 import time
 from typing import List, Optional, Union
 
@@ -10,14 +9,14 @@ from rich.table import Column
 from rich.text import Text
 from typer import Argument, Option
 
-from modal._output import OutputManager, get_app_logs_loop
 from modal._utils.async_utils import synchronizer
 from modal.app_utils import _list_apps
-from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.exception import NotFoundError
 from modal_proto import api_pb2
+
+from .utils import ENV_OPTION, display_table, stream_app_logs, timestamp_to_local
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
@@ -108,12 +107,11 @@ def logs(
     if not bool(app_id) ^ bool(name):
         raise UsageError("Must pass either an ID or a name.")
 
-    @synchronizer.create_blocking
-    async def sync_command():
-        client = await _Client.from_env()
-        output_mgr = OutputManager(None, None, "Tailing logs for {app_id}")
-        nonlocal app_id
-        if not app_id:
+    if not app_id:
+
+        @synchronizer.create_blocking
+        async def get_app_id():
+            client = await _Client.from_env()
             env_name = ensure_env(env)
             request = api_pb2.AppGetByDeploymentNameRequest(
                 namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, name=name, environment_name=env_name
@@ -122,22 +120,17 @@ def logs(
             if not resp.app_id:
                 env_comment = f" in the '{env_name}' environment" if env_name else ""
                 raise NotFoundError(f"Could not find a deployed app named '{name}'{env_comment}.")
-            app_id = resp.app_id
-        try:
-            with output_mgr.show_status_spinner():
-                await get_app_logs_loop(app_id, client, output_mgr)
-        except asyncio.CancelledError:
-            pass
+            return resp.app_id
 
-    try:
-        sync_command()
-    except GRPCError as exc:
-        if exc.status in (Status.INVALID_ARGUMENT, Status.NOT_FOUND):
-            raise UsageError(exc.message)
-        else:
-            raise
-    except KeyboardInterrupt:
-        pass
+        try:
+            app_id = get_app_id()
+        except GRPCError as exc:
+            if exc.status in (Status.INVALID_ARGUMENT, Status.NOT_FOUND):
+                raise UsageError(exc.message)
+            else:
+                raise
+
+    stream_app_logs(app_id)
 
 
 @app_cli.command("stop")
