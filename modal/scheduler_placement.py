@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2024
-from typing import Optional
+from typing import Optional, Sequence, Union
 
 from modal_proto import api_pb2
 
@@ -11,7 +11,7 @@ class SchedulerPlacement:
 
     def __init__(
         self,
-        region: Optional[str] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,
         zone: Optional[str] = None,
         spot: Optional[bool] = None,
     ):
@@ -20,8 +20,14 @@ class SchedulerPlacement:
         if spot is not None:
             _lifecycle = "spot" if spot else "on-demand"
 
+        regions = []
+        if region:
+            if isinstance(region, str):
+                regions = [region]
+            else:
+                regions = list(region)
         self.proto = api_pb2.SchedulerPlacement(
-            _region=region,
+            regions=regions,
             _zone=zone,
             _lifecycle=_lifecycle,
         )

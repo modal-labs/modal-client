@@ -26,16 +26,19 @@ async def update_environment(
     new_web_suffix: Optional[str] = None,
     client: Optional[_Client] = None,
 ):
+    new_name_pb2 = None
+    new_web_suffix_pb2 = None
     if new_name is not None:
         if len(new_name) < 1:
             raise ValueError("The new environment name cannot be empty")
 
-        new_name = StringValue(value=new_name)
+        new_name_pb2 = StringValue(value=new_name)
+
     if new_web_suffix is not None:
-        new_web_suffix = StringValue(value=new_web_suffix)
+        new_web_suffix_pb2 = StringValue(value=new_web_suffix)
 
     update_payload = api_pb2.EnvironmentUpdateRequest(
-        current_name=current_name, name=new_name, web_suffix=new_web_suffix
+        current_name=current_name, name=new_name_pb2, web_suffix=new_web_suffix_pb2
     )
     if client is None:
         client = await _Client.from_env()

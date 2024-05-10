@@ -15,6 +15,8 @@ O = TypeVar("O", bound="_Object")
 
 _BLOCKING_O = synchronize_api(O)
 
+EPHEMERAL_OBJECT_HEARTBEAT_SLEEP = 300
+
 
 def _get_environment_name(environment_name: Optional[str], resolver: Optional[Resolver] = None) -> Optional[str]:
     if environment_name:
@@ -36,6 +38,7 @@ class _Object:
     _is_another_app: bool
     _hydrate_lazily: bool
     _deps: Optional[Callable[..., List["_Object"]]]
+    _deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None
 
     # For hydrated objects
     _object_id: str
@@ -60,6 +63,7 @@ class _Object:
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., List["_Object"]]] = None,
+        deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -68,6 +72,7 @@ class _Object:
         self._is_another_app = is_another_app
         self._hydrate_lazily = hydrate_lazily
         self._deps = deps
+        self._deduplication_key = deduplication_key
 
         self._object_id = None
         self._client = None
@@ -134,14 +139,17 @@ class _Object:
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., List["_Object"]]] = None,
+        deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
-        obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps)
+        obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps, deduplication_key)
         return obj
 
     @classmethod
-    def _new_hydrated(cls: Type[O], object_id: str, client: _Client, handle_metadata: Optional[Message]) -> O:
+    def _new_hydrated(
+        cls: Type[O], object_id: str, client: _Client, handle_metadata: Optional[Message], is_another_app: bool = False
+    ) -> O:
         if cls._type_prefix is not None:
             # This is called directly on a subclass, e.g. Secret.from_id
             if not object_id.startswith(cls._type_prefix + "-"):
@@ -160,7 +168,7 @@ class _Object:
         obj_cls = cls._prefix_to_type[prefix]
         obj = _Object.__new__(obj_cls)
         rep = f"Object({object_id})"  # TODO(erikbern): dumb
-        obj._init(rep)
+        obj._init(rep, is_another_app=is_another_app)
         obj._hydrate(object_id, client, handle_metadata)
 
         return obj
@@ -196,18 +204,20 @@ class _Object:
         if self._is_hydrated:
             return
         elif not self._hydrate_lazily:
+            object_type = self.__class__.__name__.strip("_")
+            if hasattr(self, "_app") and getattr(self._app, "_running_app", "") is None:
+                # The most common cause of this error: e.g., user called a Function without using App.run()
+                reason = ", because the App it is defined on is not running."
+            else:
+                # Technically possible, but with an ambiguous cause.
+                reason = ""
             raise ExecutionError(
-                "Object has not been hydrated and doesn't support lazy hydration."
-                " This might happen if an object is defined on a different stub,"
-                " or if it's on the same stub but it didn't get created because it"
-                " wasn't defined in global scope."
+                f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}."
             )
         else:
-            resolver = Resolver()  # TODO: this resolver has no attached Client!
+            # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
+            resolver = Resolver(await _Client.from_env())
             await resolver.load(self)
-
-    async def _deduplication_key(self) -> Optional[Hashable]:
-        return None
 
 
 Object = synchronize_api(_Object, target_module=__name__)

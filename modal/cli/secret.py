@@ -34,8 +34,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
         rows.append(
             [
                 item.label,
-                timestamp_to_local(item.created_at),
-                timestamp_to_local(item.last_used_at) if item.last_used_at else "-",
+                timestamp_to_local(item.created_at, json),
+                timestamp_to_local(item.last_used_at, json) if item.last_used_at else "-",
             ]
         )
 
@@ -79,7 +79,7 @@ modal secret create my-credentials username=john password=-
     console = Console()
     env_var_code = "\n    ".join(f'os.getenv("{name}")' for name in env_dict.keys()) if env_dict else "..."
     example_code = f"""
-@stub.function(secrets=[modal.Secret.from_name("{secret_name}")])
+@app.function(secrets=[modal.Secret.from_name("{secret_name}")])
 def some_function():
     {env_var_code}
 """

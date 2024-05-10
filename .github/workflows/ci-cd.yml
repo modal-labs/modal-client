@@ -10,6 +10,7 @@ env:
 jobs:
   client-test:
     name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (protobuf=${{ matrix.proto-version }})
+    timeout-minutes: 20
 
     strategy:
       matrix:
@@ -49,14 +50,19 @@ jobs:
         run: pip install -e .
 
       - name: Run client tests
-        run: pytest -v -s
+        run: pytest
 
       - name: Run docstring tests
-        run: pytest -s --markdown-docs -m markdown-docs modal
+        env:
+          MODAL_ENVIRONMENT: client-doc-tests
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: pytest --markdown-docs -m markdown-docs modal
 
   container-dependencies:
     name: Check minimal container dependencies for ${{ matrix.python-version }}
     runs-on: ubuntu-20.04
+    timeout-minutes: 4
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
@@ -65,7 +71,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r container_requirements.txt
+          pip install -r modal/requirements/2024.04.txt
           pip install synchronicity
 
       - name: Compile protos
@@ -77,14 +83,15 @@ jobs:
           deactivate
 
       - name: Check entrypoint import
-        run: python -c 'import modal._container_entrypoint'
+        run: python -c 'import modal._container_entrypoint; import fastapi'
 
   publish-base-images:
     name: |
-      Publish base images for ${{ matrix.image-name }} ${{ matrix.python-version }}
+      Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }} on ${{ matrix.python-version }}
     if: github.ref == 'refs/heads/main'
     needs: [client-test]
     runs-on: ubuntu-20.04
+    timeout-minutes: 5
     env:
       MODAL_LOGLEVEL: DEBUG
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
@@ -92,7 +99,8 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-        image-name: ["debian_slim", "conda", "micromamba"]
+        image-builder-version: ["2023.12", "2024.04"]
+        image-name: ["debian_slim", "micromamba"]
 
     steps:
       - uses: actions/checkout@v3
@@ -111,16 +119,19 @@ jobs:
         run: modal config set-environment main
 
       - name: Publish base images
+        env:
+          MODAL_IMAGE_BUILDER_VERSION: ${{ matrix.image-builder-version }}
+          MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT: "1"
         run: |
           python -m modal_global_objects.images.${{ matrix.image-name }} ${{ matrix.python-version }}
 
   publish-client:
     name: Publish client package
-    # Prevent it from going into an infinite loop.
-    if: github.actor != 'modal-pr-review-automation[bot]' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     needs: [client-test]
     runs-on: ubuntu-20.04
     concurrency: publish-client
+    timeout-minutes: 5
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -134,6 +145,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           token: ${{ steps.generate_token.outputs.token }}
+          ref: main
 
       - uses: ./.github/actions/setup-cached-python
         with:
@@ -143,7 +155,7 @@ jobs:
         run: inv update-build-number
 
       - name: Update the changelog
-        run: inv update-changelog
+        run: inv update-changelog --sha=$GITHUB_SHA
 
       - name: Get the current client version
         id: version

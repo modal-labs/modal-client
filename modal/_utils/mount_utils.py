@@ -2,7 +2,7 @@
 import posixpath
 import typing
 from pathlib import PurePath, PurePosixPath
-from typing import TYPE_CHECKING, Dict, List, Mapping, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Mapping, Sequence, Tuple, Union
 
 from ..exception import InvalidError
 from ..volume import _Volume
@@ -40,7 +40,7 @@ def validate_mount_points(
 
 def validate_volumes(
     volumes: Mapping[Union[str, PurePosixPath], Union["_Volume", "_CloudBucketMount"]],
-) -> List[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_CloudBucketMount"]]]:
+) -> Sequence[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_CloudBucketMount"]]]:
     if not isinstance(volumes, dict):
         raise InvalidError("volumes must be a dict[str, Volume] where the keys are paths")
 

@@ -13,15 +13,15 @@ import typer
 from rich.console import Console
 from typing_extensions import TypedDict
 
+from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
-from ..functions import Function, FunctionEnv
+from ..functions import Function, _FunctionSpec
 from ..image import Image
-from ..runner import deploy_stub, interactive_shell, run_stub
-from ..serving import serve_stub
-from ..stub import LocalEntrypoint, Stub
-from .import_refs import import_function, import_stub
+from ..runner import deploy_app, interactive_shell, run_app
+from ..serving import serve_app
+from .import_refs import import_app, import_function
 from .utils import ENV_OPTION, ENV_OPTION_HELP
 
 
@@ -118,7 +118,7 @@ def _add_click_options(func, signature: Dict[str, ParameterMetadata]):
     return func
 
 
-def _get_clean_stub_description(func_ref: str) -> str:
+def _get_clean_app_description(func_ref: str) -> str:
     # If possible, consider the 'ref' argument the start of the app's args. Everything
     # before it Modal CLI cruft (eg. `modal run --detach`).
     try:
@@ -128,8 +128,9 @@ def _get_clean_stub_description(func_ref: str) -> str:
         return " ".join(sys.argv)
 
 
-def _get_click_command_for_function(stub: Stub, function_tag):
-    function = stub[function_tag]
+def _get_click_command_for_function(app: App, function_tag):
+    function = app.indexed_objects[function_tag]
+    assert isinstance(function, Function)
 
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
@@ -145,8 +146,8 @@ def _get_click_command_for_function(stub: Stub, function_tag):
 
     @click.pass_context
     def f(ctx, **kwargs):
-        with run_stub(
-            stub,
+        with run_app(
+            app,
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
@@ -166,7 +167,7 @@ def _get_click_command_for_function(stub: Stub, function_tag):
     return click.command(with_click_options)
 
 
-def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypoint):
+def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoint):
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
@@ -177,8 +178,8 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
                 "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
-        with run_stub(
-            stub,
+        with run_app(
+            app,
             detach=ctx.obj["detach"],
             show_progress=ctx.obj["show_progress"],
             environment_name=ctx.obj["env"],
@@ -204,14 +205,14 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
         function_or_entrypoint = import_function(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
-        stub: Stub = function_or_entrypoint.stub
-        if stub.description is None:
-            stub.set_description(_get_clean_stub_description(func_ref))
+        app: App = function_or_entrypoint.app
+        if app.description is None:
+            app.set_description(_get_clean_app_description(func_ref))
         if isinstance(function_or_entrypoint, LocalEntrypoint):
-            click_command = _get_click_command_for_local_entrypoint(stub, function_or_entrypoint)
+            click_command = _get_click_command_for_local_entrypoint(app, function_or_entrypoint)
         else:
             tag = function_or_entrypoint.info.get_tag()
-            click_command = _get_click_command_for_function(stub, tag)
+            click_command = _get_click_command_for_function(app, tag)
 
         return click_command
 
@@ -229,9 +230,9 @@ def run(ctx, detach, quiet, interactive, env):
     """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
-    Alternatively, you can refer to the function via the stub:
+    Alternatively, you can refer to the function via the app:
 
-    `{file or module}::{stub variable name}.{function name}`
+    `{file or module}::{app variable name}.{function name}`
 
     **Examples:**
 
@@ -241,8 +242,8 @@ def run(ctx, detach, quiet, interactive, env):
     modal run my_app.py::hello_world
     ```
 
-    If your module only has a single stub called `stub` and your stub has a
-    single local entrypoint (or single function), you can omit the stub and
+    If your module only has a single app called `app` and your app has a
+    single local entrypoint (or single function), you can omit the app and
     function parts:
 
     ```bash
@@ -262,7 +263,7 @@ def run(ctx, detach, quiet, interactive, env):
 
 
 def deploy(
-    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
+    app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
     public: bool = typer.Option(
@@ -273,10 +274,10 @@ def deploy(
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
 
-    stub = import_stub(stub_ref)
+    app = import_app(app_ref)
 
     if name is None:
-        name = stub.name
+        name = app.name
 
     if public and not skip_confirm:
         if not click.confirm(
@@ -286,15 +287,15 @@ def deploy(
         ):
             return
 
-    deploy_stub(stub, name=name, environment_name=env, public=public)
+    deploy_app(app, name=name, environment_name=env, public=public)
 
 
 def serve(
-    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
+    app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     timeout: Optional[float] = None,
     env: str = ENV_OPTION,
 ):
-    """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
+    """Run a web endpoint(s) associated with a Modal app and hot-reload code.
 
     **Examples:**
 
@@ -304,11 +305,11 @@ def serve(
     """
     env = ensure_env(env)
 
-    stub = import_stub(stub_ref)
-    if stub.description is None:
-        stub.set_description(_get_clean_stub_description(stub_ref))
+    app = import_app(app_ref)
+    if app.description is None:
+        app.set_description(_get_clean_app_description(app_ref))
 
-    with serve_stub(stub, stub_ref, environment_name=env):
+    with serve_app(app, app_ref, environment_name=env):
         if timeout is None:
             timeout = config["serve_timeout"]
         if timeout is None:
@@ -322,7 +323,7 @@ def serve(
 def shell(
     func_ref: Optional[str] = typer.Argument(
         default=None,
-        help="Path to a Python file with a Stub or Modal function whose container to run.",
+        help="Path to a Python file with an App or Modal function whose container to run.",
         metavar="FUNC_REF",
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
@@ -343,7 +344,11 @@ def shell(
     ),
     cloud: Optional[str] = typer.Option(
         default=None,
-        help="Cloud provider to run the function on. Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF).",
+        help="Cloud provider to run the shell on. Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF).",
+    ),
+    region: Optional[str] = typer.Option(
+        default=None,
+        help="Region(s) to run the shell on. Can be a single region or a comma-separated list to choose from (if not using FUNC_REF).",
     ),
 ):
     """Run an interactive shell inside a Modal image.
@@ -356,7 +361,7 @@ def shell(
     modal shell
     ```
 
-    Start a bash shell using the spec for `my_function` in your stub:
+    Start a bash shell using the spec for `my_function` in your app:
 
     ```bash
     modal shell hello_world.py::my_function
@@ -374,27 +379,36 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    stub = Stub("modal shell")
+    app = App("modal shell")
 
     if func_ref is not None:
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
         assert isinstance(function, Function)
-        function_env: FunctionEnv = function.env
+        function_spec: _FunctionSpec = function.spec
         start_shell = partial(
             interactive_shell,
-            image=function_env.image,
-            mounts=function_env.mounts,
-            secrets=function_env.secrets,
-            network_file_systems=function_env.network_file_systems,
-            gpu=function_env.gpu,
-            cloud=function_env.cloud,
-            cpu=function_env.cpu,
-            memory=function_env.memory,
-            volumes=function_env.volumes,
+            image=function_spec.image,
+            mounts=function_spec.mounts,
+            secrets=function_spec.secrets,
+            network_file_systems=function_spec.network_file_systems,
+            gpu=function_spec.gpu,
+            cloud=function_spec.cloud,
+            cpu=function_spec.cpu,
+            memory=function_spec.memory,
+            volumes=function_spec.volumes,
+            region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
             _allow_background_volume_commits=True,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
-        start_shell = partial(interactive_shell, image=modal_image, cpu=cpu, memory=memory, gpu=gpu, cloud=cloud)
+        start_shell = partial(
+            interactive_shell,
+            image=modal_image,
+            cpu=cpu,
+            memory=memory,
+            gpu=gpu,
+            cloud=cloud,
+            region=region.split(",") if region else [],
+        )
 
-    start_shell(stub, cmd=[cmd], environment_name=env, timeout=3600)
+    start_shell(app, cmd=[cmd], environment_name=env, timeout=3600)

@@ -1,8 +1,7 @@
 # Copyright Modal Labs 2022
 import os
-import pickle
 import typing
-from typing import Any, Callable, Collection, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -11,19 +10,22 @@ from modal_proto import api_pb2
 
 from ._output import OutputManager
 from ._resolver import Resolver
+from ._resources import convert_fn_config_to_resources_config
+from ._serialization import check_valid_cls_constructor_arg
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import InvalidError, NotFoundError, deprecation_error
+from .exception import InvalidError, NotFoundError
 from .functions import (
     _parse_retries,
 )
-from .gpu import GPU_T, parse_gpu_config
+from .gpu import GPU_T
 from .object import _get_environment_name, _Object
 from .partial_function import (
     PartialFunction,
     _find_callables_for_cls,
+    _find_callables_for_obj,
     _find_partial_methods_for_cls,
     _Function,
     _PartialFunctionFlags,
@@ -36,21 +38,7 @@ T = TypeVar("T")
 
 
 if typing.TYPE_CHECKING:
-    import modal.stub
-
-
-class ClsMixin:
-    def __init_subclass__(cls):
-        deprecation_error((2023, 9, 1), "`ClsMixin` is deprecated and can be safely removed.")
-
-
-def check_picklability(key, arg):
-    try:
-        pickle.dumps(arg)
-    except Exception:
-        raise ValueError(
-            f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(arg)}."
-        )
+    import modal.app
 
 
 class _Obj:
@@ -75,9 +63,9 @@ class _Obj:
         kwargs,
     ):
         for i, arg in enumerate(args):
-            check_picklability(i + 1, arg)
+            check_valid_cls_constructor_arg(i + 1, arg)
         for key, kwarg in kwargs.items():
-            check_picklability(key, kwarg)
+            check_valid_cls_constructor_arg(key, kwarg)
 
         self._functions = {}
         for k, fun in base_functions.items():
@@ -111,6 +99,14 @@ class _Obj:
         if not self._entered:
             if hasattr(self._local_obj, "__enter__"):
                 self._local_obj.__enter__()
+
+            for method_flag in (
+                _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
+                _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
+            ):
+                for enter_method in _find_callables_for_obj(self._local_obj, method_flag).values():
+                    enter_method()
+
         self._entered = True
 
     @property
@@ -151,7 +147,7 @@ class _Cls(_Object, type_prefix="cs"):
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
-    _stub: Optional["modal.stub._Stub"] = None  # not set for lookups
+    _app: Optional["modal.app._App"] = None  # not set for lookups
 
     def _initialize_from_empty(self):
         self._user_cls = None
@@ -194,7 +190,7 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
-    def from_local(user_cls, stub, decorator: Callable[[PartialFunction, type], _Function]) -> "_Cls":
+    def from_local(user_cls, app, decorator: Callable[[PartialFunction, type], _Function]) -> "_Cls":
         """mdmd:hidden"""
         functions: Dict[str, _Function] = {}
         for k, partial_function in _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.FUNCTION).items():
@@ -219,7 +215,7 @@ class _Cls(_Object, type_prefix="cs"):
 
         rep = f"Cls({user_cls.__name__})"
         cls = _Cls._from_loader(_load, rep, deps=_deps)
-        cls._stub = stub
+        cls._app = app
         cls._user_cls = user_cls
         cls._functions = functions
         cls._callables = callables
@@ -272,7 +268,7 @@ class _Cls(_Object, type_prefix="cs"):
     def with_options(
         self: "_Cls",
         cpu: Optional[float] = None,
-        memory: Optional[int] = None,
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
         gpu: GPU_T = None,
         secrets: Collection[_Secret] = (),
         volumes: Dict[Union[str, os.PathLike], _Volume] = {},
@@ -284,8 +280,9 @@ class _Cls(_Object, type_prefix="cs"):
         allow_background_volume_commits: bool = False,
     ) -> "_Cls":
         """
-        Allows for the runtime modification of a modal.Cls's configuration.
-        Designed for usage in the [MK1 Flywheel](/docs/guide/mk1).
+        Beta: Allows for the runtime modification of a modal.Cls's configuration.
+
+        This is a beta feature and may be unstable.
 
         **Usage:**
 
@@ -303,9 +300,7 @@ class _Cls(_Object, type_prefix="cs"):
         """
         retry_policy = _parse_retries(retries)
         if gpu or cpu or memory:
-            milli_cpu = int(1000 * cpu) if cpu is not None else None
-            gpu_config = parse_gpu_config(gpu)
-            resources = api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory)
+            resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu)
         else:
             resources = None
 
@@ -362,10 +357,6 @@ class _Cls(_Object, type_prefix="cs"):
         return _Obj(
             self._user_cls, self._output_mgr, self._functions, self._from_other_workspace, self._options, args, kwargs
         )
-
-    async def remote(self, *args, **kwargs):
-        """`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`."""
-        deprecation_error((2023, 9, 1), "`Cls.remote(...)` on classes is deprecated. Use the constructor: `Cls(...)`.")
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint

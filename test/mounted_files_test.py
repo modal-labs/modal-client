@@ -9,20 +9,29 @@ import pytest_asyncio
 
 import modal
 from modal import Mount
-from modal._utils.function_utils import FunctionInfo
+from modal.mount import get_auto_mounts
 
 from . import helpers
 from .supports.skip import skip_windows
 
 
 @pytest.fixture
-def venv_path(tmp_path):
+def venv_path(tmp_path, repo_root):
     venv_path = tmp_path
     subprocess.run([sys.executable, "-m", "venv", venv_path, "--copies", "--system-site-packages"], check=True)
     # Install Modal and a tiny package in the venv.
-    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", "."], check=True)
+    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", repo_root], check=True)
     subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "--force-reinstall", "six"], check=True)
     yield venv_path
+
+
+@pytest.fixture
+def path_with_symlinked_files(tmp_path):
+    src = tmp_path / "foo.txt"
+    src.write_text("Hello")
+    trg = tmp_path / "bar.txt"
+    trg.symlink_to(src)
+    return tmp_path, {src, trg}
 
 
 script_path = "pkg_a/script.py"
@@ -36,10 +45,8 @@ def f():
 async def env_mount_files():
     # If something is installed using pip -e, it will be bundled up as a part of the environment.
     # Those are env-specific so we ignore those as a part of the test
-    fn_info = FunctionInfo(f)
-
     filenames = []
-    for mount in fn_info.get_auto_mounts():
+    for mount in get_auto_mounts():
         async for file_info in mount._get_files(mount.entries):
             filenames.append(file_info.mount_filename)
 
@@ -47,7 +54,7 @@ async def env_mount_files():
 
 
 def test_mounted_files_script(servicer, supports_dir, env_mount_files, server_url_env):
-    helpers.deploy_stub_externally(servicer, script_path, cwd=supports_dir)
+    helpers.deploy_app_externally(servicer, script_path, cwd=supports_dir)
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
@@ -66,7 +73,7 @@ serialized_fn_path = "pkg_a/serialized_fn.py"
 
 
 def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, server_url_env):
-    helpers.deploy_stub_externally(servicer, serialized_fn_path, cwd=supports_dir)
+    helpers.deploy_app_externally(servicer, serialized_fn_path, cwd=supports_dir)
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
@@ -141,6 +148,48 @@ def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_f
     }
 
 
+@pytest.fixture
+def symlinked_python_installation_venv_path(tmp_path, repo_root):
+    # sets up a symlink to the python *installation* (not just the python binary)
+    # and initialize the virtualenv using a path via that symlink
+    # This makes the file paths of any stdlib modules use the symlinked path
+    # instead of the original, which is similar to what some tools do (e.g. mise)
+    # and has the potential to break automounting behavior, so we keep this
+    # test as a regression test for that
+    venv_path = tmp_path / "venv"
+    actual_executable = Path(sys.executable).resolve()
+    assert actual_executable.parent.name == "bin"
+    python_install_dir = actual_executable.parent.parent
+    # create a symlink to the python install *root*
+    symlink_python_install = tmp_path / "python-install"
+    symlink_python_install.symlink_to(python_install_dir)
+
+    # use a python executable specified via the above symlink
+    symlink_python_executable = symlink_python_install / "bin" / "python"
+    # create a new venv
+    subprocess.check_call([symlink_python_executable, "-m", "venv", venv_path, "--copies"])
+    # check that a builtin module, like ast, is indeed identified to be in the non-resolved install path
+    # since this is the source of bugs that we want to assert we don't run into!
+    ast_path = subprocess.check_output(
+        [venv_path / "bin" / "python", "-c", "import ast; print(ast.__file__);"], encoding="utf8"
+    )
+    assert ast_path != Path(ast_path).resolve()
+
+    # install modal from current dir
+    subprocess.check_call([venv_path / "bin" / "pip", "install", repo_root])
+    yield venv_path
+
+
+@skip_windows("venvs behave differently on Windows.")
+def test_mounted_files_symlinked_python_install(
+    symlinked_python_installation_venv_path, supports_dir, server_url_env, servicer
+):
+    subprocess.check_call(
+        [symlinked_python_installation_venv_path / "bin" / "modal", "run", supports_dir / "imports_ast.py"]
+    )
+    assert "/root/ast.py" not in servicer.files_name2sha
+
+
 def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_url_env):
     p = subprocess.run(
         ["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={**os.environ, "MODAL_AUTOMOUNT": "0"}
@@ -153,7 +202,7 @@ def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_ur
 
 
 def test_e2e_modal_run_py_file_mounts(servicer, supports_dir):
-    helpers.deploy_stub_externally(servicer, "hello.py", cwd=supports_dir)
+    helpers.deploy_app_externally(servicer, "hello.py", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount
@@ -162,7 +211,7 @@ def test_e2e_modal_run_py_file_mounts(servicer, supports_dir):
 
 
 def test_e2e_modal_run_py_module_mounts(servicer, supports_dir):
-    helpers.deploy_stub_externally(servicer, "hello", cwd=supports_dir)
+    helpers.deploy_app_externally(servicer, "hello", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount
@@ -184,12 +233,12 @@ def test_mounts_are_not_traversed_on_declaration(test_dir, monkeypatch, client, 
         return r
 
     monkeypatch.setattr("modal.mount._MountDir.get_files_to_upload", mock_get_files_to_upload)
-    stub = modal.Stub()
+    app = modal.App()
     mount_with_many_files = Mount.from_local_dir(test_dir, remote_path="/test")
-    stub.function(mounts=[mount_with_many_files])(foo)
+    app.function(mounts=[mount_with_many_files])(foo)
     assert len(return_values) == 0  # ensure we don't look at the files yet
 
-    with stub.run(client=client):
+    with app.run(client=client):
         pass
 
     assert return_values  # at this point we should have gotten all the mount files
@@ -207,7 +256,7 @@ def test_mount_dedupe(servicer, test_dir, server_url_env):
     normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
     normally_not_included_file.touch(exist_ok=True)
     print(
-        helpers.deploy_stub_externally(
+        helpers.deploy_app_externally(
             # no explicit mounts, rely on auto-mounting
             servicer,
             "mount_dedupe.py",
@@ -228,7 +277,7 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
     normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
     normally_not_included_file.touch(exist_ok=True)
     print(
-        helpers.deploy_stub_externally(
+        helpers.deploy_app_externally(
             # two explicit mounts of the same package
             servicer,
             "mount_dedupe.py",
@@ -237,15 +286,27 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
         )
     )
     assert servicer.n_mounts == 3
-    assert servicer.mount_contents["mo-1"].keys() == {"/root/mount_dedupe.py"}
-    pkg_a_mount = servicer.mount_contents["mo-2"]
-    for fn in pkg_a_mount.keys():
-        assert fn.startswith("/root/pkg_a")
-    assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount.keys()
 
-    custom_pkg_a_mount = servicer.mount_contents["mo-3"]
-    assert len(custom_pkg_a_mount) == len(pkg_a_mount) + 1
-    assert "/root/pkg_a/normally_not_included.pyc" in custom_pkg_a_mount.keys()
+    # mounts are loaded in parallel, but there
+    mounted_files_sets = set(frozenset(m.keys()) for m in servicer.mount_contents.values() if m)
+    assert {"/root/mount_dedupe.py"} in mounted_files_sets
+    mounted_files_sets.remove(frozenset({"/root/mount_dedupe.py"}))
+
+    # find one mount that includes normally_not_included.py
+    for mount_with_pyc in mounted_files_sets:
+        if "/root/pkg_a/normally_not_included.pyc" in mount_with_pyc:
+            break
+    else:
+        assert False, "could not find a mount with normally_not_included.pyc"
+    mounted_files_sets.remove(mount_with_pyc)
+
+    # and one without it
+    remaining_mount = list(mounted_files_sets)[0]
+    assert "/root/pkg_a/normally_not_included.pyc" not in remaining_mount
+    for fn in remaining_mount:
+        assert fn.startswith("/root/pkg_a")
+
+    assert len(mount_with_pyc) == len(remaining_mount) + 1
 
 
 @skip_windows("pip-installed pdm seems somewhat broken on windows")
@@ -267,3 +328,12 @@ def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servic
     assert files == {
         "/root/imports_six.py",
     }
+
+
+def test_mount_directory_with_symlinked_file(path_with_symlinked_files, servicer, server_url_env):
+    path, files = path_with_symlinked_files
+    mount = Mount.from_local_dir(path)
+    mount._deploy("mo-1")
+    pkg_a_mount = servicer.mount_contents["mo-1"]
+    for src_f in files:
+        assert any(mnt_f.endswith(src_f.name) for mnt_f in pkg_a_mount)

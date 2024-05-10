@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import Function, Stub, Volume, web_endpoint
-from modal.exception import DeprecationError, ExecutionError, NotFoundError
-from modal.runner import deploy_stub
+from modal import App, Function, Volume, web_endpoint
+from modal.exception import ExecutionError, NotFoundError
+from modal.runner import deploy_app
 
 
 def test_persistent_object(servicer, client):
@@ -23,10 +23,10 @@ def square(x):
 
 
 def test_lookup_function(servicer, client):
-    stub = Stub()
+    app = App()
 
-    stub.function()(square)
-    deploy_stub(stub, "my-function", client=client)
+    app.function()(square)
+    deploy_app(app, "my-function", client=client)
 
     f = Function.lookup("my-function", "square", client=client)
     assert f.object_id == "fu-1"
@@ -45,15 +45,11 @@ def test_lookup_function(servicer, client):
     with pytest.raises(ExecutionError):
         assert f.local(2, 4) == 20
 
-    # Make sure the old-style local calls raise an error
-    with pytest.raises(DeprecationError):
-        assert f(2, 4)
-
 
 def test_webhook_lookup(servicer, client):
-    stub = Stub()
-    stub.function()(web_endpoint(method="POST")(square))
-    deploy_stub(stub, "my-webhook", client=client)
+    app = App()
+    app.function()(web_endpoint(method="POST")(square))
+    deploy_app(app, "my-webhook", client=client)
 
     f = Function.lookup("my-webhook", "square", client=client)
     assert f.web_url

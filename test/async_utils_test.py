@@ -6,7 +6,6 @@ import platform
 import pytest
 
 from modal._utils.async_utils import (
-    ConcurrencyPool,
     TaskContext,
     queue_batch_iterator,
     retry,
@@ -76,31 +75,6 @@ async def test_task_context_grace():
     assert v.cancelled()
 
 
-async def raise_exception():
-    raise SampleException("foo")
-
-
-@skip_github_non_linux
-@pytest.mark.asyncio
-async def test_task_context_wait():
-    async with TaskContext(grace=0.1) as task_context:
-        u = task_context.create_task(asyncio.sleep(1.1))
-        v = task_context.create_task(asyncio.sleep(1.3))
-        await task_context.wait(u)
-
-    assert u.done()
-    assert v.cancelled()
-
-    with pytest.raises(SampleException):
-        async with TaskContext(grace=0.2) as task_context:
-            u = task_context.create_task(asyncio.sleep(1.1))
-            v = task_context.create_task(raise_exception())
-            await task_context.wait(u)
-
-    assert u.cancelled()
-    assert v.done()
-
-
 @skip_github_non_linux
 @pytest.mark.asyncio
 async def test_task_context_infinite_loop():
@@ -119,6 +93,42 @@ async def test_task_context_infinite_loop():
     assert not t.cancelled()
     assert t.done()
     assert counter == 4  # should be exited immediately
+
+
+@pytest.mark.asyncio
+async def test_task_context_gather():
+    state = "none"
+
+    async def t1(error=False):
+        nonlocal state
+        await asyncio.sleep(0.1)
+        state = "t1"
+        if error:
+            raise ValueError()
+
+    async def t2():
+        nonlocal state
+        await asyncio.sleep(0.2)
+        state = "t2"
+
+    await asyncio.gather(t1(), t2())
+    assert state == "t2"
+
+    # On t1 error: asyncio.gather() does not cancel t2, which is bad behavior.
+    state = "none"
+    with pytest.raises(ValueError):
+        await asyncio.gather(t1(error=True), t2())
+    assert state == "t1"
+    await asyncio.sleep(0.2)
+    assert state == "t2"  # t2 still runs because asyncio.gather() does not cancel tasks
+
+    # On t1 error: TaskContext.gather() should cancel the remaining tasks.
+    state = "none"
+    with pytest.raises(ValueError):
+        await TaskContext.gather(t1(error=True), t2())
+    assert state == "t1"
+    await asyncio.sleep(0.2)
+    assert state == "t1"
 
 
 DEBOUNCE_TIME = 0.1
@@ -154,7 +164,7 @@ async def test_queue_batch_iterator():
 
 @pytest.mark.asyncio
 async def test_warn_if_generator_is_not_consumed(caplog):
-    @warn_if_generator_is_not_consumed
+    @warn_if_generator_is_not_consumed()
     async def my_generator():
         yield 42
 
@@ -170,8 +180,25 @@ async def test_warn_if_generator_is_not_consumed(caplog):
 
 
 @pytest.mark.asyncio
+def test_warn_if_generator_is_not_consumed_sync(caplog):
+    @warn_if_generator_is_not_consumed()
+    def my_generator():
+        yield 42
+
+    with caplog.at_level(logging.WARNING):
+        g = my_generator()
+        assert "my_generator" in repr(g)
+        del g  # Force destructor
+
+    assert len(caplog.records) == 1
+    assert "my_generator" in caplog.text
+    assert "for" in caplog.text
+    assert "list" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_no_warn_if_generator_is_consumed(caplog):
-    @warn_if_generator_is_not_consumed
+    @warn_if_generator_is_not_consumed()
     async def my_generator():
         yield 42
 
@@ -182,60 +209,3 @@ async def test_no_warn_if_generator_is_consumed(caplog):
         del g  # Force destructor
 
     assert len(caplog.records) == 0
-
-
-@pytest.mark.asyncio
-async def test_concurrency_pool():
-    max_running = 0
-    running = 0
-
-    async def f():
-        nonlocal running, max_running
-        running += 1
-        max_running = max(max_running, running)
-        await asyncio.sleep(0.1)
-        running -= 1
-
-    def gen():
-        for i in range(100):
-            yield f()
-
-    await asyncio.wait_for(ConcurrencyPool(50).run_coros(gen()), 0.3)
-    assert max_running == 50
-
-
-@pytest.mark.asyncio
-async def test_concurrency_pool_cancels_non_started():
-    counter = 0
-
-    async def f():
-        nonlocal counter
-        counter += 1
-        raise RuntimeError("some error")
-
-    def gen():
-        for i in range(100):
-            yield f()
-
-    with pytest.raises(RuntimeError):
-        await ConcurrencyPool(2).run_coros(gen(), return_exceptions=False)
-    await asyncio.sleep(0.1)
-    assert counter == 2
-
-
-@pytest.mark.asyncio
-async def test_concurrency_pool_return_exceptions():
-    async def f(x):
-        if x % 2:
-            raise RuntimeError("some error")
-        else:
-            return 42
-
-    def gen():
-        for x in range(4):
-            yield f(x)
-
-    res = await asyncio.wait_for(ConcurrencyPool(2).run_coros(gen(), return_exceptions=True), 0.1)
-    assert res[0] == res[2] == 42
-    assert isinstance(res[1], RuntimeError)
-    assert isinstance(res[3], RuntimeError)

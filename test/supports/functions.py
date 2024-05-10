@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import List
 
 from modal import (
+    App,
     Image,
-    Stub,
     Volume,
     asgi_app,
     build,
@@ -14,6 +15,7 @@ from modal import (
     current_input_id,
     enter,
     exit,
+    is_local,
     method,
     web_endpoint,
     wsgi_app,
@@ -22,59 +24,59 @@ from modal.exception import deprecation_warning
 
 SLEEP_DELAY = 0.1
 
-stub = Stub()
+app = App()
 
 
-@stub.function()
+@app.function()
 def square(x):
     return x * x
 
 
-@stub.function()
+@app.function()
 def ident(x):
     return x
 
 
-@stub.function()
+@app.function()
 def delay(t):
     time.sleep(t)
     return t
 
 
-@stub.function()
+@app.function()
 async def delay_async(t):
     await asyncio.sleep(t)
     return t
 
 
-@stub.function()
+@app.function()
 async def square_async(x):
     await asyncio.sleep(SLEEP_DELAY)
     return x * x
 
 
-@stub.function()
+@app.function()
 def raises(x):
     raise Exception("Failure!")
 
 
-@stub.function()
+@app.function()
 def raises_sysexit(x):
     raise SystemExit(1)
 
 
-@stub.function()
+@app.function()
 def raises_keyboardinterrupt(x):
     raise KeyboardInterrupt()
 
 
-@stub.function()
+@app.function()
 def gen_n(n):
     for i in range(n):
         yield i**2
 
 
-@stub.function()
+@app.function()
 def gen_n_fail_on_m(n, m):
     for i in range(n):
         if i == m:
@@ -87,7 +89,7 @@ def deprecated_function(x):
     return x**2
 
 
-@stub.function()
+@app.function()
 @web_endpoint()
 def webhook(arg="world"):
     return {"hello": arg}
@@ -99,7 +101,7 @@ def stream():
         yield f"{i}..."
 
 
-@stub.function()
+@app.function()
 @web_endpoint()
 def webhook_streaming():
     from fastapi.responses import StreamingResponse
@@ -113,7 +115,7 @@ async def stream_async():
         yield f"{i}..."
 
 
-@stub.function()
+@app.function()
 @web_endpoint()
 async def webhook_streaming_async():
     from fastapi.responses import StreamingResponse
@@ -130,12 +132,12 @@ def gen(n):
         yield i**2
 
 
-@stub.function(is_generator=True)
+@app.function(is_generator=True)
 def fun_returning_gen(n):
     return gen(n)
 
 
-@stub.function()
+@app.function()
 @asgi_app()
 def fastapi_app():
     from fastapi import FastAPI
@@ -149,7 +151,7 @@ def fastapi_app():
     return web_app
 
 
-@stub.function()
+@app.function()
 @wsgi_app()
 def basic_wsgi_app():
     def simple_app(environ, start_response):
@@ -163,7 +165,7 @@ def basic_wsgi_app():
     return simple_app
 
 
-@stub.cls()
+@app.cls()
 class Cls:
     def __init__(self):
         self._k = 11
@@ -188,12 +190,25 @@ class Cls:
         return self._generator(x)
 
 
-@stub.cls()
+@app.cls()
 class LifecycleCls:
     """Ensures that {sync,async} lifecycle hooks work with {sync,async} functions."""
 
-    def __init__(self):
-        self.events = []
+    def __init__(
+        self,
+        print_at_exit: bool = False,
+        sync_enter_duration=0,
+        async_enter_duration=0,
+        sync_exit_duration=0,
+        async_exit_duration=0,
+    ):
+        self.events: List[str] = []
+        self.sync_enter_duration = sync_enter_duration
+        self.async_enter_duration = async_enter_duration
+        self.sync_exit_duration = sync_exit_duration
+        self.async_exit_duration = async_exit_duration
+        if print_at_exit:
+            self._print_at_exit()
 
     def _print_at_exit(self):
         import atexit
@@ -203,35 +218,49 @@ class LifecycleCls:
     @enter()
     def enter_sync(self):
         self.events.append("enter_sync")
+        time.sleep(self.sync_enter_duration)
 
     @enter()
     async def enter_async(self):
         self.events.append("enter_async")
+        await asyncio.sleep(self.async_enter_duration)
 
     @exit()
     def exit_sync(self):
         self.events.append("exit_sync")
+        time.sleep(self.sync_exit_duration)
 
     @exit()
     async def exit_async(self):
         self.events.append("exit_async")
+        await asyncio.sleep(self.async_exit_duration)
 
     @method()
-    def f_sync(self, print_at_exit: bool):
-        if print_at_exit:
-            self._print_at_exit()
+    def f_sync(self):
         self.events.append("f_sync")
         return self.events
 
     @method()
-    async def f_async(self, print_at_exit: bool):
-        if print_at_exit:
-            self._print_at_exit()
+    async def f_async(self):
         self.events.append("f_async")
         return self.events
 
+    @method()
+    def delay(self, duration: float):
+        self._print_at_exit()
+        self.events.append("delay")
+        time.sleep(duration)
+        return self.events
 
-@stub.function()
+    @method()
+    async def delay_async(self, duration: float):
+        self._print_at_exit()
+        self.events.append("delay_async")
+        await asyncio.sleep(duration)
+        return self.events
+
+
+@app.function()
 def check_sibling_hydration(x):
     assert square.is_hydrated
     assert Cls().f.is_hydrated
@@ -244,7 +273,7 @@ def check_sibling_hydration(x):
     assert fun_returning_gen.is_generator
 
 
-@stub.cls()
+@app.cls()
 class ParamCls:
     def __init__(self, x: int, y: str) -> None:
         self.x = x
@@ -259,13 +288,13 @@ class ParamCls:
         return self.f.local(z)
 
 
-@stub.function(allow_concurrent_inputs=5)
+@app.function(allow_concurrent_inputs=5)
 def sleep_700_sync(x):
     time.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
 
 
-@stub.function(allow_concurrent_inputs=5)
+@app.function(allow_concurrent_inputs=5)
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
@@ -285,12 +314,12 @@ class BaseCls:
         return self.x * y
 
 
-@stub.cls()
+@app.cls()
 class DerivedCls(BaseCls):
     pass
 
 
-@stub.function()
+@app.function()
 def cube(x):
     # Note: this ends up calling the servicer fixture,
     # which always just returns the sum of the squares of the inputs,
@@ -299,7 +328,7 @@ def cube(x):
     return square.remote(x) * x
 
 
-@stub.function()
+@app.function()
 def function_calling_method(x, y, z):
     obj = ParamCls(x, y)
     return obj.f.remote(z)
@@ -307,11 +336,11 @@ def function_calling_method(x, y, z):
 
 image = Image.debian_slim().pip_install("xyz")
 other_image = Image.debian_slim().pip_install("abc")
-volume = Volume.new()
-other_volume = Volume.new()
+volume = Volume.from_name("vol", create_if_missing=True)
+other_volume = Volume.from_name("other-vol", create_if_missing=True)
 
 
-@stub.function(image=image, volumes={"/tmp/xyz": volume})
+@app.function(image=image, volumes={"/tmp/xyz": volume})
 def check_dep_hydration(x):
     assert image.is_hydrated
     assert other_image.is_hydrated
@@ -319,7 +348,7 @@ def check_dep_hydration(x):
     assert other_volume.is_hydrated
 
 
-@stub.cls()
+@app.cls()
 class BuildCls:
     def __init__(self):
         self._k = 1
@@ -347,7 +376,7 @@ class BuildCls:
         return self._k * x
 
 
-@stub.cls(enable_memory_snapshot=True)
+@app.cls(enable_memory_snapshot=True)
 class CheckpointingCls:
     def __init__(self):
         self._vals = []
@@ -369,7 +398,7 @@ class CheckpointingCls:
         return "".join(self._vals) + x
 
 
-@stub.cls()
+@app.cls()
 class EventLoopCls:
     @enter()
     async def enter(self):
@@ -378,3 +407,14 @@ class EventLoopCls:
     @method()
     async def f(self):
         return self.loop.is_running()
+
+
+@app.function()
+def sandbox_f(x):
+    sb = app.spawn_sandbox("echo", str(x))
+    return sb.object_id
+
+
+@app.function()
+def is_local_f(x):
+    return is_local()

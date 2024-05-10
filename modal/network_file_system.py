@@ -2,22 +2,31 @@
 import os
 import time
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, BinaryIO, List, Optional, Tuple, Union
+from typing import AsyncIterator, BinaryIO, List, Optional, Tuple, Type, Union
 
+import aiostream
 from grpclib import GRPCError, Status
+from synchronicity.async_wrap import asynccontextmanager
 
 import modal
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
-from ._types import typechecked
-from ._utils.async_utils import ConcurrencyPool, synchronize_api
+from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.hash_utils import get_sha256_hex
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .exception import deprecation_warning
-from .object import _get_environment_name, _Object, live_method, live_method_gen
+from .object import (
+    EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    _get_environment_name,
+    _Object,
+    live_method,
+    live_method_gen,
+)
+from .volume import FileEntry
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
     10 * 60
@@ -53,13 +62,13 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     import modal
 
     nfs = modal.NetworkFileSystem.from_name("my-nfs", create_if_missing=True)
-    stub = modal.Stub()
+    app = modal.App()  # Note: "app" was called "stub" up until April 2024
 
-    @stub.function(network_file_systems={"/root/foo": nfs})
+    @app.function(network_file_systems={"/root/foo": nfs})
     def f():
         pass
 
-    @stub.function(network_file_systems={"/root/goo": nfs})
+    @app.function(network_file_systems={"/root/goo": nfs})
     def g():
         pass
     ```
@@ -79,10 +88,14 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     ```
     """
 
-    @typechecked
     @staticmethod
     def new(cloud: Optional[str] = None) -> "_NetworkFileSystem":
-        """Construct a new network file system, which is empty by default."""
+        """`NetworkFileSystem.new` is deprecated.
+
+        Please use `NetworkFileSystem.from_name` (for persisted) or `NetworkFileSystem.ephemeral`
+        (for ephemeral) network filesystems.
+        """
+        deprecation_warning((2024, 3, 20), NetworkFileSystem.new.__doc__)
 
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
@@ -116,11 +129,12 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         ```python notest
         volume = NetworkFileSystem.from_name("my-volume", create_if_missing=True)
 
-        @stub.function(network_file_systems={"/vol": volume})
+        @app.function(network_file_systems={"/vol": volume})
         def f():
             pass
         ```
         """
+        check_object_name(label, "NetworkFileSystem", warn=True)
 
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
@@ -132,7 +146,38 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
             self._hydrate(response.shared_volume_id, resolver.client, None)
 
-        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
+        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()", hydrate_lazily=True)
+
+    @classmethod
+    @asynccontextmanager
+    async def ephemeral(
+        cls: Type["_NetworkFileSystem"],
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    ) -> AsyncIterator["_NetworkFileSystem"]:
+        """Creates a new ephemeral network filesystem within a context manager:
+
+        Usage:
+        ```python
+        with NetworkFileSystem.ephemeral() as nfs:
+            assert nfs.listdir() == []
+
+        async with NetworkFileSystem.ephemeral() as nfs:
+            assert await nfs.listdir() == []
+        ```
+        """
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.SharedVolumeGetOrCreateRequest(
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+            environment_name=_get_environment_name(environment_name),
+        )
+        response = await client.stub.SharedVolumeGetOrCreate(request)
+        async with TaskContext() as tc:
+            request = api_pb2.SharedVolumeHeartbeatRequest(shared_volume_id=response.shared_volume_id)
+            tc.infinite_loop(lambda: client.stub.SharedVolumeHeartbeat(request), sleep=_heartbeat_sleep)
+            yield cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True)
 
     @staticmethod
     def persisted(
@@ -252,7 +297,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 yield data
 
     @live_method_gen
-    async def iterdir(self, path: str) -> AsyncIterator[api_pb2.SharedVolumeListFilesEntry]:
+    async def iterdir(self, path: str) -> AsyncIterator[FileEntry]:
         """Iterate over all files in a directory in the network file system.
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)
@@ -262,7 +307,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self.object_id, path=path)
         async for batch in unary_stream(self._client.stub.SharedVolumeListFilesStream, req):
             for entry in batch.entries:
-                yield entry
+                yield FileEntry._from_proto(entry)
 
     @live_method
     async def add_local_file(
@@ -296,12 +341,17 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 if subpath.is_dir():
                     continue
                 relpath_str = subpath.relative_to(_local_path).as_posix()
-                yield self.add_local_file(subpath, PurePosixPath(remote_path, relpath_str))
+                yield subpath, PurePosixPath(remote_path, relpath_str)
 
-        await ConcurrencyPool(20).run_coros(gen_transfers(), return_exceptions=True)
+        transfer_paths = aiostream.stream.iterate(gen_transfers())
+        await aiostream.stream.map(
+            transfer_paths,
+            aiostream.async_(lambda paths: self.add_local_file(paths[0], paths[1])),
+            task_limit=20,
+        )
 
     @live_method
-    async def listdir(self, path: str) -> List[api_pb2.SharedVolumeListFilesEntry]:
+    async def listdir(self, path: str) -> List[FileEntry]:
         """List all files in a directory in the network file system.
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)

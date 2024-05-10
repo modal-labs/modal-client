@@ -9,6 +9,7 @@ from modal._resolver import Resolver
 from modal.object import _Object
 
 
+@pytest.mark.flaky(max_runs=2)
 @pytest.mark.asyncio
 async def test_multi_resolve_sequential_loads_once():
     output_manager = OutputManager(None, show_progress=False)

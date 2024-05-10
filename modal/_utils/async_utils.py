@@ -3,15 +3,15 @@ import asyncio
 import concurrent.futures
 import functools
 import inspect
-import sys
 import time
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Callable, Iterator, List, Optional, Set, TypeVar, cast
+from typing import Any, AsyncGenerator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar, cast
 
 import synchronicity
 from typing_extensions import ParamSpec
 
+from ..exception import InvalidError
 from .logger import logger
 
 synchronizer = synchronicity.Synchronizer()
@@ -86,11 +86,21 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
 
 
 class TaskContext:
-    """Simple thing to make sure we don't have stray tasks.
+    """A structured group that helps manage stray tasks.
+
+    This differs from the standard library `asyncio.TaskGroup` in that it cancels all tasks still
+    running after exiting the context manager, rather than waiting for them to finish.
+
+    A `TaskContext` can have an optional `grace` period in seconds, which will wait for a certain
+    amount of time before cancelling all remaining tasks. This is useful for allowing tasks to
+    gracefully exit when they determine that the context is shutting down.
 
     Usage:
+
+    ```python notest
     async with TaskContext() as task_context:
-        task = task_context.create(coro())
+        task = task_context.create_task(coro())
+    ```
     """
 
     _loops: Set[asyncio.Task]
@@ -130,7 +140,6 @@ class TaskContext:
             if gather_future:
                 try:
                     await gather_future
-                # pre Python3.8, CancelledErrors were a subclass of exception
                 except asyncio.CancelledError:
                     pass
 
@@ -140,14 +149,10 @@ class TaskContext:
                     # Only tasks without a done_callback will still be present in self._tasks
                     task.result()
 
-                if task.done() or task in self._loops:
+                if task.done() or task in self._loops:  # Note: Legacy code, we can probably cancel loops.
                     continue
 
-                if sys.version_info >= (3, 11):
-                    already_cancelling = task.cancelling() > 0
-                    if not already_cancelling:
-                        logger.warning(f"Canceling remaining unfinished task: {task}")
-
+                # Cancel any remaining unfinished tasks.
                 task.cancel()
 
     async def __aexit__(self, exc_type, value, tb):
@@ -174,9 +179,6 @@ class TaskContext:
                 t0 = time.time()
                 try:
                     await asyncio.wait_for(async_f(), timeout=timeout)
-                    # pre Python3.8, CancelledErrors were a subclass of exception
-                except asyncio.CancelledError:
-                    raise
                 except Exception:
                     time_elapsed = time.time() - t0
                     logger.exception(f"Loop attempt failed for {function_name} (time_elapsed={time_elapsed})")
@@ -194,29 +196,39 @@ class TaskContext:
         t.add_done_callback(self._loops.discard)
         return t
 
-    async def wait(self, *tasks):
-        # Waits until all of tasks have finished
-        # This is slightly different than asyncio.wait since the `tasks` argument
-        # may be a subset of all the tasks.
-        # If any of the task context's task raises, throw that exception
-        # This is probably O(n^2) sadly but I guess it's fine
-        unfinished_tasks = set(tasks)
-        while True:
-            unfinished_tasks &= self._tasks
-            if not unfinished_tasks:
-                break
-            try:
-                done, pending = await asyncio.wait_for(
-                    asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED), timeout=30.0
-                )
-            except asyncio.TimeoutError:
-                continue
-            for task in done:
-                task.result()  # Raise exception if needed
-                if task in unfinished_tasks:
-                    unfinished_tasks.remove(task)
-                if task in self._tasks:
-                    self._tasks.remove(task)
+    @staticmethod
+    async def gather(*coros: Awaitable) -> Any:
+        """Wait for a sequence of coroutines to finish, concurrently.
+
+        This is similar to `asyncio.gather()`, but it uses TaskContext to cancel all remaining tasks
+        if one fails with an exception other than `asyncio.CancelledError`. The native `asyncio`
+        function does not cancel remaining tasks in this case, which can lead to surprises.
+
+        For example, if you use `asyncio.gather(t1, t2, t3)` and t2 raises an exception, then t1 and
+        t3 would continue running. With `TaskContext.gather(t1, t2, t3)`, they are cancelled.
+
+        (It's still acceptable to use `asyncio.gather()` if you don't need cancellation — for
+        example, if you're just gathering quick coroutines with no side-effects. Or if you're
+        gathering the tasks with `return_exceptions=True`.)
+
+        Usage:
+
+        ```python notest
+        # Example 1: Await three coroutines
+        created_object, other_work, new_plumbing = await TaskContext.gather(
+            create_my_object(),
+            do_some_other_work(),
+            fix_plumbing(),
+        )
+
+        # Example 2: Gather a list of coroutines
+        coros = [a.load() for a in objects]
+        results = await TaskContext.gather(*coros)
+        ```
+        """
+        async with TaskContext() as tc:
+            results = await asyncio.gather(*(tc.create_task(coro) for coro in coros))
+        return results
 
 
 def run_coro_blocking(coro):
@@ -234,6 +246,8 @@ def run_coro_blocking(coro):
 async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_time=0.015):
     """
     Read from a queue but return lists of items when queue is large
+
+    Treats a None value as end of queue items
     """
     item_list: List[Any] = []
 
@@ -257,19 +271,23 @@ async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_ti
 
 
 class _WarnIfGeneratorIsNotConsumed:
-    def __init__(self, gen, gen_f):
+    def __init__(self, gen, function_name: str):
         self.gen = gen
-        self.gen_f = gen_f
+        self.function_name = function_name
         self.iterated = False
         self.warned = False
 
     def __aiter__(self):
         self.iterated = True
-        return self.gen
+        return self.gen.__aiter__()
 
     async def __anext__(self):
         self.iterated = True
         return await self.gen.__anext__()
+
+    async def asend(self, value):
+        self.iterated = True
+        return await self.gen.asend(value)
 
     def __repr__(self):
         return repr(self.gen)
@@ -277,24 +295,73 @@ class _WarnIfGeneratorIsNotConsumed:
     def __del__(self):
         if not self.iterated and not self.warned:
             self.warned = True
-            name = self.gen_f.__name__
             logger.warning(
-                f"Warning: the results of a call to {name} was not consumed, so the call will never be executed."
-                f" Consider a for-loop like `for x in {name}(...)` or unpacking the generator using `list(...)`"
+                f"Warning: the results of a call to {self.function_name} was not consumed, so the call will never be executed."
+                f" Consider a for-loop like `for x in {self.function_name}(...)` or unpacking the generator using `list(...)`"
             )
+
+    async def athrow(self, exc):
+        return await self.gen.athrow(exc)
 
 
 synchronize_api(_WarnIfGeneratorIsNotConsumed)
 
 
-def warn_if_generator_is_not_consumed(gen_f):
-    # https://gist.github.com/erikbern/01ae78d15f89edfa7f77e5c0a827a94d
-    @functools.wraps(gen_f)
-    def f_wrapped(*args, **kwargs):
-        gen = gen_f(*args, **kwargs)
-        return _WarnIfGeneratorIsNotConsumed(gen, gen_f)
+class _WarnIfNonWrappedGeneratorIsNotConsumed(_WarnIfGeneratorIsNotConsumed):
+    # used for non-synchronicity-wrapped generators and iterators
+    def __iter__(self):
+        self.iterated = True
+        return iter(self.gen)
 
-    return f_wrapped
+    def __next__(self):
+        self.iterated = True
+        return self.gen.__next__()
+
+    def send(self, value):
+        self.iterated = True
+        return self.gen.send(value)
+
+
+def warn_if_generator_is_not_consumed(function_name: Optional[str] = None):
+    # https://gist.github.com/erikbern/01ae78d15f89edfa7f77e5c0a827a94d
+    def decorator(gen_f):
+        presented_func_name = function_name if function_name is not None else gen_f.__name__
+
+        @functools.wraps(gen_f)
+        def f_wrapped(*args, **kwargs):
+            gen = gen_f(*args, **kwargs)
+            if inspect.isasyncgen(gen):
+                return _WarnIfGeneratorIsNotConsumed(gen, presented_func_name)
+            else:
+                return _WarnIfNonWrappedGeneratorIsNotConsumed(gen, presented_func_name)
+
+        return f_wrapped
+
+    return decorator
+
+
+class AsyncOrSyncIteratable:
+    """Compatibility class for non-synchronicity wrapped async iterables to get
+    both async and sync interfaces in the same way that synchronicity does (but on the main thread)
+    so they can be "lazily" iterated using either `for _ in x` or `async for _ in x`
+
+    nested_async_message is raised as an InvalidError if the async variant is called
+    from an already async context, since that would otherwise deadlock the event loop
+    """
+
+    def __init__(self, async_iterable: typing.AsyncIterable[Any], nested_async_message):
+        self._async_iterable = async_iterable
+        self.nested_async_message = nested_async_message
+
+    def __aiter__(self):
+        return self._async_iterable
+
+    def __iter__(self):
+        try:
+            for output in run_generator_sync(self._async_iterable):  # type: ignore
+                yield output
+        except NestedAsyncCalls:
+            raise InvalidError(self.nested_async_message)
 
 
 T = TypeVar("T")
@@ -324,40 +391,6 @@ async def iterate_blocking(iterator: Iterator[T]) -> AsyncGenerator[T, None]:
         yield cast(T, obj)
 
 
-class ConcurrencyPool:
-    def __init__(self, concurrency_limit: int):
-        self.semaphore = asyncio.Semaphore(concurrency_limit)
-
-    async def run_coros(self, coros: typing.Iterable[typing.Coroutine], return_exceptions=False):
-        async def blocking_wrapper(coro):
-            # Not using async with on the semaphore is intentional here - if return_exceptions=False
-            # manual release prevents starting extraneous tasks after exceptions.
-            try:
-                await self.semaphore.acquire()
-            except asyncio.CancelledError:
-                coro.close()  # avoid "coroutine was never awaited" warnings
-
-            try:
-                res = await coro
-                self.semaphore.release()
-                return res
-            except BaseException as e:
-                if return_exceptions:
-                    self.semaphore.release()
-                raise e
-
-        # asyncio.gather() is weird - it doesn't cancel outstanding awaitables on exceptions when
-        # return_exceptions=False --> wrap the coros in tasks are cancel them explicitly on exception.
-        tasks = [asyncio.create_task(blocking_wrapper(coro)) for coro in coros]
-        g = asyncio.gather(*tasks, return_exceptions=return_exceptions)
-        try:
-            return await g
-        except BaseException as e:
-            for t in tasks:
-                t.cancel()
-            raise e
-
-
 @asynccontextmanager
 async def asyncnullcontext(*args, **kwargs):
     """Async noop context manager.
@@ -369,3 +402,42 @@ async def asyncnullcontext(*args, **kwargs):
         pass
     """
     yield
+
+
+YIELD_TYPE = typing.TypeVar("YIELD_TYPE")
+SEND_TYPE = typing.TypeVar("SEND_TYPE")
+
+
+class NestedAsyncCalls(Exception):
+    pass
+
+
+def run_generator_sync(
+    gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE],
+) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass  # no event loop - this is what we expect!
+    else:
+        raise NestedAsyncCalls()
+    loop = asyncio.new_event_loop()  # set up new event loop for the map so we can use async logic
+
+    # more or less copied from synchronicity's implementation:
+    next_send: typing.Union[SEND_TYPE, None] = None
+    next_yield: YIELD_TYPE
+    exc: Optional[BaseException] = None
+    while True:
+        try:
+            if exc:
+                next_yield = loop.run_until_complete(gen.athrow(exc))
+            else:
+                next_yield = loop.run_until_complete(gen.asend(next_send))  # type: ignore[arg-type]
+        except StopAsyncIteration:
+            break
+        try:
+            next_send = yield next_yield
+            exc = None
+        except BaseException as err:
+            exc = err
+    loop.close()

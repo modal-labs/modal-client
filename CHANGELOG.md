@@ -10,6 +10,218 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.144 (2024-05-06)
+
+* Added deprecation warnings when using Python 3.8 locally or in a container. Python 3.8 is nearing EOL, and Modal will be dropping support for it soon.
+
+
+
+### 0.62.141 (2024-05-03)
+
+* Deprecated the `Image.conda` constructor and the `Image.conda_install` / `Image.conda_update_from_environment` methods. Conda-based images had a number of tricky issues and were generally slower and heavier than images based on `micromamba`, which offers a similar featureset and can install packages from the same repositories.
+* Added the `spec_file` parameter to allow `Image.micromamba_install` to install dependencies from a local file. Note that `micromamba` supports conda yaml syntax along with simple text files.
+
+
+
+### 0.62.131 (2024-05-01)
+
+* Added a deprecation warning when object names are invalid. This applies to `Dict`, `NetworkFileSystem`, `Secret`, `Queue`, and `Volume` objects. Names must be shorter than 64 characters and may contain only alphanumeric characters, dashes, periods, and underscores. These rules were previously enforced, but the check had inadvertently been dropped in a recent refactor.  Please update the names of your objects and transfer any data to retain access, as invalid names will become an error in a future release.
+
+
+
+### 0.62.130 (2024-05-01)
+
+- Added a command-line interface for interacting with `modal.Queue` objects. Run `modal queue --help` in your terminal to see what is available.
+
+
+
+### 0.62.116 (2024-04-26)
+
+* Added a command-line interface for interacting with `modal.Dict` objects. Run `modal dict --help` in your terminal to see what is available.
+
+
+
+### 0.62.114 (2024-04-25)
+
+* `Secret.from_dotenv` now accepts an optional filename keyword argument:
+
+    ```python
+    @app.function(secrets=[modal.Secret.from_dotenv(filename=".env-dev")])
+    def run():
+        ...
+    ```
+
+
+
+### 0.62.110 (2024-04-25)
+
+- Passing a glob `**` argument to the `modal volume get` CLI has been deprecated — instead, simply download the desired directory path, or `/` for the entire volume.
+- `Volume.listdir()` no longer takes trailing glob arguments. Use `recursive=True` instead.
+- `modal volume get` and `modal nfs get` performance is improved when downloading a single file. They also now work with multiple files when outputting to stdout.
+- Fixed a visual bug where `modal volume get` on a single file will incorrectly display the destination path.
+
+
+
+### 0.62.109 (2024-04-24)
+
+- Improved feedback for deserialization failures when objects are being transferred between local / remote environments.
+
+
+
+### 0.62.108 (2024-04-24)
+
+- Added `Dict.delete` and `Queue.delete` as API methods for deleting named storage objects:
+
+    ```
+    import modal
+    modal.Queue.delete("my-job-queue")
+   ```
+- Deprecated invoking `Volume.delete` as an instance method; it should now be invoked as a static method with the name of  the Volume to delete, as with the other methods.
+
+
+
+### 0.62.98 (2024-04-21)
+
+- The `modal.Dict` object now implements a `keys`/`values`/`items` API. Note that there are a few differences when compared to standard Python dicts:
+    - The return value is a simple iterator, whereas Python uses a dictionary view object with more features.
+    - The results are unordered.
+ - Additionally, there was no key data stored for items added to a `modal.Dict` prior to this release, so empty strings will be returned for these entries.
+
+
+
+### 0.62.81 (2024-04-18)
+
+* We are introducing `modal.App` as a replacement for `modal.Stub` and encouraging the use of "app" terminology over "stub" to reduce confusion between concepts used in the SDK and the Dashboard. Support for `modal.Stub` will be gradually deprecated over the next few months.
+
+
+
+### 0.62.72 (2024-04-16)
+
+* Specifying a hard memory limit for a `modal.Function` is now supported. Pass a tuple of `memory=(request, limit)`. Above the `limit`, which is specified in MiB, a Function's container will be OOM killed.
+
+
+
+### 0.62.70 (2024-04-16)
+
+* `modal.CloudBucketMount` now supports read-only access to Google Cloud Storage
+
+
+
+### 0.62.69 (2024-04-16)
+
+* Iterators passed to `Function.map()` and similar parallel execution primitives are now executed on the main thread, preventing blocking iterators from possibly locking up background Modal API calls, and risking task shutdowns.
+
+
+
+### 0.62.67 (2024-04-15)
+
+- The return type of `Volume.listdir()`, `Volume.iterdir()`, `NetworkFileSystem.listdir()`, and `NetworkFileSystem.iterdir()` is now a `FileEntry` dataclass from the `modal.volume` module. The fields of this data class are the same as the old protobuf object returned by these methods, so it should be mostly backwards-compatible.
+
+
+
+### 0.62.65 (2024-04-15)
+
+* Cloudflare R2 bucket support added to `modal.CloudBucketMount`
+
+
+
+### 0.62.55 (2024-04-11)
+
+- When Volume reloads fail due to an open file, we now try to identify and report the relevant path. Note that there may be some circumstances in which we are unable to identify the specific file blocking a reload and will report a generic error message in that case.
+
+
+
+### 0.62.53 (2024-04-10)
+
+- Values in the `modal.toml` config file that are spelled as `0`, `false`, `"False"`, or `"false"` will now be coerced in Python to`False`, whereas previously only `"0"` (as a string) would have the intended effect.
+
+
+
+### 0.62.25 (2024-04-01)
+
+- Fixed a recent regression that caused functions using `modal.interact()` to crash.
+
+
+
+### 0.62.15 (2024-03-29)
+
+- Queue methods `put`, `put_many`, `get`, `get_many` and `len` now support an optional `partition` argument (must be specified as a `kwarg`). When specified, users read and write from new partitions of the queue independently. `partition=None` corresponds to the default partition of the queue.
+
+
+
+### 0.62.3 (2024-03-27)
+
+- User can now mount S3 buckets using [Requester Pays](https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html). This can be done with `CloudBucketMount(..., requester_pays=True)`.
+
+
+### 0.62.1 (2024-03-27)
+
+- Raise an error on `@web_server(startup_timeout=0)`, which is an invalid configuration.
+
+
+
+### 0.62.0 (2024-03-26)
+
+- The `.new()` method has now been deprecated on all Modal objects. It should typically be replaced with `.from_name(...)` in Modal app code, or `.ephemeral()` in scripts that use Modal
+- Assignment of Modal objects to a `Stub` via subscription (`stub["object"]`) or attribute (`stub.object`) syntax is now deprecated. This syntax was only necessary when using `.new()`.
+
+
+
+
+## 0.61
+
+
+### 0.61.104 (2024-03-25)
+
+- Fixed a bug where images based on `micromamba` could fail to build if requesting Python 3.12 when a different version of Python was being used locally.
+
+
+
+### 0.61.76 (2024-03-19)
+
+- The `Sandbox`'s `LogsReader` is now an asynchronous iterable. It supports the `async for` statement to stream data from the sandbox's `stdout/stderr`.
+
+```python
+@stub.function()
+async def my_fn():
+    sandbox = stub.spawn_sandbox(
+      "bash", 
+      "-c", 
+      "while true; do echo foo; sleep 1; done"
+    )
+    async for message in sandbox.stdout:
+        print(f"Message: {message}")
+```
+
+### 0.61.57 (2024-03-15)
+
+- Add the `@web_server` decorator, which exposes a server listening on a container port as a web endpoint.
+
+### 0.61.56 (2024-03-15)
+
+- Allow users to write to the `Sandbox`'s `stdin` with `StreamWriter`.
+
+```python
+@stub.function()
+def my_fn():
+    sandbox = stub.spawn_sandbox(
+        "bash",
+        "-c",
+        "while read line; do echo $line; done",
+    )
+    sandbox.stdin.write(b"foo\\n")
+    sandbox.stdin.write(b"bar\\n")
+    sandbox.stdin.write_eof()
+    sandbox.stdin.drain()
+    sandbox.wait()
+```
+
+### 0.61.53 (2024-03-15)
+
+- Fixed an bug where` Mount` was failing to include symbolic links.
+
+
+
 ### 0.61.45 (2024-03-13)
 
 When called from within a container, `modal.experimental.stop_fetching_inputs()` causes it to gracefully exit after the current input has been processed.
@@ -71,7 +283,7 @@ When called from within a container, `modal.experimental.stop_fetching_inputs()`
 
 ### 0.61.1 (2024-03-03)
 
-`modal run --interactive` or `modal run -i` run the app in "interactive mode". This allows any remote code to connect to the user's local terminal by calling `modal.interact()`. 
+`modal run --interactive` or `modal run -i` run the app in "interactive mode". This allows any remote code to connect to the user's local terminal by calling `modal.interact()`.
 
 ```python
 @stub.function()
@@ -101,6 +313,9 @@ def my_fn(x):
     breakpoint()
 ```
 
+
+
+## 0.60
 
 
 ### 0.60.0 (2024-02-29)

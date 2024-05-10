@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import sys
 
-from ._traceback import highlight_modal_deprecation_warnings, setup_rich_traceback
+from ._traceback import highlight_modal_deprecation_warnings, reduce_traceback_to_user_code, setup_rich_traceback
 from .cli.entry_point import entrypoint_cli
 from .cli.import_refs import _CliUserExecutionError
 from .config import config
@@ -12,6 +12,13 @@ def main():
     setup_rich_traceback()
     highlight_modal_deprecation_warnings()
 
+    if sys.version_info[:2] == (3, 8):
+        from .exception import deprecation_warning
+
+        deprecation_warning(
+            (2024, 5, 2), "Modal will soon drop support for Python 3.8.", show_source=False, pending=True
+        )
+
     try:
         entrypoint_cli()
 
@@ -19,29 +26,7 @@ def main():
         if config.get("traceback"):
             raise
 
-        tb = tb_root = exc.__cause__.__traceback__
-
-        # Step forward all the way through the traceback and drop any synchronicity frames
-        while tb is not None:
-            while tb.tb_next is not None:
-                if "/site-packages/synchronicity/" in tb.tb_next.tb_frame.f_code.co_filename:
-                    tb.tb_next = tb.tb_next.tb_next
-                else:
-                    break
-            tb = tb.tb_next
-        tb = tb_root
-
-        # Now step forward again until we get to first frame of user code
-        if exc.user_source.endswith(".py"):
-            while tb is not None and tb.tb_frame.f_code.co_filename != exc.user_source:
-                tb = tb.tb_next
-        else:
-            while tb is not None and tb.tb_frame.f_code.co_name != "<module>":
-                tb = tb.tb_next
-        if tb is None:
-            # In case we didn't find a frame that matched the user source, revert to the original root
-            tb = tb_root
-
+        tb = reduce_traceback_to_user_code(exc.__cause__.__traceback__, exc.user_source)
         sys.excepthook(type(exc.__cause__), exc.__cause__, tb)
         sys.exit(1)
 
@@ -51,9 +36,10 @@ def main():
 
         from rich.console import Console
         from rich.panel import Panel
+        from rich.text import Text
 
         console = Console(stderr=True)
-        panel = Panel(str(exc), border_style="red", title="Error", title_align="left")
+        panel = Panel(Text(str(exc)), border_style="red", title="Error", title_align="left")
         console.print(panel, highlight=False)
         sys.exit(1)
 

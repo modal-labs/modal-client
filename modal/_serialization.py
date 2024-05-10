@@ -7,7 +7,7 @@ from modal_proto import api_pb2
 
 from ._vendor import cloudpickle
 from .config import logger
-from .exception import InvalidError
+from .exception import DeserializationError, InvalidError
 from .object import Object, _Object
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
@@ -54,6 +54,9 @@ def serialize(obj: Any) -> bytes:
 
 def deserialize(s: bytes, client) -> Any:
     """Deserializes object and replaces all client placeholders by self."""
+    from .execution_context import is_local  # Avoid circular import
+
+    env = "local" if is_local() else "remote"
     try:
         return Unpickler(client, io.BytesIO(s)).load()
     except AttributeError as exc:
@@ -61,12 +64,31 @@ def deserialize(s: bytes, client) -> Any:
         # doesn't expose some kind of serialization version number, so we have to guess based
         # on the error message.
         if "Can't get attribute '_make_function'" in str(exc):
-            raise InvalidError(
-                "Failed to deserialize value due to a version mismatch between your local client and the image. "
-                "Try changing the `python_version` in your Modal image to match your local Python version. "
+            raise DeserializationError(
+                "Deserialization failed due to a version mismatch between local and remote environments. "
+                "Try changing the Python version in your Modal image to match your local Python version. "
             ) from exc
         else:
-            raise exc
+            # On Python 3.10+, AttributeError has `.name` and `.obj` attributes for better custom reporting
+            raise DeserializationError(
+                f"Deserialization failed with an AttributeError, {exc}. This is probably because"
+                " you have different versions of a library in your local and remote environments."
+            ) from exc
+    except ModuleNotFoundError as exc:
+        raise DeserializationError(
+            f"Deserialization failed because the '{exc.name}' module is not available in the {env} environment."
+        ) from exc
+    except Exception as exc:
+        if env == "remote":
+            # We currently don't always package the full traceback from errors in the remote entrypoint logic.
+            # So try to include as much information as we can in the main error message.
+            more = f": {type(exc)}({str(exc)})"
+        else:
+            # When running locally, we can just rely on standard exception chaining.
+            more = " (see above for details)"
+        raise DeserializationError(
+            f"Encountered an error when deserializing an object in the {env} environment{more}."
+        ) from exc
 
 
 def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
@@ -294,9 +316,6 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
 
 
 def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
-    if data_format == api_pb2.DATA_FORMAT_UNSPECIFIED:
-        # TODO: Remove this after Modal client version 0.52, when the data_format field is always set.
-        return deserialize(s, client)
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return deserialize(s, client)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
@@ -305,3 +324,26 @@ def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
         return api_pb2.GeneratorDone.FromString(s)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
+
+
+class ClsConstructorPickler(pickle.Pickler):
+    def __init__(self, buf):
+        super().__init__(buf, protocol=PICKLE_PROTOCOL)
+
+    def persistent_id(self, obj):
+        if isinstance(obj, (_Object, Object)):
+            if not obj.object_id:
+                raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
+            return True
+
+
+def check_valid_cls_constructor_arg(key, obj):
+    # Basically pickle, but with support for modal objects
+    buf = io.BytesIO()
+    try:
+        ClsConstructorPickler(buf).dump(obj)
+        return True
+    except (AttributeError, ValueError):
+        raise ValueError(
+            f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(obj)}."
+        )

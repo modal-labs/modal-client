@@ -11,7 +11,6 @@ from typing import (
     Union,
 )
 
-from modal._types import typechecked
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api, synchronizer
@@ -24,8 +23,8 @@ from .functions import _Function
 class _PartialFunctionFlags(enum.IntFlag):
     FUNCTION: int = 1
     BUILD: int = 2
-    ENTER_PRE_CHECKPOINT: int = 4
-    ENTER_POST_CHECKPOINT: int = 8
+    ENTER_PRE_SNAPSHOT: int = 4
+    ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
 
 
@@ -66,7 +65,7 @@ class _PartialFunction:
         if (self.flags & _PartialFunctionFlags.FUNCTION) and self.wrapped is False:
             logger.warning(
                 f"Method or web function {self.raw_f} was never turned into a function."
-                " Did you forget a @stub.function or @stub.cls decorator?"
+                " Did you forget a @app.function or @app.cls decorator?"
             )
 
     def add_flags(self, flags) -> "_PartialFunction":
@@ -105,7 +104,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
     check_attrs: List[str] = []
     if flags & _PartialFunctionFlags.BUILD:
         check_attrs += ["__build__", "__abuild__"]
-    if flags & _PartialFunctionFlags.ENTER_POST_CHECKPOINT:
+    if flags & _PartialFunctionFlags.ENTER_POST_SNAPSHOT:
         check_attrs += ["__enter__", "__aenter__"]
     if flags & _PartialFunctionFlags.EXIT:
         check_attrs += ["__exit__", "__aexit__"]
@@ -146,12 +145,12 @@ def _method(
     is_generator: Optional[bool] = None,
     keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Decorator for methods that should be transformed into a Modal Function registered against this class's stub.
+    """Decorator for methods that should be transformed into a Modal Function registered against this class's app.
 
     **Usage:**
 
     ```python
-    @stub.cls(cpu=8)
+    @app.cls(cpu=8)
     class MyCls:
 
         @modal.method()
@@ -183,7 +182,6 @@ def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> Lis
     return _custom_domains
 
 
-@typechecked
 def _web_endpoint(
     _warn_parentheses_missing=None,
     *,
@@ -200,10 +198,10 @@ def _web_endpoint(
     behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
     return a response object to the caller.
 
-    Endpoints created with `@stub.web_endpoint` are meant to be simple, single
+    Endpoints created with `@app.web_endpoint` are meant to be simple, single
     request handlers and automatically have
     [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
-    For more flexibility, use `@stub.asgi_app`.
+    For more flexibility, use `@app.asgi_app`.
 
     To learn how to use Modal with popular web frameworks, see the
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
@@ -221,7 +219,7 @@ def _web_endpoint(
             raw_f = raw_f.get_raw_f()
             raise InvalidError(
                 f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
-                "@stub.function()\n@stub.web_endpoint()\ndef my_webhook():\n    ..."
+                "@app.function()\n@app.web_endpoint()\ndef my_webhook():\n    ..."
             )
         if not wait_for_response:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
@@ -245,15 +243,12 @@ def _web_endpoint(
     return wrapper
 
 
-@typechecked
 def _asgi_app(
     _warn_parentheses_missing=None,
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    custom_domains: Optional[
-        Iterable[str]
-    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
+    custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
 
@@ -267,7 +262,7 @@ def _asgi_app(
     ```python
     from typing import Callable
 
-    @stub.function()
+    @app.function()
     @modal.asgi_app()
     def create_asgi() -> Callable:
         ...
@@ -303,15 +298,12 @@ def _asgi_app(
     return wrapper
 
 
-@typechecked
 def _wsgi_app(
     _warn_parentheses_missing=None,
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    custom_domains: Optional[
-        Iterable[str]
-    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name.
+    custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
 
@@ -324,7 +316,7 @@ def _wsgi_app(
     ```python
     from typing import Callable
 
-    @stub.function()
+    @app.function()
     @modal.wsgi_app()
     def create_wsgi() -> Callable:
         ...
@@ -360,13 +352,67 @@ def _wsgi_app(
     return wrapper
 
 
+def _web_server(
+    port: int,
+    *,
+    startup_timeout: float = 5.0,  # Maximum number of seconds to wait for the web server to start.
+    label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+    custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+) -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Decorator that registers an HTTP web server inside the container.
+
+    This is similar to `@asgi_app` and `@wsgi_app`, but it allows you to expose a full HTTP server
+    listening on a container port. This is useful for servers written in other languages like Rust,
+    as well as integrating with non-ASGI frameworks like aiohttp and Tornado.
+
+    **Usage:**
+
+    ```python
+    import subprocess
+
+    @app.function()
+    @modal.web_server(8000)
+    def my_file_server():
+        subprocess.Popen("python -m http.server -d / 8000", shell=True)
+    ```
+
+    The above example starts a simple file server, displaying the contents of the root directory.
+    Here, requests to the web endpoint will go to external port 8000 on the container. The
+    `http.server` module is included with Python, but you could run anything here.
+
+    Internally, the web server is transparently converted into a web endpoint by Modal, so it has
+    the same serverless autoscaling behavior as other web endpoints.
+
+    For more info, see the [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+    """
+    if not isinstance(port, int) or port < 1 or port > 65535:
+        raise InvalidError("First argument of `@web_server` must be a local port, such as `@web_server(8000)`.")
+    if startup_timeout <= 0:
+        raise InvalidError("The `startup_timeout` argument of `@web_server` must be positive.")
+
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        return _PartialFunction(
+            raw_f,
+            _PartialFunctionFlags.FUNCTION,
+            api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
+                requested_suffix=label,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+                custom_domains=_parse_custom_domains(custom_domains),
+                web_server_port=port,
+                web_server_startup_timeout=startup_timeout,
+            ),
+        )
+
+    return wrapper
+
+
 def _disallow_wrapping_method(f: _PartialFunction, wrapper: str) -> None:
     if f.flags & _PartialFunctionFlags.FUNCTION:
-        f.wrapped = True  # Hack to avoid warning about not using @stub.cls()
+        f.wrapped = True  # Hack to avoid warning about not using @app.cls()
         raise InvalidError(f"Cannot use `@{wrapper}` decorator with `@method`.")
 
 
-@typechecked
 def _build(
     _warn_parentheses_missing=None,
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
@@ -379,7 +425,7 @@ def _build(
     **Usage**
 
     ```python notest
-    @stub.cls(gpu="A10G")
+    @app.cls(gpu="A10G")
     class AlpacaLoRAModel:
         @build()
         def download_models(self):
@@ -403,7 +449,6 @@ def _build(
     return wrapper
 
 
-@typechecked
 def _enter(
     _warn_parentheses_missing=None,
     *,
@@ -416,9 +461,9 @@ def _enter(
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
 
     if snap:
-        flag = _PartialFunctionFlags.ENTER_PRE_CHECKPOINT
+        flag = _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
     else:
-        flag = _PartialFunctionFlags.ENTER_POST_CHECKPOINT
+        flag = _PartialFunctionFlags.ENTER_POST_SNAPSHOT
 
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
@@ -438,7 +483,6 @@ ExitHandlerType = Union[
 ]
 
 
-@typechecked
 def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _PartialFunction]:
     """Decorator for methods which should be executed when a container is about to exit.
 
@@ -464,6 +508,7 @@ method = synchronize_api(_method)
 web_endpoint = synchronize_api(_web_endpoint)
 asgi_app = synchronize_api(_asgi_app)
 wsgi_app = synchronize_api(_wsgi_app)
+web_server = synchronize_api(_web_server)
 build = synchronize_api(_build)
 enter = synchronize_api(_enter)
 exit = synchronize_api(_exit)

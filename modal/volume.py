@@ -1,19 +1,36 @@
 # Copyright Modal Labs 2023
 import asyncio
 import concurrent.futures
+import enum
+import os
+import platform
+import re
 import time
-from contextlib import nullcontext
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import IO, AsyncGenerator, AsyncIterator, BinaryIO, Callable, Generator, List, Optional, Sequence, Union
+from typing import (
+    IO,
+    AsyncGenerator,
+    AsyncIterator,
+    BinaryIO,
+    Callable,
+    Generator,
+    List,
+    Optional,
+    Sequence,
+    Type,
+    Union,
+)
 
 import aiostream
 from grpclib import GRPCError, Status
+from synchronicity.async_wrap import asynccontextmanager
 
-from modal.exception import VolumeUploadTimeoutError, deprecation_warning
+from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_warning
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
-from ._utils.async_utils import asyncnullcontext, synchronize_api
+from ._utils.async_utils import TaskContext, asyncnullcontext, synchronize_api
 from ._utils.blob_utils import (
     FileUploadSpec,
     blob_iter,
@@ -22,13 +39,49 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_path,
 )
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
-from .object import _get_environment_name, _Object, live_method, live_method_gen
+from .exception import deprecation_error
+from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
-# 15 min max for uploading to volumes files
+# Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
-VOLUME_PUT_FILE_CLIENT_TIMEOUT = 15 * 60
+VOLUME_PUT_FILE_CLIENT_TIMEOUT = 30 * 60
+
+
+class FileEntryType(enum.IntEnum):
+    """Type of a file entry listed from a Modal volume."""
+
+    UNSPECIFIED = 0
+    FILE = 1
+    DIRECTORY = 2
+    SYMLINK = 3
+
+
+@dataclass(frozen=True)
+class FileEntry:
+    """A file or directory entry listed from a Modal volume."""
+
+    path: str
+    type: FileEntryType
+    mtime: int
+    size: int
+
+    @classmethod
+    def _from_proto(cls, proto: api_pb2.FileEntry) -> "FileEntry":
+        return cls(
+            path=proto.path,
+            type=FileEntryType(proto.type),
+            mtime=proto.mtime,
+            size=proto.size,
+        )
+
+    def __getattr__(self, name: str):
+        deprecation_error(
+            (2024, 4, 15),
+            f"The FileEntry dataclass was introduced to replace a private Protobuf message. This dataclass does not have the {name} attribute.",
+        )
 
 
 class _Volume(_Object, type_prefix="vo"):
@@ -48,26 +101,26 @@ class _Volume(_Object, type_prefix="vo"):
     As a result, volumes are typically not a good fit for use cases where you need to make concurrent modifications to
     the same file (nor is distributed file locking supported).
 
-    Volumes can only be committed and reloaded if there are no open files for the volume - attempting to reload or
-    commit with open files will result in an error.
+    Volumes can only be reloaded if there are no open files for the volume - attempting to reload with open files
+    will result in an error.
 
     **Usage**
 
     ```python
     import modal
 
-    stub = modal.Stub()
-    stub.volume = modal.Volume.new()
+    app = modal.App()  # Note: "app" was called "stub" up until April 2024
+    volume = modal.Volume.from_name("my-persisted-volume", create_if_missing=True)
 
-    @stub.function(volumes={"/root/foo": stub.volume})
+    @app.function(volumes={"/root/foo": volume})
     def f():
         with open("/root/foo/bar.txt", "w") as f:
             f.write("hello")
-        stub.app.volume.commit()  # Persist changes
+        volume.commit()  # Persist changes
 
-    @stub.function(volumes={"/root/foo": stub.volume})
+    @app.function(volumes={"/root/foo": volume})
     def g():
-        stub.app.volume.reload()  # Fetch latest changes
+        volume.reload()  # Fetch latest changes
         with open("/root/foo/bar.txt", "r") as f:
             print(f.read())
     ```
@@ -84,7 +137,11 @@ class _Volume(_Object, type_prefix="vo"):
 
     @staticmethod
     def new() -> "_Volume":
-        """Construct a new volume, which is empty by default."""
+        """`Volume.new` is deprecated.
+
+        Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes.
+        """
+        deprecation_warning((2024, 3, 20), Volume.new.__doc__)
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             status_row = resolver.add_status_row()
@@ -117,14 +174,15 @@ class _Volume(_Object, type_prefix="vo"):
 
         volume = modal.Volume.from_name("my-volume", create_if_missing=True)
 
-        stub = modal.Stub()
+        app = modal.App()  # Note: "app" was called "stub" up until April 2024
 
-        # Volume refers to the same object, even across instances of `stub`.
-        @stub.function(volumes={"/vol": volume})
+        # Volume refers to the same object, even across instances of `app`.
+        @app.function(volumes={"/vol": volume})
         def f():
             pass
         ```
         """
+        check_object_name(label, "Volume", warn=True)
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.VolumeGetOrCreateRequest(
@@ -136,7 +194,38 @@ class _Volume(_Object, type_prefix="vo"):
             response = await resolver.client.stub.VolumeGetOrCreate(req)
             self._hydrate(response.volume_id, resolver.client, None)
 
-        return _Volume._from_loader(_load, "Volume()")
+        return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
+
+    @classmethod
+    @asynccontextmanager
+    async def ephemeral(
+        cls: Type["_Volume"],
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    ) -> AsyncIterator["_Volume"]:
+        """Creates a new ephemeral volume within a context manager:
+
+        Usage:
+        ```python
+        with Volume.ephemeral() as vol:
+            assert vol.listdir() == []
+
+        async with Volume.ephemeral() as vol:
+            assert await vol.listdir() == []
+        ```
+        """
+        if client is None:
+            client = await _Client.from_env()
+        request = api_pb2.VolumeGetOrCreateRequest(
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+            environment_name=_get_environment_name(environment_name),
+        )
+        response = await client.stub.VolumeGetOrCreate(request)
+        async with TaskContext() as tc:
+            request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
+            tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
+            yield cls._new_hydrated(response.volume_id, client, None, is_another_app=True)
 
     @staticmethod
     def persisted(
@@ -200,13 +289,10 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def commit(self):
-        """Commit changes to the volume and fetch any other changes made to the volume by other containers.
+        """Commit changes to the volume.
 
-        Unless background commits are enabled, committing always triggers a reload after saving changes.
-
-        If successful, the changes made are now persisted in durable storage and available to other containers accessing the volume.
-
-        Committing will fail if there are open files for the volume.
+        If successful, the changes made are now persisted in durable storage and available to other containers accessing
+        the volume.
         """
         async with self._lock:
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
@@ -223,39 +309,66 @@ class _Volume(_Object, type_prefix="vo"):
     async def reload(self):
         """Make latest committed state of volume available in the running container.
 
-        Uncommitted changes to the volume, such as new or modified files, will be preserved during reload. Uncommitted
-        changes will shadow any changes made by other writers - e.g. if you have an uncommitted modified a file that was
-        also updated by another writer you will not see the other change.
+        Any uncommitted changes to the volume, such as new or modified files, may implicitly be committed when
+        reloading.
 
         Reloading will fail if there are open files for the volume.
         """
         try:
             await self._do_reload()
         except GRPCError as exc:
+            # TODO(staffan): This is brittle and janky, as it relies on specific paths and error messages which can
+            #  change server-side at any time. Consider returning the open files directly in the error emitted from the
+            #  server.
+            if exc.message == "there are open files preventing the operation":
+                # Attempt to identify what open files are problematic and include information about the first (to avoid
+                # really verbose errors) open file in the error message to help troubleshooting.
+                # This is best-effort and not necessarily bulletproof, as the view of open files inside the container
+                # might differ from that outside - but it will at least catch common errors.
+                vol_path = f"/__modal/volumes/{self.object_id}"
+                annotation = _open_files_error_annotation(vol_path)
+                if annotation:
+                    raise RuntimeError(f"{exc.message}: {annotation}")
+
             raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
 
     @live_method_gen
-    async def iterdir(self, path: str) -> AsyncIterator[api_pb2.VolumeListFilesEntry]:
+    async def iterdir(self, path: str, *, recursive: bool = True) -> AsyncIterator[FileEntry]:
         """Iterate over all files in a directory in the volume.
 
-        * Passing a directory path lists all files in the directory (names are relative to the directory)
-        * Passing a file path returns a list containing only that file's listing description
-        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        Passing a directory path lists all files in the directory. For a file path, return only that
+        file's description. If `recursive` is set to True, list all files and folders under the path
+        recursively.
         """
-        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path)
+        from modal_version import major_number, minor_number
+
+        # This allows us to remove the server shim after 0.62 is no longer supported.
+        deprecation = deprecation_warning if (major_number, minor_number) <= (0, 62) else deprecation_error
+        if path.endswith("**"):
+            deprecation(
+                (2024, 4, 23),
+                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please pass recursive=True instead. For the CLI, just remove the glob suffix.",
+            )
+        elif path.endswith("*"):
+            deprecation(
+                (2024, 4, 23),
+                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please remove the glob `*` suffix.",
+            )
+
+        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
         async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
             for entry in batch.entries:
-                yield entry
+                yield FileEntry._from_proto(entry)
 
     @live_method
-    async def listdir(self, path: str) -> List[api_pb2.VolumeListFilesEntry]:
+    async def listdir(self, path: str, *, recursive: bool = False) -> List[FileEntry]:
         """List all files under a path prefix in the modal.Volume.
 
-        * Passing a directory path lists all files in the directory
-        * Passing a file path returns a list containing only that file's listing description
-        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        Passing a directory path lists all files in the directory. For a file path, return only that
+        file's description. If `recursive` is set to True, list all files and folders under the path
+        recursively.
         """
-        return [entry async for entry in self.iterdir(path)]
+        return [entry async for entry in self.iterdir(path, recursive=recursive)]
 
     @live_method_gen
     async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
@@ -288,24 +401,14 @@ class _Volume(_Object, type_prefix="vo"):
                 yield data
 
     @live_method
-    async def read_file_into_fileobj(self, path: Union[str, bytes], fileobj: IO[bytes], progress: bool = False) -> int:
+    async def read_file_into_fileobj(self, path: Union[str, bytes], fileobj: IO[bytes]) -> int:
         """mdmd:hidden
 
-        Read volume file into file-like IO object, with support for progress display.
-        Used by modal CLI. In future will replace current generator implementation of `read_file` method.
+        Read volume file into file-like IO object.
+        In the future, this will replace the current generator implementation of the `read_file` method.
         """
         if isinstance(path, str):
             path = path.encode("utf-8")
-
-        if progress:
-            from ._output import download_progress_bar
-
-            progress_bar = download_progress_bar()
-            task_id = progress_bar.add_task("download", path=path.decode(), start=False)
-            progress_bar.console.log(f"Requesting {path.decode()}")
-        else:
-            progress_bar = nullcontext()
-            task_id = None
 
         chunk_size_bytes = 8 * 1024 * 1024
         start = 0
@@ -321,45 +424,30 @@ class _Volume(_Object, type_prefix="vo"):
         if n != len(response.data):
             raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
         elif n == response.size:
-            if progress:
-                progress_bar.console.log(f"Wrote {n} bytes to '{path.decode()}'")
             return response.size
         elif n > response.size:
             raise RuntimeError(f"length of returned data exceeds reported filesize: {n} > {response.size}")
         # else: there's more data to read. continue reading with further ranged GET requests.
-        start = n
         file_size = response.size
         written = n
 
-        if progress:
-            progress_bar.update(task_id, total=int(file_size))
-            progress_bar.start_task(task_id)
+        while True:
+            req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path, start=written, len=chunk_size_bytes)
+            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+            if response.WhichOneof("data_oneof") != "data":
+                raise RuntimeError("expected to receive 'data' in response")
+            if len(response.data) > chunk_size_bytes:
+                raise RuntimeError(f"received more data than requested: {len(response.data)} > {chunk_size_bytes}")
+            elif (written + len(response.data)) > file_size:
+                raise RuntimeError(f"received data exceeds filesize of {chunk_size_bytes}")
 
-        with progress_bar:
-            while True:
-                req = api_pb2.VolumeGetFileRequest(
-                    volume_id=self.object_id, path=path, start=start, len=chunk_size_bytes
-                )
-                response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
-                if response.WhichOneof("data_oneof") != "data":
-                    raise RuntimeError("expected to receive 'data' in response")
-                if len(response.data) > chunk_size_bytes:
-                    raise RuntimeError(f"received more data than requested: {len(response.data)} > {chunk_size_bytes}")
-                elif (written + len(response.data)) > file_size:
-                    raise RuntimeError(f"received data exceeds filesize of {chunk_size_bytes}")
+            n = fileobj.write(response.data)
+            if n != len(response.data):
+                raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
+            written += n
+            if written == file_size:
+                break
 
-                n = fileobj.write(response.data)
-                if n != len(response.data):
-                    raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
-                start += n
-                written += n
-                if progress:
-                    progress_bar.update(task_id, advance=n)
-                if written == file_size:
-                    break
-
-        if progress:
-            progress_bar.console.log(f"Wrote {written} bytes to '{path.decode()}'")
         return written
 
     @live_method
@@ -375,6 +463,25 @@ class _Volume(_Object, type_prefix="vo"):
         """
         Copy files within the volume from src_paths to dst_path.
         The semantics of the copy operation follow those of the UNIX cp command.
+
+        The `src_paths` parameter is a list. If you want to copy a single file, you should pass a list with a
+        single element.
+
+        `src_paths` and `dst_path` should refer to the desired location *inside* the volume. You do not need to prepend
+        the volume mount path.
+
+        **Usage**
+
+        ```python notest
+        vol = modal.Volume.lookup("my-modal-volume")
+
+        vol.copy_files(["bar/example.txt"], "bar2")  # Copy files to another directory
+        vol.copy_files(["bar/example.txt"], "bar/example2.txt")  # Rename a file by copying
+        ```
+
+        Note that if the volume is already mounted on the Modal function, you should use normal filesystem operations
+        like `os.rename()` and then `commit()` the volume. The `copy_files()` method is useful when you don't have
+        the volume mounted as a filesystem, e.g. when running a script on your local computer.
         """
         src_paths = [path.encode("utf-8") for path in src_paths if isinstance(path, str)]
         if isinstance(dst_path, str):
@@ -403,6 +510,39 @@ class _Volume(_Object, type_prefix="vo"):
         ```
         """
         return _VolumeUploadContextManager(self.object_id, self._client, force=force)
+
+    @live_method
+    async def _instance_delete(self):
+        await retry_transient_errors(
+            self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id)
+        )
+
+    # @staticmethod  # TODO uncomment when enforcing deprecation of instance method invocation
+    async def delete(*args, label: str = "", client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        # -- Backwards-compatibility section
+        # TODO(michael) Upon enforcement of this deprecation, remove *args and the default argument for label=.
+        if args:
+            if isinstance(self := args[0], _Volume):
+                msg = (
+                    "Calling Volume.delete as an instance method is deprecated."
+                    " Please update your code to call it as a static method, passing"
+                    " the name of the volume to delete, e.g. `modal.Volume.delete('my-volume')`."
+                )
+                deprecation_warning((2024, 4, 23), msg)
+                await self._instance_delete()
+                return
+            elif isinstance(args[0], type):
+                args = args[1:]
+
+            if isinstance(args[0], str):
+                if label:
+                    raise InvalidError("`label` specified as both positional and keyword argument")
+                label = args[0]
+        # -- Backwards-compatibility code ends here
+
+        obj = await _Volume.lookup(label, client=client, environment_name=environment_name)
+        req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.VolumeDelete, req)
 
 
 class _VolumeUploadContextManager:
@@ -513,6 +653,7 @@ class _VolumeUploadContextManager:
         request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
         response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
 
+        start_time = time.monotonic()
         if not response.exists:
             if file_spec.use_blob:
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
@@ -526,8 +667,7 @@ class _VolumeUploadContextManager:
                 )
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
-            start_time = time.monotonic()
-            while time.monotonic() - start_time < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
+            while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
                 response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
                 if response.exists:
                     break
@@ -544,3 +684,58 @@ class _VolumeUploadContextManager:
 
 Volume = synchronize_api(_Volume)
 VolumeUploadContextManager = synchronize_api(_VolumeUploadContextManager)
+
+
+def _open_files_error_annotation(mount_path: str) -> Optional[str]:
+    if platform.system() != "Linux":
+        return None
+
+    self_pid = os.readlink("/proc/self")
+
+    def find_open_file_for_pid(pid: str) -> Optional[str]:
+        # /proc/{pid}/cmdline is null separated
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            raw = f.read()
+            parts = raw.split(b"\0")
+            cmdline = " ".join([part.decode() for part in parts]).rstrip(" ")
+
+        cwd = PurePosixPath(os.readlink(f"/proc/{pid}/cwd"))
+        # NOTE(staffan): Python 3.8 doesn't have is_relative_to(), so we're stuck with catching ValueError until
+        # we drop Python 3.8 support.
+        try:
+            _rel_cwd = cwd.relative_to(mount_path)
+            if pid == self_pid:
+                return "cwd is inside volume"
+            else:
+                return f"cwd of '{cmdline}' is inside volume"
+        except ValueError:
+            pass
+
+        for fd in os.listdir(f"/proc/{pid}/fd"):
+            try:
+                path = PurePosixPath(os.readlink(f"/proc/{pid}/fd/{fd}"))
+                try:
+                    rel_path = path.relative_to(mount_path)
+                    if pid == self_pid:
+                        return f"path {rel_path} is open"
+                    else:
+                        return f"path {rel_path} is open from '{cmdline}'"
+                except ValueError:
+                    pass
+
+            except FileNotFoundError:
+                # File was closed
+                pass
+        return None
+
+    pid_re = re.compile("^[1-9][0-9]*$")
+    for dirent in os.listdir("/proc/"):
+        if pid_re.match(dirent):
+            try:
+                annotation = find_open_file_for_pid(dirent)
+                if annotation:
+                    return annotation
+            except (FileNotFoundError, PermissionError):
+                pass
+
+    return None

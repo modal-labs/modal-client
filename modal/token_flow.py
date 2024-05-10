@@ -2,11 +2,11 @@
 import itertools
 import os
 import webbrowser
-from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional, Tuple
 
 import aiohttp.web
 from rich.console import Console
+from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
@@ -78,8 +78,7 @@ async def _new_token(
     console = Console()
 
     result: Optional[api_pb2.TokenFlowWaitResponse] = None
-    client = await _Client.unauthenticated_client(server_url)
-    async with client:
+    async with _Client.anonymous(server_url) as client:
         token_flow = _TokenFlow(client)
 
         async with token_flow.start(source, next_url) as (_, web_url, code):

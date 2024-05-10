@@ -3,13 +3,15 @@
 
 import ast
 import datetime
+import importlib
 import os
+import pkgutil
 import re
 import subprocess
 import sys
 from datetime import date
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import requests
 from invoke import task
@@ -45,12 +47,16 @@ def type_check(ctx):
     pyright_allowlist = [
         "modal/functions.py",
         "modal/_utils/__init__.py",
-        "modal/_utils/app_utils.py",
         "modal/_utils/async_utils.py",
         "modal/_utils/grpc_testing.py",
+        "modal/_utils/hash_utils.py",
         "modal/_utils/http_utils.py",
+        "modal/_utils/name_utils.py",
         "modal/_utils/logger.py",
+        "modal/_utils/mount_utils.py",
         "modal/_utils/package_utils.py",
+        "modal/_utils/rand_pb_testing.py",
+        "modal/_utils/shell_utils.py",
     ]
 
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
@@ -176,35 +182,40 @@ build-backend = "setuptools.build_meta"
 
 @task
 def type_stubs(ctx):
-    # we only generate type stubs for modules that contain synchronicity wrapped types
-    # TODO(erikbern): can we automate this list?
-    modules = [
-        "modal.app",
-        "modal.client",
-        "modal.cls",
-        "modal.dict",
-        "modal.environments",
-        "modal.functions",
-        "modal.image",
-        "modal.mount",
-        "modal.network_file_system",
-        "modal.object",
-        "modal.partial_function",
-        "modal.proxy",
-        "modal.queue",
-        "modal.cloud_bucket_mount",
-        "modal.sandbox",
-        "modal.secret",
-        "modal.stub",
-        "modal.volume",
-    ]
+    # We only generate type stubs for modules that contain synchronicity wrapped types
+    from synchronicity.synchronizer import SYNCHRONIZER_ATTR
+
+    def find_modal_modules(root: str = "modal"):
+        modules = []
+        path = importlib.import_module(root).__path__
+        for _, name, is_pkg in pkgutil.iter_modules(path):
+            full_name = f"{root}.{name}"
+            if is_pkg:
+                modules.extend(find_modal_modules(full_name))
+            else:
+                modules.append(full_name)
+        return modules
+
+    def get_wrapped_types(module_name: str) -> List[str]:
+        module = importlib.import_module(module_name)
+        return [
+            name
+            for name, obj in vars(module).items()
+            if not module_name.startswith("modal.cli.")  # TODO we don't handle typer-wrapped functions well
+            and hasattr(obj, "__module__")
+            and obj.__module__ == module_name
+            and not name.startswith("_")  # Avoid deprecation of _App.__getattr__
+            and hasattr(obj, SYNCHRONIZER_ATTR)
+        ]
+
+    modules = [m for m in find_modal_modules() if len(get_wrapped_types(m))]
     subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
 
 
 @task
-def update_changelog(ctx):
-    # Parse the most recent commit message for a GitHub PR number
-    res = ctx.run("git log --pretty=format:%s -n 1", hide="stdout")
+def update_changelog(ctx, sha: str = ""):
+    # Parse a commit message for a GitHub PR number, defaulting to most recent commit
+    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout")
     m = re.search(r"\(#(\d+)\)$", res.stdout)
     if m:
         pull_number = m.group(1)
@@ -299,7 +310,11 @@ def show_deprecations(ctx):
             self.generic_visit(node)
 
         def visit_Call(self, node):
-            if isinstance(node.func, ast.Name) and node.func.id == "deprecation_warning":
+            func_name_to_level = {
+                "deprecation_warning": "[yellow]warning[/yellow]",
+                "deprecation_error": "[red]error[/red]",
+            }
+            if isinstance(node.func, ast.Name) and node.func.id in func_name_to_level:
                 depr_date = date(*(elt.n for elt in node.args[0].elts))
                 function = (
                     f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
@@ -318,7 +333,8 @@ def show_deprecations(ctx):
                 message = message.replace("\n", " ")
                 if len(message) > (max_length := 80):
                     message = message[:max_length] + "..."
-                self.deprecations.append((str(depr_date), f"{self.fname}:{node.lineno}", function, message))
+                level = func_name_to_level[node.func.id]
+                self.deprecations.append((str(depr_date), level, f"{self.fname}:{node.lineno}", function, message))
 
     files = get_modal_source_files()
     deprecations = []
@@ -330,7 +346,7 @@ def show_deprecations(ctx):
         deprecations.extend(visitor.deprecations)
 
     console = Console()
-    table = Table("Date", "Location", "Function", "Message")
+    table = Table("Date", "Level", "Location", "Function", "Message")
     for row in sorted(deprecations, key=lambda r: r[0]):
         table.add_row(*row)
     console.print(table)

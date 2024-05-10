@@ -1,10 +1,9 @@
 # Copyright Modal Labs 2022
+from ._container_io_manager import _ContainerIOManager
 
 
 def stop_fetching_inputs():
     """Don't fetch any more inputs from the server, after the current one.
     The container will exit gracefully after the current input is processed."""
 
-    from .app import _container_app
-
-    _container_app.stop_fetching_inputs()
+    _ContainerIOManager.stop_fetching_inputs()
