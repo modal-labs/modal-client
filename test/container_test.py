@@ -835,6 +835,7 @@ def _unwrap_concurrent_input_outputs(n_inputs: int, n_parallel: int, ret: Contai
 
 
 @skip_github_non_linux
+@pytest.mark.timeout(5)
 def test_concurrent_inputs_sync_function(unix_servicer):
     n_inputs = 18
     n_parallel = 6
@@ -1197,10 +1198,13 @@ def test_cancellation_aborts_current_input_on_match(
     [("delay",), ("delay_async",)],
 )
 def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name):
-    # send three inputs in container: in-100, in-101, in-102
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
-            servicer, "test.supports.functions", function_name, inputs=[((20,), {})], allow_concurrent_inputs=2
+            servicer,
+            "test.supports.functions",
+            function_name,
+            inputs=[((20,), {})],
+            allow_concurrent_inputs=2,
         )
         input_lock.wait()
 
