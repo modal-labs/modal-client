@@ -77,14 +77,14 @@ class DaemonizedThreadPool:
     def __exit__(self, exc_type, exc_value, traceback):
         self.finished.set()
 
-        if exc_type == KeyboardInterrupt:
+        if exc_type is None:
+            self.inputs.join()
+        else:
             # special case - allows us to exit the
             if self.inputs.unfinished_tasks:
-                logger.warning(
-                    f"Exiting input handling threadpool with {self.inputs.unfinished_tasks} active inputs due to KeyboardInterrupt"
+                logger.info(
+                    f"Exiting DaemonizedThreadPool with {self.inputs.unfinished_tasks} active inputs due to exception: {repr(exc_type)}"
                 )
-            return
-        self.inputs.join()
 
     def submit(self, func, *args):
         def worker_thread():
@@ -96,9 +96,7 @@ class DaemonizedThreadPool:
                 try:
                     _func(*_args)
                 except BaseException:
-                    # This should basically never happen, since only KeyboardInterrupt is the only error that can
-                    # bubble out of from handle_input_exception and those wouldn't be raised outside the main thread
-                    logger.exception("Unexpected exception in input worker!")
+                    logger.exception(f"Exception raised by {_func} in DaemonizedThreadPool worker!")
                 self.inputs.task_done()
 
         if self.spawned_workers < self.max_threads:
