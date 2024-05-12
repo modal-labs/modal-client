@@ -2,7 +2,7 @@
 import asyncio
 import platform
 import warnings
-from typing import AsyncIterator, Awaitable, Callable, ClassVar, Dict, Optional, Tuple
+from typing import AsyncIterator, ClassVar, Dict, Optional, Tuple
 
 import grpclib.client
 from aiohttp import ClientConnectorError, ClientResponseError
@@ -13,7 +13,6 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_grpc, api_pb2
 from modal_version import __version__
 
-from ._utils import async_utils
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
 from ._utils.http_utils import http_client_with_tls
@@ -98,7 +97,6 @@ class _Client:
         self.version = version
         self._authenticated = False
         self.image_builder_version: Optional[str] = None
-        self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[api_grpc.ModalClientStub] = None
 
@@ -127,10 +125,6 @@ class _Client:
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 
     async def _close(self, forget_credentials: bool = False):
-        if self._pre_stop is not None:
-            logger.debug("Client: running pre-stop coroutine before shutting down")
-            await self._pre_stop()  # type: ignore
-
         if self._channel is not None:
             self._channel.close()
 
@@ -139,16 +133,6 @@ class _Client:
 
         # Remove cached client.
         self.set_env_client(None)
-
-    def set_pre_stop(self, pre_stop: Callable[[], Awaitable[None]]):
-        """mdmd:hidden"""
-        # hack: stub.serve() gets into a losing race with the `on_shutdown` client
-        # teardown when an interrupt signal is received (eg. KeyboardInterrupt).
-        # By registering a pre-stop fn stub.serve() can have its teardown
-        # performed before the client is disconnected.
-        #
-        # ref: github.com/modal-labs/modal-client/pull/108
-        self._pre_stop = pre_stop
 
     async def _init(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
@@ -244,7 +228,6 @@ class _Client:
             else:
                 client = _Client(server_url, client_type, credentials)
                 await client._open()
-                async_utils.on_shutdown(client._close())
                 try:
                     await client._init()
                 except AuthError:
@@ -275,7 +258,6 @@ class _Client:
         except BaseException:
             await client._close()
             raise
-        async_utils.on_shutdown(client._close())
         return client
 
     @classmethod

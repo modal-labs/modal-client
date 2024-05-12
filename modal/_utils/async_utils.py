@@ -364,21 +364,6 @@ class AsyncOrSyncIteratable:
             raise InvalidError(self.nested_async_message)
 
 
-_shutdown_tasks = []
-
-
-def on_shutdown(coro):
-    # hook into event loop shutdown when all active tasks get cancelled
-    async def wrapper():
-        try:
-            await asyncio.sleep(1e10)  # never awake except for exceptions
-        finally:
-            await coro
-            raise
-
-    _shutdown_tasks.append(asyncio.create_task(wrapper()))
-
-
 T = TypeVar("T")
 P = ParamSpec("P")
 
