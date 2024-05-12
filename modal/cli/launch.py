@@ -25,7 +25,7 @@ launch_cli = Typer(
 
 
 def _launch_program(name: str, filename: str, args: Dict[str, Any]) -> None:
-    os.environ["MODAL_LAUNCH_LOCAL_ARGS"] = json.dumps(args)
+    os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
     program_path = str(Path(__file__).parent / "programs" / filename)
     entrypoint = import_function(program_path, "modal launch")
@@ -53,6 +53,8 @@ def jupyter(
     timeout: int = 3600,
     image: str = "ubuntu:22.04",
     add_python: Optional[str] = "3.11",
+    mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
+    volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
 ):
     args = {
         "cpu": cpu,
@@ -61,6 +63,8 @@ def jupyter(
         "timeout": timeout,
         "image": image,
         "add_python": add_python,
+        "mount": mount,
+        "volume": volume,
     }
     _launch_program("jupyter", "run_jupyter.py", args)
 
@@ -71,11 +75,15 @@ def vscode(
     memory: int = 32768,
     gpu: Optional[str] = None,
     timeout: int = 3600,
+    mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
+    volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
 ):
     args = {
         "cpu": cpu,
         "memory": memory,
         "gpu": gpu,
         "timeout": timeout,
+        "mount": mount,
+        "volume": volume,
     }
     _launch_program("vscode", "vscode.py", args)
