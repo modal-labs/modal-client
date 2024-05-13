@@ -24,9 +24,14 @@ class _CloudBucketMount:
 
     app = modal.App()  # Note: "app" was called "stub" up until April 2024
     secret = modal.Secret.from_dict({
-        "AWS_ACCESS_KEY_ID": "...", # Required: specify the access key of your AWS account
-        "AWS_SECRET_ACCESS_KEY": "...", # Required: specify the secret access key of your AWS account
-        "AWS_REGION": "...", # Optional: specify the region of your S3 bucket. This should resolve issues involving the container running on a worker in one region while the bucket is in another region.
+        # Required: specify the access key of your AWS account
+        "AWS_ACCESS_KEY_ID": "...",
+        # Required: specify the secret access key of your AWS account
+        "AWS_SECRET_ACCESS_KEY": "...",
+        # Optional: specify the region of your S3 bucket.
+        # This should resolve issues involving the container running on
+        # a worker in one region while the bucket is in another region.
+        "AWS_REGION": "...",
     })
     @app.function(
         volumes={
