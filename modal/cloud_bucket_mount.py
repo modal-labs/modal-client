@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
+from .config import logger
 from .secret import _Secret
 
 
@@ -126,7 +127,10 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
                         f"CloudBucketMount of '{mount.bucket_name}' is invalid. Writing to GCP buckets with modal.CloudBucketMount in currently unsupported."
                     )
             else:
-                raise ValueError(f"Unsupported bucket endpoint hostname '{parse_result.hostname}'")
+                logger.warn(
+                    "CloudBucketMount received unrecognized bucket endpoint URL. Assuming AWS S3 configuration as fallback."
+                )
+                bucket_type = api_pb2.CloudBucketMount.BucketType.S3
         else:
             # just assume S3; this is backwards and forwards compatible.
             bucket_type = api_pb2.CloudBucketMount.BucketType.S3
