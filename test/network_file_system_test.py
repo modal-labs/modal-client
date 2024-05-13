@@ -97,14 +97,6 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
 
-def test_old_syntax(client, servicer):
-    app = modal.App()
-    with pytest.raises(DeprecationError):
-        app.vol1 = modal.SharedVolume()  # type: ignore  # This is just a post-deprecation husk
-    with pytest.raises(DeprecationError):
-        app.vol2 = modal.SharedVolume.new()
-
-
 def test_redeploy(servicer, client):
     app = modal.App()
     with pytest.warns(DeprecationError):
