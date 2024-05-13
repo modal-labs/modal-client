@@ -1416,7 +1416,6 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
@@ -1461,7 +1460,7 @@ class _Image(_Object, type_prefix="im"):
 
         info = FunctionInfo(raw_f)
 
-        if shared_volumes or network_file_systems:
+        if network_file_systems:
             warnings.warn(
                 "Mounting NetworkFileSystems or Volumes is usually not advised with `run_function`."
                 " If you are trying to download model weights, downloading it to the image itself is recommended and sufficient."
