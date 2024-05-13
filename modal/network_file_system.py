@@ -233,6 +233,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
     ) -> str:
         """mdmd:hidden"""
+        check_object_name(deployment_name, "NetworkFileSystem", warn=True)
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(
