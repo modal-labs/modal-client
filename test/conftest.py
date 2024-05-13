@@ -1102,11 +1102,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 p.write_bytes(put_request.data)
 
             if "*" in req.path:
-                for path in Path(tmpdir).glob(req.path.lstrip("/")):
-                    if path.is_dir():
-                        entry = api_pb2.FileEntry(path=str(path), type=api_pb2.FileEntry.FileType.DIRECTORY)
+                for p in Path(tmpdir).glob(req.path.lstrip("/")):
+                    if p.is_dir():
+                        entry = api_pb2.FileEntry(path=str(p), type=api_pb2.FileEntry.FileType.DIRECTORY)
                     else:
-                        entry = api_pb2.FileEntry(path=str(path), type=api_pb2.FileEntry.FileType.FILE)
+                        entry = api_pb2.FileEntry(path=str(p), type=api_pb2.FileEntry.FileType.FILE)
                     response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
                     await stream.send_message(response)
 
@@ -1115,9 +1115,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 entry = api_pb2.FileEntry(path=list_path.name, type=api_pb2.FileEntry.FileType.FILE)
                 await stream.send_message(api_pb2.SharedVolumeListFilesResponse(entries=[entry]))
             else:
-                for path in list_path.iterdir():
-                    t = api_pb2.FileEntry.FileType.DIRECTORY if path.is_dir() else api_pb2.FileEntry.FileType.FILE
-                    entry = api_pb2.FileEntry(path=str(path.relative_to(list_path)), type=t)
+                for p in list_path.iterdir():
+                    t = api_pb2.FileEntry.FileType.DIRECTORY if p.is_dir() else api_pb2.FileEntry.FileType.FILE
+                    entry = api_pb2.FileEntry(path=str(p.relative_to(list_path)), type=t)
                     response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
                     await stream.send_message(response)
 
