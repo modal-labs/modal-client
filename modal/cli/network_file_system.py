@@ -1,7 +1,10 @@
 # Copyright Modal Labs 2022
 import os
+import shutil
 import sys
+from contextlib import contextmanager
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Optional
 
 import typer
@@ -26,6 +29,8 @@ from modal.network_file_system import _NetworkFileSystem
 from modal_proto import api_pb2
 
 nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
+
+PIPE_PATH = Path("-")
 
 
 @nfs_cli.command(name="list", help="List the names of all network file systems.", rich_help_panel="Management")
@@ -188,7 +193,41 @@ async def get(
     ensure_env(env)
     destination = Path(local_destination)
     volume = await _volume_from_name(volume_name)
-    await _volume_download(volume, remote_path, destination, force)
+    if "*" in remote_path:
+        await _volume_download(volume, remote_path, destination, force)
+        return
+
+    if destination != PIPE_PATH:
+        if destination.is_dir():
+            destination = destination / remote_path.rsplit("/")[-1]
+
+        if destination.exists() and not force:
+            raise UsageError(f"'{destination}' already exists")
+
+        if not destination.parent.exists():
+            raise UsageError(f"Local directory '{destination.parent}' does not exist")
+
+    @contextmanager
+    def _destination_stream():
+        if destination == PIPE_PATH:
+            yield sys.stdout.buffer
+        else:
+            with NamedTemporaryFile(delete=False) as fp:
+                yield fp
+            shutil.move(fp.name, destination)
+
+    b = 0
+    try:
+        with _destination_stream() as fp:
+            async for chunk in volume.read_file(remote_path):
+                fp.write(chunk)
+                b += len(chunk)
+    except GRPCError as exc:
+        if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
+            raise UsageError(exc.message)
+
+    if destination != PIPE_PATH:
+        print(f"Wrote {b} bytes to '{destination}'", file=sys.stderr)
 
 
 @nfs_cli.command(

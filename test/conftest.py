@@ -1094,11 +1094,34 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SharedVolumeListFilesStream(self, stream):
         req: api_pb2.SharedVolumeListFilesRequest = await stream.recv_message()
-        for path in self.nfs_files[req.shared_volume_id].keys():
-            entry = api_pb2.FileEntry(path=path, type=api_pb2.FileEntry.FileType.FILE)
-            response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
-            if req.path == "**" or req.path == "/" or req.path == path:  # hack
-                await stream.send_message(response)
+        # Emulate ls behavior by placing NFS files in a temporary directory.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for path, put_request in self.nfs_files[req.shared_volume_id].items():
+                p = Path(tmpdir, path)
+                p.parent.mkdir(parents=True)
+                p.write_bytes(put_request.data)
+
+            if "*" in req.path:
+                for path in Path(tmpdir).glob(req.path):
+                    if path.is_dir():
+                        entry = api_pb2.FileEntry(path=path, type=api_pb2.FileEntry.FileType.DIRECTORY)
+                    else:
+                        entry = api_pb2.FileEntry(path=path, type=api_pb2.FileEntry.FileType.FILE)
+                    response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
+                    await stream.send_message(response)
+
+            list_path = Path(tmpdir, req.path)
+            if not list_path.is_dir():
+                entry = api_pb2.FileEntry(path=list_path.name, type=api_pb2.FileEntry.FileType.FILE)
+                await stream.send_message(api_pb2.SharedVolumeListFilesResponse(entries=[entry]))
+            else:
+                for path in list_path.iterdir():
+                    if path.is_dir():
+                        entry = api_pb2.FileEntry(path=path, type=api_pb2.FileEntry.FileType.DIRECTORY)
+                    else:
+                        entry = api_pb2.FileEntry(path=path, type=api_pb2.FileEntry.FileType.FILE)
+                    response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
+                    await stream.send_message(response)
 
     ### Task
 

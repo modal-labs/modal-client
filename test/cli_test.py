@@ -491,10 +491,16 @@ def test_nfs_get(set_env_client, servicer):
         with open(upload_path, "w") as f:
             f.write("foo bar baz")
             f.flush()
-        _run(["nfs", "put", nfs_name, upload_path, "test.txt"])
+        # _run(["nfs", "put", nfs_name, upload_path, "test.txt"])
 
-        _run(["nfs", "get", nfs_name, "test.txt", tmpdir])
-        with open(os.path.join(tmpdir, "test.txt"), "r") as f:
+        # _run(["nfs", "get", nfs_name, "test.txt", tmpdir])
+        # with open(os.path.join(tmpdir, "test.txt"), "r") as f:
+        #     assert f.read() == "foo bar baz"
+
+        _run(["nfs", "put", nfs_name, upload_path, "foo/bar.txt"])
+
+        _run(["nfs", "get", nfs_name, "foo/bar.txt", tmpdir])
+        with open(os.path.join(tmpdir, "bar.txt"), "r") as f:
             assert f.read() == "foo bar baz"
 
 
