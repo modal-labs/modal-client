@@ -78,7 +78,6 @@ def run(output_dir: str = None):
     forced_module_docs = [
         ("modal.Function", "modal.functions"),
         ("modal.Secret", "modal.secret"),
-        ("modal.SharedVolume", "modal.shared_volume"),
         ("modal.Dict", "modal.dict"),
         ("modal.Queue", "modal.queue"),
         ("modal.call_graph", "modal.call_graph"),
