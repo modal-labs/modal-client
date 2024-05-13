@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.165 (2024-05-13)
+
+- Deprecated `wait_for_response=False` on web endpoints. See [the docs](https://modal.com/docs/guide/webhook-timeouts#polling-solutions) for alternatives.
+
+
+
 ### 0.62.159 (2024-05-10)
 
 Added a `--stream-logs` flag to `modal deploy` that if True, begins streaming the app logs once deployment is complete.
