@@ -551,7 +551,7 @@ class _Function(_Object, type_prefix="fu"):
                 api_pb2.VolumeMount(
                     mount_path=path,
                     volume_id=volume.object_id,
-                    allow_background_commits=allow_background_volume_commits,
+                    allow_background_commits=bool(allow_background_volume_commits),
                 )
                 for path, volume in validated_volumes
             ]
