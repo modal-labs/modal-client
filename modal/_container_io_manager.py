@@ -392,7 +392,6 @@ class _ContainerIOManager:
         # - or, when the output for the fetched input is sent, release the semaphore.
         self._input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
-
         try:
             async for input_id, function_call_id, input_pb in self._generate_inputs():
                 args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
@@ -486,7 +485,10 @@ class _ContainerIOManager:
         """Handle an exception while processing a function input."""
         try:
             yield
-        except KeyboardInterrupt:
+        except KeyboardInterrupt:  # , GeneratorExit):
+            # We need to explicitly reraise these BaseExceptions to not handle them in the catch-all:
+            # 1. KeyboardInterrupt can end up here even though this runs on non-main thread, since the code block yielded to could be sending back a main thread exception
+            # 2. GeneratorExit - raised if this (async) generator is garbage collected while waiting for the yield. Typically on event loop shutdown
             raise
         except (InputCancellation, asyncio.CancelledError):
             # just skip creating any output for this input and keep going with the next instead

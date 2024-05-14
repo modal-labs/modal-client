@@ -1203,14 +1203,16 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
             servicer,
             "test.supports.functions",
             function_name,
-            inputs=[((20,), {})],
+            inputs=[((20,), {})] * 3,  # more inputs than needed - avoid killswitch
             allow_concurrent_inputs=2,
+            print=True,
         )
+        input_lock.wait()
         input_lock.wait()
 
     time.sleep(0.05)  # let the container get and start processing the input
     servicer.container_heartbeat_return_now(
-        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000"]))
+        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000", "in-001"]))
     )
     # container should exit soon!
     exit_code = container_process.wait(5)
@@ -1307,6 +1309,41 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
     assert loop_iteration_failures > 5
     assert "error=Exception('oops')" in caplog.text
     assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_sigint_termination_input_concurrent(servicer):
+    # Sync and async container lifecycle methods on a sync function.
+    with servicer.input_lockstep() as input_barrier:
+        container_process = _run_container_process(
+            servicer,
+            "test.supports.functions",
+            "LifecycleCls.delay",
+            inputs=[((10,), {})] * 3,
+            cls_params=((), {"print_at_exit": True}),
+            allow_concurrent_inputs=2,
+            # print=True,
+            # env={"MODAL_LOGLEVEL": "DEBUG"}
+        )
+        input_barrier.wait()  # get one input
+        input_barrier.wait()  # get one input
+        time.sleep(0.5)
+        # container won't be able to fetch next input
+        signal_time = time.monotonic()
+        os.kill(container_process.pid, signal.SIGINT)
+
+    stdout, stderr = container_process.communicate(timeout=5)
+    stop_duration = time.monotonic() - signal_time
+    assert len(servicer.container_outputs) == 0
+    assert (
+        container_process.returncode == 0
+    )  # container should catch and indicate successful termination by exiting cleanly when possible
+    assert "[events:enter_sync,enter_async,delay,delay,exit_sync,exit_async]" in stdout.decode()
+    assert "Traceback" not in stderr.decode()
+    assert "Traceback" not in stdout.decode()
+    assert stop_duration < 2.0  # if this would be ~4.5s, then the input isn't getting terminated
+    assert servicer.task_result is None
 
 
 @skip_github_non_linux
