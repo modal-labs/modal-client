@@ -1088,6 +1088,7 @@ class _Function(_Object, type_prefix="fu"):
         resp = await retry_transient_errors(
             self._client.stub.FunctionGetCurrentStats,
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
+            total_timeout=10.0,
         )
         return FunctionStats(
             backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks

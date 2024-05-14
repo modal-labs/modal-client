@@ -111,7 +111,7 @@ class _Dict(_Object, type_prefix="di"):
             environment_name=_get_environment_name(environment_name),
             data=serialized,
         )
-        response = await retry_transient_errors(client.stub.DictGetOrCreate, request)
+        response = await retry_transient_errors(client.stub.DictGetOrCreate, request, total_timeout=10.0)
         async with TaskContext() as tc:
             request = api_pb2.DictHeartbeatRequest(dict_id=response.dict_id)
             tc.infinite_loop(lambda: client.stub.DictHeartbeat(request), sleep=_heartbeat_sleep)
