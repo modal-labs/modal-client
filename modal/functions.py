@@ -1085,8 +1085,9 @@ class _Function(_Object, type_prefix="fu"):
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
         assert self._client.stub
-        resp = await self._client.stub.FunctionGetCurrentStats(
-            api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id)
+        resp = await retry_transient_errors(
+            self._client.stub.FunctionGetCurrentStats,
+            api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
         )
         return FunctionStats(
             backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
