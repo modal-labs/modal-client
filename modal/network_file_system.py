@@ -198,8 +198,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         cloud: Optional[str] = None,
     ):
         """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.from_name("my-volume", create_if_missing=True)` instead."""
-        deprecation_warning((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
-        return self.persisted(label, namespace, environment_name, cloud)
+        deprecation_error((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
 
     @staticmethod
     async def lookup(
