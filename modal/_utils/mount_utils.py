@@ -39,7 +39,7 @@ def validate_volumes(
     volumes: Mapping[Union[str, PurePosixPath], Union["_Volume", "_CloudBucketMount"]],
 ) -> Sequence[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_CloudBucketMount"]]]:
     if not isinstance(volumes, dict):
-        raise InvalidError("volumes must be a dict[str, Volume] where the keys are mount paths")
+        raise InvalidError("volumes must be a dict where the keys are mount paths")
 
     validated_volumes = validate_mount_points("Volume", volumes)
     # We don't support mounting a modal.Volume in more than one location,
