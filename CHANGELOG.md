@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.166 (2024-05-14)
+
+* Disabling background commits on `modal.Volume` volumes is now deprecated. Background commits will soon become mandatory behavior.
+
+
+
 ### 0.62.165 (2024-05-13)
 
 - Deprecated `wait_for_response=False` on web endpoints. See [the docs](https://modal.com/docs/guide/webhook-timeouts#polling-solutions) for alternatives.
