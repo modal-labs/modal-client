@@ -521,7 +521,7 @@ class _App:
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
-        _allow_background_volume_commits: bool = False,  # Experimental flag
+        _allow_background_volume_commits: Optional[bool] = None,
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
         _experimental_scheduler_placement: Optional[
@@ -663,7 +663,7 @@ class _App:
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
-        _allow_background_volume_commits: bool = False,
+        _allow_background_volume_commits: Optional[bool] = None,
         max_inputs: Optional[
             int
         ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
@@ -753,8 +753,8 @@ class _App:
         block_network: bool = False,  # Whether to block network access
         volumes: Dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
-        ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
-        _allow_background_volume_commits: bool = False,
+        ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
+        _allow_background_volume_commits: Optional[bool] = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
         _experimental_scheduler_placement: Optional[
