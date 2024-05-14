@@ -1203,9 +1203,8 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
             servicer,
             "test.supports.functions",
             function_name,
-            inputs=[((20,), {})] * 3,  # more inputs than needed - avoid killswitch
+            inputs=[((20,), {})] * 2,  # two inputs
             allow_concurrent_inputs=2,
-            print=True,
         )
         input_lock.wait()
         input_lock.wait()
@@ -1216,6 +1215,10 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     )
     # container should exit soon!
     exit_code = container_process.wait(5)
+    assert (
+        len(servicer.container_outputs) == 0
+    )  # should not fail the outputs, as they would have been cancelled in backend already
+    assert "Traceback" not in container_process.stderr.read().decode("utf8")
     assert exit_code == 0  # container should exit gracefully
 
 
@@ -1323,8 +1326,6 @@ def test_sigint_termination_input_concurrent(servicer):
             inputs=[((10,), {})] * 3,
             cls_params=((), {"print_at_exit": True}),
             allow_concurrent_inputs=2,
-            # print=True,
-            # env={"MODAL_LOGLEVEL": "DEBUG"}
         )
         input_barrier.wait()  # get one input
         input_barrier.wait()  # get one input
