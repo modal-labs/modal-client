@@ -277,7 +277,7 @@ class _Cls(_Object, type_prefix="cs"):
         concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
-        allow_background_volume_commits: bool = False,
+        allow_background_volume_commits: Optional[bool] = None,
     ) -> "_Cls":
         """
         Beta: Allows for the runtime modification of a modal.Cls's configuration.
