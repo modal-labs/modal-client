@@ -63,7 +63,7 @@ def wait_for_port(data: Tuple[str, str], q: Queue):
     mounts=mounts,
     volumes=volumes,
     concurrency_limit=1 if volume else None,
-    _allow_background_volume_commits=True if volume else False,
+    _allow_background_volume_commits=True,
 )
 def run_vscode(q: Queue):
     os.chdir("/home/coder")

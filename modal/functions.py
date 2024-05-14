@@ -309,7 +309,7 @@ class _Function(_Object, type_prefix="fu"):
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
         checkpointing_enabled: Optional[bool] = None,
-        allow_background_volume_commits: bool = False,
+        allow_background_volume_commits: Optional[bool] = None,
         block_network: bool = False,
         max_inputs: Optional[int] = None,
     ) -> None:
@@ -337,6 +337,13 @@ class _Function(_Object, type_prefix="fu"):
                 "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
             )
             enable_memory_snapshot = checkpointing_enabled
+
+        if allow_background_volume_commits is False:
+            deprecation_warning(
+                (2024, 5, 13),
+                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+            )
+            # TODO(Jonathon): make `True` when `None` to make background commits default, before later removing flag.
 
         explicit_mounts = mounts
 
@@ -544,7 +551,7 @@ class _Function(_Object, type_prefix="fu"):
                 api_pb2.VolumeMount(
                     mount_path=path,
                     volume_id=volume.object_id,
-                    allow_background_commits=allow_background_volume_commits,
+                    allow_background_commits=bool(allow_background_volume_commits),
                 )
                 for path, volume in validated_volumes
             ]
