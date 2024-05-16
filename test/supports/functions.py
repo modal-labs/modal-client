@@ -187,6 +187,7 @@ class Cls:
         from fastapi import FastAPI
 
         k_at_construction = self._k  # expected to be 111
+        hydrated_at_contruction = square.is_hydrated
         web_app = FastAPI()
 
         @web_app.get("/")
@@ -195,7 +196,7 @@ class Cls:
                 "at_construction": k_at_construction,
                 "at_runtime": self._k,
                 "arg": arg,
-                "other_hydrated": square.is_hydrated,
+                "other_hydrated": hydrated_at_contruction,
             }
 
         return web_app
