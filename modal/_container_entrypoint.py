@@ -510,7 +510,6 @@ def finalize_function(
         startup_timeout = imp_fun.webhook_config.web_server_startup_timeout
         wait_for_web_server(host, port, timeout=startup_timeout)
         callable = asgi_app_wrapper(web_server_proxy(host, port), container_io_manager)
-
     else:
         raise InvalidError(f"Unrecognized web endpoint type {imp_fun.webhook_config.type}")
 
@@ -597,7 +596,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             post_snapshot_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
 
-        finalized_function = finalize_function(imp_fun, container_io_manager)
+        with container_io_manager.handle_user_exception():
+            finalized_function = finalize_function(imp_fun, container_io_manager)
 
         # Execute the function.
         try:

@@ -436,6 +436,27 @@ def test_webhook(unix_servicer):
 
 
 @skip_github_non_linux
+def test_webhook_setup_failure(unix_servicer):
+    inputs = _get_web_inputs()
+    _put_web_body(unix_servicer, b"")
+    with unix_servicer.intercept() as ctx:
+        ret = _run_container(
+            unix_servicer,
+            "test.supports.functions",
+            "error_in_asgi_setup",
+            inputs=inputs,
+            webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+        )
+
+    task_result_request: api_pb2.TaskResultRequest
+    (task_result_request,) = ctx.get_requests("TaskResult")
+    assert task_result_request.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "Error while setting up asgi app" in ret.task_result.exception
+    assert ret.items == []
+    # TODO: We should send some kind of 500 error back to modal-http here when the container can't start up
+
+
+@skip_github_non_linux
 def test_serialized_function(unix_servicer):
     def triple(x):
         return 3 * x

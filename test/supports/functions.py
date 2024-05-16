@@ -152,6 +152,12 @@ def fastapi_app():
 
 
 @app.function()
+@asgi_app()
+def error_in_asgi_setup():
+    raise Exception("Error while setting up asgi app")
+
+
+@app.function()
 @wsgi_app()
 def basic_wsgi_app():
     def simple_app(environ, start_response):
