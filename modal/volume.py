@@ -164,7 +164,7 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
-        version: Optional[api_pb2.VolumeVersion.ValueType] = None,
+        version: "Optional[api_pb2.VolumeVersion.ValueType]" = None,
     ) -> "_Volume":
         """Create a reference to a persisted volume. Optionally create it lazily.
 
@@ -204,7 +204,7 @@ class _Volume(_Object, type_prefix="vo"):
         cls: Type["_Volume"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        version: Optional[api_pb2.VolumeVersion.ValueType] = None,
+        version: "Optional[api_pb2.VolumeVersion.ValueType]" = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Volume"]:
         """Creates a new ephemeral volume within a context manager:
@@ -249,7 +249,7 @@ class _Volume(_Object, type_prefix="vo"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
-        version: Optional[api_pb2.VolumeVersion.ValueType] = None,
+        version: "Optional[api_pb2.VolumeVersion.ValueType]" = None,
     ) -> "_Volume":
         """Lookup a volume with a given name
 
@@ -277,7 +277,7 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        version: Optional[api_pb2.VolumeVersion.ValueType] = None,
+        version: "Optional[api_pb2.VolumeVersion.ValueType]" = None,
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "Volume", warn=True)
