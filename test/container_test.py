@@ -619,6 +619,9 @@ def test_cls_web_endpoint(unix_servicer):
 
 @skip_github_non_linux
 def test_cls_web_asgi_construction(unix_servicer):
+    unix_servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
+    unix_servicer.app_functions["fu-2"] = api_pb2.FunctionHandleMetadata()
+
     inputs = _get_web_inputs()
     ret = _run_container(
         unix_servicer,
