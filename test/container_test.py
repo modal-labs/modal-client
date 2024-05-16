@@ -618,6 +618,27 @@ def test_cls_web_endpoint(unix_servicer):
 
 
 @skip_github_non_linux
+def test_cls_web_asgi_construction(unix_servicer):
+    inputs = _get_web_inputs()
+    ret = _run_container(
+        unix_servicer,
+        "test.supports.functions",
+        "Cls.asgi_web",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+
+    _, second_message = _unwrap_asgi(ret)
+    return_dict = json.loads(second_message["body"])
+    assert return_dict == {
+        "arg": "space",
+        "at_construction": 111,  # @enter should have run when the asgi app constructor is called
+        "at_runtime": 111,
+        "other_hydrated": True,
+    }
+
+
+@skip_github_non_linux
 def test_serialized_cls(unix_servicer):
     class Cls:
         @enter()

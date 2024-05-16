@@ -182,6 +182,24 @@ class Cls:
     def web(self, arg):
         return {"ret": arg * self._k}
 
+    @asgi_app()
+    def asgi_web(self):
+        from fastapi import FastAPI
+
+        k_at_construction = self._k  # expected to be 111
+        web_app = FastAPI()
+
+        @web_app.get("/")
+        def k(arg: str):
+            return {
+                "at_construction": k_at_construction,
+                "at_runtime": self._k,
+                "arg": arg,
+                "other_hydrated": square.is_hydrated,
+            }
+
+        return web_app
+
     def _generator(self, x):
         yield x**3
 
