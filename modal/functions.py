@@ -252,6 +252,7 @@ class _FunctionSpec:
     cloud: Optional[str]
     cpu: Optional[float]
     memory: Optional[Union[int, Tuple[int, int]]]
+    scheduler_placement: Optional[SchedulerPlacement]
 
 
 class _Function(_Object, type_prefix="fu"):
@@ -436,12 +437,12 @@ class _Function(_Object, type_prefix="fu"):
         cloud: Optional[str] = None,
         _experimental_boost: bool = False,
         _experimental_scheduler: bool = False,
-        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
+        scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
         checkpointing_enabled: Optional[bool] = None,
-        allow_background_volume_commits: bool = False,
+        allow_background_volume_commits: Optional[bool] = None,
         block_network: bool = False,
         max_inputs: Optional[int] = None,
     ) -> None:
@@ -474,6 +475,13 @@ class _Function(_Object, type_prefix="fu"):
                 "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
             )
             enable_memory_snapshot = checkpointing_enabled
+
+        if allow_background_volume_commits is False:
+            deprecation_warning(
+                (2024, 5, 13),
+                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+            )
+            # TODO(Jonathon): make `True` when `None` to make background commits default, before later removing flag.
 
         explicit_mounts = mounts
 
@@ -514,6 +522,7 @@ class _Function(_Object, type_prefix="fu"):
             cloud=cloud,
             cpu=cpu,
             memory=memory,
+            scheduler_placement=scheduler_placement,
         )
 
         if info.cls and not is_auto_snapshot:
@@ -537,7 +546,7 @@ class _Function(_Object, type_prefix="fu"):
                     cpu=cpu,
                     is_builder_function=True,
                     is_auto_snapshot=True,
-                    _experimental_scheduler_placement=_experimental_scheduler_placement,
+                    scheduler_placement=scheduler_placement,
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
@@ -681,7 +690,7 @@ class _Function(_Object, type_prefix="fu"):
                 api_pb2.VolumeMount(
                     mount_path=path,
                     volume_id=volume.object_id,
-                    allow_background_commits=allow_background_volume_commits,
+                    allow_background_commits=bool(allow_background_volume_commits),
                 )
                 for path, volume in validated_volumes
             ]
@@ -735,9 +744,7 @@ class _Function(_Object, type_prefix="fu"):
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 _experimental_boost=_experimental_boost,
                 _experimental_scheduler=_experimental_scheduler,
-                _experimental_scheduler_placement=_experimental_scheduler_placement.proto
-                if _experimental_scheduler_placement
-                else None,
+                scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -1228,8 +1235,10 @@ class _Function(_Object, type_prefix="fu"):
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
         assert self._client.stub
-        resp = await self._client.stub.FunctionGetCurrentStats(
-            api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id)
+        resp = await retry_transient_errors(
+            self._client.stub.FunctionGetCurrentStats,
+            api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
+            total_timeout=10.0,
         )
         return FunctionStats(
             backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks

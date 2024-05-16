@@ -325,6 +325,15 @@ message AppListResponse {
   repeated AppStats apps = 1;
 }
 
+message AppLookupRequest {
+  string app_name = 2;
+  string environment_name = 3;
+}
+
+message AppLookupResponse {
+  string app_id = 1;
+}
+
 message AppLookupObjectRequest {
   DeploymentNamespace namespace = 2;
   string app_name = 3;
@@ -918,19 +927,22 @@ message Function {
   // If set, tasks will be scheduled using the new scheduler, which also knows
   // to look at fine-grained placement constraints.
   bool _experimental_scheduler = 49;
-  optional SchedulerPlacement _experimental_scheduler_placement = 50;
+  optional SchedulerPlacement scheduler_placement = 50;
+  optional SchedulerPlacement _experimental_scheduler_placement = 52;
 
-  bool is_class = 52;  // True this "Function" is actually grouping multiple methods
-  string use_function_id= 53;  // for "class functions" - use this function id instead for invocations - the referenced function should have is_class=True
-  string use_method_name = 54;  // for "class functions" - this method name needs to be included in the FunctionInput
+  bool is_class = 53;  // True this "Function" is actually grouping multiple methods
+  string use_function_id= 54;  // for "class functions" - use this function id instead for invocations - the referenced function should have is_class=True
+  string use_method_name = 55;  // for "class functions" - this method name needs to be included in the FunctionInput
 }
 
 message SchedulerPlacement {
   // TODO(irfansharif):
   // - Fold in cloud, resource needs here too.
-  // - Allow specifying list of regions, zones, cloud, fallback and alternative
+  // - Allow specifying list of zones, cloud, fallback and alternative
   //   GPU types.
-  optional string _region = 1;
+  optional string _region = 1 [deprecated=true];
+
+  repeated string regions = 4;
   optional string _zone = 2;
   optional string _lifecycle = 3; // "on-demand" or "spot", else ignored
 }
@@ -1029,7 +1041,7 @@ message FunctionGetResponse {
   FunctionHandleMetadata handle_metadata = 2;
 }
 
- 
+
 message FunctionUpdateSchedulingParamsRequest {
   string function_id = 1;
   uint32 warm_pool_size_override = 2;
@@ -1308,6 +1320,8 @@ message ImageGetOrCreateRequest {
   bool force_build = 7;
   DeploymentNamespace namespace = 8;
   string builder_version = 9;
+  // Only admins can publish global images, but this provides an extra failsafe
+  bool allow_global_deployment = 10;
 }
 
 message ImageGetOrCreateResponse {
@@ -1593,7 +1607,7 @@ message Sandbox {
   // If set, tasks will be scheduled using the new scheduler, which also knows
   // to look at fine-grained placement constraints.
   bool _experimental_scheduler = 16;
-  optional SchedulerPlacement _experimental_scheduler_placement = 17;
+  optional SchedulerPlacement scheduler_placement = 17;
 }
 
 message SandboxCreateRequest {
@@ -2087,6 +2101,7 @@ service ModalClient {
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
   rpc AppList(AppListRequest) returns (AppListResponse);
+  rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
   rpc AppDeploySingleObject(AppDeploySingleObjectRequest) returns (AppDeploySingleObjectResponse);

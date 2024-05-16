@@ -242,12 +242,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         workdir: Optional[str] = None,
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[int, Tuple[int, int]]] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
-        allow_background_volume_commits: bool = False,
+        allow_background_volume_commits: Optional[bool] = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
         _experimental_scheduler: bool = False,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
@@ -260,6 +261,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         if not isinstance(network_file_systems, dict):
             raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
         validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+
+        scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
+        if region:
+            if scheduler_placement:
+                raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
+            scheduler_placement = SchedulerPlacement(region=region)
 
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
@@ -304,9 +311,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 volume_mounts=volume_mounts,
                 pty_info=pty_info,
                 _experimental_scheduler=_experimental_scheduler,
-                _experimental_scheduler_placement=_experimental_scheduler_placement.proto
-                if _experimental_scheduler_placement
-                else None,
+                scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)

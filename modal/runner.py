@@ -470,7 +470,7 @@ async def _deploy_app(
     return DeployResult(app_id=running_app.app_id)
 
 
-async def _interactive_shell(_app: _App, cmd: List[str], environment_name: str = "", **kwargs):
+async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str = "", **kwargs):
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -499,7 +499,7 @@ async def _interactive_shell(_app: _App, cmd: List[str], environment_name: str =
         loading_status = console.status("Starting container...")
         loading_status.start()
 
-        sandbox_cmds = cmd if len(cmd) > 0 else ["/bin/bash"]
+        sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
         sb = await _app.spawn_sandbox(*sandbox_cmds, pty_info=get_pty_info(shell=True), **kwargs)
         for _ in range(40):
             await asyncio.sleep(0.5)
@@ -516,12 +516,12 @@ async def _interactive_shell(_app: _App, cmd: List[str], environment_name: str =
 
 
 def _run_stub(*args, **kwargs):
-    deprecation_warning((2024, 5, 1), "`run_stub` is deprecated. Please use `run_app` instead.", pending=True)
+    deprecation_warning((2024, 5, 1), "`run_stub` is deprecated. Please use `run_app` instead.")
     return _run_app(*args, **kwargs)
 
 
 def _deploy_stub(*args, **kwargs):
-    deprecation_warning((2024, 5, 1), "`deploy_stub` is deprecated. Please use `deploy_app` instead.", pending=True)
+    deprecation_warning((2024, 5, 1), "`deploy_stub` is deprecated. Please use `deploy_app` instead.")
     return _deploy_app(*args, **kwargs)
 
 

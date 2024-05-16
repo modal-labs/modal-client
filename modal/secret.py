@@ -223,6 +223,7 @@ class _Secret(_Object, type_prefix="st"):
         overwrite: bool = False,
     ) -> str:
         """mdmd:hidden"""
+        check_object_name(deployment_name, "Secret", warn=True)
         if client is None:
             client = await _Client.from_env()
         if overwrite:

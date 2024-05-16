@@ -323,7 +323,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.recv_message()
         apps = []
         for app_name, app_id in self.deployed_apps.items():
-            apps.append(api_pb2.AppStats(name=app_name, description=app_name, app_id=app_id))
+            apps.append(
+                api_pb2.AppStats(
+                    name=app_name,
+                    description=app_name,
+                    app_id=app_id,
+                    state=api_pb2.APP_STATE_DEPLOYED,
+                )
+            )
         await stream.send_message(api_pb2.AppListResponse(apps=apps))
 
     ### Checkpoint
@@ -571,7 +578,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.put_outputs_barrier = threading.Barrier(1)
 
     async def FunctionGetInputs(self, stream):
-        self.get_inputs_barrier.wait()
+        await asyncio.get_running_loop().run_in_executor(None, self.get_inputs_barrier.wait)
         request: api_pb2.FunctionGetInputsRequest = await stream.recv_message()
         assert request.function_id
         if self.fail_get_inputs:
@@ -581,13 +588,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.rate_limit_sleep_duration = None
             await stream.send_message(api_pb2.FunctionGetInputsResponse(rate_limit_sleep_duration=s))
         elif not self.container_inputs:
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(10.0)
             await stream.send_message(api_pb2.FunctionGetInputsResponse(inputs=[]))
         else:
             await stream.send_message(self.container_inputs.pop(0))
 
     async def FunctionPutOutputs(self, stream):
-        self.put_outputs_barrier.wait()
+        await asyncio.get_running_loop().run_in_executor(None, self.put_outputs_barrier.wait)
         request: api_pb2.FunctionPutOutputsRequest = await stream.recv_message()
         self.container_outputs.append(request)
         await stream.send_message(Empty())

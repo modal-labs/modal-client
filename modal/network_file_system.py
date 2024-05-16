@@ -18,7 +18,7 @@ from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
-from .exception import deprecation_warning
+from .exception import deprecation_error, deprecation_warning
 from .object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -105,7 +105,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 return
 
             if cloud:
-                deprecation_warning((2024, 1, 17), "Argument `cloud` is deprecated (has no effect).")
+                deprecation_error((2024, 1, 17), "Argument `cloud` is deprecated (has no effect).")
 
             status_row.message("Creating network file system...")
             req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id)
@@ -198,8 +198,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         cloud: Optional[str] = None,
     ):
         """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.from_name("my-volume", create_if_missing=True)` instead."""
-        deprecation_warning((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
-        return self.persisted(label, namespace, environment_name, cloud)
+        deprecation_error((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
 
     @staticmethod
     async def lookup(
@@ -233,6 +232,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
     ) -> str:
         """mdmd:hidden"""
+        check_object_name(deployment_name, "NetworkFileSystem", warn=True)
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(

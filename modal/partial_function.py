@@ -229,6 +229,11 @@ def _web_endpoint(
                 "@app.function()\n@app.web_endpoint()\ndef my_webhook():\n    ..."
             )
         if not wait_for_response:
+            deprecation_warning(
+                (2024, 5, 13),
+                "wait_for_response=False has been deprecated on web endpoints. See "
+                + "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
+            )
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
@@ -287,6 +292,11 @@ def _asgi_app(
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if not wait_for_response:
+            deprecation_warning(
+                (2024, 5, 13),
+                "wait_for_response=False has been deprecated on web endpoints. See "
+                + "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
+            )
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
@@ -341,6 +351,11 @@ def _wsgi_app(
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if not wait_for_response:
+            deprecation_warning(
+                (2024, 5, 13),
+                "wait_for_response=False has been deprecated on web endpoints. See "
+                + "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
+            )
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
         else:
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default

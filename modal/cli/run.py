@@ -3,6 +3,7 @@ import asyncio
 import functools
 import inspect
 import re
+import shlex
 import sys
 import time
 from functools import partial
@@ -22,7 +23,7 @@ from ..image import Image
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from .import_refs import import_app, import_function
-from .utils import ENV_OPTION, ENV_OPTION_HELP
+from .utils import ENV_OPTION, ENV_OPTION_HELP, stream_app_logs
 
 
 class ParameterMetadata(TypedDict):
@@ -270,6 +271,7 @@ def deploy(
         False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
     ),
     skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
+    stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -287,7 +289,10 @@ def deploy(
         ):
             return
 
-    deploy_app(app, name=name, environment_name=env, public=public)
+    res = deploy_app(app, name=name, environment_name=env, public=public)
+
+    if stream_logs:
+        stream_app_logs(res.app_id)
 
 
 def serve(
@@ -344,7 +349,11 @@ def shell(
     ),
     cloud: Optional[str] = typer.Option(
         default=None,
-        help="Cloud provider to run the function on. Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF).",
+        help="Cloud provider to run the shell on. Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF).",
+    ),
+    region: Optional[str] = typer.Option(
+        default=None,
+        help="Region(s) to run the shell on. Can be a single region or a comma-separated list to choose from (if not using FUNC_REF).",
     ),
 ):
     """Run an interactive shell inside a Modal image.
@@ -392,10 +401,21 @@ def shell(
             cpu=function_spec.cpu,
             memory=function_spec.memory,
             volumes=function_spec.volumes,
+            region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
             _allow_background_volume_commits=True,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
-        start_shell = partial(interactive_shell, image=modal_image, cpu=cpu, memory=memory, gpu=gpu, cloud=cloud)
+        start_shell = partial(
+            interactive_shell,
+            image=modal_image,
+            cpu=cpu,
+            memory=memory,
+            gpu=gpu,
+            cloud=cloud,
+            region=region.split(",") if region else [],
+        )
 
-    start_shell(app, cmd=[cmd], environment_name=env, timeout=3600)
+    # NB: invoking under bash makes --cmd a lot more flexible.
+    cmds = shlex.split(f'/bin/bash -c "{cmd}"')
+    start_shell(app, cmds=cmds, environment_name=env, timeout=3600)

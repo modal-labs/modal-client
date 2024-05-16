@@ -10,6 +10,64 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.166 (2024-05-14)
+
+* Disabling background commits on `modal.Volume` volumes is now deprecated. Background commits will soon become mandatory behavior.
+
+
+
+### 0.62.165 (2024-05-13)
+
+- Deprecated `wait_for_response=False` on web endpoints. See [the docs](https://modal.com/docs/guide/webhook-timeouts#polling-solutions) for alternatives.
+
+
+
+### 0.62.159 (2024-05-10)
+
+Added a `--stream-logs` flag to `modal deploy` that if True, begins streaming the app logs once deployment is complete.
+
+
+
+### 0.62.156 (2024-05-09)
+
+- Added support for looking up a deployed App by its deployment name in `modal app logs`
+
+
+
+### 0.62.150 (2024-05-08)
+
+Added validation that App `name`, if provided, is a string.
+
+
+
+### 0.62.149 (2024-05-08)
+
+The @app.function decorator now raises an error when it is used to decorate a class.
+
+
+
+### 0.62.148 (2024-05-08)
+
+- The `modal app list` output has been improved in several ways:
+    - Persistent storage objects like Volumes or Dicts are no longer included (these objects receive an app ID internally, but this is an implementation detail and subject to future change). You can use the dedicated CLI for each object (e.g. `modal volume list`) instead.
+    - For Apps in a *stopped* state, the output is now limited to those stopped within the past 2 hours.
+    - The number of tasks running for each App is now shown.
+
+
+
+### 0.62.144 (2024-05-06)
+
+* Added deprecation warnings when using Python 3.8 locally or in a container. Python 3.8 is nearing EOL, and Modal will be dropping support for it soon.
+
+
+
+### 0.62.141 (2024-05-03)
+
+* Deprecated the `Image.conda` constructor and the `Image.conda_install` / `Image.conda_update_from_environment` methods. Conda-based images had a number of tricky issues and were generally slower and heavier than images based on `micromamba`, which offers a similar featureset and can install packages from the same repositories.
+* Added the `spec_file` parameter to allow `Image.micromamba_install` to install dependencies from a local file. Note that `micromamba` supports conda yaml syntax along with simple text files.
+
+
+
 ### 0.62.131 (2024-05-01)
 
 * Added a deprecation warning when object names are invalid. This applies to `Dict`, `NetworkFileSystem`, `Secret`, `Queue`, and `Volume` objects. Names must be shorter than 64 characters and may contain only alphanumeric characters, dashes, periods, and underscores. These rules were previously enforced, but the check had inadvertently been dropped in a recent refactor.  Please update the names of your objects and transfer any data to retain access, as invalid names will become an error in a future release.

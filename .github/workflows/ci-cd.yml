@@ -100,7 +100,7 @@ jobs:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         image-builder-version: ["2023.12", "2024.04"]
-        image-name: ["debian_slim", "conda", "micromamba"]
+        image-name: ["debian_slim", "micromamba"]
 
     steps:
       - uses: actions/checkout@v3
@@ -121,13 +121,13 @@ jobs:
       - name: Publish base images
         env:
           MODAL_IMAGE_BUILDER_VERSION: ${{ matrix.image-builder-version }}
+          MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT: "1"
         run: |
           python -m modal_global_objects.images.${{ matrix.image-name }} ${{ matrix.python-version }}
 
   publish-client:
     name: Publish client package
-    # Prevent it from going into an infinite loop.
-    if: github.actor != 'modal-pr-review-automation[bot]' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     needs: [client-test]
     runs-on: ubuntu-20.04
     concurrency: publish-client

@@ -29,7 +29,6 @@ try:
     from .schedule import Cron, Period
     from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
-    from .shared_volume import SharedVolume
     from .volume import Volume
 except Exception:
     print()
@@ -60,7 +59,6 @@ __all__ = [
     "Sandbox",
     "SchedulerPlacement",
     "Secret",
-    "SharedVolume",
     "Stub",
     "Tunnel",
     "Volume",
