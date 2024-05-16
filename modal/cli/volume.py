@@ -56,7 +56,7 @@ def humanize_filesize(value: int) -> str:
 def create(
     name: str,
     env: Optional[str] = ENV_OPTION,
-    version: Optional[int] = Option(default=None, help="Volume system version. (Experimental)"),
+    version: Optional[int] = Option(default=None, help="VolumeFS version. (Experimental)"),
 ):
     env_name = ensure_env(env)
     modal.Volume.create_deployed(name, environment_name=env, version=version)
