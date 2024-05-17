@@ -122,10 +122,6 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
                 bucket_type = api_pb2.CloudBucketMount.BucketType.R2
             elif parse_result.hostname.endswith("storage.googleapis.com"):
                 bucket_type = api_pb2.CloudBucketMount.BucketType.GCP
-                if not mount.read_only:
-                    raise ValueError(
-                        f"CloudBucketMount of '{mount.bucket_name}' is invalid. Writing to GCP buckets with modal.CloudBucketMount in currently unsupported."
-                    )
             else:
                 logger.warn(
                     "CloudBucketMount received unrecognized bucket endpoint URL. Assuming AWS S3 configuration as fallback."
