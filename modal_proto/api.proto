@@ -1913,16 +1913,24 @@ message TunnelStopResponse {
   bool exists = 1;
 }
 
+enum VolumeFsVersion {
+  UNSPECIFIED = 0;
+  V1 = 1;
+  V2 = 2;
+}
+
 message VolumeGetOrCreateRequest {
   string deployment_name = 1;
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+  VolumeFsVersion version = 6;
 }
 
 message VolumeGetOrCreateResponse {
   string volume_id = 1;
+  VolumeFsVersion version = 2;
 }
 
 message VolumeHeartbeatRequest {
@@ -1931,10 +1939,12 @@ message VolumeHeartbeatRequest {
 
 message VolumeCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  VolumeFsVersion version = 2;
 }
 
 message VolumeCreateResponse {
   string volume_id = 1;
+  VolumeFsVersion version = 2;
 }
 
 message VolumeCommitRequest {
