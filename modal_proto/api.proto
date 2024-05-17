@@ -1545,6 +1545,7 @@ message Resources {
   uint32 milli_cpu = 3; // milli CPU cores
   GPUConfig gpu_config = 4;
   uint32 memory_mb_max = 5; // MiB
+  uint32 ephemeral_disk_mb = 6;  // MiB
 }
 
 message S3Mount {
