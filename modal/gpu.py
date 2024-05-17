@@ -67,11 +67,18 @@ class A100(_GPUConfig):
         self,
         *,
         count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
-        memory: int = 0,  # Deprecated. Use `size` instead.
+        memory: Optional[int] = None,  # Deprecated. Use `size` instead.
         size: Union[str, None] = None,  # Select GiB configuration of GPU device: "40GB" or "80GB". Defaults to "40GB".
     ):
         allowed_memory_values = {40, 80}
         allowed_size_values = {"40GB", "80GB"}
+
+        if memory is not None:
+            deprecation_warning(
+                (2024, 5, 16),
+                "The `memory` parameter is deprecated. Use the `size` parameter instead.",
+            )
+
         if memory == 20:
             raise ValueError(
                 "A100 20GB is unsupported, consider `modal.A10G`, `modal.A100(memory_gb='40')`, or `modal.H100` instead"
