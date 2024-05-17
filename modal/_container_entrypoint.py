@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import base64
+import concurrent.futures
 import importlib
 import inspect
 import queue
@@ -47,11 +48,14 @@ from .running_app import RunningApp
 if TYPE_CHECKING:
     from types import ModuleType
 
+    import modal._container_io_manager
+
 
 @dataclass
 class ImportedFunction:
     obj: Any
-    fun: Callable
+    user_defined_callable: Callable[..., Any]
+    webhook_config: Optional[api_pb2.WebhookConfig]
     app: Optional[_App]
     is_async: bool
     is_generator: bool
@@ -59,6 +63,14 @@ class ImportedFunction:
     input_concurrency: int
     is_auto_snapshot: bool
     function: _Function
+
+
+@dataclass
+class FinalizedFunction:
+    callable: Callable[..., Any]
+    is_async: bool
+    is_generator: bool
+    data_format: int  # api_pb2.DataFormat
 
 
 class DaemonizedThreadPool:
@@ -171,19 +183,20 @@ class UserCodeEventLoop:
 
 def call_function(
     user_code_event_loop: UserCodeEventLoop,
-    container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
-    imp_fun: ImportedFunction,
+    container_io_manager: "modal._container_io_manager.ContainerIOManager",
+    finalized_function: FinalizedFunction,
+    input_concurrency: int,
 ):
     async def run_input_async(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
         started_at = time.time()
         reset_context = _set_current_context_ids(input_id, function_call_id)
         async with container_io_manager.handle_input_exception.aio(input_id, started_at):
             logger.debug(f"Starting input {input_id} (async)")
-            res = imp_fun.fun(*args, **kwargs)
+            res = finalized_function.callable(*args, **kwargs)
             logger.debug(f"Finished input {input_id} (async)")
 
             # TODO(erikbern): any exception below shouldn't be considered a user exception
-            if imp_fun.is_generator:
+            if finalized_function.is_generator:
                 if not inspect.isasyncgen(res):
                     raise InvalidError(f"Async generator function returned value of type {type(res)}")
 
@@ -192,7 +205,7 @@ def call_function(
                 generator_output_task = asyncio.create_task(
                     container_io_manager.generator_output_task.aio(
                         function_call_id,
-                        imp_fun.data_format,
+                        finalized_function.data_format,
                         generator_queue,
                     )
                 )
@@ -215,7 +228,7 @@ def call_function(
                         " You might need to use @app.function(..., is_generator=True)."
                     )
                 value = await res
-                await container_io_manager.push_output.aio(input_id, started_at, value, imp_fun.data_format)
+                await container_io_manager.push_output.aio(input_id, started_at, value, finalized_function.data_format)
         reset_context()
 
     def run_input_sync(input_id: str, function_call_id: str, args: Any, kwargs: Any) -> None:
@@ -223,21 +236,21 @@ def call_function(
         reset_context = _set_current_context_ids(input_id, function_call_id)
         with container_io_manager.handle_input_exception(input_id, started_at):
             logger.debug(f"Starting input {input_id} (sync)")
-            res = imp_fun.fun(*args, **kwargs)
+            res = finalized_function.callable(*args, **kwargs)
             logger.debug(f"Finished input {input_id} (sync)")
 
             # TODO(erikbern): any exception below shouldn't be considered a user exception
-            if imp_fun.is_generator:
+            if finalized_function.is_generator:
                 if not inspect.isgenerator(res):
                     raise InvalidError(f"Generator function returned value of type {type(res)}")
 
                 # Send up to this many outputs at a time.
                 generator_queue: asyncio.Queue[Any] = container_io_manager._queue_create(1024)
-                generator_output_task = container_io_manager.generator_output_task(
+                generator_output_task: concurrent.futures.Future = container_io_manager.generator_output_task(  # type: ignore
                     function_call_id,
-                    imp_fun.data_format,
+                    finalized_function.data_format,
                     generator_queue,
-                    _future=True,  # Synchronicity magic to return a future.
+                    _future=True,  # type: ignore  # Synchronicity magic to return a future.
                 )
 
                 item_count = 0
@@ -255,11 +268,11 @@ def call_function(
                         f"Sync (non-generator) function return value of type {type(res)}."
                         " You might need to use @app.function(..., is_generator=True)."
                     )
-                container_io_manager.push_output(input_id, started_at, res, imp_fun.data_format)
+                container_io_manager.push_output(input_id, started_at, res, finalized_function.data_format)
         reset_context()
 
-    if imp_fun.input_concurrency > 1:
-        with DaemonizedThreadPool(max_threads=imp_fun.input_concurrency) as thread_pool:
+    if input_concurrency > 1:
+        with DaemonizedThreadPool(max_threads=input_concurrency) as thread_pool:
 
             async def run_concurrent_inputs():
                 # all run_input coroutines will have completed by the time we leave the execution context
@@ -267,13 +280,13 @@ def call_function(
                 # for them to resolve gracefully:
                 async with TaskContext(0.01) as task_context:
                     async for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs.aio(
-                        imp_fun.input_concurrency
+                        input_concurrency
                     ):
                         # Note that run_inputs_outputs will not return until the concurrency semaphore has
                         # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
                         # This prevents leaving the task_context before outputs have been created
                         # TODO: refactor to make this a bit more easy to follow?
-                        if imp_fun.is_async:
+                        if finalized_function.is_async:
                             task_context.create_task(run_input_async(input_id, function_call_id, args, kwargs))
                         else:
                             # run sync input in thread
@@ -281,10 +294,8 @@ def call_function(
 
             user_code_event_loop.run(run_concurrent_inputs())
     else:
-        for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs(
-            imp_fun.input_concurrency
-        ):
-            if imp_fun.is_async:
+        for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs(input_concurrency):
+            if finalized_function.is_async:
                 user_code_event_loop.run(run_input_async(input_id, function_call_id, args, kwargs))
             else:
                 # Set up a custom signal handler for `SIGUSR1`, which gets translated to an InputCancellation
@@ -306,7 +317,6 @@ def import_function(
     ser_cls,
     ser_fun,
     ser_params: Optional[bytes],
-    container_io_manager,
     client: Client,
 ) -> ImportedFunction:
     """Imports a function dynamically, and locates the app.
@@ -333,14 +343,14 @@ def import_function(
     """
     module: Optional[ModuleType] = None
     cls: Optional[Type] = None
-    fun: Callable
+    user_defined_callable: Callable
     function: Optional[_Function] = None
     active_app: Optional[_App] = None
     pty_info: api_pb2.PTYInfo = function_def.pty_info
 
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
-        cls, fun = ser_cls, ser_fun
+        cls, user_defined_callable = ser_cls, ser_fun
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
@@ -356,10 +366,10 @@ def import_function(
             f = getattr(module, qual_name)
             if isinstance(f, Function):
                 function = synchronizer._translate_in(f)
-                fun = function.get_raw_f()
+                user_defined_callable = function.get_raw_f()
                 active_app = function._app
             else:
-                fun = f
+                user_defined_callable = f
         elif len(parts) == 2:
             # This is a method on a class
             cls_name, fun_name = parts
@@ -367,12 +377,12 @@ def import_function(
             if isinstance(cls, Cls):
                 # The cls decorator is in global scope
                 _cls = synchronizer._translate_in(cls)
-                fun = _cls._callables[fun_name]
+                user_defined_callable = _cls._callables[fun_name]
                 function = _cls._functions.get(fun_name)
                 active_app = _cls._app
             else:
                 # This is a raw class
-                fun = getattr(cls, fun_name)
+                user_defined_callable = getattr(cls, fun_name)
         else:
             raise InvalidError(f"Invalid function qualname {qual_name}")
 
@@ -395,7 +405,7 @@ def import_function(
         # there could also technically be zero found apps, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
-    is_async = get_is_async(fun)
+    is_async = get_is_async(user_defined_callable)
 
     # Use the function definition for whether this is a generator (overriden by webhooks)
     is_generator = function_def.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -421,49 +431,14 @@ def import_function(
         if isinstance(cls, Cls):
             obj = obj.get_obj()
         # Bind the function to the instance (using the descriptor protocol!)
-        fun = fun.__get__(obj)
+        user_defined_callable = user_defined_callable.__get__(obj)
     else:
         obj = None
 
-    if function_def.webhook_config.type:
-        is_async = True
-        is_generator = True
-        data_format = api_pb2.DATA_FORMAT_ASGI
-
-        if function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
-            # Function returns an asgi_app, which we can use as a callable.
-            fun = asgi_app_wrapper(fun(), container_io_manager)
-
-        elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
-            # Function returns an wsgi_app, which we can use as a callable.
-            fun = wsgi_app_wrapper(fun(), container_io_manager)
-
-        elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-            # Function is a webhook without an ASGI app. Create one for it.
-            fun = asgi_app_wrapper(
-                webhook_asgi_app(fun, function_def.webhook_config.method),
-                container_io_manager,
-            )
-
-        elif function_def.webhook_config.type == api_pb2.WEBHOOK_TYPE_WEB_SERVER:
-            # Function spawns an HTTP web server listening at a port.
-            fun()
-
-            # We intentionally try to connect to the external interface instead of the loopback
-            # interface here so users are forced to expose the server. This allows us to potentially
-            # change the implementation to use an external bridge in the future.
-            host = get_ip_address(b"eth0")
-            port = function_def.webhook_config.web_server_port
-            startup_timeout = function_def.webhook_config.web_server_startup_timeout
-            wait_for_web_server(host, port, timeout=startup_timeout)
-            fun = asgi_app_wrapper(web_server_proxy(host, port), container_io_manager)
-
-        else:
-            raise InvalidError(f"Unrecognized web endpoint type {function_def.webhook_config.type}")
-
     return ImportedFunction(
         obj,
-        fun,
+        user_defined_callable,
+        function_def.webhook_config,
         active_app,
         is_async,
         is_generator,
@@ -493,6 +468,60 @@ def call_lifecycle_functions(
                 event_loop.run(res)
 
 
+def finalize_function(
+    imp_fun: ImportedFunction, container_io_manager: "modal._container_io_manager.ContainerIOManager"
+) -> FinalizedFunction:
+    callable: Callable[..., Any]
+    # Construct
+    if not imp_fun.webhook_config.type:
+        # for non-webhooks, the runnable is straight forward:
+        return FinalizedFunction(
+            callable=imp_fun.user_defined_callable,
+            is_async=imp_fun.is_async,
+            is_generator=imp_fun.is_generator,
+            data_format=imp_fun.data_format,
+        )
+
+    # For webhooks, the user function is used to construct an asgi app:
+
+    if imp_fun.webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
+        # Function returns an asgi_app, which we can use as a callable.
+        callable = asgi_app_wrapper(imp_fun.user_defined_callable(), container_io_manager)
+
+    elif imp_fun.webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
+        # Function returns an wsgi_app, which we can use as a callable.
+        callable = wsgi_app_wrapper(imp_fun.user_defined_callable(), container_io_manager)
+
+    elif imp_fun.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+        # Function is a webhook without an ASGI app. Create one for it.
+        callable = asgi_app_wrapper(
+            webhook_asgi_app(imp_fun.user_defined_callable, imp_fun.webhook_config.method),
+            container_io_manager,
+        )
+
+    elif imp_fun.webhook_config.type == api_pb2.WEBHOOK_TYPE_WEB_SERVER:
+        # Function spawns an HTTP web server listening at a port.
+        imp_fun.user_defined_callable()
+
+        # We intentionally try to connect to the external interface instead of the loopback
+        # interface here so users are forced to expose the server. This allows us to potentially
+        # change the implementation to use an external bridge in the future.
+        host = get_ip_address(b"eth0")
+        port = imp_fun.webhook_config.web_server_port
+        startup_timeout = imp_fun.webhook_config.web_server_startup_timeout
+        wait_for_web_server(host, port, timeout=startup_timeout)
+        callable = asgi_app_wrapper(web_server_proxy(host, port), container_io_manager)
+    else:
+        raise InvalidError(f"Unrecognized web endpoint type {imp_fun.webhook_config.type}")
+
+    return FinalizedFunction(
+        callable=callable,
+        is_async=True,
+        is_generator=True,
+        data_format=api_pb2.DATA_FORMAT_ASGI,
+    )
+
+
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
@@ -512,7 +541,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 ser_cls,
                 ser_fun,
                 container_args.serialized_params,
-                container_io_manager,
                 client,
             )
 
@@ -569,9 +597,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             post_snapshot_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
 
+        with container_io_manager.handle_user_exception():
+            finalized_function = finalize_function(imp_fun, container_io_manager)
+
         # Execute the function.
         try:
-            call_function(event_loop, container_io_manager, imp_fun)
+            call_function(event_loop, container_io_manager, finalized_function, imp_fun.input_concurrency)
         finally:
             # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
             # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
