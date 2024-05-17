@@ -164,6 +164,7 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
+        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
         """Create a reference to a persisted volume. Optionally create it lazily.
 
@@ -190,6 +191,7 @@ class _Volume(_Object, type_prefix="vo"):
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+                version=version,
             )
             response = await resolver.client.stub.VolumeGetOrCreate(req)
             self._hydrate(response.volume_id, resolver.client, None)
@@ -202,6 +204,7 @@ class _Volume(_Object, type_prefix="vo"):
         cls: Type["_Volume"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
+        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Volume"]:
         """Creates a new ephemeral volume within a context manager:
@@ -220,6 +223,7 @@ class _Volume(_Object, type_prefix="vo"):
         request = api_pb2.VolumeGetOrCreateRequest(
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
             environment_name=_get_environment_name(environment_name),
+            version=version,
         )
         response = await client.stub.VolumeGetOrCreate(request)
         async with TaskContext() as tc:
@@ -245,6 +249,7 @@ class _Volume(_Object, type_prefix="vo"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
+        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
         """Lookup a volume with a given name
 
@@ -254,7 +259,11 @@ class _Volume(_Object, type_prefix="vo"):
         ```
         """
         obj = _Volume.from_name(
-            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+            label,
+            namespace=namespace,
+            environment_name=environment_name,
+            create_if_missing=create_if_missing,
+            version=version,
         )
         if client is None:
             client = await _Client.from_env()
@@ -268,6 +277,7 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
+        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "Volume", warn=True)
@@ -278,6 +288,7 @@ class _Volume(_Object, type_prefix="vo"):
             namespace=namespace,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+            version=version,
         )
         resp = await retry_transient_errors(client.stub.VolumeGetOrCreate, request)
         return resp.volume_id
