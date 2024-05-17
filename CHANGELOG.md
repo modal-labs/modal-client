@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.173 (2024-05-17)
+
+Add a volume version flag to allow opting in to a new volumefs implementation.
+
+
+
 ### 0.62.172 (2024-05-17)
 
 * Fix bug where other functions weren't callable from within an `asgi_app` or `wsgi_app` constructor function, and side effects of `@enter` methods weren't available in that scope.
