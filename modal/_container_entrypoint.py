@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import base64
+import concurrent.futures
 import importlib
 import inspect
 import queue
@@ -245,11 +246,11 @@ def call_function(
 
                 # Send up to this many outputs at a time.
                 generator_queue: asyncio.Queue[Any] = container_io_manager._queue_create(1024)
-                generator_output_task = container_io_manager.generator_output_task(
+                generator_output_task: concurrent.futures.Future = container_io_manager.generator_output_task(  # type: ignore
                     function_call_id,
                     finalized_function.data_format,
                     generator_queue,
-                    _future=True,  # Synchronicity magic to return a future.
+                    _future=True,  # type: ignore  # Synchronicity magic to return a future.
                 )
 
                 item_count = 0
