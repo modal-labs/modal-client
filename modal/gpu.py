@@ -76,7 +76,7 @@ class A100(_GPUConfig):
         if memory is not None:
             deprecation_warning(
                 (2024, 5, 16),
-                "The `memory` parameter is deprecated. Use the `size` parameter instead.",
+                "The `memory` parameter is deprecated. Use the `size='80GB'` parameter instead.",
             )
 
         if memory == 20:
