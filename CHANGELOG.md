@@ -16,15 +16,21 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 
 
+### 0.62.174 (2024-05-17)
+
+- Using `memory=` to specify the type of `modal.gpu.A100` is deprecated in favor of `size=`. Note that `size` accepts a string type (`"40GB"` or `"80GB"`) rather than an integer, as this is a request for a specific variant of the A100 GPU.
+
+
+
 ### 0.62.173 (2024-05-17)
 
-Add a volume version flag to allow opting in to a new volumefs implementation.
+- Added a `version` flag to the `modal.Volume` API and CLI, allow opting in to a new backend implementation.
 
 
 
 ### 0.62.172 (2024-05-17)
 
-* Fix bug where other functions weren't callable from within an `asgi_app` or `wsgi_app` constructor function, and side effects of `@enter` methods weren't available in that scope.
+* Fixed a bug where other functions weren't callable from within an `asgi_app` or `wsgi_app` constructor function and side effects of `@enter` methods weren't available in that scope.
 
 
 
@@ -40,9 +46,15 @@ Add a volume version flag to allow opting in to a new volumefs implementation.
 
 
 
+### 0.62.162 (2024-05-13)
+
+- A deprecation warning is now raised when using `modal.Stub`, which has been renamed to `modal.App`. Additionally, it is recommended to use `app` as the variable name rather than `stub`, which matters when using the automatic app discovery feature in the `modal run` CLI command.
+
+
+
 ### 0.62.159 (2024-05-10)
 
-Added a `--stream-logs` flag to `modal deploy` that if True, begins streaming the app logs once deployment is complete.
+- Added a `--stream-logs` flag to `modal deploy` that, if True, begins streaming the app logs once deployment is complete.
 
 
 
@@ -54,13 +66,13 @@ Added a `--stream-logs` flag to `modal deploy` that if True, begins streaming th
 
 ### 0.62.150 (2024-05-08)
 
-Added validation that App `name`, if provided, is a string.
+- Added validation that App `name`, if provided, is a string.
 
 
 
 ### 0.62.149 (2024-05-08)
 
-The @app.function decorator now raises an error when it is used to decorate a class.
+- The `@app.function` decorator now raises an error when it is used to decorate a class (this was always invalid, but previously produced confusing behavior).
 
 
 
@@ -70,6 +82,13 @@ The @app.function decorator now raises an error when it is used to decorate a cl
     - Persistent storage objects like Volumes or Dicts are no longer included (these objects receive an app ID internally, but this is an implementation detail and subject to future change). You can use the dedicated CLI for each object (e.g. `modal volume list`) instead.
     - For Apps in a *stopped* state, the output is now limited to those stopped within the past 2 hours.
     - The number of tasks running for each App is now shown.
+
+
+
+### 0.62.146 (2024-05-07)
+
+- Added the `region` parameter to the `modal.App.function`  and `modal.App.cls` decorators. This feature allows the selection of specific regions for function execution. Note that it is available only on some plan types. See our [blog post](https://modal.com/blog/region-selection-launch) for more details.
+
 
 
 
