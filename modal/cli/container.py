@@ -8,7 +8,7 @@ from rich.text import Text
 from modal._container_exec import container_exec
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli.utils import display_table, timestamp_to_local
+from modal.cli.utils import display_table, stream_app_logs, timestamp_to_local
 from modal.client import _Client
 from modal_proto import api_pb2
 
@@ -36,6 +36,12 @@ async def list(json: bool = False):
         )
 
     display_table(column_names, rows, json=json, title="Active Containers")
+
+
+@container_cli.command("logs")
+def logs(container_id: str = typer.Argument(help="Container ID")):
+    """Show logs for a specific container, streaming while active."""
+    stream_app_logs(task_id=container_id)
 
 
 @container_cli.command("exec")
