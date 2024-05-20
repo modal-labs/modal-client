@@ -639,6 +639,13 @@ message ContainerExecResponse {
   string exec_id = 1;
 }
 
+message ContainerStopRequest {
+  string task_id = 1;
+}
+
+message ContainerStopResponse {
+}
+
 message CustomDomainConfig {
   string name = 1;
 }
@@ -2114,6 +2121,7 @@ service ModalClient {
   rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
   rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputBatch);
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
+  rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 
   // Checkpointing
   rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);
