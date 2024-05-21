@@ -45,8 +45,11 @@ def lint_protos(ctx):
         proto_text = f.read()
 
     sections = ["import", "enum", "message", "service"]
-    matches = re.findall(rf"^((?:{'|'.join(sections)}) (?:\w+))", proto_text, flags=re.MULTILINE)
+    section_regex = "|".join(sections)
+    matches = re.findall(rf"^((?:{section_regex})\s+(?:\w+))", proto_text, flags=re.MULTILINE)
     entities = [tuple(e.split()) for e in matches]
+
+    console = Console()
 
     section_order = {key: i for i, key in enumerate(sections)}
     for (a_type, a_name), (b_type, b_name) in zip(entities[:-1], entities[1:]):
@@ -60,19 +63,22 @@ def lint_protos(ctx):
                 raise RuntimeError("This shouldn't happen")
             # This is a simplistic and sort of hacky of way of identifying the "out of order" entity,
             # as the latter one may be the one that is misplaced. Doesn't seem worth the effort though.
-            print(f"Proto lint error: {proto_fname}:{lineno}")
-            print(f"\nThe {a_name} {a_type} proto is out of order relative to the {b_name} {b_type}.")
-            print("\nProtos should be organized into the following sections:", *sections, sep="\n - ")
-            print("\nWithin sections, protos should be lexicographically sorted by name.")
+            console.print(f"[bold red]Proto lint error:[/bold red] {proto_fname}:{lineno}")
+            console.print(f"\nThe {a_name} {a_type} proto is out of order relative to the {b_name} {b_type}.")
+            console.print(
+                "\nProtos should be organized into the following sections:", *sections, sep="\n - ", style="dim"
+            )
+            console.print("\nWithin sections, protos should be lexicographically sorted by name.", style="dim")
             sys.exit(1)
 
     service_chunks = re.findall(r"service \w+ {(.+)}", proto_text, flags=re.DOTALL)
     for service_text in service_chunks:
-        rpcs = re.findall(r"^\s*rpc (\w+)", service_text, flags=re.MULTILINE)
+        rpcs = re.findall(r"^\s*rpc\s+(\w+)", service_text, flags=re.MULTILINE)
         for rpc_a, rpc_b in zip(rpcs[:-1], rpcs[1:]):
             if rpc_a > rpc_b:
-                print(f"Proto lint error: {proto_fname}")
-                print(f"\nThe {rpc_a} rpc proto is out of order relative to the {rpc_b} rpc.")
+                console.print(f"[bold red]Proto lint error:[/bold red] {proto_fname}")
+                console.print(f"\nThe {rpc_a} rpc proto is out of order relative to the {rpc_b} rpc.")
+                console.print("\nRPC definitions should be ordered within each service proto.", style="dim")
                 sys.exit(1)
 
 
