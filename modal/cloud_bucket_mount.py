@@ -100,6 +100,8 @@ class _CloudBucketMount:
     # Endpoint URL is used to support Cloudflare R2 and Google Cloud Platform GCS.
     bucket_endpoint_url: Optional[str] = None
 
+    key_prefix: Optional[str] = None
+
     # Credentials used to access a cloud bucket.
     # If the bucket is private, the secret **must** contain AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
     # If the bucket is publicly accessible, the secret is unnecessary and can be omitted.
@@ -133,6 +135,11 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
         if mount.requester_pays and not mount.secret:
             raise ValueError("Credentials required in order to use Requester Pays.")
 
+        if mount.key_prefix and not mount.key_prefix.endswith('/'):
+            raise ValueError("key_prefix will be prefixed to all object paths, so it must end in a '/'")
+        else:
+            key_prefix = mount.key_prefix
+
         cloud_bucket_mount = api_pb2.CloudBucketMount(
             bucket_name=mount.bucket_name,
             bucket_endpoint_url=mount.bucket_endpoint_url,
@@ -141,6 +148,7 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
             read_only=mount.read_only,
             bucket_type=bucket_type,
             requester_pays=mount.requester_pays,
+            key_prefix=key_prefix,
         )
         cloud_bucket_mounts.append(cloud_bucket_mount)
 
