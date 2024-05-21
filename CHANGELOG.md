@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.178 (2024-05-21)
+
+- Added a `modal container stop` CLI command that will kill an active container and reassign its current inputs.
+
+
+
 ### 0.62.175 (2024-05-17)
 
 * `modal.CloudBucketMount` now supports writing to Google Cloud Storage buckets.
