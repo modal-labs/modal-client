@@ -98,6 +98,7 @@ message CloudBucketMount {
   BucketType bucket_type = 5;
   bool requester_pays = 6;
   optional string bucket_endpoint_url = 7;
+  optional string key_prefix = 8;
 }
 
 enum CloudProvider {
