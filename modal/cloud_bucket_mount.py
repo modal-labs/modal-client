@@ -135,8 +135,12 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
         if mount.requester_pays and not mount.secret:
             raise ValueError("Credentials required in order to use Requester Pays.")
 
-        if not mount.key_prefix.endswith('/'):
+        if mount.key_prefix == "":
+            raise ValueError("key_prefix must not be empty. To mount the entire bucket, do not specify any prefix.")
+        elif mount.key_prefix and not mount.key_prefix.endswith('/'):
             raise ValueError("key_prefix will be prefixed to all object paths, so it must end in a '/'")
+        else:
+            key_prefix = mount.key_prefix
 
         cloud_bucket_mount = api_pb2.CloudBucketMount(
             bucket_name=mount.bucket_name,
@@ -146,7 +150,7 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
             read_only=mount.read_only,
             bucket_type=bucket_type,
             requester_pays=mount.requester_pays,
-            key_prefix=mount.key_prefix,
+            key_prefix=key_prefix,
         )
         cloud_bucket_mounts.append(cloud_bucket_mount)
 
