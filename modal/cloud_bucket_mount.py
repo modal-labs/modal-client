@@ -136,7 +136,7 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
             raise ValueError("Credentials required in order to use Requester Pays.")
 
         if not mount.key_prefix.endswith('/'):
-            raise ValueError("key_prefix must end in a '/'")
+            raise ValueError("key_prefix will be prefixed to all object paths, so it must end in a '/'")
 
         cloud_bucket_mount = api_pb2.CloudBucketMount(
             bucket_name=mount.bucket_name,
