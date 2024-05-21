@@ -87,7 +87,7 @@ def logs(
     name: Optional[str] = Option(None, "-n", "--name", help="Look up a deployed App by its name"),
     env: Optional[str] = ENV_OPTION,
 ):
-    """Show the logs from deployed, running, or stopped apps.
+    """Show App logs, streaming while active.
 
     **Examples:**
 

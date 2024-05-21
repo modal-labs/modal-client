@@ -250,7 +250,7 @@ async def _run_app(
 
         # Start logs loop
         if not shell:
-            logs_loop = tc.create_task(get_app_logs_loop(running_app.app_id, client, output_mgr))
+            logs_loop = tc.create_task(get_app_logs_loop(client, output_mgr, running_app.app_id))
 
         exc_info: Optional[BaseException] = None
         try:
