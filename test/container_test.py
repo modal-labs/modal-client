@@ -444,6 +444,27 @@ def test_webhook(unix_servicer):
 
 
 @skip_github_non_linux
+def test_webhook_setup_failure(unix_servicer):
+    inputs = _get_web_inputs()
+    _put_web_body(unix_servicer, b"")
+    with unix_servicer.intercept() as ctx:
+        ret = _run_container(
+            unix_servicer,
+            "test.supports.functions",
+            "error_in_asgi_setup",
+            inputs=inputs,
+            webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+        )
+
+    task_result_request: api_pb2.TaskResultRequest
+    (task_result_request,) = ctx.get_requests("TaskResult")
+    assert task_result_request.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "Error while setting up asgi app" in ret.task_result.exception
+    assert ret.items == []
+    # TODO: We should send some kind of 500 error back to modal-http here when the container can't start up
+
+
+@skip_github_non_linux
 def test_serialized_function(unix_servicer):
     def triple(x):
         return 3 * x
@@ -625,6 +646,30 @@ def test_cls_web_endpoint(unix_servicer):
 
     _, second_message = _unwrap_asgi(ret)
     assert json.loads(second_message["body"]) == {"ret": "space" * 111}
+
+
+@skip_github_non_linux
+def test_cls_web_asgi_construction(unix_servicer):
+    unix_servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
+    unix_servicer.app_functions["fu-2"] = api_pb2.FunctionHandleMetadata()
+
+    inputs = _get_web_inputs()
+    ret = _run_container(
+        unix_servicer,
+        "test.supports.functions",
+        "Cls.asgi_web",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+
+    _, second_message = _unwrap_asgi(ret)
+    return_dict = json.loads(second_message["body"])
+    assert return_dict == {
+        "arg": "space",
+        "at_construction": 111,  # @enter should have run when the asgi app constructor is called
+        "at_runtime": 111,
+        "other_hydrated": True,
+    }
 
 
 @skip_github_non_linux

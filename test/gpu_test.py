@@ -105,9 +105,6 @@ def test_cloud_provider_selection(client, servicer):
 @pytest.mark.parametrize(
     "memory_arg,gpu_type,memory_gb",
     [
-        (0, api_pb2.GPU_TYPE_A100, 40),
-        (40, api_pb2.GPU_TYPE_A100, 40),
-        (80, api_pb2.GPU_TYPE_A100_80GB, 80),
         ("40GB", api_pb2.GPU_TYPE_A100, 40),
         ("80GB", api_pb2.GPU_TYPE_A100_80GB, 80),
     ],
@@ -116,9 +113,7 @@ def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type, me
     import modal
 
     app = App()
-    if isinstance(memory_arg, int):
-        app.function(gpu=modal.gpu.A100(memory=memory_arg))(dummy)
-    elif isinstance(memory_arg, str):
+    if isinstance(memory_arg, str):
         app.function(gpu=modal.gpu.A100(size=memory_arg))(dummy)
     else:
         raise RuntimeError(f"Unexpected test parameterization arg type {type(memory_arg)}")
@@ -133,13 +128,16 @@ def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type, me
     assert func_def.resources.gpu_config.memory == memory_gb
 
 
-def test_a100_20gb_gpu_unsupported():
+def test_gpu_unsupported_config():
     import modal
 
     app = App()
 
-    with pytest.raises(ValueError, match="A100 20GB is unsupported, consider"):
-        app.function(gpu=modal.gpu.A100(memory=20))(dummy)
+    with pytest.raises(ValueError, match="size='20GB' is invalid"):
+        app.function(gpu=modal.gpu.A100(size="20GB"))(dummy)
+
+    with pytest.warns(match="size='80GB'"):
+        app.function(gpu=modal.gpu.A100(memory=80))(dummy)
 
 
 @pytest.mark.parametrize("count", [1, 2, 3, 4])

@@ -35,7 +35,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
                 await messages_from_app.put(
                     {
                         "type": "http.response.body",
-                        "body": b"Missing request, possibly due to cancellation or crash",
+                        "body": b"Missing request, possibly due to expiry or cancellation",
                     }
                 )
             elif scope["type"] == "websocket":
@@ -43,7 +43,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
                     {
                         "type": "websocket.close",
                         "code": 1011,
-                        "reason": "Missing request, possibly due to cancellation or crash",
+                        "reason": "Missing request, possibly due to expiry or cancellation",
                     }
                 )
             await disconnect_app()
