@@ -51,18 +51,19 @@ def lint_protos(ctx):
 
     console = Console()
 
+    def get_first_lineno_with_prefix(text: str, prefix: str) -> int:
+        lines = text.split("\n")
+        for lineno, line in enumerate(lines):
+            if re.match(rf"^{prefix}", line):
+                return lineno
+        raise RuntimeError(f"Failed to find line starting with `{prefix}` (this shouldn't happen)")
+
     section_order = {key: i for i, key in enumerate(sections)}
     for (a_type, a_name), (b_type, b_name) in zip(entities[:-1], entities[1:]):
         if (section_order[a_type] > section_order[b_type]) or (a_type == b_type and a_name > b_name):
-            lines = proto_text.split("\n")
-            for i, text in enumerate(lines):
-                if text.startswith(f"{a_type} {a_name}"):
-                    lineno = i
-                    break
-            else:
-                raise RuntimeError("This shouldn't happen")
             # This is a simplistic and sort of hacky of way of identifying the "out of order" entity,
             # as the latter one may be the one that is misplaced. Doesn't seem worth the effort though.
+            lineno = get_first_lineno_with_prefix(proto_text, f"{a_type} {a_name}")
             console.print(f"[bold red]Proto lint error:[/bold red] {proto_fname}:{lineno}")
             console.print(f"\nThe {a_name} {a_type} proto is out of order relative to the {b_name} {b_type}.")
             console.print(
@@ -76,7 +77,8 @@ def lint_protos(ctx):
         rpcs = re.findall(r"^\s*rpc\s+(\w+)", service_text, flags=re.MULTILINE)
         for rpc_a, rpc_b in zip(rpcs[:-1], rpcs[1:]):
             if rpc_a > rpc_b:
-                console.print(f"[bold red]Proto lint error:[/bold red] {proto_fname}")
+                lineno = get_first_lineno_with_prefix(proto_text, rf"\s*rpc\s+{rpc_a}")
+                console.print(f"[bold red]Proto lint error:[/bold red] {proto_fname}:{lineno}")
                 console.print(f"\nThe {rpc_a} rpc proto is out of order relative to the {rpc_b} rpc.")
                 console.print("\nRPC definitions should be ordered within each service proto.", style="dim")
                 sys.exit(1)

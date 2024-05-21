@@ -1883,7 +1883,7 @@ message TaskProgress {
 }
 
 message TaskResultRequest {
-  modal.client.GenericResult result = 2;
+  GenericResult result = 2;
 }
 
 message TaskStats {
