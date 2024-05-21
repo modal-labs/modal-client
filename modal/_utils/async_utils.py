@@ -19,9 +19,7 @@ synchronizer = synchronicity.Synchronizer()
 
 
 def synchronize_api(obj, target_module=None):
-    if inspect.isclass(obj):
-        blocking_name = obj.__name__.lstrip("_")
-    elif inspect.isfunction(obj):
+    if inspect.isclass(obj) or inspect.isfunction(obj):
         blocking_name = obj.__name__.lstrip("_")
     elif isinstance(obj, TypeVar):
         blocking_name = "_BLOCKING_" + obj.__name__
