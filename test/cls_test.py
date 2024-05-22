@@ -44,17 +44,28 @@ class Foo:
 def test_run_class(client, servicer):
     assert servicer.n_functions == 0
     with app.run(client=client):
-        function_id = Foo.bar.object_id
+        method_id = Foo.bar.object_id
         assert isinstance(Foo, Cls)
         class_id = Foo.object_id
         app_id = app.app_id
 
     objects = servicer.app_objects[app_id]
     assert len(objects) == 3  # the class + two functions (one method-bound and one for the class)
-    assert objects["Foo.bar"] == function_id
+    assert objects["Foo.bar"] == method_id
     assert objects["Foo"] == class_id
-    assert objects["Foo::method-unspecified"].startswith("fu-")
-    assert objects["Foo::method-unspecified"] != function_id
+    class_function_id = objects["Foo.*"]
+    assert class_function_id.startswith("fu-")
+    assert class_function_id != method_id
+
+    assert servicer.app_functions[method_id].use_function_id == class_function_id
+    assert servicer.app_functions[method_id].use_method_name == "bar"
+    assert servicer.app_functions[class_function_id].is_class
+
+    assert len(servicer.app_functions[class_function_id].class_methods) == 1
+    (bar_method_spec,) = servicer.app_functions[class_function_id].class_methods
+    assert bar_method_spec.function_type == api_pb2.Function.FUNCTION_TYPE_FUNCTION
+    assert bar_method_spec.method_name == "bar"
+    assert bar_method_spec.webhook_config.type == api_pb2.WEBHOOK_TYPE_UNSPECIFIED
 
 
 def test_call_class_sync(client, servicer):

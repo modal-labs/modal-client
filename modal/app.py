@@ -549,7 +549,7 @@ class _App:
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
-            _cls: Optional[type] = None,  # Used for methods and "object functions" only
+            _cls: Optional[type] = None,  # Used for legacy methods and "class functions" only
         ) -> _Function:
             nonlocal keep_warm, is_generator
 
@@ -683,40 +683,74 @@ class _App:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
-        decorator_args = dict(
-            image=image,
-            secret=secret,
-            secrets=secrets,
-            gpu=gpu,
-            serialized=serialized,
-            mounts=mounts,
-            network_file_systems=network_file_systems,
-            allow_cross_region_volumes=allow_cross_region_volumes,
-            volumes=volumes,
-            cpu=cpu,
-            memory=memory,
-            proxy=proxy,
-            retries=retries,
-            concurrency_limit=concurrency_limit,
-            allow_concurrent_inputs=allow_concurrent_inputs,
-            container_idle_timeout=container_idle_timeout,
-            timeout=timeout,
-            interactive=interactive,
-            keep_warm=keep_warm,
-            cloud=cloud,
-            region=region,
-            enable_memory_snapshot=enable_memory_snapshot,
-            checkpointing_enabled=checkpointing_enabled,
-            block_network=block_network,
-            _allow_background_volume_commits=_allow_background_volume_commits,
-            max_inputs=max_inputs,
-            _experimental_boost=_experimental_boost,
-            _experimental_scheduler=_experimental_scheduler,
-            _experimental_scheduler_placement=_experimental_scheduler_placement,
-        )
+        if isinstance(_warn_parentheses_missing, _Image):
+            # Handle edge case where maybe (?) some users passed image as a positional arg
+            raise InvalidError("`image` needs to be a keyword argument: `@app.function(image=image)`.")
+        if _warn_parentheses_missing:
+            raise InvalidError("Did you forget parentheses? Suggestion: `@app.function()`.")
+
+        if interactive:
+            deprecation_error(
+                (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+            )
+
+        if image is None:
+            image = self._get_default_image()
+
+        secrets = [*self._secrets, *secrets]
 
         def wrapper(user_cls: CLS_T) -> _Cls:
-            cls: _Cls = _Cls.from_local(user_cls, self, decorator_args)
+            nonlocal keep_warm
+
+            # Check if the decorated object is a class
+            if not inspect.isclass(user_cls):
+                raise TypeError("The @app.cls decorator must be used on a class.")
+
+            info = FunctionInfo(None, serialized=serialized, cls=user_cls)
+            webhook_config = None
+
+            scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
+            if region:
+                if scheduler_placement:
+                    raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
+                scheduler_placement = SchedulerPlacement(region=region)
+
+            cls_func = _Function.from_args(
+                info,
+                app=self,
+                image=image,
+                secret=secret,
+                secrets=secrets,
+                is_generator=False,  # TODO: weird?
+                gpu=gpu,
+                mounts=[*self._mounts, *mounts],
+                network_file_systems=network_file_systems,
+                allow_cross_region_volumes=allow_cross_region_volumes,
+                volumes={**self._volumes, **volumes},
+                memory=memory,
+                proxy=proxy,
+                retries=retries,
+                concurrency_limit=concurrency_limit,
+                allow_concurrent_inputs=allow_concurrent_inputs,
+                container_idle_timeout=container_idle_timeout,
+                timeout=timeout,
+                cpu=cpu,
+                keep_warm=keep_warm,
+                cloud=cloud,
+                webhook_config=webhook_config,
+                enable_memory_snapshot=enable_memory_snapshot,
+                checkpointing_enabled=checkpointing_enabled,
+                allow_background_volume_commits=_allow_background_volume_commits,
+                block_network=block_network,
+                max_inputs=max_inputs,
+                scheduler_placement=scheduler_placement,
+                _experimental_boost=_experimental_boost,
+                _experimental_scheduler=_experimental_scheduler,
+            )
+
+            self._add_function(cls_func)
+
+            cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
 
             if (
                 _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)

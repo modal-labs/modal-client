@@ -27,6 +27,7 @@ from .partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_cls,
     _Function,
+    _PartialFunction,
     _PartialFunctionFlags,
 )
 from .retries import Retries
@@ -216,17 +217,19 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
-    def from_local(user_cls, app: "modal.app._App", decorator_args: Dict) -> "_Cls":
+    def from_local(user_cls, app: "modal.app._App", cls_func: _Function) -> "_Cls":
         """mdmd:hidden"""
         functions: Dict[str, _Function] = {}
         # first create a function representing the whole class, this is the single function id that will be used
         # by containers running methods
-        cls_func = app.function(**decorator_args)(None, user_cls)
-
-        for method_name, partial_function in _find_partial_methods_for_cls(
+        partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
-        ).items():
-            method_function = cls_func._bind_method(user_cls, method_name, partial_function, decorator_args)
+        )
+
+        for method_name, partial_function in partial_functions.items():
+            method_function = cls_func._bind_method(
+                user_cls, method_name, partial_function, cls_func._info.is_serialized()
+            )
             app._add_function(method_function)
             functions[method_name] = method_function
 

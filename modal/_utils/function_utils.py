@@ -49,8 +49,8 @@ def entrypoint_only_package_mount_condition(entrypoint_file):
     return inner
 
 
-def is_global_function(function_qual_name):
-    return "<locals>" not in function_qual_name.split(".")
+def is_global_object(qual_name):
+    return "<locals>" not in qual_name.split(".")
 
 
 def is_async(function):
@@ -76,6 +76,7 @@ class FunctionInfo:
     cls: Optional[Type[Any]]
     definition_type: "api_pb2.Function.DefinitionType.ValueType"
     module_name: Optional[str]
+    is_class: bool
 
     _type: FunctionInfoType
     _file: Optional[str]
@@ -92,12 +93,13 @@ class FunctionInfo:
     ):
         self.raw_f = f
         self.cls = cls
-
+        self.is_class = False
         if name_override is not None:
             self.function_name = name_override
         elif f is None and cls:
             # "class function"
             self.function_name = cls.__name__
+            self.is_class = True
         elif f.__qualname__ != f.__name__ and not serialized:
             # Class function.
             if len(f.__qualname__.split(".")) > 2:
@@ -163,7 +165,7 @@ class FunctionInfo:
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
             qualname = f.__qualname__ if f else cls.__qualname__
-            if not is_global_function(qualname):
+            if not is_global_object(qualname):
                 raise LocalFunctionError(
                     "Modal can only import functions defined in global scope unless they are `serialized=True`"
                 )
@@ -182,7 +184,7 @@ class FunctionInfo:
             return serialized_bytes
         else:
             assert self.cls
-            # class function
+            # "class function" - serialize the raw_f for each method in a dict
             raw_methods = {}
             from ..partial_function import (  # TODO: fix circular dep
                 _find_partial_methods_for_cls,
@@ -247,7 +249,7 @@ class FunctionInfo:
     def get_tag(self):
         if self.cls and not self.raw_f:
             # class function:
-            return f"{self.function_name}::method-unspecified"
+            return f"{self.function_name}.*"
 
         return self.function_name
 
@@ -260,6 +262,29 @@ class FunctionInfo:
             if param.default is param.empty:
                 return False
         return True
+
+    def class_methods(self) -> List[api_pb2.Method]:
+        if not self.is_class:
+            return []
+        from ..partial_function import (  # TODO: fix circular import
+            _find_partial_methods_for_cls,
+            _PartialFunction,
+            _PartialFunctionFlags,
+        )
+
+        partial_functions: Dict[_PartialFunction] = _find_partial_methods_for_cls(
+            self.cls, _PartialFunctionFlags.FUNCTION
+        )
+        methods = []
+        for method_name, p in partial_functions.items():
+            function_type = (
+                api_pb2.Function.FUNCTION_TYPE_GENERATOR if p.is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+            )
+            method = api_pb2.Method(
+                method_name=method_name, webhook_config=p.webhook_config, function_type=function_type
+            )
+            methods.append(method)
+        return methods
 
 
 def get_referred_objects(f: Callable) -> List[Object]:

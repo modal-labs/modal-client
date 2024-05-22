@@ -125,6 +125,7 @@ def _container_args(
         is_checkpointing_function=is_checkpointing_function,
         object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         max_inputs=max_inputs,
+        is_class=is_class,
     )
 
     return api_pb2.ContainerArguments(
@@ -604,7 +605,7 @@ def test_webhook_streaming_async(unix_servicer):
 @skip_github_non_linux
 def test_cls_function(unix_servicer):
     ret = _run_container(
-        unix_servicer, "test.supports.functions", "Cls", is_class=True, inputs=_get_inputs(method_name="f")
+        unix_servicer, "test.supports.functions", "Cls.*", is_class=True, inputs=_get_inputs(method_name="f")
     )
     assert _unwrap_scalar(ret) == 42 * 111
 

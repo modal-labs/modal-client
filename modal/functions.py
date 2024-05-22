@@ -287,7 +287,7 @@ class _Function(_Object, type_prefix="fu"):
         user_cls,
         method_name: str,
         partial_function: "modal.partial_function._PartialFunction",
-        decorator_args: Dict,  # args for @app.function
+        serialized: bool,  # TODO: can we remove this?
     ):
         """mdmd:hidden
 
@@ -347,14 +347,12 @@ class _Function(_Object, type_prefix="fu"):
         def _deps():
             return [class_function]
 
-        rep = f"Method({full_name, method_name})"
+        rep = f"Method({full_name})"
 
         fun = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
         fun._tag = full_name
         fun._raw_f = partial_function.raw_f
-        fun._info = FunctionInfo(
-            partial_function.raw_f, cls=user_cls, serialized=decorator_args["serialized"]
-        )  # needed for .local()
+        fun._info = FunctionInfo(partial_function.raw_f, cls=user_cls, serialized=serialized)  # needed for .local()
         fun._use_method_name = method_name
         # TODO: set more attributes?
 
@@ -745,6 +743,8 @@ class _Function(_Object, type_prefix="fu"):
                 _experimental_boost=_experimental_boost,
                 _experimental_scheduler=_experimental_scheduler,
                 scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
+                is_class=info.is_class,
+                class_methods=info.class_methods(),
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,
@@ -855,9 +855,7 @@ class _Function(_Object, type_prefix="fu"):
             response = await retry_transient_errors(self._parent._client.stub.FunctionBindParams, req)
             self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
 
-        fun: _Function = _Function._from_loader(
-            _load, "Function(parametrized, method-unspecified)", hydrate_lazily=True
-        )
+        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
         if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
             print(f"Hydrating from other, should not load {self} {args}")
             # Edge case that lets us hydrate all objects right away

@@ -843,6 +843,13 @@ message FunctionCallGetDataRequest {
   uint64 last_index = 2;
 }
 
+message Method {
+  string method_name = 1;
+  Function.FunctionType function_type = 2;
+  WebhookConfig webhook_config = 3;
+  // TODO: put function_serialized for each method here for serialized functions?
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -937,9 +944,12 @@ message Function {
   optional SchedulerPlacement scheduler_placement = 50;
   optional SchedulerPlacement _experimental_scheduler_placement = 52;
 
-  bool is_class = 53;  // True this "Function" is actually grouping multiple methods
-  string use_function_id= 54;  // for "class functions" - use this function id instead for invocations - the referenced function should have is_class=True
+  bool is_class = 53;  // if "Function" is actually a class grouping multiple methods
+
+  string use_function_id= 54;  // for "class functions" - use this function id instead for invocations - the *referenced* function should have is_class=True
   string use_method_name = 55;  // for "class functions" - this method name needs to be included in the FunctionInput
+
+  repeated Method class_methods = 56; // for new style methods, this contains all metadata about each method required to run the method
 }
 
 message SchedulerPlacement {
