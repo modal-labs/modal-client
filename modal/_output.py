@@ -396,7 +396,9 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
         await finish_event.wait()
 
 
-async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputManager):
+async def get_app_logs_loop(
+    client: _Client, output_mgr: OutputManager, app_id: Optional[str] = None, task_id: Optional[str] = None
+):
     last_log_batch_entry_id = ""
     pty_shell_finish_event: Optional[asyncio.Event] = None
     pty_shell_task_id: Optional[str] = None
@@ -434,7 +436,8 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
         nonlocal last_log_batch_entry_id, pty_shell_finish_event, pty_shell_task_id
 
         request = api_pb2.AppGetLogsRequest(
-            app_id=app_id,
+            app_id=app_id or "",
+            task_id=task_id or "",
             timeout=55,
             last_entry_id=last_log_batch_entry_id,
         )
