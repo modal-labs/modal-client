@@ -101,6 +101,7 @@ def _container_args(
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
     is_class: bool = False,
+    methods: List[api_pb2.Method] = [],
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -126,6 +127,7 @@ def _container_args(
         object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         max_inputs=max_inputs,
         is_class=is_class,
+        class_methods=methods,
     )
 
     return api_pb2.ContainerArguments(
@@ -164,6 +166,7 @@ def _run_container(
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
     is_class: bool = False,
+    methods: List[api_pb2.Method] = [],
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -181,6 +184,7 @@ def _run_container(
         is_auto_snapshot,
         max_inputs,
         is_class=is_class,
+        methods=methods,
     )
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -398,7 +402,7 @@ def test_from_local_python_packages_inside_container(unix_servicer):
     assert _unwrap_scalar(ret) == 0
 
 
-def _get_web_inputs(path="/"):
+def _get_web_inputs(path="/", method_name=""):
     scope = {
         "method": "GET",
         "type": "http",
@@ -407,7 +411,7 @@ def _get_web_inputs(path="/"):
         "query_string": b"arg=space",
         "http_version": "2",
     }
-    return _get_inputs(((scope,), {}))
+    return _get_inputs(((scope,), {}), method_name=method_name)
 
 
 @async_utils.synchronize_api  # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
@@ -605,20 +609,45 @@ def test_webhook_streaming_async(unix_servicer):
 @skip_github_non_linux
 def test_cls_function(unix_servicer):
     ret = _run_container(
-        unix_servicer, "test.supports.functions", "Cls.*", is_class=True, inputs=_get_inputs(method_name="f")
+        unix_servicer,
+        "test.supports.functions",
+        "Cls.*",
+        is_class=True,
+        methods=[
+            api_pb2.Method(
+                method_name="f",
+                webhook_config=api_pb2.WebhookConfig(),
+                function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+            )
+        ],
+        inputs=_get_inputs(method_name="f"),
     )
     assert _unwrap_scalar(ret) == 42 * 111
 
 
 @skip_github_non_linux
 def test_lifecycle_enter_sync(unix_servicer):
-    ret = _run_container(unix_servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=_get_inputs(((), {})))
+    ret = _run_container(
+        unix_servicer,
+        "test.supports.functions",
+        "LifecycleCls.*",
+        inputs=_get_inputs(((), {}), method_name="f_sync"),
+        is_class=True,
+        methods=[api_pb2.Method(method_name="f_sync")],
+    )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync"]
 
 
 @skip_github_non_linux
 def test_lifecycle_enter_async(unix_servicer):
-    ret = _run_container(unix_servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=_get_inputs(((), {})))
+    ret = _run_container(
+        unix_servicer,
+        "test.supports.functions",
+        "LifecycleCls.*",
+        inputs=_get_inputs(((), {}), method_name="f_async"),
+        is_class=True,
+        methods=[api_pb2.Method(method_name="f_async")],
+    )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async"]
 
 
@@ -628,21 +657,34 @@ def test_param_cls_function(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "ParamCls.f",
+        "ParamCls.*",
         serialized_params=serialized_params,
+        is_class=True,
+        methods=[api_pb2.Method(method_name="f")],
+        inputs=_get_inputs(method_name="f"),
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
 
 
 @skip_github_non_linux
 def test_cls_web_endpoint(unix_servicer):
-    inputs = _get_web_inputs()
+    inputs = _get_web_inputs(method_name="web")
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "Cls.web",
+        "Cls.*",
         inputs=inputs,
-        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+        is_class=True,
+        methods=[
+            api_pb2.Method(
+                method_name="web",
+                webhook_config=api_pb2.WebhookConfig(
+                    type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+                    method="GET",
+                    async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+                ),
+            )
+        ],
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -654,13 +696,23 @@ def test_cls_web_asgi_construction(unix_servicer):
     unix_servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
     unix_servicer.app_functions["fu-2"] = api_pb2.FunctionHandleMetadata()
 
-    inputs = _get_web_inputs()
+    inputs = _get_web_inputs(method_name="asgi_web")
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "Cls.asgi_web",
+        "Cls.*",
         inputs=inputs,
-        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+        is_class=True,
+        methods=[
+            api_pb2.Method(
+                method_name="asgi_web",
+                webhook_config=api_pb2.WebhookConfig(
+                    type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+                    method="GET",
+                    async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+                ),
+            )
+        ],
     )
 
     _, second_message = _unwrap_asgi(ret)

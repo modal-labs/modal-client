@@ -9,6 +9,7 @@ import signal
 import sys
 import threading
 import time
+import types
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Type
 
@@ -134,18 +135,42 @@ class ImportedFunction:
 @dataclass
 class ImportedClass:
     obj: Any
-    method_callables: Dict[str, Callable[..., Any]]
+    method_callables: Dict[str, types.MethodType]
     app: Optional[_App]
     input_concurrency: int
     is_auto_snapshot: bool
     function: _Function
 
-    def get_finalized_functions(self, fun_defs):
-        # TODO: need to get this for all methods in the class - put it in the Function proto?
-        #  1. function type/is_generator,
-        #  2. webhook_config
-        #  3. is_async - this can be inferred by the callable + webhook_config
-        pass
+    def get_finalized_functions(
+        self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
+    ) -> Dict[str, "FinalizedFunction"]:
+        finalized_functions = {}
+        for method in fun_def.class_methods:
+            user_defined_callable: types.MethodType = self.method_callables[method.method_name]
+            # Check this property before we turn it into a method (overriden by webhooks)
+            is_async = get_is_async(user_defined_callable.__func__)  # underlying function of the bound method
+            # Use the function definition for whether this is a generator (overriden by webhooks)
+            is_generator = method.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+
+            webhook_config = method.webhook_config
+            if not webhook_config.type:
+                # for non-webhooks, the runnable is straight forward:
+                finalized_function = FinalizedFunction(
+                    callable=user_defined_callable,
+                    is_async=is_async,
+                    is_generator=is_generator,
+                    data_format=api_pb2.DATA_FORMAT_PICKLE,
+                )
+            else:
+                web_callable = construct_webhook_callable(user_defined_callable, webhook_config, container_io_manager)
+                finalized_function = FinalizedFunction(
+                    callable=web_callable,
+                    is_async=True,
+                    is_generator=True,
+                    data_format=api_pb2.DATA_FORMAT_ASGI,
+                )
+            finalized_functions[method.method_name] = finalized_function
+        return finalized_functions
 
 
 @dataclass
