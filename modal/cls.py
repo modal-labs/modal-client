@@ -151,6 +151,7 @@ class _Cls(_Object, type_prefix="cs"):
     _functions: Dict[str, _Function]
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
+    _method_partials: Dict[str, _PartialFunction]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
     _app: Optional["modal.app._App"] = None  # not set for lookups
 
@@ -160,6 +161,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._functions = {}
         self._options = None
         self._callables = {}
+        self._method_partials = {}
         self._from_other_workspace = None
         self._output_mgr: Optional[OutputManager] = None
 
@@ -169,6 +171,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._functions = other._functions
         self._options = other._options
         self._callables = other._callables
+        self._method_partials = other._method_partials
         self._from_other_workspace = other._from_other_workspace
         self._output_mgr: Optional[OutputManager] = other._output_mgr
 
@@ -239,6 +242,7 @@ class _Cls(_Object, type_prefix="cs"):
 
         # Get all callables
         callables: Dict[str, Callable] = _find_callables_for_cls(user_cls, ~_PartialFunctionFlags(0))
+        partials: Dict[str, Callable] = _find_partial_methods_for_cls(user_cls, ~_PartialFunctionFlags(0))
 
         def _deps() -> List[_Function]:
             return [cls_func] + list(functions.values())
@@ -257,12 +261,13 @@ class _Cls(_Object, type_prefix="cs"):
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
-        cls = _Cls._from_loader(_load, rep, deps=_deps)
+        cls: _Cls = _Cls._from_loader(_load, rep, deps=_deps)
         cls._app = app
         cls._user_cls = user_cls
         cls._class_function = cls_func
         cls._functions = functions
         cls._callables = callables
+        cls._method_partials = partials
         cls._from_other_workspace = False
         setattr(cls._user_cls, "_modal_functions", functions)  # Needed for PartialFunction.__get__
         return cls

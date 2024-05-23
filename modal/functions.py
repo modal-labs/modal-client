@@ -366,12 +366,6 @@ class _Function(_Object, type_prefix="fu"):
         it does it forward invocations to the underlying instance_bound_function with the specified method,
         and we don't support web_config for parameterized methods at the moment.
         """
-        print(
-            "Creating instance and method bound",
-            repr(class_bound_method._use_method_name),
-            instance_bound_function,
-            class_bound_method,
-        )
         method_name = class_bound_method._use_method_name
 
         def hydrate_from_instance_function(obj):
@@ -744,7 +738,6 @@ class _Function(_Object, type_prefix="fu"):
                 _experimental_scheduler=_experimental_scheduler,
                 scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                 is_class=info.is_class,
-                class_methods=info.class_methods(),
             )
             request = api_pb2.FunctionCreateRequest(
                 app_id=resolver.app_id,

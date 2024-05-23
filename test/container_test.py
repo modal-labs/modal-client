@@ -32,7 +32,7 @@ from modal._serialization import (
 from modal._utils import async_utils
 from modal.app import _App
 from modal.exception import InvalidError
-from modal.partial_function import enter
+from modal.partial_function import enter, method
 from modal_proto import api_pb2
 
 from .helpers import deploy_app_externally
@@ -101,7 +101,6 @@ def _container_args(
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
     is_class: bool = False,
-    methods: List[api_pb2.Method] = [],
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -127,7 +126,6 @@ def _container_args(
         object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         max_inputs=max_inputs,
         is_class=is_class,
-        class_methods=methods,
     )
 
     return api_pb2.ContainerArguments(
@@ -166,7 +164,6 @@ def _run_container(
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
     is_class: bool = False,
-    methods: List[api_pb2.Method] = [],
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -184,7 +181,6 @@ def _run_container(
         is_auto_snapshot,
         max_inputs,
         is_class=is_class,
-        methods=methods,
     )
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -613,13 +609,6 @@ def test_cls_function(unix_servicer):
         "test.supports.functions",
         "Cls.*",
         is_class=True,
-        methods=[
-            api_pb2.Method(
-                method_name="f",
-                webhook_config=api_pb2.WebhookConfig(),
-                function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
-            )
-        ],
         inputs=_get_inputs(method_name="f"),
     )
     assert _unwrap_scalar(ret) == 42 * 111
@@ -633,7 +622,6 @@ def test_lifecycle_enter_sync(unix_servicer):
         "LifecycleCls.*",
         inputs=_get_inputs(((), {}), method_name="f_sync"),
         is_class=True,
-        methods=[api_pb2.Method(method_name="f_sync")],
     )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync"]
 
@@ -646,7 +634,6 @@ def test_lifecycle_enter_async(unix_servicer):
         "LifecycleCls.*",
         inputs=_get_inputs(((), {}), method_name="f_async"),
         is_class=True,
-        methods=[api_pb2.Method(method_name="f_async")],
     )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async"]
 
@@ -660,7 +647,6 @@ def test_param_cls_function(unix_servicer):
         "ParamCls.*",
         serialized_params=serialized_params,
         is_class=True,
-        methods=[api_pb2.Method(method_name="f")],
         inputs=_get_inputs(method_name="f"),
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
@@ -675,16 +661,6 @@ def test_cls_web_endpoint(unix_servicer):
         "Cls.*",
         inputs=inputs,
         is_class=True,
-        methods=[
-            api_pb2.Method(
-                method_name="web",
-                webhook_config=api_pb2.WebhookConfig(
-                    type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-                    method="GET",
-                    async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
-                ),
-            )
-        ],
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -703,16 +679,6 @@ def test_cls_web_asgi_construction(unix_servicer):
         "Cls.*",
         inputs=inputs,
         is_class=True,
-        methods=[
-            api_pb2.Method(
-                method_name="asgi_web",
-                webhook_config=api_pb2.WebhookConfig(
-                    type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
-                    method="GET",
-                    async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
-                ),
-            )
-        ],
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -732,17 +698,21 @@ def test_serialized_cls(unix_servicer):
         def enter(self):
             self.power = 5
 
+        @method()
         def method(self, x):
             return x**self.power
 
     unix_servicer.class_serialized = serialize(Cls)
-    unix_servicer.function_serialized = serialize({"method": Cls.method})
+    unix_servicer.function_serialized = serialize(
+        {"method": Cls.__dict__["method"]}
+    )  # can't use Cls.method because of descriptor protocol that returns Function instead of PartialFunction
     ret = _run_container(
         unix_servicer,
         "module.doesnt.matter",
         "function.doesnt.matter",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
         is_class=True,
+        inputs=_get_inputs(method_name="method"),
     )
     assert _unwrap_scalar(ret) == 42**5
 
@@ -752,8 +722,10 @@ def test_cls_generator(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "Cls.generator",
+        "Cls.*",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        is_class=True,
+        inputs=_get_inputs(method_name="generator"),
     )
     items, exc = _unwrap_generator(ret)
     assert items == [42**3]
@@ -765,9 +737,10 @@ def test_checkpointing_cls_function(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "CheckpointingCls.f",
-        inputs=_get_inputs((("D",), {})),
+        "CheckpointingCls.*",
+        inputs=_get_inputs((("D",), {}), method_name="f"),
         is_checkpointing_function=True,
+        is_class=True,
     )
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
     for request in unix_servicer.requests:
@@ -781,8 +754,9 @@ def test_cls_enter_uses_event_loop(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "EventLoopCls.f",
-        inputs=_get_inputs(((), {})),
+        "EventLoopCls.*",
+        inputs=_get_inputs(((), {}), method_name="f"),
+        is_class=True,
     )
     assert _unwrap_scalar(ret) == True
 
@@ -836,7 +810,7 @@ def test_cli(unix_servicer):
 
 @skip_github_non_linux
 def test_function_sibling_hydration(unix_servicer):
-    deploy_app_externally(unix_servicer, "test.supports.functions", "app")
+    deploy_app_externally(unix_servicer, "test.supports.functions", "app", capture_output=False)
     ret = _run_container(unix_servicer, "test.supports.functions", "check_sibling_hydration")
     assert _unwrap_scalar(ret) is None
 
@@ -1002,8 +976,10 @@ def test_param_cls_function_calling_local(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "ParamCls.g",
+        "ParamCls.*",
         serialized_params=serialized_params,
+        inputs=_get_inputs(method_name="g"),
+        is_class=True,
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
 
@@ -1013,8 +989,8 @@ def test_derived_cls(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "DerivedCls.run",
-        inputs=_get_inputs(((3,), {})),
+        "DerivedCls.*",
+        inputs=_get_inputs(((3,), {}), method_name="run"),
     )
     assert _unwrap_scalar(ret) == 6
 
@@ -1150,10 +1126,11 @@ def test_build_decorator_cls(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "BuildCls.build1",
-        inputs=_get_inputs(((), {})),
+        "BuildCls.*",
+        inputs=_get_inputs(((), {}), method_name="build1"),
         is_builder_function=True,
         is_auto_snapshot=True,
+        is_class=True,
     )
     assert _unwrap_scalar(ret) == 101
     # TODO: this is GENERIC_STATUS_FAILURE when `@exit` fails,
@@ -1167,10 +1144,11 @@ def test_multiple_build_decorator_cls(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "BuildCls.build2",
-        inputs=_get_inputs(((), {})),
+        "BuildCls.*",
+        inputs=_get_inputs(((), {}), method_name="build2"),
         is_builder_function=True,
         is_auto_snapshot=True,
+        is_class=True,
     )
     assert _unwrap_scalar(ret) == 1001
     assert ret.task_result is None

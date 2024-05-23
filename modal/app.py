@@ -232,7 +232,6 @@ class _App:
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, self._client, metadata)
 
-        print("Add object", obj, "as", tag)
         # traceback.print_stack(limit=5, file=sys.stdout)
         self._indexed_objects[tag] = obj
 

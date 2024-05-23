@@ -604,10 +604,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if not req.existing_function_id:
             self.n_functions += 1
             function_id = f"fu-{self.n_functions}"
-            print("Precreating new", function_id, req.function_name)
         else:
             function_id = req.existing_function_id
-            print("Precreating existing", function_id, req.function_name)
 
         self.precreated_functions.add(function_id)
 

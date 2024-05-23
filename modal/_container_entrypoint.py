@@ -9,7 +9,6 @@ import signal
 import sys
 import threading
 import time
-import types
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Type
 
@@ -43,7 +42,12 @@ from .config import logger
 from .exception import ExecutionError, InputCancellation, InvalidError, deprecation_warning
 from .execution_context import _set_current_context_ids, interact
 from .functions import Function, _Function
-from .partial_function import _find_callables_for_cls, _find_callables_for_obj, _PartialFunctionFlags
+from .partial_function import (
+    _find_callables_for_obj,
+    _find_partial_methods_for_cls,
+    _PartialFunction,
+    _PartialFunctionFlags,
+)
 from .running_app import RunningApp
 
 if TYPE_CHECKING:
@@ -135,7 +139,7 @@ class ImportedFunction:
 @dataclass
 class ImportedClass:
     obj: Any
-    method_callables: Dict[str, types.MethodType]
+    partial_functions: Dict[str, _PartialFunction]
     app: Optional[_App]
     input_concurrency: int
     is_auto_snapshot: bool
@@ -145,31 +149,34 @@ class ImportedClass:
         self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
     ) -> Dict[str, "FinalizedFunction"]:
         finalized_functions = {}
-        for method in fun_def.class_methods:
-            user_defined_callable: types.MethodType = self.method_callables[method.method_name]
+        for method_name, partial in self.partial_functions.items():
+            partial = synchronizer._translate_in(partial)  # ugly
+            user_func = partial.raw_f
             # Check this property before we turn it into a method (overriden by webhooks)
-            is_async = get_is_async(user_defined_callable.__func__)  # underlying function of the bound method
+            is_async = get_is_async(user_func)
             # Use the function definition for whether this is a generator (overriden by webhooks)
-            is_generator = method.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+            is_generator = partial.is_generator
+            webhook_config = partial.webhook_config
 
-            webhook_config = method.webhook_config
-            if not webhook_config.type:
+            bound_func = user_func.__get__(self.obj)
+
+            if not webhook_config or webhook_config.type == api_pb2.WEBHOOK_TYPE_UNSPECIFIED:
                 # for non-webhooks, the runnable is straight forward:
                 finalized_function = FinalizedFunction(
-                    callable=user_defined_callable,
+                    callable=bound_func,
                     is_async=is_async,
                     is_generator=is_generator,
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
                 )
             else:
-                web_callable = construct_webhook_callable(user_defined_callable, webhook_config, container_io_manager)
+                web_callable = construct_webhook_callable(bound_func, webhook_config, container_io_manager)
                 finalized_function = FinalizedFunction(
                     callable=web_callable,
                     is_async=True,
                     is_generator=True,
                     data_format=api_pb2.DATA_FORMAT_ASGI,
                 )
-            finalized_functions[method.method_name] = finalized_function
+            finalized_functions[method_name] = finalized_function
         return finalized_functions
 
 
@@ -583,7 +590,7 @@ def import_class_function(
 
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
-        cls, method_callables = ser_cls, ser_fun
+        cls, method_partials = ser_cls, ser_fun
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
@@ -602,11 +609,11 @@ def import_class_function(
         if isinstance(cls, Cls):
             # The cls decorator is in global scope
             _cls = synchronizer._translate_in(cls)
-            method_callables = _cls._callables
+            method_partials = _cls._method_partials
             active_app = _cls._app
         else:
             # This is a raw class find all methods
-            method_callables = _find_callables_for_cls(cls, ~_PartialFunctionFlags(0))
+            method_partials = _find_partial_methods_for_cls(cls, ~_PartialFunctionFlags(0))
 
     # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
     if active_app is None:
@@ -630,14 +637,9 @@ def import_class_function(
     if isinstance(cls, Cls):
         obj = obj.get_obj()
 
-    bound_method_callables = {}
-    # Bind all methods to the instance (using the descriptor protocol!)
-    for method_name, method_callable in method_callables.items():
-        bound_method_callables[method_name] = method_callable.__get__(obj)
-
     return ImportedClass(
         obj,
-        bound_method_callables,
+        method_partials,
         active_app,
         input_concurrency,
         function_def.is_auto_snapshot,
