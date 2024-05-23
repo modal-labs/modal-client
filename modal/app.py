@@ -549,8 +549,9 @@ class _App:
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
-            _cls: Optional[type] = None,  # Used for legacy methods and "class functions" only
+            _cls: Optional[type] = None,  # deprecated - TODO: remove
         ) -> _Function:
+            assert not _cls  # Should not be used anymore - methods are now placeholders referencing the class function
             nonlocal keep_warm, is_generator
 
             # Check if the decorated object is a class

@@ -183,19 +183,14 @@ class FunctionInfo:
             logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
             return serialized_bytes
         else:
-            assert self.cls
-            # "class function" - serialize the raw_f for each method in a dict
-            raw_methods = {}
-            from ..partial_function import (  # TODO: fix circular dep
-                _find_partial_methods_for_cls,
-                _PartialFunctionFlags,
-            )
+            # "class function" - needs to serialize every partial function into a dict
+            # we can't use the serialized_class attribute since that will have each method
+            # serialized as a Function which is a thin Modal Object, not containing any code and specs
+            # other than the object id and hydration metadata
+            from ..partial_function import _find_partial_methods_for_cls, _PartialFunctionFlags
 
-            for method_name, partial_function in _find_partial_methods_for_cls(
-                self.cls, _PartialFunctionFlags.FUNCTION
-            ).items():
-                raw_methods[method_name] = partial_function.raw_f
-            return serialize(raw_methods)
+            partial_methods_dict = _find_partial_methods_for_cls(self.cls, ~_PartialFunctionFlags(0))
+            return serialize(partial_methods_dict)
 
     def get_globals(self) -> Dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals

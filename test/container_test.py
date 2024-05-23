@@ -736,12 +736,13 @@ def test_serialized_cls(unix_servicer):
             return x**self.power
 
     unix_servicer.class_serialized = serialize(Cls)
-    unix_servicer.function_serialized = serialize(Cls.method)
+    unix_servicer.function_serialized = serialize({"method": Cls.method})
     ret = _run_container(
         unix_servicer,
         "module.doesnt.matter",
         "function.doesnt.matter",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        is_class=True,
     )
     assert _unwrap_scalar(ret) == 42**5
 
