@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 from datetime import datetime
-from typing import Sequence, Union
+from typing import Optional, Sequence, Union
 
 import typer
 from click import UsageError
@@ -17,12 +17,12 @@ from ..client import _Client
 
 
 @synchronizer.create_blocking
-async def stream_app_logs(app_id: str):
+async def stream_app_logs(app_id: Optional[str] = None, task_id: Optional[str] = None):
     client = await _Client.from_env()
     output_mgr = OutputManager(None, None, f"Tailing logs for {app_id}")
     try:
         with output_mgr.show_status_spinner():
-            await get_app_logs_loop(app_id, client, output_mgr)
+            await get_app_logs_loop(client, output_mgr, app_id, task_id)
     except asyncio.CancelledError:
         pass
     except GRPCError as exc:
