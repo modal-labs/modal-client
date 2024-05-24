@@ -653,6 +653,7 @@ class _App:
         memory: Optional[
             Union[int, Tuple[int, int]]
         ] = None,  # Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
@@ -694,6 +695,7 @@ class _App:
             volumes=volumes,
             cpu=cpu,
             memory=memory,
+            ephemeral_disk=ephemeral_disk,
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,

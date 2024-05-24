@@ -216,6 +216,11 @@ def test_function_cpu_request(client):
     app.function(cpu=2.0)(dummy)
 
 
+def test_function_disk_request(client):
+    app = App()
+    app.function(ephemeral_disk=1_000_000)(dummy)
+
+
 def later():
     return "hello"
 
