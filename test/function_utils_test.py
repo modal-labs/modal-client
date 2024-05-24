@@ -7,6 +7,8 @@ from modal._serialization import deserialize
 from modal._utils.function_utils import FunctionInfo, get_referred_objects, method_has_params
 from modal.exception import InvalidError
 from modal.object import Object
+from modal.partial_function import _PartialFunction
+from modal_proto import api_pb2
 
 q1 = Queue.from_name("q1", create_if_missing=True)
 q2 = Queue.from_name("q2", create_if_missing=True)
@@ -117,12 +119,16 @@ class Foo:
 
 def test_serialized_function_for_class():
     # The serialized function for the "class function" itself
-    # should be a dict of all the *raw* modal-executable methods, to be used
-    # within the container entrypoint
+    # should be a dict of all the _PartialFunction modal methods of
+    # the class, to be used within the container entrypoint
     info = FunctionInfo(None, cls=Foo, serialized=True)
 
     serialized_function = info.serialized_function()
     revived_function = deserialize(serialized_function, None)
     assert isinstance(revived_function, dict)
     assert revived_function.keys() == {"bar", "web"}
-    assert revived_function["bar"](Foo()) == "hello"
+    revived_bar = revived_function["bar"]
+    assert isinstance(revived_bar, _PartialFunction)
+    revived_web = revived_function["web"]
+    assert revived_web.webhook_config and revived_web.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
+    assert revived_bar.raw_f.__get__(Foo())() == "hello"

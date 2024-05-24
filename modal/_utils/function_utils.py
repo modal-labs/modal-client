@@ -258,29 +258,6 @@ class FunctionInfo:
                 return False
         return True
 
-    def class_methods(self) -> List[api_pb2.Method]:
-        if not self.is_class:
-            return []
-        from ..partial_function import (  # TODO: fix circular import
-            _find_partial_methods_for_cls,
-            _PartialFunction,
-            _PartialFunctionFlags,
-        )
-
-        partial_functions: Dict[_PartialFunction] = _find_partial_methods_for_cls(
-            self.cls, _PartialFunctionFlags.FUNCTION
-        )
-        methods = []
-        for method_name, p in partial_functions.items():
-            function_type = (
-                api_pb2.Function.FUNCTION_TYPE_GENERATOR if p.is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
-            )
-            method = api_pb2.Method(
-                method_name=method_name, webhook_config=p.webhook_config, function_type=function_type
-            )
-            methods.append(method)
-        return methods
-
 
 def get_referred_objects(f: Callable) -> List[Object]:
     """Takes a function and returns any Modal Objects in global scope that it refers to.

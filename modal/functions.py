@@ -295,7 +295,7 @@ class _Function(_Object, type_prefix="fu"):
         this function for use when invoking the function.
 
         Should only be used on "class functions". For "instance functions", we don't create an actual backend function,
-        and instead do client-side "fake-hydration" only, see _bind_method_local
+        and instead do client-side "fake-hydration" only, see _bind_instance_method
         """
         full_name = f"{self.info.function_name}.{method_name}"
 
@@ -354,11 +354,13 @@ class _Function(_Object, type_prefix="fu"):
         fun._raw_f = partial_function.raw_f
         fun._info = FunctionInfo(partial_function.raw_f, cls=user_cls, serialized=serialized)  # needed for .local()
         fun._use_method_name = method_name
+        fun._app = class_function._app
+        fun._is_generator = partial_function.is_generator
         # TODO: set more attributes?
 
         return fun
 
-    def _bind_method_local(instance_bound_class_function, class_bound_method: "_Function"):
+    def _bind_instance_method(instance_bound_class_function, class_bound_method: "_Function"):
         """mdmd:hidden
 
         Binds an instance-bound function (a "class function" with an instance object) to a specific method.
@@ -371,9 +373,7 @@ class _Function(_Object, type_prefix="fu"):
         def hydrate_from_instance_function(obj):
             obj._hydrate_from_other(instance_bound_class_function)
             obj._obj = instance_bound_class_function._obj
-            obj._web_url = class_bound_method._web_url  # TODO: this shouldn't be set for parametrized classes
-            if "generator" in obj._function_name:
-                print("hydrating generator")
+            obj._web_url = class_bound_method._web_url  # TODO: this shouldn't be set when actual parameters are used
             obj._is_generator = class_bound_method._is_generator
             obj._use_method_name = method_name
             obj._use_function_id = instance_bound_class_function.object_id
@@ -402,6 +402,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._obj = instance_bound_class_function._obj
         fun._is_method = True
         fun._parent = instance_bound_class_function._parent
+        fun._app = class_bound_method._app
         return fun
 
     @staticmethod
@@ -1069,13 +1070,12 @@ class _Function(_Object, type_prefix="fu"):
         )
 
         async for item in _map_invocation(
-            self.object_id,
+            self,
             input_queue,
             self._client,
             order_outputs,
             return_exceptions,
             count_update_callback,
-            method_name=self._method_name,
         ):
             yield item
 

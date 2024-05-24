@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import enum
+import inspect
 from typing import (
     Any,
     Callable,
@@ -168,12 +169,14 @@ def _method(
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        nonlocal is_generator
         if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
                 "Web endpoints on classes should not be wrapped by `@method`. Suggestion: remove the `@method` decorator."
             )
-
+        if is_generator is None:
+            is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
 
     return wrapper

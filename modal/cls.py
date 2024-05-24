@@ -72,7 +72,7 @@ class _Obj:
         # first create the singular object function used by all methods on this parameterization
         instance_function = class_function._bind_parameters(self, from_other_workspace, options, args, kwargs)
         for method_name, class_bound_method in classbound_methods.items():
-            method = instance_function._bind_method_local(class_bound_method)
+            method = instance_function._bind_instance_method(class_bound_method)
             method._set_output_mgr(output_mgr)
             self._functions[method_name] = method
 
@@ -237,6 +237,7 @@ class _Cls(_Object, type_prefix="cs"):
                 user_cls, method_name, partial_function, cls_func._info.is_serialized()
             )
             app._add_function(method_function)
+            partial_function.wrapped = True
             functions[method_name] = method_function
 
         # Disable the warning that these are not wrapped

@@ -60,12 +60,6 @@ def test_run_class(client, servicer):
     assert servicer.app_functions[method_id].use_method_name == "bar"
     assert servicer.app_functions[class_function_id].is_class
 
-    assert len(servicer.app_functions[class_function_id].class_methods) == 1
-    (bar_method_spec,) = servicer.app_functions[class_function_id].class_methods
-    assert bar_method_spec.function_type == api_pb2.Function.FUNCTION_TYPE_FUNCTION
-    assert bar_method_spec.method_name == "bar"
-    assert bar_method_spec.webhook_config.type == api_pb2.WEBHOOK_TYPE_UNSPECIFIED
-
 
 def test_call_class_sync(client, servicer):
     with servicer.intercept() as ctx:
