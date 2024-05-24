@@ -243,7 +243,7 @@ class FunctionInfo:
 
     def get_tag(self):
         if self.cls and not self.raw_f:
-            # class function:
+            # class function, tag as function_name.* since there is already a *Cls* with the function_name tag
             return f"{self.function_name}.*"
 
         return self.function_name
