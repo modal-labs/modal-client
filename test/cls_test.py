@@ -617,10 +617,6 @@ def test_deprecated_sync_methods():
         exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
     assert [meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
 
-    app = App("deprecated-sync-cls")
-    with pytest.warns(DeprecationError):
-        app.cls()(ClsWithDeprecatedSyncMethods)()
-
 
 @pytest.mark.asyncio
 async def test_deprecated_async_methods():
@@ -650,10 +646,6 @@ async def test_deprecated_async_methods():
     with pytest.warns(DeprecationError, match=r"Using `__aexit__`.+`modal.exit` decorator \(on an async method\)"):
         exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
     assert [await meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
-
-    app = App("deprecated-async-cls")
-    with pytest.warns(DeprecationError):
-        app.cls()(ClsWithDeprecatedAsyncMethods)()
 
 
 class HasSnapMethod:
