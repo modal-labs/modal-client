@@ -358,27 +358,31 @@ class _Function(_Object, type_prefix="fu"):
 
         return fun
 
-    def _bind_method_local(instance_bound_function, class_bound_method: "_Function"):
+    def _bind_method_local(instance_bound_class_function, class_bound_method: "_Function"):
         """mdmd:hidden
 
         Binds an instance-bound function (a "class function" with an instance object) to a specific method.
         This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
-        it does it forward invocations to the underlying instance_bound_function with the specified method,
+        it does it forward invocations to the underlying instance_bound_class_function with the specified method,
         and we don't support web_config for parameterized methods at the moment.
         """
         method_name = class_bound_method._use_method_name
 
         def hydrate_from_instance_function(obj):
-            obj._hydrate_from_other(instance_bound_function)
-            obj._obj = instance_bound_function._obj
+            obj._hydrate_from_other(instance_bound_class_function)
+            obj._obj = instance_bound_class_function._obj
+            obj._web_url = class_bound_method._web_url  # TODO: this shouldn't be set for parametrized classes
+            if "generator" in obj._function_name:
+                print("hydrating generator")
+            obj._is_generator = class_bound_method._is_generator
             obj._use_method_name = method_name
-            obj._use_function_id = instance_bound_function.object_id
+            obj._use_function_id = instance_bound_class_function.object_id
 
         async def _load(self: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
             hydrate_from_instance_function(self)
 
         def _deps():
-            return [instance_bound_function]
+            return [instance_bound_class_function]
 
         rep = f"ParametrizedMethodPlaceholder({method_name})"
 
@@ -388,17 +392,16 @@ class _Function(_Object, type_prefix="fu"):
             deps=_deps,
             hydrate_lazily=True,
         )
-        if instance_bound_function.is_hydrated:
-            # skip loading in the arg-less instance case - in which case the instance_bound_function
+        if instance_bound_class_function.is_hydrated:
+            # skip loading in the arg-less instance case - in which case the instance_bound_class_function
             # has *also* skipped loading and is already hydrated
             # Note: not sure if this could trigger due to stale state in reruns of apps?
             hydrate_from_instance_function(fun)
 
         fun._info = class_bound_method._info
-        fun._obj = instance_bound_function._obj
-        fun._is_generator = instance_bound_function._is_generator
+        fun._obj = instance_bound_class_function._obj
         fun._is_method = True
-        fun._parent = instance_bound_function._parent
+        fun._parent = instance_bound_class_function._parent
         return fun
 
     @staticmethod
@@ -769,7 +772,9 @@ class _Function(_Object, type_prefix="fu"):
                 else:
                     suffix = ""
                 # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-                status_row.finish(f"Created {tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}")
+                status_row.finish(
+                    f"Created {tag} => [magenta underline]{response.handle_metadata.web_url}[/magenta underline]{suffix}"
+                )
 
                 # Print custom domain in terminal
                 for custom_domain in response.function.custom_domain_info:

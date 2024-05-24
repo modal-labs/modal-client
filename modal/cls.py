@@ -192,6 +192,9 @@ class _Cls(_Object, type_prefix="cs"):
                     metadata.class_function_id, self._client, metadata.class_function_metadata
                 )
 
+        print("Hydrating class", metadata.class_function_metadata.function_name)
+        print(metadata.methods)
+
         for method in metadata.methods:
             if method.function_name in self._functions:
                 # This happens when the class is loaded locally

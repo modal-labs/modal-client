@@ -62,27 +62,28 @@ def _get_inputs(
     return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
 
 
-@dataclasses.dataclass
-class ContainerResult:
-    client: Client
-    items: List[api_pb2.FunctionPutOutputsItem]
-    data_chunks: List[api_pb2.DataChunk]
-    task_result: api_pb2.GenericResult
-
-
-def _get_multi_inputs(args: List[Tuple[Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
+def _get_multi_inputs(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
     responses = []
-    for input_n, input_args in enumerate(args):
+    for input_n, (method_name, input_args, input_kwargs) in enumerate(args):
         resp = api_pb2.FunctionGetInputsResponse(
             inputs=[
                 api_pb2.FunctionGetInputsItem(
-                    input_id=f"in-{input_n:03}", input=api_pb2.FunctionInput(args=serialize(input_args))
+                    input_id=f"in-{input_n:03}",
+                    input=api_pb2.FunctionInput(args=serialize((input_args, input_kwargs)), method_name=method_name),
                 )
             ]
         )
         responses.append(resp)
 
     return responses + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
+
+
+@dataclasses.dataclass
+class ContainerResult:
+    client: Client
+    items: List[api_pb2.FunctionPutOutputsItem]
+    data_chunks: List[api_pb2.DataChunk]
+    task_result: api_pb2.GenericResult
 
 
 def _container_args(
@@ -811,6 +812,7 @@ def test_cli(unix_servicer):
 @skip_github_non_linux
 def test_function_sibling_hydration(unix_servicer):
     deploy_app_externally(unix_servicer, "test.supports.functions", "app", capture_output=False)
+    print("Deployed")
     ret = _run_container(unix_servicer, "test.supports.functions", "check_sibling_hydration")
     assert _unwrap_scalar(ret) is None
 
@@ -991,6 +993,7 @@ def test_derived_cls(unix_servicer):
         "test.supports.functions",
         "DerivedCls.*",
         inputs=_get_inputs(((3,), {}), method_name="run"),
+        is_class=True,
     )
     assert _unwrap_scalar(ret) == 6
 
@@ -1201,17 +1204,19 @@ def _run_container_process(
     module_name,
     function_name,
     *,
-    inputs: List[Tuple[Tuple, Dict[str, Any]]],
+    inputs: List[Tuple[str, Tuple, Dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
     cls_params: Tuple[Tuple, Dict[str, Any]] = ((), {}),
     print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
+    is_class=False,
 ) -> subprocess.Popen:
     container_args = _container_args(
         module_name,
         function_name,
         allow_concurrent_inputs=allow_concurrent_inputs,
         serialized_params=serialize(cls_params),
+        is_class=is_class,
     )
     encoded_container_args = base64.b64encode(container_args.SerializeToString())
     servicer.container_inputs = _get_multi_inputs(inputs)
@@ -1248,7 +1253,7 @@ def test_cancellation_aborts_current_input_on_match(
             servicer,
             "test.supports.functions",
             function_name,
-            inputs=[((arg,), {}) for arg in input_args],
+            inputs=[("", (arg,), {}) for arg in input_args],
         )
         time.sleep(1)
         input_lock.wait()
@@ -1290,7 +1295,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
             servicer,
             "test.supports.functions",
             function_name,
-            inputs=[((20,), {})] * 2,  # two inputs
+            inputs=[("", (20,), {})] * 2,  # two inputs
             allow_concurrent_inputs=2,
         )
         input_lock.wait()
@@ -1314,7 +1319,12 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
 def test_lifecycle_full(servicer):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
-        servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=[((), {})], cls_params=((True,), {})
+        servicer,
+        "test.supports.functions",
+        "LifecycleCls.*",
+        inputs=[("f_sync", (), {})],
+        cls_params=((True,), {}),
+        is_class=True,
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
@@ -1322,7 +1332,12 @@ def test_lifecycle_full(servicer):
 
     # Sync and async container lifecycle methods on an async function.
     container_process = _run_container_process(
-        servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=[((), {})], cls_params=((True,), {})
+        servicer,
+        "test.supports.functions",
+        "LifecycleCls.*",
+        inputs=[("f_async", (), {})],
+        cls_params=((True,), {}),
+        is_class=True,
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
@@ -1337,8 +1352,9 @@ def test_stop_fetching_inputs(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.experimental",
-        "StopFetching.after_two",
-        inputs=_get_inputs(((42,), {}), n=4, kill_switch=False),
+        "StopFetching.*",
+        inputs=_get_inputs(((42,), {}), n=4, kill_switch=False, method_name="after_two"),
+        is_class=True,
     )
 
     assert len(ret.items) == 2
@@ -1409,10 +1425,11 @@ def test_sigint_termination_input_concurrent(servicer):
         container_process = _run_container_process(
             servicer,
             "test.supports.functions",
-            "LifecycleCls.delay",
-            inputs=[((10,), {})] * 3,
+            "LifecycleCls.*",
+            inputs=[("delay", (10,), {})] * 3,
             cls_params=((), {"print_at_exit": True}),
             allow_concurrent_inputs=2,
+            is_class=True,
         )
         input_barrier.wait()  # get one input
         input_barrier.wait()  # get one input
@@ -1443,9 +1460,10 @@ def test_sigint_termination_input(servicer, method):
         container_process = _run_container_process(
             servicer,
             "test.supports.functions",
-            f"LifecycleCls.{method}",
-            inputs=[((5,), {})],
+            "LifecycleCls.*",
+            inputs=[(method, (5,), {})],
             cls_params=((), {"print_at_exit": True}),
+            is_class=True,
         )
         input_barrier.wait()  # get input
         time.sleep(0.5)
@@ -1473,9 +1491,10 @@ def test_sigint_termination_enter_handler(servicer, method, enter_type):
     container_process = _run_container_process(
         servicer,
         "test.supports.functions",
-        f"LifecycleCls.{method}",
-        inputs=[((5,), {})],
+        "LifecycleCls.*",
+        inputs=[(method, (5,), {})],
         cls_params=((), {"print_at_exit": True, f"{enter_type}_duration": 10}),
+        is_class=True,
     )
     time.sleep(1)  # should be enough to start the enter method
     signal_time = time.monotonic()
@@ -1504,9 +1523,10 @@ def test_sigint_termination_exit_handler(servicer, exit_type):
         container_process = _run_container_process(
             servicer,
             "test.supports.functions",
-            "LifecycleCls.delay",
-            inputs=[((0,), {})],
+            "LifecycleCls.*",
+            inputs=[("delay", (0,), {})],
             cls_params=((), {"print_at_exit": True, f"{exit_type}_duration": 2}),
+            is_class=True,
         )
         outputs.wait()  # wait for first output to be emitted
     time.sleep(1)  # give some time for container to end up in the exit handler
