@@ -512,6 +512,7 @@ message ClassCreateRequest {
   string app_id = 1  [ (modal.options.audit_target_attr) = true ];
   string existing_class_id = 2;
   repeated ClassMethod methods = 3;
+  string class_function_id = 4;
 }
 
 message ClassCreateResponse {
@@ -536,6 +537,8 @@ message ClassGetResponse {
 
 message ClassHandleMetadata {
   repeated ClassMethod methods = 1;
+  string class_function_id = 2;
+  FunctionHandleMetadata class_function_metadata = 3;
 }
 
 message ClassMethod {
@@ -842,6 +845,13 @@ message FileEntry {
   uint64 size = 4;
 }
 
+message Method {
+  string method_name = 1;
+  Function.FunctionType function_type = 2;
+  WebhookConfig webhook_config = 3;
+  // TODO: put function_serialized for each method here for serialized functions?
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -934,6 +944,12 @@ message Function {
   // to look at fine-grained placement constraints.
   bool _experimental_scheduler = 49;
   optional SchedulerPlacement scheduler_placement = 50;
+  optional SchedulerPlacement _experimental_scheduler_placement = 52;
+
+  bool is_class = 53;  // if "Function" is actually a class grouping multiple methods
+
+  string use_function_id= 54;  // for "class functions" - use this function id instead for invocations - the *referenced* function should have is_class=True
+  string use_method_name = 55;  // for "class functions" - this method name needs to be included in the FunctionInput
 }
 
 message FunctionBindParamsRequest {
@@ -1093,6 +1109,8 @@ message FunctionHandleMetadata {
   Function.FunctionType function_type = 8;
   string web_url = 28;
   bool is_method = 39;
+  string use_function_id = 40; // used for methods
+  string use_method_name = 41; // used for methods
 }
 
 message FunctionInput {
@@ -1103,6 +1121,7 @@ message FunctionInput {
   }
   bool final_input = 9;
   DataFormat data_format = 10; // For args_oneof.
+  optional string method_name = 11; // specifies which method to call when calling a class/object function
 }
 
 message FunctionMapRequest {
@@ -1139,6 +1158,8 @@ message FunctionPrecreateRequest {
   string existing_function_id = 3;
   Function.FunctionType function_type = 4;
   WebhookConfig webhook_config = 5;
+  string use_function_id= 6;  // for "class functions" - use this function id instead for invocations - the *referenced* function should have is_class=True
+  string use_method_name = 7;  // for "class functions" - this method name needs to be included in the FunctionInput
 }
 
 message FunctionPrecreateResponse {
