@@ -343,7 +343,8 @@ class _Function(_Object, type_prefix="fu"):
                 (2024, 5, 13),
                 "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
             )
-            # TODO(Jonathon): make `True` when `None` to make background commits default, before later removing flag.
+        elif allow_background_volume_commits is None:
+            allow_background_volume_commits = True
 
         explicit_mounts = mounts
 
