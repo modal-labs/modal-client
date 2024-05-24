@@ -266,7 +266,7 @@ class _Function(_Object, type_prefix="fu"):
     # TODO: more type annotations
     _info: Optional[FunctionInfo]
     _all_mounts: Collection[_Mount]
-    _app: "modal.app._App"
+    _app: Optional["modal.app._App"] = None
     _obj: Any
     _web_url: Optional[str]
     _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
