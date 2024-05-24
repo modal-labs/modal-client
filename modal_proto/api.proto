@@ -941,7 +941,7 @@ message Function {
 
   bool is_class = 53;  // if "Function" is actually a class grouping multiple methods
 
-  string use_function_id= 54;  // for "class functions" - use this function id instead for invocations - the *referenced* function should have is_class=True
+  string use_function_id = 54;  // for "class functions" - use this function id instead for invocations - the *referenced* function should have is_class=True
   string use_method_name = 55;  // for "class functions" - this method name needs to be included in the FunctionInput
 }
 
