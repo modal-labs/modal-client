@@ -80,7 +80,10 @@ class FileEntry:
     def __getattr__(self, name: str):
         deprecation_error(
             (2024, 4, 15),
-            f"The FileEntry dataclass was introduced to replace a private Protobuf message. This dataclass does not have the {name} attribute.",
+            (
+                f"The FileEntry dataclass was introduced to replace a private Protobuf message. "
+                f"This dataclass does not have the {name} attribute."
+            ),
         )
 
 
@@ -357,14 +360,21 @@ class _Volume(_Object, type_prefix="vo"):
         # This allows us to remove the server shim after 0.62 is no longer supported.
         deprecation = deprecation_warning if (major_number, minor_number) <= (0, 62) else deprecation_error
         if path.endswith("**"):
+            msg = (
+                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
+                "Please pass recursive=True instead. For the CLI, just remove the glob suffix."
+            )
             deprecation(
                 (2024, 4, 23),
-                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please pass recursive=True instead. For the CLI, just remove the glob suffix.",
+                msg,
             )
         elif path.endswith("*"):
             deprecation(
                 (2024, 4, 23),
-                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please remove the glob `*` suffix.",
+                (
+                    "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
+                    "Please remove the glob `*` suffix."
+                ),
             )
 
         req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)

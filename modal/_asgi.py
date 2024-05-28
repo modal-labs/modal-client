@@ -118,7 +118,8 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
                 if pop_task in done:
                     yield pop_task.result()
                 else:
-                    pop_task.cancel()  # clean up the popping task, or we will leak unresolved tasks every loop iteration
+                    # clean up the popping task, or we will leak unresolved tasks every loop iteration
+                    pop_task.cancel()
 
                 if app_task in done:
                     while not messages_from_app.empty():

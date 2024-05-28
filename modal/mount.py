@@ -59,7 +59,8 @@ def python_standalone_mount_name(version: str) -> str:
         libc = "gnu"
     if version not in PYTHON_STANDALONE_VERSIONS:
         raise modal.exception.InvalidError(
-            f"Unsupported standalone python version: {version!r}, supported values are {list(PYTHON_STANDALONE_VERSIONS)}"
+            f"Unsupported standalone python version: {version!r}, supported values are "
+            f"{list(PYTHON_STANDALONE_VERSIONS)}"
         )
     if libc != "gnu":
         raise modal.exception.InvalidError(f"Unsupported libc identifier: {libc}")
@@ -516,8 +517,10 @@ class _Mount(_Object, type_prefix="mo"):
         remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
         condition: Optional[Callable[[str], bool]] = None,
     ) -> "_Mount":
-        """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
-        This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
+        """
+        Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
+        This works by mounting the local path of each module's package to a directory inside the container
+        that's on `PYTHONPATH`.
 
         **Usage**
 

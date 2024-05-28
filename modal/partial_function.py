@@ -165,7 +165,8 @@ def _method(
         if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
-                "Web endpoints on classes should not be wrapped by `@method`. Suggestion: remove the `@method` decorator."
+                "Web endpoints on classes should not be wrapped by `@method`. "
+                "Suggestion: remove the `@method` decorator."
             )
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
 
@@ -318,8 +319,9 @@ def _wsgi_app(
     """Decorator for registering a WSGI app with a Modal function.
 
     Web Server Gateway Interface (WSGI) is a standard for synchronous Python web apps.
-    It has been [succeeded by the ASGI interface](https://asgi.readthedocs.io/en/latest/introduction.html#wsgi-compatibility) which is compatible with ASGI and supports
-    additional functionality such as web sockets. Modal supports ASGI via [`asgi_app`](/docs/reference/modal.asgi_app).
+    It has been [succeeded by the ASGI interface](https://asgi.readthedocs.io/en/latest/introduction.html#wsgi-compatibility)
+    which is compatible with ASGI and supports additional functionality such as web sockets.
+    Modal supports ASGI via [`asgi_app`](/docs/reference/modal.asgi_app).
 
     **Usage:**
 

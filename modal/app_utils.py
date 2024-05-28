@@ -13,7 +13,9 @@ async def _list_apps(env: Optional[str] = None, client: Optional[_Client] = None
     """List apps in a given Modal environment."""
     if client is None:
         client = await _Client.from_env()
-    resp: api_pb2.AppListResponse = await client.stub.AppList(api_pb2.AppListRequest(environment_name=_get_environment_name(env)))
+    resp: api_pb2.AppListResponse = await client.stub.AppList(
+        api_pb2.AppListRequest(environment_name=_get_environment_name(env))
+    )
     return list(resp.apps)
 
 

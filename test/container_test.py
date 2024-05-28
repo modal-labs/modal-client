@@ -401,7 +401,8 @@ def _get_web_inputs(path="/"):
     return _get_inputs(((scope,), {}))
 
 
-@async_utils.synchronize_api  # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
+# needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
+@async_utils.synchronize_api
 async def _put_web_body(servicer, body: bytes):
     asgi = {"type": "http.request", "body": body, "more_body": False}
     data = serialize_data_format(asgi, api_pb2.DATA_FORMAT_ASGI)
@@ -827,7 +828,8 @@ def test_multiapp_same_name_warning(unix_servicer, caplog, capsys):
 
 @skip_github_non_linux
 def test_multiapp_serialized_func(unix_servicer, caplog):
-    # serialized functions shouldn't warn about multiple/not finding apps, since they shouldn't load the module to begin with
+    # serialized functions shouldn't warn about multiple/not finding apps, since
+    # they shouldn't load the module to begin with
     def dummy(x):
         return x
 
