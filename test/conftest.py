@@ -64,8 +64,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     def __init__(self, blob_host, blobs):
         self.use_blob_outputs = False
-        self.put_outputs_barrier = threading.Barrier(1, timeout=10)  # set to non-1 to get lock-step of output pushing within a test
-        self.get_inputs_barrier = threading.Barrier(1, timeout=10)  # set to non-1 to get lock-step of input releases within a test
+        self.put_outputs_barrier = threading.Barrier(
+            1, timeout=10
+        )  # set to non-1 to get lock-step of output pushing within a test
+        self.get_inputs_barrier = threading.Barrier(
+            1, timeout=10
+        )  # set to non-1 to get lock-step of input releases within a test
 
         self.app_state_history = defaultdict(list)
         self.app_heartbeats: Dict[str, int] = defaultdict(int)
@@ -202,7 +206,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for f_name, f_id in self.classes[object_id].items():
             function_handle_metadata = self.get_function_metadata(f_id)
             class_handle_metadata.methods.append(
-                api_pb2.ClassMethod(function_name=f_name, function_id=f_id, function_handle_metadata=function_handle_metadata)
+                api_pb2.ClassMethod(
+                    function_name=f_name, function_id=f_id, function_handle_metadata=function_handle_metadata
+                )
             )
         return class_handle_metadata
 
@@ -235,7 +241,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_apps += 1
         app_id = f"ap-{self.n_apps}"
         self.app_state_history[app_id].append(api_pb2.APP_STATE_INITIALIZING)
-        await stream.send_message(api_pb2.AppCreateResponse(app_id=app_id, app_logs_url="https://modaltest.com/apps/ap-123"))
+        await stream.send_message(
+            api_pb2.AppCreateResponse(app_id=app_id, app_logs_url="https://modaltest.com/apps/ap-123")
+        )
 
     async def AppClientDisconnect(self, stream):
         request: api_pb2.AppClientDisconnectRequest = await stream.recv_message()
@@ -268,7 +276,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if request.include_unindexed:
             unindexed_object_ids = self.app_unindexed_objects.get(request.app_id, [])
             objects += [(None, object_id) for object_id in unindexed_object_ids]
-        items = [api_pb2.AppGetObjectsItem(tag=tag, object=self.get_object_metadata(object_id)) for tag, object_id in objects]
+        items = [
+            api_pb2.AppGetObjectsItem(tag=tag, object=self.get_object_metadata(object_id)) for tag, object_id in objects
+        ]
         await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
 
     async def AppSetObjects(self, stream):
@@ -370,7 +380,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         methods: dict[str, str] = {method.function_name: method.function_id for method in request.methods}
         class_id = "cs-" + str(len(self.classes))
         self.classes[class_id] = methods
-        await stream.send_message(api_pb2.ClassCreateResponse(class_id=class_id, handle_metadata=self.get_class_metadata(class_id)))
+        await stream.send_message(
+            api_pb2.ClassCreateResponse(class_id=class_id, handle_metadata=self.get_class_metadata(class_id))
+        )
 
     async def ClassGet(self, stream):
         request: api_pb2.ClassGetRequest = await stream.recv_message()
@@ -379,7 +391,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         object_id = app_objects.get(request.object_tag)
         if object_id is None:
             raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
-        await stream.send_message(api_pb2.ClassGetResponse(class_id=object_id, handle_metadata=self.get_class_metadata(object_id)))
+        await stream.send_message(
+            api_pb2.ClassGetResponse(class_id=object_id, handle_metadata=self.get_class_metadata(object_id))
+        )
 
     ### Client
 
@@ -425,7 +439,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         _request: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
         await stream.send_message(
             api_pb2.RuntimeOutputBatch(
-                items=[api_pb2.RuntimeOutputMessage(file_descriptor=api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT, message="Hello World")]
+                items=[
+                    api_pb2.RuntimeOutputMessage(
+                        file_descriptor=api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT, message="Hello World"
+                    )
+                ]
             )
         )
         await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
@@ -483,7 +501,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.DictLenResponse(len=len(self.dicts[request.dict_id])))
 
     async def DictList(self, stream):
-        dicts = [api_pb2.DictListResponse.DictInfo(name=name, created_at=1) for name, _, _ in self.deployed_dicts if name in self.deployed_apps]
+        dicts = [
+            api_pb2.DictListResponse.DictInfo(name=name, created_at=1)
+            for name, _, _ in self.deployed_dicts
+            if name in self.deployed_apps
+        ]
         await stream.send_message(api_pb2.DictListResponse(dicts=dicts))
 
     async def DictUpdate(self, stream):
@@ -600,7 +622,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         object_id = app_objects.get(request.object_tag)
         if object_id is None:
             raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
-        await stream.send_message(api_pb2.FunctionGetResponse(function_id=object_id, handle_metadata=self.get_function_metadata(object_id)))
+        await stream.send_message(
+            api_pb2.FunctionGetResponse(function_id=object_id, handle_metadata=self.get_function_metadata(object_id))
+        )
 
     async def FunctionMap(self, stream):
         self.fcidx += 1
@@ -747,11 +771,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         task_log_1 = api_pb2.TaskLogs(data="hello, world\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
         task_log_2 = api_pb2.TaskLogs(
-            task_progress=api_pb2.TaskProgress(len=1, pos=0, progress_type=api_pb2.IMAGE_SNAPSHOT_UPLOAD, description="xyz")
+            task_progress=api_pb2.TaskProgress(
+                len=1, pos=0, progress_type=api_pb2.IMAGE_SNAPSHOT_UPLOAD, description="xyz"
+            )
         )
         await stream.send_message(api_pb2.ImageJoinStreamingResponse(task_logs=[task_log_1, task_log_2]))
         await stream.send_message(
-            api_pb2.ImageJoinStreamingResponse(result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS))
+            api_pb2.ImageJoinStreamingResponse(
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+            )
         )
 
     ### Mount
@@ -788,7 +816,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             mount_content[file.filename] = self.files_name2sha[file.filename] = file.sha256_hex
 
         await stream.send_message(
-            api_pb2.MountGetOrCreateResponse(mount_id=mount_id, handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef"))
+            api_pb2.MountGetOrCreateResponse(
+                mount_id=mount_id, handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef")
+            )
         )
 
     ### Proxy
@@ -873,7 +903,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def QueueList(self, stream):
         # TODO Note that the actual self.queue holding the data assumes we have a single queue
         # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
-        queues = [api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1) for name, _, _ in self.deployed_queues if name in self.deployed_apps]
+        queues = [
+            api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1)
+            for name, _, _ in self.deployed_queues
+            if name in self.deployed_apps
+        ]
         await stream.send_message(api_pb2.QueueListResponse(queues=queues))
 
     async def QueueNextItems(self, stream):
@@ -912,7 +946,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if self.sandbox_is_interactive:
             # sends an empty message to simulate PTY
             await stream.send_message(
-                api_pb2.TaskLogsBatch(items=[api_pb2.TaskLogs(data=self.sandbox_shell_prompt, file_descriptor=request.file_descriptor)])
+                api_pb2.TaskLogsBatch(
+                    items=[api_pb2.TaskLogs(data=self.sandbox_shell_prompt, file_descriptor=request.file_descriptor)]
+                )
             )
 
         if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
@@ -923,7 +959,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         async for message in f:
             await stream.send_message(
-                api_pb2.TaskLogsBatch(items=[api_pb2.TaskLogs(data=message.decode("utf-8"), file_descriptor=request.file_descriptor)])
+                api_pb2.TaskLogsBatch(
+                    items=[api_pb2.TaskLogs(data=message.decode("utf-8"), file_descriptor=request.file_descriptor)]
+                )
             )
 
         await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
@@ -940,7 +978,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.SandboxWaitResponse())
             return
         elif self.sandbox.returncode != 0:
-            result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=self.sandbox.returncode)
+            result = api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=self.sandbox.returncode
+            )
         else:
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
         self.sandbox_result = result
@@ -1062,7 +1102,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Task
 
-    async def TaskCurrentInputs(self, stream: "grpclib.server.Stream[Empty, api_pb2.TaskCurrentInputsResponse]") -> None:
+    async def TaskCurrentInputs(
+        self, stream: "grpclib.server.Stream[Empty, api_pb2.TaskCurrentInputsResponse]"
+    ) -> None:
         await stream.send_message(api_pb2.TaskCurrentInputsResponse(input_ids=[]))  # dummy implementation
 
     async def TaskResult(self, stream):
@@ -1075,7 +1117,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def TokenFlowCreate(self, stream):
         request: api_pb2.TokenFlowCreateRequest = await stream.recv_message()
         self.token_flow_localhost_port = request.localhost_port
-        await stream.send_message(api_pb2.TokenFlowCreateResponse(token_flow_id="tc-123", web_url="https://localhost/xyz/abc"))
+        await stream.send_message(
+            api_pb2.TokenFlowCreateResponse(token_flow_id="tc-123", web_url="https://localhost/xyz/abc")
+        )
 
     async def TokenFlowWait(self, stream):
         await stream.send_message(
@@ -1183,7 +1227,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if req.start or req.len:
                 start = req.start
                 len_ = req.len or len(vol_file.data)
-                await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data[start : start + len_], size=size))
+                await stream.send_message(
+                    api_pb2.VolumeGetFileResponse(data=vol_file.data[start : start + len_], size=size)
+                )
             else:
                 await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data, size=size))
 
@@ -1220,7 +1266,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if file.filename in self.volume_files[req.volume_id] and req.disallow_overwrite_existing_files:
                 raise GRPCError(
                     Status.ALREADY_EXISTS,
-                    f"{file.filename}: already exists (disallow_overwrite_existing_files={req.disallow_overwrite_existing_files}",
+                    (
+                        f"{file.filename}: already exists "
+                        f"(disallow_overwrite_existing_files={req.disallow_overwrite_existing_files}"
+                    ),
                 )
 
             self.volume_files[req.volume_id][file.filename] = VolumeFile(
@@ -1238,7 +1287,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             src_file = self.volume_files[req.volume_id][src_path.decode("utf-8")]
             if len(req.src_paths) > 1:
                 # check to make sure dst is a directory
-                if req.dst_path.decode("utf-8").endswith(("/", "\\")) or not os.path.splitext(os.path.basename(req.dst_path))[1]:
+                if (
+                    req.dst_path.decode("utf-8").endswith(("/", "\\"))
+                    or not os.path.splitext(os.path.basename(req.dst_path))[1]
+                ):
                     dst_path = os.path.join(req.dst_path, os.path.basename(src_path))
                 else:
                     raise GRPCError(Status.INVALID_ARGUMENT, f"{dst_path} is not a directory.")

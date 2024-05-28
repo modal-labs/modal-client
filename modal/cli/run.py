@@ -268,7 +268,9 @@ def deploy(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
-    public: bool = typer.Option(False, help="[beta] Publicize the deployment so other workspaces can lookup the function."),
+    public: bool = typer.Option(
+        False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
+    ),
     skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
 ):
@@ -283,7 +285,8 @@ def deploy(
     if public and not skip_confirm:
         if not click.confirm(
             "⚠️ Public apps are a beta feature. ⚠️\n"
-            "Making an app public will allow any user (including from outside your workspace) to look up and use your functions.\n"
+            "Making an app public will allow any user (including from outside your workspace) "
+            "to look up and use your functions.\n"
             "Are you sure you want your app to be public?"
         ):
             return
@@ -332,21 +335,33 @@ def shell(
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
     env: str = ENV_OPTION,
-    image: Optional[str] = typer.Option(default=None, help="Container image tag for inside the shell (if not using FUNC_REF)."),
+    image: Optional[str] = typer.Option(
+        default=None, help="Container image tag for inside the shell (if not using FUNC_REF)."
+    ),
     add_python: Optional[str] = typer.Option(default=None, help="Add Python to the image (if not using FUNC_REF)."),
-    cpu: Optional[int] = typer.Option(default=None, help="Number of CPUs to allocate to the shell (if not using FUNC_REF)."),
-    memory: Optional[int] = typer.Option(default=None, help="Memory to allocate for the shell, in MiB (if not using FUNC_REF)."),
+    cpu: Optional[int] = typer.Option(
+        default=None, help="Number of CPUs to allocate to the shell (if not using FUNC_REF)."
+    ),
+    memory: Optional[int] = typer.Option(
+        default=None, help="Memory to allocate for the shell, in MiB (if not using FUNC_REF)."
+    ),
     gpu: Optional[str] = typer.Option(
         default=None,
         help="GPUs to request for the shell, if any. Examples are `any`, `a10g`, `a100:4` (if not using FUNC_REF).",
     ),
     cloud: Optional[str] = typer.Option(
         default=None,
-        help="Cloud provider to run the shell on. Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF).",
+        help=(
+            "Cloud provider to run the shell on. "
+            "Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF)."
+        ),
     ),
     region: Optional[str] = typer.Option(
         default=None,
-        help="Region(s) to run the shell on. Can be a single region or a comma-separated list to choose from (if not using FUNC_REF).",
+        help=(
+            "Region(s) to run the shell on. "
+            "Can be a single region or a comma-separated list to choose from (if not using FUNC_REF)."
+        ),
     ),
 ):
     """Run an interactive shell inside a Modal image.

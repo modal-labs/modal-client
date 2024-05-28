@@ -43,10 +43,15 @@ FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
 
-def _get_inputs(args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1, kill_switch=True) -> List[api_pb2.FunctionGetInputsResponse]:
+def _get_inputs(
+    args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1, kill_switch=True
+) -> List[api_pb2.FunctionGetInputsResponse]:
     input_pb = api_pb2.FunctionInput(args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE)
     inputs = [
-        *(api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb) for i in range(n)),
+        *(
+            api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
+            for i in range(n)
+        ),
         *([api_pb2.FunctionGetInputsItem(kill_switch=True)] if kill_switch else []),
     ]
     return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
@@ -64,7 +69,11 @@ def _get_multi_inputs(args: List[Tuple[Tuple, Dict]] = []) -> List[api_pb2.Funct
     responses = []
     for input_n, input_args in enumerate(args):
         resp = api_pb2.FunctionGetInputsResponse(
-            inputs=[api_pb2.FunctionGetInputsItem(input_id=f"in-{input_n:03}", input=api_pb2.FunctionInput(args=serialize(input_args)))]
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id=f"in-{input_n:03}", input=api_pb2.FunctionInput(args=serialize(input_args))
+                )
+            ]
         )
         responses.append(resp)
 
@@ -392,7 +401,8 @@ def _get_web_inputs(path="/"):
     return _get_inputs(((scope,), {}))
 
 
-@async_utils.synchronize_api  # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
+# needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
+@async_utils.synchronize_api
 async def _put_web_body(servicer, body: bytes):
     asgi = {"type": "http.request", "body": body, "more_body": False}
     data = serialize_data_format(asgi, api_pb2.DATA_FORMAT_ASGI)
@@ -818,7 +828,8 @@ def test_multiapp_same_name_warning(unix_servicer, caplog, capsys):
 
 @skip_github_non_linux
 def test_multiapp_serialized_func(unix_servicer, caplog):
-    # serialized functions shouldn't warn about multiple/not finding apps, since they shouldn't load the module to begin with
+    # serialized functions shouldn't warn about multiple/not finding apps, since
+    # they shouldn't load the module to begin with
     def dummy(x):
         return x
 
@@ -1251,7 +1262,9 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     )
     # container should exit soon!
     exit_code = container_process.wait(5)
-    assert len(servicer.container_outputs) == 0  # should not fail the outputs, as they would have been cancelled in backend already
+    assert (
+        len(servicer.container_outputs) == 0
+    )  # should not fail the outputs, as they would have been cancelled in backend already
     assert "Traceback" not in container_process.stderr.read().decode("utf8")
     assert exit_code == 0  # container should exit gracefully
 
@@ -1314,7 +1327,9 @@ def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypat
         assert ret.task_result is None  # should not cause a failure result
     loop_iteration_failures = caplog.text.count("Heartbeat attempt failed")
     assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
-    assert loop_iteration_failures > 1  # one occurence per failing `retry_transient_errors()`, so fewer than the number of failing requests!
+    assert (
+        loop_iteration_failures > 1
+    )  # one occurence per failing `retry_transient_errors()`, so fewer than the number of failing requests!
     assert loop_iteration_failures < num_heartbeats
     assert num_heartbeats > 4  # more than the default number of retries per heartbeat attempt + 1
 
@@ -1329,7 +1344,9 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
         raise Exception("oops")
 
     monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
-    monkeypatch.setattr("modal._container_io_manager._ContainerIOManager._heartbeat_handle_cancellations", custom_heartbeater)
+    monkeypatch.setattr(
+        "modal._container_io_manager._ContainerIOManager._heartbeat_handle_cancellations", custom_heartbeater
+    )
 
     ret = _run_container(
         servicer,
@@ -1367,7 +1384,9 @@ def test_sigint_termination_input_concurrent(servicer):
     stdout, stderr = container_process.communicate(timeout=5)
     stop_duration = time.monotonic() - signal_time
     assert len(servicer.container_outputs) == 0
-    assert container_process.returncode == 0  # container should catch and indicate successful termination by exiting cleanly when possible
+    assert (
+        container_process.returncode == 0
+    )  # container should catch and indicate successful termination by exiting cleanly when possible
     assert "[events:enter_sync,enter_async,delay,delay,exit_sync,exit_async]" in stdout.decode()
     assert "Traceback" not in stderr.decode()
     assert "Traceback" not in stdout.decode()
@@ -1396,7 +1415,9 @@ def test_sigint_termination_input(servicer, method):
     stdout, stderr = container_process.communicate(timeout=5)
     stop_duration = time.monotonic() - signal_time
     assert len(servicer.container_outputs) == 0
-    assert container_process.returncode == 0  # container should catch and indicate successful termination by exiting cleanly when possible
+    assert (
+        container_process.returncode == 0
+    )  # container should catch and indicate successful termination by exiting cleanly when possible
     assert f"[events:enter_sync,enter_async,{method},exit_sync,exit_async]" in stdout.decode()
     assert "Traceback" not in stderr.decode()
     assert stop_duration < 2.0  # if this would be ~4.5s, then the input isn't getting terminated

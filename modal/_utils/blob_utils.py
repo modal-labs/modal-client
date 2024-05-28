@@ -153,7 +153,9 @@ async def _upload_to_s3_url(
 
                 local_md5_hex = payload.md5_checksum().hexdigest()
                 if local_md5_hex != remote_md5:
-                    raise ExecutionError(f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})")
+                    raise ExecutionError(
+                        f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})"
+                    )
 
                 return remote_md5
 
@@ -206,7 +208,9 @@ async def perform_multipart_upload(
 
     expected_multipart_etag = hashlib.md5(b"".join(bin_hash_parts)).hexdigest() + f"-{len(part_etags)}"
     async with http_client_with_tls(timeout=None) as session:
-        resp = await session.post(completion_url, data=completion_body.encode("ascii"), skip_auto_headers=["content-type"])
+        resp = await session.post(
+            completion_url, data=completion_body.encode("ascii"), skip_auto_headers=["content-type"]
+        )
         if resp.status != 200:
             try:
                 msg = await resp.text()
@@ -216,7 +220,9 @@ async def perform_multipart_upload(
         else:
             response_body = await resp.text()
             if expected_multipart_etag not in response_body:
-                raise ExecutionError(f"Hash mismatch on multipart upload assembly: {expected_multipart_etag} not in {response_body}")
+                raise ExecutionError(
+                    f"Hash mismatch on multipart upload assembly: {expected_multipart_etag} not in {response_body}"
+                )
 
 
 def get_content_length(data: BinaryIO):
@@ -332,7 +338,9 @@ class FileUploadSpec:
     size: int
 
 
-def _get_file_upload_spec(source: Callable[[], BinaryIO], source_description: Any, mount_filename: PurePosixPath, mode: int) -> FileUploadSpec:
+def _get_file_upload_spec(
+    source: Callable[[], BinaryIO], source_description: Any, mount_filename: PurePosixPath, mode: int
+) -> FileUploadSpec:
     with source() as fp:
         # Current position is ignored - we always upload from position 0
         fp.seek(0, os.SEEK_END)
@@ -360,7 +368,9 @@ def _get_file_upload_spec(source: Callable[[], BinaryIO], source_description: An
     )
 
 
-def get_file_upload_spec_from_path(filename: Path, mount_filename: PurePosixPath, mode: Optional[int] = None) -> FileUploadSpec:
+def get_file_upload_spec_from_path(
+    filename: Path, mount_filename: PurePosixPath, mode: Optional[int] = None
+) -> FileUploadSpec:
     # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
     # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
     mode = mode or os.stat(filename).st_mode & (0o7777 if platform.system() != "Windows" else 0o7755)

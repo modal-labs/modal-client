@@ -177,7 +177,9 @@ def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
     assert "foo" in result.stderr
     assert "bar" in result.stderr
 
-    result = _run(["run", app_file.as_posix(), "--help"], expected_exit_code=2, expected_stderr=None)  # TODO: help should not return non-zero
+    result = _run(
+        ["run", app_file.as_posix(), "--help"], expected_exit_code=2, expected_stderr=None
+    )  # TODO: help should not return non-zero
     # help should also available functions on the app:
     assert "foo" in result.stderr
     assert "bar" in result.stderr
@@ -384,9 +386,11 @@ def mock_shell_pty():
         yield
         write_task.cancel()
 
-    with mock.patch("rich.console.Console.is_terminal", True), mock.patch("modal._pty.get_pty_info", mock_get_pty_info), mock.patch(
-        "modal.runner.get_pty_info", mock_get_pty_info
-    ), mock.patch("modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin), mock.patch("modal._sandbox_shell.write_to_fd", write_to_fd):
+    with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
+        "modal._pty.get_pty_info", mock_get_pty_info
+    ), mock.patch("modal.runner.get_pty_info", mock_get_pty_info), mock.patch(
+        "modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin
+    ), mock.patch("modal._sandbox_shell.write_to_fd", write_to_fd):
         yield fake_stdin, captured_out
 
 
@@ -596,7 +600,8 @@ def test_environment_flag(test_dir, servicer, command):
                 mount_id="mo-123",
                 handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
             ),
-            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount") and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount")
+            and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
             "SharedVolumeGetOrCreate",
@@ -629,12 +634,14 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
                 mount_id="mo-123",
                 handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
             ),
-            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount") and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount")
+            and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
             "SharedVolumeGetOrCreate",
             api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id="sv-123"),
-            request_filter=lambda req: req.deployment_name == "volume_app" and req.environment_name == "some_weird_default_env",
+            request_filter=lambda req: req.deployment_name == "volume_app"
+            and req.environment_name == "some_weird_default_env",
         )
         _run(command + [str(app_file)])
 

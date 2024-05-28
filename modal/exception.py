@@ -128,7 +128,9 @@ def deprecation_error(deprecated_on: Tuple[int, int, int], msg: str):
     raise DeprecationError(f"Deprecated on {date(*deprecated_on)}: {msg}")
 
 
-def deprecation_warning(deprecated_on: Tuple[int, int, int], msg: str, *, pending: bool = False, show_source: bool = True) -> None:
+def deprecation_warning(
+    deprecated_on: Tuple[int, int, int], msg: str, *, pending: bool = False, show_source: bool = True
+) -> None:
     """Utility for getting the proper stack entry.
 
     See the implementation of the built-in [warnings.warn](https://docs.python.org/3/library/warnings.html#available-functions).

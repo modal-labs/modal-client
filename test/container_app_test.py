@@ -30,7 +30,9 @@ async def test_container_function_lazily_imported(container_client):
     object_handle_metadata: Dict[str, Message] = {
         "fu-123": api_pb2.FunctionHandleMetadata(),
     }
-    container_app = RunningApp(app_id="ap-123", tag_to_object_id=tag_to_object_id, object_handle_metadata=object_handle_metadata)
+    container_app = RunningApp(
+        app_id="ap-123", tag_to_object_id=tag_to_object_id, object_handle_metadata=object_handle_metadata
+    )
     app = App()
 
     # This is normally done in _container_entrypoint
@@ -59,7 +61,9 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
         ),
         encoding="utf-8",
     )
-    with mock.patch.dict(os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.remote_addr}):
+    with mock.patch.dict(
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.remote_addr}
+    ):
         io_manager.memory_snapshot()
         # In-memory Client instance should have update credentials, not old credentials
         assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")

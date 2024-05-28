@@ -30,7 +30,10 @@ verify_option = typer.Option(
 
 @token_cli.command(
     name="set",
-    help="Set account credentials for connecting to Modal. If not provided with the command, you will be prompted to enter your credentials.",
+    help=(
+        "Set account credentials for connecting to Modal. "
+        "If not provided with the command, you will be prompted to enter your credentials."
+    ),
 )
 @synchronizer.create_blocking
 async def set(

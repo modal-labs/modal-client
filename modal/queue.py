@@ -29,20 +29,23 @@ class _Queue(_Object, type_prefix="qu"):
     **Queue partitions (beta)**
 
     Specifying partition keys gives access to other independent FIFO partitions within the same `Queue` object.
-    Across any two partitions, puts and gets are completely independent. For example, a put in one partition does not affect
-    a get in any other partition.
+    Across any two partitions, puts and gets are completely independent.
+    For example, a put in one partition does not affect a get in any other partition.
 
-    When no partition key is specified (by default), puts and gets will operate on a default partition. This default partition
-    is also isolated from all other partitions. Please see the Usage section below for an example using partitions.
+    When no partition key is specified (by default), puts and gets will operate on a default partition.
+    This default partition is also isolated from all other partitions.
+    Please see the Usage section below for an example using partitions.
 
     **Lifetime of a queue and its partitions**
 
-    By default, each partition is cleared 24 hours after the last `put` operation. A lower TTL can be specified by the `partition_ttl`
-    argument in the `put` or `put_many` methods. Each partition's expiry is handled independently.
+    By default, each partition is cleared 24 hours after the last `put` operation.
+    A lower TTL can be specified by the `partition_ttl` argument in the `put` or `put_many` methods.
+    Each partition's expiry is handled independently.
 
     As such, `Queue`s are best used for communication between active functions and not relied on for persistent storage.
 
-    On app completion or after stopping an app any associated `Queue` objects are cleaned up. All its partitions will be cleared.
+    On app completion or after stopping an app any associated `Queue` objects are cleaned up.
+    All its partitions will be cleared.
 
     **Limits**
 
@@ -179,7 +182,9 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None) -> "_Queue":
+    def persisted(
+        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
+    ) -> "_Queue":
         """Deprecated! Use `Queue.from_name(name, create_if_missing=True)`."""
         deprecation_warning((2024, 3, 1), _Queue.persisted.__doc__)
         return _Queue.from_name(label, namespace, environment_name, create_if_missing=True)
@@ -201,7 +206,9 @@ class _Queue(_Object, type_prefix="qu"):
         q.put(123)
         ```
         """
-        obj = _Queue.from_name(label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing)
+        obj = _Queue.from_name(
+            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+        )
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
@@ -270,7 +277,9 @@ class _Queue(_Object, type_prefix="qu"):
         await retry_transient_errors(self._client.stub.QueueClear, request)
 
     @live_method
-    async def get(self, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None) -> Optional[Any]:
+    async def get(
+        self, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
+    ) -> Optional[Any]:
         """Remove and return the next object in the queue.
 
         If `block` is `True` (the default) and the queue is empty, `get` will wait indefinitely for
@@ -294,7 +303,9 @@ class _Queue(_Object, type_prefix="qu"):
             return None
 
     @live_method
-    async def get_many(self, n_values: int, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None) -> List[Any]:
+    async def get_many(
+        self, n_values: int, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
+    ) -> List[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
         If there are fewer than `n_values` items in the queue, return all of them.
@@ -360,7 +371,9 @@ class _Queue(_Object, type_prefix="qu"):
                 warnings.warn("`timeout` argument is ignored for non-blocking put.")
             await self._put_many_nonblocking(partition, partition_ttl, vs)
 
-    async def _put_many_blocking(self, partition: Optional[str], partition_ttl: int, vs: List[Any], timeout: Optional[float] = None):
+    async def _put_many_blocking(
+        self, partition: Optional[str], partition_ttl: int, vs: List[Any], timeout: Optional[float] = None
+    ):
         vs_encoded = [serialize(v) for v in vs]
 
         request = api_pb2.QueuePutRequest(
@@ -421,7 +434,9 @@ class _Queue(_Object, type_prefix="qu"):
 
     @warn_if_generator_is_not_consumed()
     @live_method_gen
-    async def iterate(self, *, partition: Optional[str] = None, item_poll_timeout: float = 0.0) -> AsyncGenerator[Any, None]:
+    async def iterate(
+        self, *, partition: Optional[str] = None, item_poll_timeout: float = 0.0
+    ) -> AsyncGenerator[Any, None]:
         """(Beta feature) Iterate through items in the queue without mutation.
 
         Specify `item_poll_timeout` to control how long the iterator should wait for the next time before giving up.
@@ -440,7 +455,9 @@ class _Queue(_Object, type_prefix="qu"):
                 item_poll_timeout=poll_duration,
             )
 
-            response: api_pb2.QueueNextItemsResponse = await retry_transient_errors(self._client.stub.QueueNextItems, request)
+            response: api_pb2.QueueNextItemsResponse = await retry_transient_errors(
+                self._client.stub.QueueNextItems, request
+            )
             if response.items:
                 for item in response.items:
                     yield deserialize(item.value, self._client)

@@ -22,7 +22,9 @@ class _TokenFlow:
         self.stub = client.stub
 
     @asynccontextmanager
-    async def start(self, utm_source: Optional[str] = None, next_url: Optional[str] = None) -> AsyncGenerator[Tuple[str, str, str], None]:
+    async def start(
+        self, utm_source: Optional[str] = None, next_url: Optional[str] = None
+    ) -> AsyncGenerator[Tuple[str, str, str], None]:
         """mdmd:hidden"""
         # Run a temporary http server returning the token id on /
         # This helps us add direct validation later
@@ -45,10 +47,14 @@ class _TokenFlow:
             self.wait_secret = resp.wait_secret
             yield (resp.token_flow_id, resp.web_url, resp.code)
 
-    async def finish(self, timeout: float = 40.0, grpc_extra_timeout: float = 5.0) -> Optional[api_pb2.TokenFlowWaitResponse]:
+    async def finish(
+        self, timeout: float = 40.0, grpc_extra_timeout: float = 5.0
+    ) -> Optional[api_pb2.TokenFlowWaitResponse]:
         """mdmd:hidden"""
         # Wait for token flow to finish
-        req = api_pb2.TokenFlowWaitRequest(token_flow_id=self.token_flow_id, timeout=timeout, wait_secret=self.wait_secret)
+        req = api_pb2.TokenFlowWaitRequest(
+            token_flow_id=self.token_flow_id, timeout=timeout, wait_secret=self.wait_secret
+        )
         resp = await self.stub.TokenFlowWait(req, timeout=(timeout + grpc_extra_timeout))
         if not resp.timeout:
             return resp
@@ -84,7 +90,10 @@ async def _new_token(
                         "If it didn't, please copy this URL into your web browser manually:\n"
                     )
                 else:
-                    console.print("[red]Was not able to launch web browser[/red]\n" "Please go to this URL manually and complete the flow:\n")
+                    console.print(
+                        "[red]Was not able to launch web browser[/red]\n"
+                        "Please go to this URL manually and complete the flow:\n"
+                    )
                 console.print(f"[link={web_url}]{web_url}[/link]\n")
                 if code:
                     console.print(f"Enter this code: [yellow]{code}[/yellow]\n")
@@ -101,7 +110,9 @@ async def _new_token(
     assert result is not None
 
     if result.workspace_username:
-        console.print(f"[green]Token is connected to the [magenta]{result.workspace_username}[/magenta] workspace.[/green]")
+        console.print(
+            f"[green]Token is connected to the [magenta]{result.workspace_username}[/magenta] workspace.[/green]"
+        )
 
     await _set_token(result.token_id, result.token_secret, profile=profile, activate=activate, verify=verify)
 
@@ -141,7 +152,10 @@ async def _set_token(
     active_profile = profile if (activate or not config_profiles()) else None
     with console.status("Storing token", spinner="dots"):
         _store_user_config(config_data, profile=profile, active_profile=active_profile)
-    console.print(f"[green]Token written to [magenta]{user_config_path}[/magenta] in profile [magenta]{profile}[/magenta].[/green]")
+    console.print(
+        f"[green]Token written to [magenta]{user_config_path}[/magenta] in profile "
+        f"[magenta]{profile}[/magenta].[/green]"
+    )
 
 
 def _open_url(url: str) -> bool:

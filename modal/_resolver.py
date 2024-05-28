@@ -135,7 +135,10 @@ class Resolver:
                     # Persisted refs are ignored because their life cycle is managed independently.
                     # The same tag on an app can be pointed at different objects.
                     if existing_object_id is not None and obj.object_id != existing_object_id:
-                        raise Exception(f"Tried creating an object using existing id {existing_object_id}" f" but it has id {obj.object_id}")
+                        raise Exception(
+                            f"Tried creating an object using existing id {existing_object_id}"
+                            f" but it has id {obj.object_id}"
+                        )
 
                 return obj
 
@@ -151,7 +154,9 @@ class Resolver:
         for fut in self._local_uuid_to_future.values():
             if not fut.done():
                 # this will raise an exception if not all loads have been awaited, but that *should* never happen
-                raise RuntimeError("All loaded objects have not been resolved yet, can't get all objects for the resolver!")
+                raise RuntimeError(
+                    "All loaded objects have not been resolved yet, can't get all objects for the resolver!"
+                )
             obj = fut.result()
             unique_objects.setdefault(obj.object_id, obj)
         return list(unique_objects.values())

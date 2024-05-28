@@ -364,7 +364,8 @@ class _App:
                 if not is_notebook():
                     logger.warning(
                         f"Warning: Tag '{function.tag}' collision!"
-                        f" Overriding existing function [{old_function._info.module_name}].{old_function._info.function_name}"
+                        " Overriding existing function "
+                        f"[{old_function._info.module_name}].{old_function._info.function_name}"
                         f" with new function [{function._info.module_name}].{function._info.function_name}"
                     )
             else:
@@ -407,7 +408,9 @@ class _App:
         """Names of web endpoint (ie. webhook) functions registered on the app."""
         return self._web_endpoints
 
-    def local_entrypoint(self, _warn_parentheses_missing=None, *, name: Optional[str] = None) -> Callable[[Callable[..., Any]], None]:
+    def local_entrypoint(
+        self, _warn_parentheses_missing=None, *, name: Optional[str] = None
+    ) -> Callable[[Callable[..., Any]], None]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -443,7 +446,8 @@ class _App:
         **Parsing Arguments**
 
         If your entrypoint function take arguments with primitive types, `modal run` automatically parses them as
-        CLI options. For example, the following function can be called with `modal run app_module.py --foo 1 --bar "hello"`:
+        CLI options.
+        For example, the following function can be called with `modal run app_module.py --foo 1 --bar "hello"`:
 
         ```python
         @app.local_entrypoint()
@@ -451,8 +455,8 @@ class _App:
             some_modal_function.call(foo, bar)
         ```
 
-        Currently, `str`, `int`, `float`, `bool`, and `datetime.datetime` are supported. Use `modal run app_module.py --help` for more
-        information on usage.
+        Currently, `str`, `int`, `float`, `bool`, and `datetime.datetime` are supported.
+        Use `modal run app_module.py --help` for more information on usage.
 
         """
         if _warn_parentheses_missing:
@@ -481,8 +485,12 @@ class _App:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),  # Modal Mounts added to the container
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # Mountpoints for Modal NetworkFileSystems
-        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Mount points for Modal Volumes & CloudBucketMounts
+        network_file_systems: Dict[
+            Union[str, PurePosixPath], _NetworkFileSystem
+        ] = {},  # Mountpoints for Modal NetworkFileSystems
+        volumes: Dict[
+            Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
+        ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         # Specify, in MiB, a memory request which is the minimum memory required.
@@ -492,21 +500,25 @@ class _App:
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[
             int
-        ] = None,  # An optional maximum number of concurrent containers running the function (use keep_warm for minimum).
+        ] = None,  # An optional maximum number of concurrent containers running the function (keep_warm sets minimum).
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: Optional[int] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
+        keep_warm: Optional[
+            int
+        ] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
         name: Optional[str] = None,  # Sets the Modal name of the function within the app
-        is_generator: Optional[bool] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
+        is_generator: Optional[
+            bool
+        ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
-        max_inputs: Optional[
-            int
-        ] = None,  # Maximum number of inputs a container should handle before shutting down. With `max_inputs = 1`, containers will be single-use.
+        # Maximum number of inputs a container should handle before shutting down.
+        # With `max_inputs = 1`, containers will be single-use.
+        max_inputs: Optional[int] = None,
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
@@ -514,7 +526,9 @@ class _App:
         _allow_background_volume_commits: Optional[bool] = None,
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
-        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        _experimental_scheduler_placement: Optional[
+            SchedulerPlacement
+        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -524,7 +538,9 @@ class _App:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.function()`.")
 
         if interactive:
-            deprecation_error((2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead.")
+            deprecation_error(
+                (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+            )
 
         if image is None:
             image = self._get_default_image()
@@ -565,7 +581,10 @@ class _App:
                 )
 
             if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
-                raise InvalidError("`app.function` on methods is not allowed. See https://modal.com/docs/guide/lifecycle-functions instead")
+                raise InvalidError(
+                    "`app.function` on methods is not allowed. "
+                    "See https://modal.com/docs/guide/lifecycle-functions instead"
+                )
 
             if is_generator is None:
                 is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
@@ -624,8 +643,12 @@ class _App:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # Mountpoints for Modal NetworkFileSystems
-        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Mount points for Modal Volumes & CloudBucketMounts
+        network_file_systems: Dict[
+            Union[str, PurePosixPath], _NetworkFileSystem
+        ] = {},  # Mountpoints for Modal NetworkFileSystems
+        volumes: Dict[
+            Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
+        ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         # Specify, in MiB, a memory request which is the minimum memory required.
@@ -644,16 +667,18 @@ class _App:
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
         _allow_background_volume_commits: Optional[bool] = None,
-        max_inputs: Optional[
-            int
-        ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
+        # Limits the number of inputs a container handles before shutting down.
+        # Use `max_inputs = 1` for single-use containers.
+        max_inputs: Optional[int] = None,
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
-        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        _experimental_scheduler_placement: Optional[
+            SchedulerPlacement
+        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
@@ -693,7 +718,10 @@ class _App:
         def wrapper(user_cls: CLS_T) -> _Cls:
             cls: _Cls = _Cls.from_local(user_cls, self, decorator)
 
-            if _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT) and not enable_memory_snapshot:
+            if (
+                _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+                and not enable_memory_snapshot
+            ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
             if len(cls._functions) > 1 and keep_warm is not None:
@@ -726,11 +754,15 @@ class _App:
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, Tuple[int, int]]] = None,
         block_network: bool = False,  # Whether to block network access
-        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Mount points for Modal Volumes and CloudBucketMounts
+        volumes: Dict[
+            Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
+        ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
         _allow_background_volume_commits: Optional[bool] = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
-        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        _experimental_scheduler_placement: Optional[
+            SchedulerPlacement
+        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
@@ -798,7 +830,10 @@ class _App:
         for tag, object in other_app._indexed_objects.items():
             existing_object = self._indexed_objects.get(tag)
             if existing_object and existing_object != object:
-                logger.warning(f"Named app object {tag} with existing value {existing_object} is being overwritten by a different object {object}")
+                logger.warning(
+                    f"Named app object {tag} with existing value {existing_object} is being "
+                    f"overwritten by a different object {object}"
+                )
 
             self._add_object(tag, object)
 
@@ -816,7 +851,8 @@ class _Stub(_App):
     def __new__(cls, *args, **kwargs):
         deprecation_warning(
             (2024, 4, 29),
-            'The use of "Stub" has been deprecated in favor of "App".' " This is a pure name change with no other implications.",
+            'The use of "Stub" has been deprecated in favor of "App".'
+            " This is a pure name change with no other implications.",
         )
         return _App(*args, **kwargs)
 

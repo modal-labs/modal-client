@@ -132,7 +132,8 @@ class _ContainerIOManager:
             await asyncio.sleep(time_until_next_hearbeat)
 
     async def _heartbeat_handle_cancellations(self) -> bool:
-        # Return True if a cancellation event was received, in that case we shouldn't wait too long for another heartbeat
+        # Return True if a cancellation event was received, in that case
+        # we shouldn't wait too long for another heartbeat
 
         # Don't send heartbeats for tasks waiting to be checkpointed.
         # Calling gRPC methods open new connections which block the
@@ -147,14 +148,19 @@ class _ContainerIOManager:
             request.current_input_started_at = self.current_input_started_at
 
         # TODO(erikbern): capture exceptions?
-        response = await retry_transient_errors(self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
+        response = await retry_transient_errors(
+            self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
+        )
 
         if response.HasField("cancel_input_event"):
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
                 if self._input_concurrency > 1:
-                    logger.info("Shutting down task to stop some subset of inputs (concurrent functions don't support fine-grained cancellation)")
+                    logger.info(
+                        "Shutting down task to stop some subset of inputs "
+                        "(concurrent functions don't support fine-grained cancellation)"
+                    )
                     # This is equivalent to a task cancellation or preemption from worker code,
                     # except we do not send a SIGKILL to forcefully exit after 30 seconds.
                     #
@@ -339,10 +345,15 @@ class _ContainerIOManager:
             try:
                 # If number of active inputs is at max queue size, this will block.
                 iteration += 1
-                response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(self._client.stub.FunctionGetInputs, request)
+                response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
+                    self._client.stub.FunctionGetInputs, request
+                )
 
                 if response.rate_limit_sleep_duration:
-                    logger.info("Task exceeded rate limit, sleeping for %.2fs before trying again." % response.rate_limit_sleep_duration)
+                    logger.info(
+                        "Task exceeded rate limit, sleeping for %.2fs before trying again."
+                        % response.rate_limit_sleep_duration
+                    )
                     await asyncio.sleep(response.rate_limit_sleep_duration)
                 elif response.inputs:
                     # for input cancellations and concurrency logic we currently assume
@@ -478,9 +489,10 @@ class _ContainerIOManager:
             yield
         except (KeyboardInterrupt, GeneratorExit):
             # We need to explicitly reraise these BaseExceptions to not handle them in the catch-all:
-            # 1. KeyboardInterrupt can end up here even though this runs on non-main thread, since the code block yielded to could be sending back
-            #    a main thread exception
-            # 2. GeneratorExit - raised if this (async) generator is garbage collected while waiting for the yield. Typically on event loop shutdown
+            # 1. KeyboardInterrupt can end up here even though this runs on non-main thread, since the
+            #    code block yielded to could be sending back a main thread exception
+            # 2. GeneratorExit - raised if this (async) generator is garbage collected while waiting
+            #    for the yield. Typically on event loop shutdown
             raise
         except (InputCancellation, asyncio.CancelledError):
             # just skip creating any output for this input and keep going with the next instead
@@ -569,7 +581,9 @@ class _ContainerIOManager:
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
 
-        await self._client.stub.ContainerCheckpoint(api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id))
+        await self._client.stub.ContainerCheckpoint(
+            api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+        )
 
         self._waiting_for_memory_snapshot = True
         await self._client._close(forget_credentials=True)
@@ -612,10 +626,16 @@ class _ContainerIOManager:
         self._is_interactivity_enabled = True
 
         if not self.function_def.pty_info:
-            raise InvalidError("Interactivity is not enabled in this function. Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity.")
+            raise InvalidError(
+                "Interactivity is not enabled in this function. "
+                "Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
+            )
 
         if self.function_def.concurrency_limit > 1:
-            print("Warning: Interactivity is not supported on functions with concurrency > 1. You may experience unexpected behavior.")
+            print(
+                "Warning: Interactivity is not supported on functions with concurrency > 1. "
+                "You may experience unexpected behavior."
+            )
 
         # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here
         # todo(nathan): check if function interactivity is enabled

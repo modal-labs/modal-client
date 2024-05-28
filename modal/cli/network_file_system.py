@@ -34,7 +34,9 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
 
     client = await _Client.from_env()
-    response = await retry_transient_errors(client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name=env))
+    response = await retry_transient_errors(
+        client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name=env)
+    )
     env_part = f" in environment '{env}'" if env else ""
     column_names = ["Name", "Location", "Created at"]
     rows = []
@@ -71,7 +73,9 @@ def create(
 
 
 async def _volume_from_name(deployment_name: str) -> _NetworkFileSystem:
-    network_file_system = await _NetworkFileSystem.lookup(deployment_name, environment_name=None)  # environment None will take value from config
+    network_file_system = await _NetworkFileSystem.lookup(
+        deployment_name, environment_name=None
+    )  # environment None will take value from config
     if not isinstance(network_file_system, _NetworkFileSystem):
         raise Exception("The specified app entity is not a network file system")
     return network_file_system
@@ -150,7 +154,9 @@ async def put(
         spinner = step_progress(f"Uploading file '{local_path}' to '{remote_path}'...")
         with Live(spinner, console=console):
             written_bytes = await volume.add_local_file(local_path, remote_path)
-        console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)"))
+        console.print(
+            step_completed(f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)")
+        )
 
 
 class CliError(Exception):
@@ -186,7 +192,9 @@ async def get(
     await _volume_download(volume, remote_path, destination, force)
 
 
-@nfs_cli.command(name="rm", help="Delete a file or directory from a network file system.", rich_help_panel="File operations")
+@nfs_cli.command(
+    name="rm", help="Delete a file or directory from a network file system.", rich_help_panel="File operations"
+)
 @synchronizer.create_blocking
 async def rm(
     volume_name: str,

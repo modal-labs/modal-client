@@ -113,7 +113,9 @@ def logs(
         async def get_app_id():
             client = await _Client.from_env()
             env_name = ensure_env(env)
-            request = api_pb2.AppGetByDeploymentNameRequest(namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, name=name, environment_name=env_name)
+            request = api_pb2.AppGetByDeploymentNameRequest(
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, name=name, environment_name=env_name
+            )
             resp = await client.stub.AppGetByDeploymentName(request)
             if not resp.app_id:
                 env_comment = f" in the '{env_name}' environment" if env_name else ""

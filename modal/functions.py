@@ -115,7 +115,9 @@ class _Invocation:
         if response.pipelined_inputs:
             return _Invocation(client.stub, function_call_id, client)
 
-        request_put = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=[item], function_call_id=function_call_id)
+        request_put = api_pb2.FunctionPutInputsRequest(
+            function_id=function_id, inputs=[item], function_call_id=function_call_id
+        )
         inputs_response: api_pb2.FunctionPutInputsResponse = await retry_transient_errors(
             client.stub.FunctionPutInputs,
             request_put,
@@ -125,7 +127,9 @@ class _Invocation:
             raise Exception("Could not create function call - the input queue seems to be full")
         return _Invocation(client.stub, function_call_id, client)
 
-    async def pop_function_call_outputs(self, timeout: Optional[float], clear_on_success: bool) -> AsyncIterator[api_pb2.FunctionGetOutputsItem]:
+    async def pop_function_call_outputs(
+        self, timeout: Optional[float], clear_on_success: bool
+    ) -> AsyncIterator[api_pb2.FunctionGetOutputsItem]:
         t0 = time.time()
         if timeout is None:
             backend_timeout = OUTPUTS_TIMEOUT
@@ -158,7 +162,9 @@ class _Invocation:
 
     async def run_function(self) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
-        item: api_pb2.FunctionGetOutputsItem = (await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True)))[0]
+        item: api_pb2.FunctionGetOutputsItem = (
+            await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True))
+        )[0]
         assert not item.result.gen_status
         return await _process_result(item.result, item.data_format, self.stub, self.client)
 
@@ -168,7 +174,9 @@ class _Invocation:
         If timeout is `None`, waits indefinitely. This function is not
         cancellation-safe.
         """
-        items: List[api_pb2.FunctionGetOutputsItem] = await stream.list(self.pop_function_call_outputs(timeout=timeout, clear_on_success=False))
+        items: List[api_pb2.FunctionGetOutputsItem] = await stream.list(
+            self.pop_function_call_outputs(timeout=timeout, clear_on_success=False)
+        )
 
         if len(items) == 0:
             raise TimeoutError()
@@ -220,7 +228,9 @@ def _parse_retries(
         return None
     else:
         err_object = f"Function {raw_f}" if raw_f else "Function"
-        raise InvalidError(f"{err_object} retries must be an integer or instance of modal.Retries. Found: {type(retries)}")
+        raise InvalidError(
+            f"{err_object} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
+        )
 
 
 @dataclass
@@ -310,7 +320,9 @@ class _Function(_Object, type_prefix="fu"):
         assert callable(raw_f)
         if schedule is not None:
             if not info.is_nullary():
-                raise InvalidError(f"Function {raw_f} has a schedule, so it needs to support being called with no arguments")
+                raise InvalidError(
+                    f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
+                )
 
         if secret is not None:
             deprecation_warning(
@@ -407,7 +419,10 @@ class _Function(_Object, type_prefix="fu"):
             raise TypeError(f"`keep_warm` must be an int or bool, not {type(keep_warm).__name__}")
 
         if (keep_warm is not None) and (concurrency_limit is not None) and concurrency_limit < keep_warm:
-            raise InvalidError(f"Function `{info.function_name}` has `{concurrency_limit=}`, strictly less than its `{keep_warm=}` parameter.")
+            raise InvalidError(
+                f"Function `{info.function_name}` has `{concurrency_limit=}`, "
+                f"strictly less than its `{keep_warm=}` parameter."
+            )
 
         if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
@@ -517,13 +532,15 @@ class _Function(_Object, type_prefix="fu"):
                     raise InvalidError(
                         f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
                         "This is larger than the maximum limit of 16 MiB. "
-                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
+                        "Try reducing the size of the closure by using parameters or mounts, "
+                        "not large global variables."
                     )
                 elif len(function_serialized) > 256 << 10:  # 256 KiB
                     warnings.warn(
                         f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
                         "This is larger than the recommended limit of 256 KiB. "
-                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
+                        "Try reducing the size of the closure by using parameters or mounts, "
+                        "not large global variables."
                     )
             else:
                 function_serialized = None
@@ -564,7 +581,9 @@ class _Function(_Object, type_prefix="fu"):
                 function_type=function_type,
                 resources=convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu),
                 webhook_config=webhook_config,
-                shared_volume_mounts=network_file_system_mount_protos(validated_network_file_systems, allow_cross_region_volumes),
+                shared_volume_mounts=network_file_system_mount_protos(
+                    validated_network_file_systems, allow_cross_region_volumes
+                ),
                 volume_mounts=volume_mounts,
                 proxy_id=(proxy.object_id if proxy else None),
                 retry_policy=retry_policy,
@@ -599,7 +618,9 @@ class _Function(_Object, type_prefix="fu"):
                 existing_function_id=existing_object_id or "",
             )
             try:
-                response: api_pb2.FunctionCreateResponse = await retry_transient_errors(resolver.client.stub.FunctionCreate, request)
+                response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
+                    resolver.client.stub.FunctionCreate, request
+                )
             except GRPCError as exc:
                 if exc.status == Status.INVALID_ARGUMENT:
                     raise InvalidError(exc.message)
@@ -625,7 +646,9 @@ class _Function(_Object, type_prefix="fu"):
                 # Print custom domain in terminal
                 for custom_domain in response.function.custom_domain_info:
                     custom_domain_status_row = resolver.add_status_row()
-                    custom_domain_status_row.finish(f"Custom domain for {tag} => [magenta underline]{custom_domain.url}[/magenta underline]{suffix}")
+                    custom_domain_status_row.finish(
+                        f"Custom domain for {tag} => [magenta underline]{custom_domain.url}[/magenta underline]{suffix}"
+                    )
 
             else:
                 status_row.finish(f"Created {tag}.")
@@ -678,7 +701,9 @@ class _Function(_Object, type_prefix="fu"):
                     reason = ", because the App it is defined on is not running."
                 else:
                     reason = ""
-                raise ExecutionError(f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}.")
+                raise ExecutionError(
+                    f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
+                )
             assert self._parent._client.stub
             serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
@@ -686,7 +711,8 @@ class _Function(_Object, type_prefix="fu"):
                 function_id=self._parent._object_id,
                 serialized_params=serialized_params,
                 function_options=options,
-                environment_name=environment_name or "",  # TODO: investigate shouldn't environment name always be specified here?
+                environment_name=environment_name
+                or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
             response = await retry_transient_errors(self._parent._client.stub.FunctionBindParams, req)
             self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
@@ -708,7 +734,8 @@ class _Function(_Object, type_prefix="fu"):
     async def keep_warm(self, warm_pool_size: int) -> None:
         """Set the warm pool size for the function (including parametrized functions).
 
-        Please exercise care when using this advanced feature! Setting and forgetting a warm pool on functions can lead to increased costs.
+        Please exercise care when using this advanced feature!
+        Setting and forgetting a warm pool on functions can lead to increased costs.
 
         ```python
         # Usage on a regular function.
@@ -722,7 +749,9 @@ class _Function(_Object, type_prefix="fu"):
         """
 
         assert self._client and self._client.stub
-        request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=self._object_id, warm_pool_size_override=warm_pool_size)
+        request = api_pb2.FunctionUpdateSchedulingParamsRequest(
+            function_id=self._object_id, warm_pool_size_override=warm_pool_size
+        )
         await retry_transient_errors(self._client.stub.FunctionUpdateSchedulingParams, request)
 
     @classmethod
@@ -823,7 +852,9 @@ class _Function(_Object, type_prefix="fu"):
         self._is_generator = None
         self._web_url = None
         self._output_mgr: Optional[OutputManager] = None
-        self._mute_cancellation = False  # set when a user terminates the app intentionally, to prevent useless traceback spam
+        self._mute_cancellation = (
+            False  # set when a user terminates the app intentionally, to prevent useless traceback spam
+        )
         self._function_name = None
         self._info = None
 
@@ -840,7 +871,11 @@ class _Function(_Object, type_prefix="fu"):
         assert self._function_name
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
-            function_type=(api_pb2.Function.FUNCTION_TYPE_GENERATOR if self._is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION),
+            function_type=(
+                api_pb2.Function.FUNCTION_TYPE_GENERATOR
+                if self._is_generator
+                else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+            ),
             web_url=self._web_url or "",
         )
 
@@ -854,7 +889,10 @@ class _Function(_Object, type_prefix="fu"):
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
         if not self._web_url:
-            raise ValueError(f"No web_url can be found for function {self._function_name}. web_url can only be referenced from a running app context")
+            raise ValueError(
+                f"No web_url can be found for function {self._function_name}. web_url "
+                "can only be referenced from a running app context"
+            )
         return self._web_url
 
     @property
@@ -864,12 +902,14 @@ class _Function(_Object, type_prefix="fu"):
         return self._is_generator
 
     @live_method_gen
-    async def _map(self, input_queue: _SynchronizedQueue, order_outputs: bool, return_exceptions: bool) -> AsyncGenerator[Any, None]:
+    async def _map(
+        self, input_queue: _SynchronizedQueue, order_outputs: bool, return_exceptions: bool
+    ) -> AsyncGenerator[Any, None]:
         """mdmd:hidden
 
-        Synchronicity-wrapped map implementation. To be safe against invocations of user code in the synchronicity thread
-        it doesn't accept an [async]iterator, and instead takes a _SynchronizedQueue instance that is fed by
-        higher level functions like .map()
+        Synchronicity-wrapped map implementation. To be safe against invocations of user code in
+        the synchronicity thread it doesn't accept an [async]iterator, and instead takes a
+          _SynchronizedQueue instance that is fed by higher level functions like .map()
 
         _SynchronizedQueue is used instead of asyncio.Queue so that the main thread can put
         items in the queue safely.
@@ -883,7 +923,9 @@ class _Function(_Object, type_prefix="fu"):
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         assert self._function_name
-        count_update_callback = self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
+        count_update_callback = (
+            self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
+        )
 
         async for item in _map_invocation(
             self.object_id,
@@ -932,7 +974,9 @@ class _Function(_Object, type_prefix="fu"):
                 f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
             )
         if self._is_generator:
-            raise InvalidError("A generator function cannot be called with `.remote(...)`. Use `.remote_gen(...)` instead.")
+            raise InvalidError(
+                "A generator function cannot be called with `.remote(...)`. Use `.remote_gen(...)` instead."
+            )
 
         return await self._call_function(args, kwargs)
 
@@ -950,7 +994,9 @@ class _Function(_Object, type_prefix="fu"):
             )
 
         if not self._is_generator:
-            raise InvalidError("A non-generator function cannot be called with `.remote_gen(...)`. Use `.remote(...)` instead.")
+            raise InvalidError(
+                "A non-generator function cannot be called with `.remote_gen(...)`. Use `.remote(...)` instead."
+            )
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
 
@@ -1021,7 +1067,8 @@ class _Function(_Object, type_prefix="fu"):
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
 
-        Returns a `modal.functions.FunctionCall` object, that can later be polled or waited for using `.get(timeout=...)`.
+        Returns a `modal.functions.FunctionCall` object, that can later be polled or
+        waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
 
         *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
@@ -1050,7 +1097,9 @@ class _Function(_Object, type_prefix="fu"):
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
             total_timeout=10.0,
         )
-        return FunctionStats(backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks)
+        return FunctionStats(
+            backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
+        )
 
     # A bit hacky - but the map-style functions need to not be synchronicity-wrapped
     # in order to not execute their input iterators on the synchronicity event loop.

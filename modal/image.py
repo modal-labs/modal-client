@@ -58,13 +58,15 @@ def _validate_python_version(version: Optional[str], allow_micro_granularity: bo
         components = version.split(".")
         if len(components) == 3 and not allow_micro_granularity:
             raise InvalidError(
-                "Python version must be specified as 'major.minor' for this interface;" f" micro-level specification ({version!r}) is not valid."
+                "Python version must be specified as 'major.minor' for this interface;"
+                f" micro-level specification ({version!r}) is not valid."
             )
         series_version = "{0}.{1}".format(*components)
 
     if series_version not in SUPPORTED_PYTHON_SERIES:
         raise InvalidError(
-            f"Unsupported Python version: {version!r}." f" Modal supports versions in the following series: {SUPPORTED_PYTHON_SERIES!r}."
+            f"Unsupported Python version: {version!r}."
+            f" Modal supports versions in the following series: {SUPPORTED_PYTHON_SERIES!r}."
         )
     return version
 
@@ -295,7 +297,9 @@ class _Image(_Object, type_prefix="im"):
                 dockerfile = dockerfile_function(builder_version)
 
             if not dockerfile.commands and not build_function:
-                raise InvalidError("No commands were provided for the image — have you tried using modal.Image.debian_slim()?")
+                raise InvalidError(
+                    "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
+                )
             if dockerfile.commands and build_function:
                 raise InvalidError("Cannot provide both a build function and Dockerfile commands!")
 
@@ -325,7 +329,8 @@ class _Image(_Object, type_prefix="im"):
                     except Exception:
                         # Skip unserializable values for now.
                         logger.warning(
-                            f"Skipping unserializable global variable {k} for {build_function._get_info().function_name}. "
+                            f"Skipping unserializable global variable {k} for "
+                            f"{build_function._get_info().function_name}. "
                             "Changes to this variable won't invalidate the image."
                         )
                         continue
@@ -410,7 +415,9 @@ class _Image(_Object, type_prefix="im"):
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
                 raise RemoteError(f"Image build for {image_id} terminated due to external shut-down. Please try again.")
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-                raise RemoteError(f"Image build for {image_id} timed out. Please try again with a larger `timeout` parameter.")
+                raise RemoteError(
+                    f"Image build for {image_id} timed out. Please try again with a larger `timeout` parameter."
+                )
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
                 pass
             else:
@@ -469,7 +476,8 @@ class _Image(_Object, type_prefix="im"):
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
         """Copy a file into the image as a part of building it.
 
-        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) in a `Dockerfile`.
+        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
+        works in a `Dockerfile`.
         """
         basename = str(Path(local_path).name)
         mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
@@ -486,7 +494,8 @@ class _Image(_Object, type_prefix="im"):
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
-        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) in a `Dockerfile`.
+        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
+        works in a `Dockerfile`.
         """
         mount = _Mount.from_local_dir(local_path, remote_path="/")
 
@@ -583,7 +592,10 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         if not secrets:
-            raise InvalidError("No secrets provided to function. Installing private packages requires tokens to be passed via modal.Secret objects.")
+            raise InvalidError(
+                "No secrets provided to function. "
+                "Installing private packages requires tokens to be passed via modal.Secret objects."
+            )
 
         invalid_repos = []
         install_urls = []
@@ -600,7 +612,8 @@ class _Image(_Object, type_prefix="im"):
 
         if invalid_repos:
             raise InvalidError(
-                f"{len(invalid_repos)} out of {len(repositories)} given repository refs are invalid. " f"Invalid refs: {invalid_repos}. "
+                f"{len(invalid_repos)} out of {len(repositories)} given repository refs are invalid. "
+                f"Invalid refs: {invalid_repos}. "
             )
 
         secret_names = ",".join([s.app_name if hasattr(s, "app_name") else str(s) for s in secrets])  # type: ignore
@@ -705,8 +718,10 @@ class _Image(_Object, type_prefix="im"):
             if "project" not in config or "dependencies" not in config["project"]:
                 msg = (
                     "No [project.dependencies] section in pyproject.toml file. "
-                    "If your pyproject.toml instead declares [tool.poetry.dependencies], use `Image.poetry_install_from_file()`. "
-                    "See https://packaging.python.org/en/latest/guides/writing-pyproject-toml for further file format guidelines."
+                    "If your pyproject.toml instead declares [tool.poetry.dependencies], "
+                    "use `Image.poetry_install_from_file()`. "
+                    "See https://packaging.python.org/en/latest/guides/writing-pyproject-toml "
+                    "for further file format guidelines."
                 )
                 raise ValueError(msg)
             else:
@@ -873,7 +888,9 @@ class _Image(_Object, type_prefix="im"):
         which can be used with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install).
         Images will build faster and more reliably with `micromamba`.
         """
-        msg = "The `Image.conda` constructor has deprecated in favor of the faster and more reliable `Image.micromamba`."
+        msg = (
+            "The `Image.conda` constructor has deprecated in favor of the faster and more reliable `Image.micromamba`."
+        )
         deprecation_warning((2024, 5, 2), msg)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -953,12 +970,15 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """DEPRECATED Install additional packages using Conda.
 
-        This method has been deprecated in favor of [`micromamba_install`](/docs/reference/modal.Image#micromamba_install),
+        Deprecated in favor of [`micromamba_install`](/docs/reference/modal.Image#micromamba_install),
         which should be used with the [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) constructor.
         Images will build faster and more reliably with `micromamba`.
         """
 
-        msg = "The `Image.conda_install` method has deprecated in favor of the faster and more reliable `Image.micromamba_install`."
+        msg = (
+            "The `Image.conda_install` method has deprecated in favor of the faster "
+            "and more reliable `Image.micromamba_install`."
+        )
         deprecation_warning((2024, 5, 2), msg)
 
         pkgs = _flatten_str_args("conda_install", "packages", packages)
@@ -1149,10 +1169,11 @@ class _Image(_Object, type_prefix="im"):
         set a `SHELL`. Prefer `run_commands()` when possible though.
 
         To authenticate against a private registry with static credentials, you must set the `secret` parameter to
-        a `modal.Secret` containing a username (`REGISTRY_USERNAME`) and an access token or password (`REGISTRY_PASSWORD`).
+        a `modal.Secret` containing a username (`REGISTRY_USERNAME`) and
+        an access token or password (`REGISTRY_PASSWORD`).
 
-        To authenticate against private registries with credentials from a cloud provider, use `Image.from_gcp_artifact_registry()`
-        or `Image.from_aws_ecr()`.
+        To authenticate against private registries with credentials from a cloud provider,
+        use `Image.from_gcp_artifact_registry()` or `Image.from_aws_ecr()`.
 
         **Examples**
 
@@ -1197,16 +1218,16 @@ class _Image(_Object, type_prefix="im"):
         """Build a Modal image from a private image in Google Cloud Platform (GCP) Artifact Registry.
 
         You will need to pass a `modal.Secret` containing [your GCP service account key data](https://cloud.google.com/iam/docs/keys-create-delete#creating)
-        as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page. Your service account should be granted a specific
-        role depending on the GCP registry used:
+        as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page.
+        Your service account should be granted a specific role depending on the GCP registry used:
 
         - For Artifact Registry images (`pkg.dev` domains) use
           the ["Artifact Registry Reader"](https://cloud.google.com/artifact-registry/docs/access-control#roles) role
         - For Container Registry images (`gcr.io` domains) use
-          the ["Storage Object Viewer"](https://cloud.google.com/artifact-registry/docs/transition/setup-gcr-repo#permissions) role
+          the ["Storage Object Viewer"](https://cloud.google.com/artifact-registry/docs/transition/setup-gcr-repo) role
 
-        **Note:** This method does not use `GOOGLE_APPLICATION_CREDENTIALS` as that variable accepts a path to a JSON file,
-        not the actual JSON string.
+        **Note:** This method does not use `GOOGLE_APPLICATION_CREDENTIALS` as that
+        variable accepts a path to a JSON file, not the actual JSON string.
 
         See `Image.from_registry()` for information about the other parameters.
 
@@ -1277,7 +1298,9 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def from_dockerfile(
         path: Union[str, Path],
-        context_mount: Optional[_Mount] = None,  # modal.Mount with local files to supply as build context for COPY commands
+        context_mount: Optional[
+            _Mount
+        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         *,
         secrets: Sequence[_Secret] = [],
@@ -1420,8 +1443,9 @@ class _Image(_Object, type_prefix="im"):
         kwargs: Dict[str, Any] = {},  # Keyword arguments to the function.
     ) -> "_Image":
         """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
-        function, and any kwargs accepted by `@app.function` (such as `Mount`s, `NetworkFileSystem`s, and resource requests) can
-        be supplied to it. After it finishes execution, a snapshot of the resulting container file system is saved as an image.
+        function, and any kwargs accepted by `@app.function` (such as `Mount`s, `NetworkFileSystem`s,
+        and resource requests) can be supplied to it.
+        After it finishes execution, a snapshot of the resulting container file system is saved as an image.
 
         **Note**
 
@@ -1458,7 +1482,8 @@ class _Image(_Object, type_prefix="im"):
         if network_file_systems:
             warnings.warn(
                 "Mounting NetworkFileSystems or Volumes is usually not advised with `run_function`."
-                " If you are trying to download model weights, downloading it to the image itself is recommended and sufficient."
+                " If you are trying to download model weights, downloading it to the image itself is "
+                "recommended and sufficient."
             )
 
         function = _Function.from_args(
@@ -1479,7 +1504,8 @@ class _Image(_Object, type_prefix="im"):
             args_serialized = serialize((args, kwargs))
             if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
                 raise InvalidError(
-                    f"Arguments to `run_function` are too large ({len(args_serialized)} bytes). " f"Maximum size is {MAX_OBJECT_SIZE_BYTES} bytes."
+                    f"Arguments to `run_function` are too large ({len(args_serialized)} bytes). "
+                    f"Maximum size is {MAX_OBJECT_SIZE_BYTES} bytes."
                 )
             build_function_input = api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE)
         else:

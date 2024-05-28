@@ -102,7 +102,9 @@ async def clear(
 
 @queue_cli.command(name="peek", rich_help_panel="Inspection")
 @synchronizer.create_blocking
-async def peek(name: str, n: int = Argument(1), partition: Optional[str] = PARTITION_OPTION, *, env: Optional[str] = ENV_OPTION):
+async def peek(
+    name: str, n: int = Argument(1), partition: Optional[str] = PARTITION_OPTION, *, env: Optional[str] = ENV_OPTION
+):
     """Print the next N items in the queue or queue partition (without removal)."""
     q = await _Queue.lookup(name, environment_name=env)
     console = Console()

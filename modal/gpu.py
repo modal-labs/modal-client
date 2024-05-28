@@ -31,7 +31,7 @@ class T4(_GPUConfig):
 
     def __init__(
         self,
-        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,  # Number of GPUs per container. Defaults to 1.
     ):
         super().__init__(api_pb2.GPU_TYPE_T4, count, 0)
 
@@ -43,12 +43,13 @@ class L4(_GPUConfig):
     """
     [NVIDIA L4 Tensor Core](https://www.nvidia.com/en-us/data-center/l4/) GPU class.
 
-    A mid-tier data center GPU based on the Ada Lovelace architecture, providing 24GiB of GPU memory. Includes RTX (ray tracing) support.
+    A mid-tier data center GPU based on the Ada Lovelace architecture, providing 24GiB of GPU memory.
+    Includes RTX (ray tracing) support.
     """
 
     def __init__(
         self,
-        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,  # Number of GPUs per container. Defaults to 1.
     ):
         super().__init__(api_pb2.GPU_TYPE_L4, count, 0)
 
@@ -66,7 +67,7 @@ class A100(_GPUConfig):
     def __init__(
         self,
         *,
-        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,  # Number of GPUs per container. Defaults to 1.
         memory: Optional[int] = None,  # Deprecated. Use `size` instead.
         size: Union[str, None] = None,  # Select GiB configuration of GPU device: "40GB" or "80GB". Defaults to "40GB".
     ):
@@ -80,7 +81,9 @@ class A100(_GPUConfig):
             )
 
         if memory == 20:
-            raise ValueError("A100 20GB is unsupported, consider `modal.A10G`, `modal.A100(memory_gb='40')`, or `modal.H100` instead")
+            raise ValueError(
+                "A100 20GB is unsupported, consider `modal.A10G`, `modal.A100(memory_gb='40')`, or `modal.H100` instead"
+            )
         elif memory and size:
             raise ValueError("Cannot specify both `memory` and `size`. Just specify `size`.")
         elif memory:
@@ -88,7 +91,9 @@ class A100(_GPUConfig):
                 raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
         elif size:
             if size not in allowed_size_values:
-                raise ValueError(f"size='{size}' is invalid. A100s can only have memory values of {allowed_size_values}.")
+                raise ValueError(
+                    f"size='{size}' is invalid. A100s can only have memory values of {allowed_size_values}."
+                )
             memory = int(size.replace("GB", ""))
         else:
             memory = 40
@@ -117,7 +122,9 @@ class A10G(_GPUConfig):
     def __init__(
         self,
         *,
-        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+        # Number of GPUs per container. Defaults to 1.
+        # Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,
     ):
         super().__init__(api_pb2.GPU_TYPE_A10G, count)
 
@@ -137,7 +144,9 @@ class H100(_GPUConfig):
     def __init__(
         self,
         *,
-        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+        # Number of GPUs per container. Defaults to 1.
+        # Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,
     ):
         super().__init__(api_pb2.GPU_TYPE_H100, count)
 
@@ -163,11 +172,14 @@ STRING_TO_GPU_CONFIG = {
     "a10g": A10G,
     "any": Any,
 }
-display_string_to_config = "\n".join(f'- "{key}" → `{cls()}`' for key, cls in STRING_TO_GPU_CONFIG.items() if key != "inf2")
+display_string_to_config = "\n".join(
+    f'- "{key}" → `{cls()}`' for key, cls in STRING_TO_GPU_CONFIG.items() if key != "inf2"
+)
 __doc__ = f"""
 **GPU configuration shortcodes**
 
-The following are the valid `str` values for the `gpu` parameter of [`@app.function`](/docs/reference/modal.Stub#function).
+The following are the valid `str` values for the `gpu` parameter of
+[`@app.function`](/docs/reference/modal.Stub#function).
 
 {display_string_to_config}
 
@@ -197,15 +209,22 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
         elif value.lower() == "a100-80gb":
             return A100(size="80GB", count=count)
         elif value.lower() not in STRING_TO_GPU_CONFIG:
-            raise InvalidError(f"Invalid GPU type: {value}. Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive).")
+            raise InvalidError(
+                f"Invalid GPU type: {value}. "
+                f"Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive)."
+            )
         else:
             return STRING_TO_GPU_CONFIG[value.lower()](count=count)
     elif value is True:
         if raise_on_true:
-            deprecation_error((2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.')
+            deprecation_error(
+                (2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
+            )
         else:
             # We didn't support targeting a GPU type for run_function until 2023-12-12
-            deprecation_warning((2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.')
+            deprecation_warning(
+                (2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
+            )
         return Any()
     elif value is None or value is False:
         return None

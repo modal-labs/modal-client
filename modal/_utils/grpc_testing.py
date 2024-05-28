@@ -26,7 +26,8 @@ def patch_mock_servicer(cls):
         await some_complex_method()
     assert ctx.calls == [("SomeMethod", MyMessage(foo="bar"))]
     ```
-    Also allows to set a predefined queue of responses, temporarily replacing a mock servicer's default responses for a method:
+    Also allows to set a predefined queue of responses, temporarily replacing
+    a mock servicer's default responses for a method:
 
     ```python notest
     with servicer.intercept() as ctx:
@@ -107,11 +108,15 @@ class InterceptionContext:
     def add_recv(self, method_name: str, msg):
         self.calls.append((method_name, msg))
 
-    def add_response(self, method_name: str, first_payload, *, request_filter: Callable[[Any], bool] = lambda req: True):
+    def add_response(
+        self, method_name: str, first_payload, *, request_filter: Callable[[Any], bool] = lambda req: True
+    ):
         # adds one response to a queue of responses for requests of the specified type
         self.custom_responses[method_name].append((request_filter, [first_payload]))
 
-    def set_responder(self, method_name: str, responder: Callable[["MockClientServicer", grpclib.server.Stream], Awaitable[None]]):
+    def set_responder(
+        self, method_name: str, responder: Callable[["MockClientServicer", grpclib.server.Stream], Awaitable[None]]
+    ):
         """Replace the default responder method. E.g.
 
         ```python notest

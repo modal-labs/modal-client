@@ -80,7 +80,10 @@ class FileEntry:
     def __getattr__(self, name: str):
         deprecation_error(
             (2024, 4, 15),
-            f"The FileEntry dataclass was introduced to replace a private Protobuf message. This dataclass does not have the {name} attribute.",
+            (
+                f"The FileEntry dataclass was introduced to replace a private Protobuf message. "
+                f"This dataclass does not have the {name} attribute."
+            ),
         )
 
 
@@ -368,7 +371,10 @@ class _Volume(_Object, type_prefix="vo"):
         elif path.endswith("*"):
             deprecation(
                 (2024, 4, 23),
-                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please remove the glob `*` suffix.",
+                (
+                    "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
+                    "Please remove the glob `*` suffix."
+                ),
             )
 
         req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
@@ -529,7 +535,9 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def _instance_delete(self):
-        await retry_transient_errors(self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id))
+        await retry_transient_errors(
+            self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id)
+        )
 
     # @staticmethod  # TODO uncomment when enforcing deprecation of instance method invocation
     async def delete(*args, label: str = "", client: Optional[_Client] = None, environment_name: Optional[str] = None):
@@ -676,7 +684,9 @@ class _VolumeUploadContextManager:
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
-                logger.debug(f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)")
+                logger.debug(
+                    f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
+                )
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:

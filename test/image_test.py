@@ -158,7 +158,9 @@ def test_image_python_packages(builder_version, servicer, client):
 
 def test_image_kwargs_validation(builder_version, servicer, client):
     app = App()
-    app.image = Image.debian_slim().run_commands("echo hi", secrets=[Secret.from_dict({"xyz": "123"}), Secret.from_name("foo")])
+    app.image = Image.debian_slim().run_commands(
+        "echo hi", secrets=[Secret.from_dict({"xyz": "123"}), Secret.from_name("foo")]
+    )
     with pytest.raises(InvalidError):
         app.image = Image.debian_slim().run_commands(
             "echo hi",
@@ -206,7 +208,14 @@ def test_image_requirements_txt(builder_version, servicer, client):
 
 def test_empty_install(builder_version, servicer, client):
     # Install functions with no packages should be ignored.
-    app = App(image=Image.debian_slim().pip_install().pip_install([], [], [], []).apt_install([]).run_commands().micromamba_install())
+    app = App(
+        image=Image.debian_slim()
+        .pip_install()
+        .pip_install([], [], [], [])
+        .apt_install([])
+        .run_commands()
+        .micromamba_install()
+    )
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -246,7 +255,8 @@ def test_image_pip_install_pyproject_with_optionals(builder_version, servicer, c
 
         print(layers[0].dockerfile_commands)
         assert any(
-            "pip install 'banana >=1.2.0' 'linting-tool >=0.0.0' 'potato >=0.1.0' 'pytest >=1.2.0'" in cmd for cmd in layers[0].dockerfile_commands
+            "pip install 'banana >=1.2.0' 'linting-tool >=0.0.0' 'potato >=0.1.0' 'pytest >=1.2.0'" in cmd
+            for cmd in layers[0].dockerfile_commands
         )
         assert not (any("'mkdocs >=1.4.2'" in cmd for cmd in layers[0].dockerfile_commands))
 
@@ -286,10 +296,12 @@ def test_image_pip_install_private_repos(builder_version, servicer, client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert len(layers[0].secret_ids) == 2
         assert any(
-            'pip install "git+https://erikbern:$GITHUB_TOKEN@github.com/corp/private-one@1.0.0"' in cmd for cmd in layers[0].dockerfile_commands
+            'pip install "git+https://erikbern:$GITHUB_TOKEN@github.com/corp/private-one@1.0.0"' in cmd
+            for cmd in layers[0].dockerfile_commands
         )
         assert any(
-            'pip install "git+https://erikbern:$GITLAB_TOKEN@gitlab.com/corp2/private-two@0.0.2"' in cmd for cmd in layers[0].dockerfile_commands
+            'pip install "git+https://erikbern:$GITLAB_TOKEN@gitlab.com/corp2/private-two@0.0.2"' in cmd
+            for cmd in layers[0].dockerfile_commands
         )
 
 
@@ -345,10 +357,15 @@ def test_micromamba_install(builder_version, servicer, client):
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
 
-        assert any("COPY /test-conda-environment.yml /test-conda-environment.yml" in cmd for cmd in layers[0].dockerfile_commands)
+        assert any(
+            "COPY /test-conda-environment.yml /test-conda-environment.yml" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
         assert any("micromamba install -f /test-conda-environment.yml" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("pip install scikit-learn" in cmd for cmd in layers[1].dockerfile_commands)
-        assert any("micromamba install pymc3 theano -c conda-forge --yes" in cmd for cmd in layers[2].dockerfile_commands)
+        assert any(
+            "micromamba install pymc3 theano -c conda-forge --yes" in cmd for cmd in layers[2].dockerfile_commands
+        )
         assert any("pip install numpy" in cmd for cmd in layers[3].dockerfile_commands)
         assert any(b"foo=1.0" in f.data for f in layers[0].context_files)
         assert any(b"bar=2.1" in f.data for f in layers[0].context_files)
@@ -405,7 +422,9 @@ def run_f():
 
 def test_image_run_function(builder_version, servicer, client):
     app = App()
-    app.image = Image.debian_slim().pip_install("pandas").run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})])
+    app.image = (
+        Image.debian_slim().pip_install("pandas").run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})])
+    )
 
     with app.run(client=client):
         image_id = app.image.object_id
@@ -741,7 +760,9 @@ def test_image_builder_version(servicer, test_dir, modal_config):
             with mock.patch("modal.image._dockerhub_debian_codename", lambda *_, **__: "bullseye"):
                 with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
                     with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-                        with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")) as client:
+                        with Client(
+                            servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ak-123", "as-xyz")
+                        ) as client:
                             with modal_config():
                                 with app.run(client=client):
                                     assert servicer.image_builder_versions
@@ -943,7 +964,9 @@ def test_image_parallel_build(builder_version, servicer, client):
             await asyncio.sleep(0.01)
 
         await stream.send_message(
-            api_pb2.ImageJoinStreamingResponse(result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS))
+            api_pb2.ImageJoinStreamingResponse(
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+            )
         )
 
     with servicer.intercept() as ctx:

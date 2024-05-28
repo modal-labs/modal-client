@@ -53,6 +53,8 @@ def validate_volumes(
     for paths in volume_to_paths.values():
         if len(paths) > 1:
             conflicting = ", ".join(paths)
-            raise InvalidError(f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}")
+            raise InvalidError(
+                f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
+            )
 
     return validated_volumes

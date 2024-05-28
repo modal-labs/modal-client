@@ -94,7 +94,10 @@ class DaemonizedThreadPool:
         else:
             # special case - allows us to exit the
             if self.inputs.unfinished_tasks:
-                logger.info(f"Exiting DaemonizedThreadPool with {self.inputs.unfinished_tasks} active inputs due to exception: {repr(exc_type)}")
+                logger.info(
+                    f"Exiting DaemonizedThreadPool with {self.inputs.unfinished_tasks} active "
+                    f"inputs due to exception: {repr(exc_type)}"
+                )
 
     def submit(self, func, *args):
         def worker_thread():
@@ -156,7 +159,8 @@ class UserCodeEventLoop:
                 task.cancel()
                 return
 
-            raise KeyboardInterrupt()  # this should normally not happen, but the second sigint would "hard kill" the event loop!
+            # this should normally not happen, but the second sigint would "hard kill" the event loop!
+            raise KeyboardInterrupt()
 
         ignore_sigint = signal.getsignal(signal.SIGINT) == signal.SIG_IGN
         if not ignore_sigint:
@@ -216,7 +220,9 @@ def call_function(
                 await container_io_manager._queue_put.aio(generator_queue, _ContainerIOManager._GENERATOR_STOP_SENTINEL)
                 await generator_output_task  # Wait to finish sending generator outputs.
                 message = api_pb2.GeneratorDone(items_total=item_count)
-                await container_io_manager.push_output.aio(input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
+                await container_io_manager.push_output.aio(
+                    input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
+                )
             else:
                 if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                     raise InvalidError(
@@ -275,7 +281,9 @@ def call_function(
                 # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
                 # for them to resolve gracefully:
                 async with TaskContext(0.01) as task_context:
-                    async for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs.aio(input_concurrency):
+                    async for input_id, function_call_id, args, kwargs in container_io_manager.run_inputs_outputs.aio(
+                        input_concurrency
+                    ):
                         # Note that run_inputs_outputs will not return until the concurrency semaphore has
                         # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
                         # This prevents leaving the task_context before outputs have been created
@@ -393,11 +401,14 @@ def import_function(
                 warning_sub_message = f"app with the same name ('{app_name}')"
             else:
                 warning_sub_message = "unnamed app"
-            logger.warning(f"You have more than one {warning_sub_message}. It's recommended to name all your Apps uniquely when using multiple apps")
+            logger.warning(
+                f"You have more than one {warning_sub_message}. "
+                "It's recommended to name all your Apps uniquely when using multiple apps"
+            )
         elif len(matching_apps) == 1:
             (active_app,) = matching_apps
-        # there could also technically be zero found apps, but that should probably never be an issue since that would mean user
-        # won't use is_inside or other function handles anyway
+        # there could also technically be zero found apps, but that should probably never be an
+        # issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
     is_async = get_is_async(user_defined_callable)
@@ -455,15 +466,17 @@ def call_lifecycle_functions(
             # We are deprecating parameterized exit methods but want to gracefully handle old code.
             # We can remove this once the deprecation in the actual @exit decorator is enforced.
             args = (None, None, None) if method_has_params(func) else ()
-            res = func(
-                *args
-            )  # in case func is non-async, it's executed here and sigint will by default interrupt it using a KeyboardInterrupt exception
+            # in case func is non-async, it's executed here and sigint will by default
+            # interrupt it using a KeyboardInterrupt exception
+            res = func(*args)
             if inspect.iscoroutine(res):
                 # if however func is async, we have to jump through some hoops
                 event_loop.run(res)
 
 
-def finalize_function(imp_fun: ImportedFunction, container_io_manager: "modal._container_io_manager.ContainerIOManager") -> FinalizedFunction:
+def finalize_function(
+    imp_fun: ImportedFunction, container_io_manager: "modal._container_io_manager.ContainerIOManager"
+) -> FinalizedFunction:
     callable: Callable[..., Any]
     # Construct
     if not imp_fun.webhook_config.type:
@@ -555,7 +568,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             function_deps = imp_fun.function.deps(only_explicit_mounts=True)
             if len(function_deps) != len(dep_object_ids):
-                raise ExecutionError(f"Function has {len(function_deps)} dependencies" f" but container got {len(dep_object_ids)} object ids.")
+                raise ExecutionError(
+                    f"Function has {len(function_deps)} dependencies"
+                    f" but container got {len(dep_object_ids)} object ids."
+                )
             for object_id, obj in zip(dep_object_ids, function_deps):
                 metadata: Message = container_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, _client, metadata)
@@ -608,7 +624,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
                 # commit errors.
-                container_io_manager.volume_commit([v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits])
+                container_io_manager.volume_commit(
+                    [v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits]
+                )
             finally:
                 # Restore the original signal handler, needed for container_test hygiene since the
                 # test runs `main()` multiple times in the same process.
@@ -656,8 +674,8 @@ if __name__ == "__main__":
     if lingering_threads:
         thread_names = ", ".join(t.name for t in lingering_threads)
         logger.warning(
-            f"Detected {len(lingering_threads)} background thread(s) [{thread_names}] still running after container exit. "
-            "This will prevent runner shutdown for up to 30 seconds."
+            f"Detected {len(lingering_threads)} background thread(s) [{thread_names}] still running "
+            "after container exit. This will prevent runner shutdown for up to 30 seconds."
         )
 
     logger.debug("Container: done")

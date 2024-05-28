@@ -27,7 +27,9 @@ _FIELD_RANDOM_GENERATOR: Dict[int, Callable[[Random], Any]] = {
     FieldDescriptor.TYPE_SFIXED32: lambda rand: int.from_bytes(rand.randbytes(4), "little", signed=True),
     FieldDescriptor.TYPE_SFIXED64: lambda rand: int.from_bytes(rand.randbytes(8), "little", signed=True),
     FieldDescriptor.TYPE_BOOL: lambda rand: rand.choice([True, False]),
-    FieldDescriptor.TYPE_STRING: lambda rand: "".join(rand.choice(string.printable) for _ in range(int(rand.expovariate(0.15)))),
+    FieldDescriptor.TYPE_STRING: lambda rand: "".join(
+        rand.choice(string.printable) for _ in range(int(rand.expovariate(0.15)))
+    ),
     FieldDescriptor.TYPE_BYTES: lambda rand: rand.randbytes(int(rand.expovariate(0.15))),
 }
 

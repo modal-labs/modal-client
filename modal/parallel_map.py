@@ -125,8 +125,12 @@ async def _map_invocation(
         assert client.stub
         nonlocal have_all_inputs, num_inputs
         async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
-            request = api_pb2.FunctionPutInputsRequest(function_id=function_id, inputs=items, function_call_id=function_call_id)
-            logger.debug(f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}.")
+            request = api_pb2.FunctionPutInputsRequest(
+                function_id=function_id, inputs=items, function_call_id=function_call_id
+            )
+            logger.debug(
+                f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
+            )
             resp = await retry_transient_errors(
                 client.stub.FunctionPutInputs,
                 request,
@@ -137,7 +141,10 @@ async def _map_invocation(
             count_update()
             for item in resp.inputs:
                 pending_outputs.setdefault(item.input_id, 0)
-            logger.debug(f"Successfully pushed {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}.")
+            logger.debug(
+                f"Successfully pushed {len(items)} inputs to server. "
+                f"Num queued inputs awaiting push is {input_queue.qsize()}."
+            )
 
         have_all_inputs = True
         yield
@@ -276,7 +283,9 @@ def _map_sync(
     """
 
     return AsyncOrSyncIteratable(
-        _map_async(self, *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions),
+        _map_async(
+            self, *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+        ),
         nested_async_message=(
             "You can't iter(Function.map()) or Function.for_each() from an async function. "
             "Use async for ... Function.map.aio() or Function.for_each.aio() instead."
@@ -317,7 +326,8 @@ async def _map_async(
     feed_input_task = asyncio.create_task(feed_queue())
 
     try:
-        # note that `map()` and `map.aio()` are not synchronicity-wrapped, since they accept executable code in the form of
+        # note that `map()` and `map.aio()` are not synchronicity-wrapped, since
+        # they accept executable code in the form of
         # iterators that we don't want to run inside the synchronicity thread.
         # Instead, we delegate to `._map()` with a safer Queue as input
         async for output in self._map.aio(raw_input_queue, order_outputs, return_exceptions):  # type: ignore[reportFunctionMemberAccess]
@@ -396,8 +406,11 @@ def _starmap_sync(
     ```
     """
     return AsyncOrSyncIteratable(
-        _starmap_async(self, input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions),
+        _starmap_async(
+            self, input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+        ),
         nested_async_message=(
-            "You can't run Function.map() or Function.for_each() from an async function. " "Use Function.map.aio()/Function.for_each.aio() instead."
+            "You can't run Function.map() or Function.for_each() from an async function. "
+            "Use Function.map.aio()/Function.for_each.aio() instead."
         ),
     )

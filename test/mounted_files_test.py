@@ -78,9 +78,12 @@ def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, serve
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
-        # should serialized_fn be included? It's not needed to run the function, but it's loaded into sys.modules at definition time...
+        # should serialized_fn be included? It's not needed to run the function,
+        # but it's loaded into sys.modules at definition time...
         "/root/serialized_fn.py",
-        "/root/b/c.py",  # this is mounted under root since it's imported as `import b` and not `import pkg_a.b` from serialized_fn.py
+        # this is mounted under root since it's imported as `import b`
+        # and not `import pkg_a.b` from serialized_fn.py
+        "/root/b/c.py",
         "/root/b/e.py",  # same as above
         "/root/a.py",  # same as above
         "/root/pkg_b/__init__.py",
@@ -168,7 +171,9 @@ def symlinked_python_installation_venv_path(tmp_path, repo_root):
     subprocess.check_call([symlink_python_executable, "-m", "venv", venv_path, "--copies"])
     # check that a builtin module, like ast, is indeed identified to be in the non-resolved install path
     # since this is the source of bugs that we want to assert we don't run into!
-    ast_path = subprocess.check_output([venv_path / "bin" / "python", "-c", "import ast; print(ast.__file__);"], encoding="utf8")
+    ast_path = subprocess.check_output(
+        [venv_path / "bin" / "python", "-c", "import ast; print(ast.__file__);"], encoding="utf8"
+    )
     assert ast_path != Path(ast_path).resolve()
 
     # install modal from current dir
@@ -177,13 +182,19 @@ def symlinked_python_installation_venv_path(tmp_path, repo_root):
 
 
 @skip_windows("venvs behave differently on Windows.")
-def test_mounted_files_symlinked_python_install(symlinked_python_installation_venv_path, supports_dir, server_url_env, servicer):
-    subprocess.check_call([symlinked_python_installation_venv_path / "bin" / "modal", "run", supports_dir / "imports_ast.py"])
+def test_mounted_files_symlinked_python_install(
+    symlinked_python_installation_venv_path, supports_dir, server_url_env, servicer
+):
+    subprocess.check_call(
+        [symlinked_python_installation_venv_path / "bin" / "modal", "run", supports_dir / "imports_ast.py"]
+    )
     assert "/root/ast.py" not in servicer.files_name2sha
 
 
 def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_url_env):
-    p = subprocess.run(["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={**os.environ, "MODAL_AUTOMOUNT": "0"})
+    p = subprocess.run(
+        ["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={**os.environ, "MODAL_AUTOMOUNT": "0"}
+    )
     assert p.returncode == 0
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
     assert files == {
@@ -305,10 +316,14 @@ def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servic
     project_dir = Path(__file__).parent.parent
     monkeypatch.chdir(tmp_path)
     subprocess.run(["pdm", "init", "-n"], check=True)
-    subprocess.run(["pdm", "add", "--dev", project_dir], check=True)  # install workdir modal into venv, not using cache...
+    subprocess.run(
+        ["pdm", "add", "--dev", project_dir], check=True
+    )  # install workdir modal into venv, not using cache...
     subprocess.run(["pdm", "config", "--local", "install.cache", "on"], check=True)
     subprocess.run(["pdm", "add", "six"], check=True)  # single file module
-    subprocess.run(["pdm", "run", "modal", "deploy", supports_dir / "imports_six.py"], check=True)  # deploy a basically empty function
+    subprocess.run(
+        ["pdm", "run", "modal", "deploy", supports_dir / "imports_six.py"], check=True
+    )  # deploy a basically empty function
 
     files = set(servicer.files_name2sha.keys())
     assert files == {

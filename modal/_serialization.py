@@ -75,7 +75,9 @@ def deserialize(s: bytes, client) -> Any:
                 " you have different versions of a library in your local and remote environments."
             ) from exc
     except ModuleNotFoundError as exc:
-        raise DeserializationError(f"Deserialization failed because the '{exc.name}' module is not available in the {env} environment.") from exc
+        raise DeserializationError(
+            f"Deserialization failed because the '{exc.name}' module is not available in the {env} environment."
+        ) from exc
     except Exception as exc:
         if env == "remote":
             # We currently don't always package the full traceback from errors in the remote entrypoint logic.
@@ -84,7 +86,9 @@ def deserialize(s: bytes, client) -> Any:
         else:
             # When running locally, we can just rely on standard exception chaining.
             more = " (see above for details)"
-        raise DeserializationError(f"Encountered an error when deserializing an object in the {env} environment{more}.") from exc
+        raise DeserializationError(
+            f"Encountered an error when deserializing an object in the {env} environment{more}."
+        ) from exc
 
 
 def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
@@ -254,7 +258,11 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
             "path": asgi.websocket.path,
             "query_string": asgi.websocket.query_string,
             "headers": unflatten_headers(asgi.websocket.headers),
-            **({"client": (asgi.websocket.client_host, asgi.websocket.client_port)} if asgi.websocket.HasField("client_host") else {}),
+            **(
+                {"client": (asgi.websocket.client_host, asgi.websocket.client_port)}
+                if asgi.websocket.HasField("client_host")
+                else {}
+            ),
             "subprotocols": list(asgi.websocket.subprotocols),
         }
     elif msg_type == "websocket_connect":
@@ -336,4 +344,6 @@ def check_valid_cls_constructor_arg(key, obj):
         ClsConstructorPickler(buf).dump(obj)
         return True
     except (AttributeError, ValueError):
-        raise ValueError(f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(obj)}.")
+        raise ValueError(
+            f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(obj)}."
+        )

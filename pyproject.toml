@@ -43,7 +43,7 @@ exclude = [
     'modal_proto',
     'modal/_vendor',
 ]
-line-length = 150
+line-length = 120
 lint.ignore = ['E741']
 lint.select = ['E', 'F', 'W', 'I']
 

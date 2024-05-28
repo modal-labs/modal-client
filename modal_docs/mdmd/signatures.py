@@ -60,7 +60,11 @@ def get_signature(name, callable) -> str:
         # ugly name and definition replacement hack when needed
         definition_source = definition_source.replace(f"def {original_name}", f"def {name}")
 
-    if "async def" in definition_source and not inspect.iscoroutinefunction(callable) and not inspect.isasyncgenfunction(callable):
+    if (
+        "async def" in definition_source
+        and not inspect.iscoroutinefunction(callable)
+        and not inspect.isasyncgenfunction(callable)
+    ):
         # hack to "reset" signature to a blocking one if the underlying source definition is async
         # but the wrapper function isn't (like when synchronicity wraps an async function as a blocking one)
         definition_source = definition_source.replace("async def", "def")

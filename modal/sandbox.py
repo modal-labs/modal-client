@@ -367,7 +367,9 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         This is a no-op if the sandbox has already finished running."""
 
-        await retry_transient_errors(self._client.stub.SandboxTerminate, api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id))
+        await retry_transient_errors(
+            self._client.stub.SandboxTerminate, api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
+        )
         await self.wait(raise_on_termination=False)
 
     async def poll(self) -> Optional[int]:

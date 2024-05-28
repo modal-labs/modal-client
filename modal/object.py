@@ -97,7 +97,9 @@ class _Object:
         assert isinstance(object_id, str)
         if not object_id.startswith(self._type_prefix):
             raise ExecutionError(
-                f"Can not hydrate {type(self)}:" f" it has type prefix {self._type_prefix}" f" but the object_id starts with {object_id[:3]}"
+                f"Can not hydrate {type(self)}:"
+                f" it has type prefix {self._type_prefix}"
+                f" but the object_id starts with {object_id[:3]}"
             )
         self._object_id = object_id
         self._client = client
@@ -145,7 +147,9 @@ class _Object:
         return obj
 
     @classmethod
-    def _new_hydrated(cls: Type[O], object_id: str, client: _Client, handle_metadata: Optional[Message], is_another_app: bool = False) -> O:
+    def _new_hydrated(
+        cls: Type[O], object_id: str, client: _Client, handle_metadata: Optional[Message], is_another_app: bool = False
+    ) -> O:
         if cls._type_prefix is not None:
             # This is called directly on a subclass, e.g. Secret.from_id
             if not object_id.startswith(cls._type_prefix + "-"):
@@ -207,7 +211,9 @@ class _Object:
             else:
                 # Technically possible, but with an ambiguous cause.
                 reason = ""
-            raise ExecutionError(f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}.")
+            raise ExecutionError(
+                f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}."
+            )
         else:
             # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
             resolver = Resolver(await _Client.from_env())

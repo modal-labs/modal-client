@@ -306,11 +306,15 @@ async def test_volume_copy_2(client, tmp_path, servicer):
         vol.copy_files(file_paths, "test_dir")
 
     returned_volume_files = [Path(file) for file in servicer.volume_files[object_id].keys()]
-    expected_volume_files = [Path(file) for file in ["file1.txt", "file2.txt", "test_dir/file1.txt", "test_dir/file2.txt"]]
+    expected_volume_files = [
+        Path(file) for file in ["file1.txt", "file2.txt", "test_dir/file1.txt", "test_dir/file2.txt"]
+    ]
 
     assert returned_volume_files == expected_volume_files
 
-    returned_file_data = {Path(entry): servicer.volume_files[object_id][entry] for entry in servicer.volume_files[object_id]}
+    returned_file_data = {
+        Path(entry): servicer.volume_files[object_id][entry] for entry in servicer.volume_files[object_id]
+    }
     assert returned_file_data[Path("test_dir/file1.txt")].data == b"test copy"
     assert returned_file_data[Path("test_dir/file2.txt")].data == b"test copy"
 
@@ -379,7 +383,9 @@ async def test_open_files_error_annotation(tmp_path):
     assert _open_files_error_annotation(tmp_path) is None
 
     # Subprocess cwd inside volume
-    proc = await asyncio.create_subprocess_exec(sys.executable, "-c", f"import time; import os; os.chdir('{tmp_path}'); time.sleep(60)")
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", f"import time; import os; os.chdir('{tmp_path}'); time.sleep(60)"
+    )
     # Wait for process to chdir
     for _ in range(100):
         if os.readlink(f"/proc/{proc.pid}/cwd") == tmp_path.as_posix():

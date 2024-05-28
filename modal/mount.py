@@ -59,7 +59,8 @@ def python_standalone_mount_name(version: str) -> str:
         libc = "gnu"
     if version not in PYTHON_STANDALONE_VERSIONS:
         raise modal.exception.InvalidError(
-            f"Unsupported standalone python version: {version!r}, supported values are {list(PYTHON_STANDALONE_VERSIONS)}"
+            f"Unsupported standalone python version: {version!r}, supported values are "
+            f"{list(PYTHON_STANDALONE_VERSIONS)}"
         )
     if libc != "gnu":
         raise modal.exception.InvalidError(f"Unsupported libc identifier: {libc}")
@@ -352,9 +353,13 @@ class _Mount(_Object, type_prefix="mo"):
         )
         ```
         """
-        return _Mount._new().add_local_dir(local_path, remote_path=remote_path, condition=condition, recursive=recursive)
+        return _Mount._new().add_local_dir(
+            local_path, remote_path=remote_path, condition=condition, recursive=recursive
+        )
 
-    def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
+    def add_local_file(
+        self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None
+    ) -> "_Mount":
         """
         Add a local file to the `Mount` object.
         """
@@ -459,7 +464,9 @@ class _Mount(_Object, type_prefix="mo"):
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
-                logger.debug(f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)")
+                logger.debug(
+                    f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
+                )
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()
@@ -510,8 +517,10 @@ class _Mount(_Object, type_prefix="mo"):
         remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
         condition: Optional[Callable[[str], bool]] = None,
     ) -> "_Mount":
-        """Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
-        This works by mounting the local path of each module's package to a directory inside the container that's on `PYTHONPATH`.
+        """
+        Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
+        This works by mounting the local path of each module's package to a directory inside the container
+        that's on `PYTHONPATH`.
 
         **Usage**
 

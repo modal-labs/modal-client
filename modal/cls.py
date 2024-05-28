@@ -171,15 +171,21 @@ class _Cls(_Object, type_prefix="cs"):
     def _hydrate_metadata(self, metadata: Message):
         for method in metadata.methods:
             if method.function_name in self._functions:
-                self._functions[method.function_name]._hydrate(method.function_id, self._client, method.function_handle_metadata)
+                self._functions[method.function_name]._hydrate(
+                    method.function_id, self._client, method.function_handle_metadata
+                )
             else:
-                self._functions[method.function_name] = _Function._new_hydrated(method.function_id, self._client, method.function_handle_metadata)
+                self._functions[method.function_name] = _Function._new_hydrated(
+                    method.function_id, self._client, method.function_handle_metadata
+                )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
         class_handle_metadata = api_pb2.ClassHandleMetadata()
         for f_name, f in self._functions.items():
             class_handle_metadata.methods.append(
-                api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata())
+                api_pb2.ClassMethod(
+                    function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
+                )
             )
         return class_handle_metadata
 
@@ -348,7 +354,9 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
-        return _Obj(self._user_cls, self._output_mgr, self._functions, self._from_other_workspace, self._options, args, kwargs)
+        return _Obj(
+            self._user_cls, self._output_mgr, self._functions, self._from_other_workspace, self._options, args, kwargs
+        )
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint
