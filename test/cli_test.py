@@ -710,6 +710,9 @@ def test_list_apps(servicer, mock_dir, set_env_client):
     res = _run(["app", "list"])
     assert "my_app_foo" in res.stdout
 
+    res = _run(["app", "list", "--json"])
+    assert json.loads(res.stdout)
+
     _run(["volume", "create", "my-vol"])
     res = _run(["app", "list"])
     assert "my-vol" not in res.stdout

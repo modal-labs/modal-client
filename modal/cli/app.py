@@ -33,7 +33,7 @@ APP_STATE_TO_MESSAGE = {
 
 @app_cli.command("list")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
     """List Modal apps that are currently deployed/running or recently stopped."""
     env = ensure_env(env)
 
