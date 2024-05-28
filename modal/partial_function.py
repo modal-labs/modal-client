@@ -64,8 +64,7 @@ class _PartialFunction:
     def __del__(self):
         if (self.flags & _PartialFunctionFlags.FUNCTION) and self.wrapped is False:
             logger.warning(
-                f"Method or web function {self.raw_f} was never turned into a function."
-                " Did you forget a @app.function or @app.cls decorator?"
+                f"Method or web function {self.raw_f} was never turned into a function." " Did you forget a @app.function or @app.cls decorator?"
             )
 
     def add_flags(self, flags) -> "_PartialFunction":
@@ -164,9 +163,7 @@ def _method(
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
             raw_f.wrapped = True  # suppress later warning
-            raise InvalidError(
-                "Web endpoints on classes should not be wrapped by `@method`. Suggestion: remove the `@method` decorator."
-            )
+            raise InvalidError("Web endpoints on classes should not be wrapped by `@method`. Suggestion: remove the `@method` decorator.")
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
 
     return wrapper
@@ -188,9 +185,7 @@ def _web_endpoint(
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
-    custom_domains: Optional[
-        Iterable[str]
-    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
+    custom_domains: Optional[Iterable[str]] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Register a basic web endpoint with this application.
 
@@ -210,16 +205,13 @@ def _web_endpoint(
         # Probably passing the method string as a positional argument.
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@web_endpoint(method="GET")`.')
     elif _warn_parentheses_missing:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
-        )
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
             raw_f = raw_f.get_raw_f()
             raise InvalidError(
-                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
-                "@app.function()\n@app.web_endpoint()\ndef my_webhook():\n    ..."
+                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n" "@app.function()\n@app.web_endpoint()\ndef my_webhook():\n    ..."
             )
         if not wait_for_response:
             deprecation_warning(
@@ -279,9 +271,7 @@ def _asgi_app(
     if isinstance(_warn_parentheses_missing, str):
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@asgi_app(label="foo")`.')
     elif _warn_parentheses_missing:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`."
-        )
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if not wait_for_response:
@@ -318,8 +308,9 @@ def _wsgi_app(
     """Decorator for registering a WSGI app with a Modal function.
 
     Web Server Gateway Interface (WSGI) is a standard for synchronous Python web apps.
-    It has been [succeeded by the ASGI interface](https://asgi.readthedocs.io/en/latest/introduction.html#wsgi-compatibility) which is compatible with ASGI and supports
-    additional functionality such as web sockets. Modal supports ASGI via [`asgi_app`](/docs/reference/modal.asgi_app).
+    It has been [succeeded by the ASGI interface](https://asgi.readthedocs.io/en/latest/introduction.html#wsgi-compatibility)
+    which is compatible with ASGI and supports additional functionality such as web sockets.
+    Modal supports ASGI via [`asgi_app`](/docs/reference/modal.asgi_app).
 
     **Usage:**
 
@@ -338,9 +329,7 @@ def _wsgi_app(
     if isinstance(_warn_parentheses_missing, str):
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@wsgi_app(label="foo")`.')
     elif _warn_parentheses_missing:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`."
-        )
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if not wait_for_response:

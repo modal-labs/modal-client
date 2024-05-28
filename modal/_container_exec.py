@@ -64,9 +64,7 @@ async def connect_to_exec(exec_id: str, pty: bool = False, connecting_status: Op
     async def _handle_input(data: bytes, message_index: int):
         await retry_transient_errors(
             client.stub.ContainerExecPutInput,
-            api_pb2.ContainerExecPutInputRequest(
-                exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
-            ),
+            api_pb2.ContainerExecPutInputRequest(exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)),
             total_timeout=10,
         )
 

@@ -33,17 +33,13 @@ def test_retries(client):
     app = modal.App()
 
     default_retries_from_int_modal = app.function(retries=5)(default_retries_from_int)
-    fixed_delay_retries_modal = app.function(retries=modal.Retries(max_retries=5, backoff_coefficient=1.0))(
-        fixed_delay_retries
+    fixed_delay_retries_modal = app.function(retries=modal.Retries(max_retries=5, backoff_coefficient=1.0))(fixed_delay_retries)
+
+    exponential_backoff_modal = app.function(retries=modal.Retries(max_retries=2, initial_delay=2.0, backoff_coefficient=2.0))(exponential_backoff)
+
+    exponential_with_max_delay_modal = app.function(retries=modal.Retries(max_retries=2, backoff_coefficient=2.0, max_delay=30.0))(
+        exponential_with_max_delay
     )
-
-    exponential_backoff_modal = app.function(
-        retries=modal.Retries(max_retries=2, initial_delay=2.0, backoff_coefficient=2.0)
-    )(exponential_backoff)
-
-    exponential_with_max_delay_modal = app.function(
-        retries=modal.Retries(max_retries=2, backoff_coefficient=2.0, max_delay=30.0)
-    )(exponential_with_max_delay)
 
     zero_retries_modal = app.function(retries=0)(zero_retries)
 

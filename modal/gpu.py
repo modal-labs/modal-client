@@ -80,9 +80,7 @@ class A100(_GPUConfig):
             )
 
         if memory == 20:
-            raise ValueError(
-                "A100 20GB is unsupported, consider `modal.A10G`, `modal.A100(memory_gb='40')`, or `modal.H100` instead"
-            )
+            raise ValueError("A100 20GB is unsupported, consider `modal.A10G`, `modal.A100(memory_gb='40')`, or `modal.H100` instead")
         elif memory and size:
             raise ValueError("Cannot specify both `memory` and `size`. Just specify `size`.")
         elif memory:
@@ -90,9 +88,7 @@ class A100(_GPUConfig):
                 raise ValueError(f"A100s can only have memory values of {allowed_memory_values} => memory={memory}")
         elif size:
             if size not in allowed_size_values:
-                raise ValueError(
-                    f"size='{size}' is invalid. A100s can only have memory values of {allowed_size_values}."
-                )
+                raise ValueError(f"size='{size}' is invalid. A100s can only have memory values of {allowed_size_values}.")
             memory = int(size.replace("GB", ""))
         else:
             memory = 40
@@ -113,7 +109,8 @@ class A10G(_GPUConfig):
     """
     [NVIDIA A10G Tensor Core](https://www.nvidia.com/en-us/data-center/products/a10-gpu/) GPU class.
 
-    A mid-tier data center GPU based on the Ampere architecture, providing 24 GiB of memory. A10G GPUs deliver up to 3.3x better ML training performance, 3x better ML inference performance,
+    A mid-tier data center GPU based on the Ampere architecture, providing 24 GiB of memory.
+    A10G GPUs deliver up to 3.3x better ML training performance, 3x better ML inference performance,
     and 3x better graphics performance, in comparison to NVIDIA T4 GPUs.
     """
 
@@ -132,7 +129,9 @@ class H100(_GPUConfig):
     """
     [NVIDIA H100 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
 
-    The flagship data center GPU of the Hopper architecture. Enhanced support for FP8 precision and a Transformer Engine that provides up to 4X faster training over the prior generation for GPT-3 (175B) models.
+    The flagship data center GPU of the Hopper architecture.
+    Enhanced support for FP8 precision and a Transformer Engine that provides up to 4X faster training
+    over the prior generation for GPT-3 (175B) models.
     """
 
     def __init__(
@@ -164,9 +163,7 @@ STRING_TO_GPU_CONFIG = {
     "a10g": A10G,
     "any": Any,
 }
-display_string_to_config = "\n".join(
-    f'- "{key}" → `{cls()}`' for key, cls in STRING_TO_GPU_CONFIG.items() if key != "inf2"
-)
+display_string_to_config = "\n".join(f'- "{key}" → `{cls()}`' for key, cls in STRING_TO_GPU_CONFIG.items() if key != "inf2")
 __doc__ = f"""
 **GPU configuration shortcodes**
 
@@ -200,21 +197,15 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
         elif value.lower() == "a100-80gb":
             return A100(size="80GB", count=count)
         elif value.lower() not in STRING_TO_GPU_CONFIG:
-            raise InvalidError(
-                f"Invalid GPU type: {value}. Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive)."
-            )
+            raise InvalidError(f"Invalid GPU type: {value}. Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive).")
         else:
             return STRING_TO_GPU_CONFIG[value.lower()](count=count)
     elif value is True:
         if raise_on_true:
-            deprecation_error(
-                (2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
-            )
+            deprecation_error((2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.')
         else:
             # We didn't support targeting a GPU type for run_function until 2023-12-12
-            deprecation_warning(
-                (2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
-            )
+            deprecation_warning((2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.')
         return Any()
     elif value is None or value is False:
         return None

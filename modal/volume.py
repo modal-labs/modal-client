@@ -357,9 +357,13 @@ class _Volume(_Object, type_prefix="vo"):
         # This allows us to remove the server shim after 0.62 is no longer supported.
         deprecation = deprecation_warning if (major_number, minor_number) <= (0, 62) else deprecation_error
         if path.endswith("**"):
+            msg = (
+                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
+                "Please pass recursive=True instead. For the CLI, just remove the glob suffix."
+            )
             deprecation(
                 (2024, 4, 23),
-                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please pass recursive=True instead. For the CLI, just remove the glob suffix.",
+                msg,
             )
         elif path.endswith("*"):
             deprecation(
@@ -525,9 +529,7 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def _instance_delete(self):
-        await retry_transient_errors(
-            self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id)
-        )
+        await retry_transient_errors(self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id))
 
     # @staticmethod  # TODO uncomment when enforcing deprecation of instance method invocation
     async def delete(*args, label: str = "", client: Optional[_Client] = None, environment_name: Optional[str] = None):
@@ -674,9 +676,7 @@ class _VolumeUploadContextManager:
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
-                logger.debug(
-                    f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
-                )
+                logger.debug(f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)")
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:

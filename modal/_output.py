@@ -314,9 +314,7 @@ class OutputManager:
             # Rich throws a KeyError if the task has already been removed.
             pass
 
-    def update_queueing_progress(
-        self, *, function_id: str, completed: int, total: Optional[int], description: Optional[str]
-    ) -> None:
+    def update_queueing_progress(self, *, function_id: str, completed: int, total: Optional[int], description: Optional[str]) -> None:
         """Handle queueing updates, ignoring completion updates for functions that have no queue progress bar."""
         task_key = (function_id, api_pb2.FUNCTION_QUEUED)
         task_description = description or f"'{function_id}' function waiting on worker"
@@ -386,9 +384,7 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
     async def _handle_input(data: bytes, message_index: int):
         await retry_transient_errors(
             client.stub.ContainerExecPutInput,
-            api_pb2.ContainerExecPutInputRequest(
-                exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
-            ),
+            api_pb2.ContainerExecPutInputRequest(exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)),
             total_timeout=10,
         )
 
@@ -396,9 +392,7 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
         await finish_event.wait()
 
 
-async def get_app_logs_loop(
-    client: _Client, output_mgr: OutputManager, app_id: Optional[str] = None, task_id: Optional[str] = None
-):
+async def get_app_logs_loop(client: _Client, output_mgr: OutputManager, app_id: Optional[str] = None, task_id: Optional[str] = None):
     last_log_batch_entry_id = ""
     pty_shell_finish_event: Optional[asyncio.Event] = None
     pty_shell_task_id: Optional[str] = None
@@ -416,9 +410,7 @@ async def get_app_logs_loop(
             output_mgr.update_task_state(log_batch.task_id, log.task_state)
             if log.task_state == api_pb2.TASK_STATE_WORKER_ASSIGNED:
                 # Close function's queueing progress bar (if it exists)
-                output_mgr.update_queueing_progress(
-                    function_id=log_batch.function_id, completed=1, total=1, description=None
-                )
+                output_mgr.update_queueing_progress(function_id=log_batch.function_id, completed=1, total=1, description=None)
         elif log.task_progress.len or log.task_progress.pos:
             if log.task_progress.progress_type == api_pb2.FUNCTION_QUEUED:
                 output_mgr.update_queueing_progress(

@@ -131,9 +131,7 @@ def get_by_object_path_try_possible_app_names(obj: Any, obj_path: Optional[str])
             return None
 
 
-def _infer_function_or_help(
-    app: App, module, accept_local_entrypoint: bool, accept_webhook: bool
-) -> Union[Function, LocalEntrypoint]:
+def _infer_function_or_help(app: App, module, accept_local_entrypoint: bool, accept_webhook: bool) -> Union[Function, LocalEntrypoint]:
     function_choices = set(app.registered_functions.keys())
     if not accept_webhook:
         function_choices -= set(app.registered_web_endpoints)
@@ -142,11 +140,7 @@ def _infer_function_or_help(
 
     sorted_function_choices = sorted(function_choices)
     registered_functions_str = "\n".join(sorted_function_choices)
-    filtered_local_entrypoints = [
-        name
-        for name, entrypoint in app.registered_entrypoints.items()
-        if entrypoint.info.module_name == module.__name__
-    ]
+    filtered_local_entrypoints = [name for name, entrypoint in app.registered_entrypoints.items() if entrypoint.info.module_name == module.__name__]
 
     if accept_local_entrypoint and len(filtered_local_entrypoints) == 1:
         # If there is just a single local entrypoint in the target module, use
@@ -221,9 +215,7 @@ def _show_function_ref_help(app_ref: ImportRef, base_cmd: str) -> None:
     import_path = app_ref.file_or_module
     error_console = Console(stderr=True)
     if object_path:
-        error_console.print(
-            f"[bold red]Could not find Modal function or local entrypoint '{object_path}' in '{import_path}'.[/bold red]"
-        )
+        error_console.print(f"[bold red]Could not find Modal function or local entrypoint '{object_path}' in '{import_path}'.[/bold red]")
     else:
         error_console.print(
             f"[bold red]No function was specified, and no [green]`app`[/green] variable could be found in '{import_path}'.[/bold red]"
@@ -244,9 +236,7 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
     error_console.print(guidance_msg)
 
 
-def import_function(
-    func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
-) -> Union[Function, LocalEntrypoint]:
+def import_function(func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False) -> Union[Function, LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
 
     module = import_file_or_module(import_ref.file_or_module)
@@ -265,9 +255,7 @@ def import_function(
         return app_or_function
     elif isinstance(app_or_function, LocalEntrypoint):
         if not accept_local_entrypoint:
-            raise click.UsageError(
-                f"{func_ref} is not a Modal Function (a Modal local_entrypoint can't be used in this context)"
-            )
+            raise click.UsageError(f"{func_ref} is not a Modal Function (a Modal local_entrypoint can't be used in this context)")
         return app_or_function
     else:
         raise click.UsageError(f"{app_or_function} is not a Modal entity (should be an App or Function)")

@@ -58,15 +58,13 @@ def _validate_python_version(version: Optional[str], allow_micro_granularity: bo
         components = version.split(".")
         if len(components) == 3 and not allow_micro_granularity:
             raise InvalidError(
-                "Python version must be specified as 'major.minor' for this interface;"
-                f" micro-level specification ({version!r}) is not valid."
+                "Python version must be specified as 'major.minor' for this interface;" f" micro-level specification ({version!r}) is not valid."
             )
         series_version = "{0}.{1}".format(*components)
 
     if series_version not in SUPPORTED_PYTHON_SERIES:
         raise InvalidError(
-            f"Unsupported Python version: {version!r}."
-            f" Modal supports versions in the following series: {SUPPORTED_PYTHON_SERIES!r}."
+            f"Unsupported Python version: {version!r}." f" Modal supports versions in the following series: {SUPPORTED_PYTHON_SERIES!r}."
         )
     return version
 
@@ -297,9 +295,7 @@ class _Image(_Object, type_prefix="im"):
                 dockerfile = dockerfile_function(builder_version)
 
             if not dockerfile.commands and not build_function:
-                raise InvalidError(
-                    "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
-                )
+                raise InvalidError("No commands were provided for the image — have you tried using modal.Image.debian_slim()?")
             if dockerfile.commands and build_function:
                 raise InvalidError("Cannot provide both a build function and Dockerfile commands!")
 
@@ -329,7 +325,8 @@ class _Image(_Object, type_prefix="im"):
                     except Exception:
                         # Skip unserializable values for now.
                         logger.warning(
-                            f"Skipping unserializable global variable {k} for {build_function._get_info().function_name}. Changes to this variable won't invalidate the image."
+                            f"Skipping unserializable global variable {k} for {build_function._get_info().function_name}. "
+                            "Changes to this variable won't invalidate the image."
                         )
                         continue
                     filtered_globals[k] = v
@@ -413,9 +410,7 @@ class _Image(_Object, type_prefix="im"):
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
                 raise RemoteError(f"Image build for {image_id} terminated due to external shut-down. Please try again.")
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-                raise RemoteError(
-                    f"Image build for {image_id} timed out. Please try again with a larger `timeout` parameter."
-                )
+                raise RemoteError(f"Image build for {image_id} timed out. Please try again with a larger `timeout` parameter.")
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
                 pass
             else:
@@ -588,9 +583,7 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         if not secrets:
-            raise InvalidError(
-                "No secrets provided to function. Installing private packages requires tokens to be passed via modal.Secret objects."
-            )
+            raise InvalidError("No secrets provided to function. Installing private packages requires tokens to be passed via modal.Secret objects.")
 
         invalid_repos = []
         install_urls = []
@@ -607,8 +600,7 @@ class _Image(_Object, type_prefix="im"):
 
         if invalid_repos:
             raise InvalidError(
-                f"{len(invalid_repos)} out of {len(repositories)} given repository refs are invalid. "
-                f"Invalid refs: {invalid_repos}. "
+                f"{len(invalid_repos)} out of {len(repositories)} given repository refs are invalid. " f"Invalid refs: {invalid_repos}. "
             )
 
         secret_names = ",".join([s.app_name if hasattr(s, "app_name") else str(s) for s in secrets])  # type: ignore
@@ -617,11 +609,13 @@ class _Image(_Object, type_prefix="im"):
             commands = ["FROM base"]
             if any(r.startswith("github") for r in repositories):
                 commands.append(
-                    f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+                    'RUN bash -c "[[ -v GITHUB_TOKEN ]] || '
+                    f"(echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
                 )
             if any(r.startswith("gitlab") for r in repositories):
                 commands.append(
-                    f"RUN bash -c \"[[ -v GITLAB_TOKEN ]] || (echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+                    'RUN bash -c "[[ -v GITLAB_TOKEN ]] || '
+                    f"(echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
                 )
 
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
@@ -782,7 +776,8 @@ class _Image(_Object, type_prefix="im"):
                     p = Path(poetry_pyproject_toml).parent / "poetry.lock"
                     if not p.exists():
                         raise NotFoundError(
-                            f"poetry.lock not found at inferred location: {p.absolute()}. If a lockfile is not needed, `ignore_lockfile=True` can be used."
+                            f"poetry.lock not found at inferred location: {p.absolute()}. "
+                            "If a lockfile is not needed, `ignore_lockfile=True` can be used."
                         )
                     poetry_lockfile = p.as_posix()
                 context_files["/.poetry.lock"] = poetry_lockfile
@@ -878,9 +873,7 @@ class _Image(_Object, type_prefix="im"):
         which can be used with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install).
         Images will build faster and more reliably with `micromamba`.
         """
-        msg = (
-            "The `Image.conda` constructor has deprecated in favor of the faster and more reliable `Image.micromamba`."
-        )
+        msg = "The `Image.conda` constructor has deprecated in favor of the faster and more reliable `Image.micromamba`."
         deprecation_warning((2024, 5, 2), msg)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -1207,10 +1200,13 @@ class _Image(_Object, type_prefix="im"):
         as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page. Your service account should be granted a specific
         role depending on the GCP registry used:
 
-        - For Artifact Registry images (`pkg.dev` domains) use the ["Artifact Registry Reader"](https://cloud.google.com/artifact-registry/docs/access-control#roles) role
-        - For Container Registry images (`gcr.io` domains) use the ["Storage Object Viewer"](https://cloud.google.com/artifact-registry/docs/transition/setup-gcr-repo#permissions) role
+        - For Artifact Registry images (`pkg.dev` domains) use
+          the ["Artifact Registry Reader"](https://cloud.google.com/artifact-registry/docs/access-control#roles) role
+        - For Container Registry images (`gcr.io` domains) use
+          the ["Storage Object Viewer"](https://cloud.google.com/artifact-registry/docs/transition/setup-gcr-repo#permissions) role
 
-        **Note:** This method does not use `GOOGLE_APPLICATION_CREDENTIALS` as that variable accepts a path to a JSON file, not the actual JSON string.
+        **Note:** This method does not use `GOOGLE_APPLICATION_CREDENTIALS` as that variable accepts a path to a JSON file,
+        not the actual JSON string.
 
         See `Image.from_registry()` for information about the other parameters.
 
@@ -1281,9 +1277,7 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def from_dockerfile(
         path: Union[str, Path],
-        context_mount: Optional[
-            _Mount
-        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
+        context_mount: Optional[_Mount] = None,  # modal.Mount with local files to supply as build context for COPY commands
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         *,
         secrets: Sequence[_Secret] = [],
@@ -1431,8 +1425,9 @@ class _Image(_Object, type_prefix="im"):
 
         **Note**
 
-        Only the source code of `raw_f`, the contents of `**kwargs`, and any referenced *global* variables are used to determine whether the image has changed
-        and needs to be rebuilt. If this function references other functions or variables, the image will not be rebuilt if you
+        Only the source code of `raw_f`, the contents of `**kwargs`, and any referenced *global* variables
+        are used to determine whether the image has changed and needs to be rebuilt.
+        If this function references other functions or variables, the image will not be rebuilt if you
         make changes to them. You can force a rebuild by changing the function's source code itself.
 
         **Example**
@@ -1484,8 +1479,7 @@ class _Image(_Object, type_prefix="im"):
             args_serialized = serialize((args, kwargs))
             if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
                 raise InvalidError(
-                    f"Arguments to `run_function` are too large ({len(args_serialized)} bytes). "
-                    f"Maximum size is {MAX_OBJECT_SIZE_BYTES} bytes."
+                    f"Arguments to `run_function` are too large ({len(args_serialized)} bytes). " f"Maximum size is {MAX_OBJECT_SIZE_BYTES} bytes."
                 )
             build_function_input = api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE)
         else:

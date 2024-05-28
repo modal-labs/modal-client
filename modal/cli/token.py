@@ -12,7 +12,9 @@ token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=Tru
 profile_option = typer.Option(
     None,
     help=(
-        "Modal profile to set credentials for. If unspecified (and MODAL_PROFILE environment variable is not set), uses the workspace name associated with the credentials."
+        "Modal profile to set credentials for. If unspecified "
+        "(and MODAL_PROFILE environment variable is not set), "
+        "uses the workspace name associated with the credentials."
     ),
 )
 activate_option = typer.Option(

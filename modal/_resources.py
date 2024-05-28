@@ -27,6 +27,4 @@ def convert_fn_config_to_resources_config(
     else:
         memory_mb = 0
         memory_mb_max = 0
-    return api_pb2.Resources(
-        milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory_mb, memory_mb_max=memory_mb_max
-    )
+    return api_pb2.Resources(milli_cpu=milli_cpu, gpu_config=gpu_config, memory_mb=memory_mb, memory_mb_max=memory_mb_max)

@@ -169,9 +169,7 @@ class _Client:
             self.image_builder_version = resp.image_builder_version
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
-                raise VersionError(
-                    f"The client version ({self.version}) is too old. Please update (pip install --upgrade modal)."
-                )
+                raise VersionError(f"The client version ({self.version}) is too old. Please update (pip install --upgrade modal).")
             elif exc.status == Status.UNAUTHENTICATED:
                 raise AuthError(exc.message)
             else:

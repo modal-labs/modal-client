@@ -25,10 +25,7 @@ copyright_header_full = f"{copyright_header_start} {year}"
 
 @task
 def protoc(ctx):
-    py_protoc = (
-        f"{sys.executable} -m grpc_tools.protoc"
-        + " --python_out=. --grpclib_python_out=. --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
-    )
+    py_protoc = f"{sys.executable} -m grpc_tools.protoc" + " --python_out=. --grpclib_python_out=. --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     print(py_protoc)
     ctx.run(f"{py_protoc} -I . " "modal_proto/api.proto " "modal_proto/options.proto ")
 
@@ -66,9 +63,7 @@ def lint_protos(ctx):
             lineno = get_first_lineno_with_prefix(proto_text, f"{a_type} {a_name}")
             console.print(f"[bold red]Proto lint error:[/bold red] {proto_fname}:{lineno}")
             console.print(f"\nThe {a_name} {a_type} proto is out of order relative to the {b_name} {b_type}.")
-            console.print(
-                "\nProtos should be organized into the following sections:", *sections, sep="\n - ", style="dim"
-            )
+            console.print("\nProtos should be organized into the following sections:", *sections, sep="\n - ", style="dim")
             console.print("\nWithin sections, protos should be lexicographically sorted by name.", style="dim")
             sys.exit(1)
 
@@ -141,9 +136,7 @@ def check_copyright(ctx, fix=False):
         for fn in invalid_files:
             print("Missing copyright:", fn)
 
-        raise Exception(
-            f"{len(invalid_files)} are missing copyright headers!" " Please run `inv check-copyright --fix`"
-        )
+        raise Exception(f"{len(invalid_files)} are missing copyright headers!" " Please run `inv check-copyright --fix`")
 
 
 @task
@@ -363,9 +356,7 @@ def show_deprecations(ctx):
             }
             if isinstance(node.func, ast.Name) and node.func.id in func_name_to_level:
                 depr_date = date(*(elt.n for elt in node.args[0].elts))
-                function = (
-                    f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
-                )
+                function = f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
                 message = node.args[1]
                 if isinstance(message, ast.Name):
                     message = self.assignments.get(message.id, "")

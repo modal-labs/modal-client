@@ -179,9 +179,7 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(
-        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ) -> "_Queue":
+    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None) -> "_Queue":
         """Deprecated! Use `Queue.from_name(name, create_if_missing=True)`."""
         deprecation_warning((2024, 3, 1), _Queue.persisted.__doc__)
         return _Queue.from_name(label, namespace, environment_name, create_if_missing=True)
@@ -203,9 +201,7 @@ class _Queue(_Object, type_prefix="qu"):
         q.put(123)
         ```
         """
-        obj = _Queue.from_name(
-            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
-        )
+        obj = _Queue.from_name(label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
@@ -274,9 +270,7 @@ class _Queue(_Object, type_prefix="qu"):
         await retry_transient_errors(self._client.stub.QueueClear, request)
 
     @live_method
-    async def get(
-        self, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
-    ) -> Optional[Any]:
+    async def get(self, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None) -> Optional[Any]:
         """Remove and return the next object in the queue.
 
         If `block` is `True` (the default) and the queue is empty, `get` will wait indefinitely for
@@ -300,9 +294,7 @@ class _Queue(_Object, type_prefix="qu"):
             return None
 
     @live_method
-    async def get_many(
-        self, n_values: int, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
-    ) -> List[Any]:
+    async def get_many(self, n_values: int, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None) -> List[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
         If there are fewer than `n_values` items in the queue, return all of them.
@@ -368,9 +360,7 @@ class _Queue(_Object, type_prefix="qu"):
                 warnings.warn("`timeout` argument is ignored for non-blocking put.")
             await self._put_many_nonblocking(partition, partition_ttl, vs)
 
-    async def _put_many_blocking(
-        self, partition: Optional[str], partition_ttl: int, vs: List[Any], timeout: Optional[float] = None
-    ):
+    async def _put_many_blocking(self, partition: Optional[str], partition_ttl: int, vs: List[Any], timeout: Optional[float] = None):
         vs_encoded = [serialize(v) for v in vs]
 
         request = api_pb2.QueuePutRequest(
@@ -431,9 +421,7 @@ class _Queue(_Object, type_prefix="qu"):
 
     @warn_if_generator_is_not_consumed()
     @live_method_gen
-    async def iterate(
-        self, *, partition: Optional[str] = None, item_poll_timeout: float = 0.0
-    ) -> AsyncGenerator[Any, None]:
+    async def iterate(self, *, partition: Optional[str] = None, item_poll_timeout: float = 0.0) -> AsyncGenerator[Any, None]:
         """(Beta feature) Iterate through items in the queue without mutation.
 
         Specify `item_poll_timeout` to control how long the iterator should wait for the next time before giving up.
@@ -452,9 +440,7 @@ class _Queue(_Object, type_prefix="qu"):
                 item_poll_timeout=poll_duration,
             )
 
-            response: api_pb2.QueueNextItemsResponse = await retry_transient_errors(
-                self._client.stub.QueueNextItems, request
-            )
+            response: api_pb2.QueueNextItemsResponse = await retry_transient_errors(self._client.stub.QueueNextItems, request)
             if response.items:
                 for item in response.items:
                     yield deserialize(item.value, self._client)

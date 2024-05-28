@@ -352,13 +352,9 @@ class _Mount(_Object, type_prefix="mo"):
         )
         ```
         """
-        return _Mount._new().add_local_dir(
-            local_path, remote_path=remote_path, condition=condition, recursive=recursive
-        )
+        return _Mount._new().add_local_dir(local_path, remote_path=remote_path, condition=condition, recursive=recursive)
 
-    def add_local_file(
-        self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None
-    ) -> "_Mount":
+    def add_local_file(self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
         """
         Add a local file to the `Mount` object.
         """
@@ -463,9 +459,7 @@ class _Mount(_Object, type_prefix="mo"):
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
-                logger.debug(
-                    f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
-                )
+                logger.debug(f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)")
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()

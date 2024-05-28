@@ -66,9 +66,7 @@ class _Dict(_Object, type_prefix="di"):
 
         async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
-            req = api_pb2.DictCreateRequest(
-                app_id=resolver.app_id, data=serialized, existing_dict_id=existing_object_id
-            )
+            req = api_pb2.DictCreateRequest(app_id=resolver.app_id, data=serialized, existing_dict_id=existing_object_id)
             response = await resolver.client.stub.DictCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, resolver.client, None)
@@ -77,9 +75,7 @@ class _Dict(_Object, type_prefix="di"):
 
     def __init__(self, data={}):
         """mdmd:hidden"""
-        raise RuntimeError(
-            "`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead"
-        )
+        raise RuntimeError("`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead")
 
     @classmethod
     @asynccontextmanager
@@ -154,9 +150,7 @@ class _Dict(_Object, type_prefix="di"):
         return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(
-        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ) -> "_Dict":
+    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None) -> "_Dict":
         """Deprecated! Use `Dict.from_name(name, create_if_missing=True)`."""
         deprecation_warning((2024, 3, 1), _Dict.persisted.__doc__)
         return _Dict.from_name(label, namespace, environment_name, create_if_missing=True)

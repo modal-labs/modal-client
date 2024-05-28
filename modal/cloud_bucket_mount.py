@@ -124,9 +124,7 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
             elif parse_result.hostname.endswith("storage.googleapis.com"):
                 bucket_type = api_pb2.CloudBucketMount.BucketType.GCP
             else:
-                logger.warn(
-                    "CloudBucketMount received unrecognized bucket endpoint URL. Assuming AWS S3 configuration as fallback."
-                )
+                logger.warn("CloudBucketMount received unrecognized bucket endpoint URL. Assuming AWS S3 configuration as fallback.")
                 bucket_type = api_pb2.CloudBucketMount.BucketType.S3
         else:
             # just assume S3; this is backwards and forwards compatible.
@@ -135,7 +133,7 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
         if mount.requester_pays and not mount.secret:
             raise ValueError("Credentials required in order to use Requester Pays.")
 
-        if mount.key_prefix and not mount.key_prefix.endswith('/'):
+        if mount.key_prefix and not mount.key_prefix.endswith("/"):
             raise ValueError("key_prefix will be prefixed to all object paths, so it must end in a '/'")
         else:
             key_prefix = mount.key_prefix

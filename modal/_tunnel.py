@@ -43,9 +43,7 @@ class Tunnel:
     def tcp_socket(self) -> Tuple[str, int]:
         """Get the public TCP socket as a (host, port) tuple."""
         if not self.unencrypted_host:
-            raise InvalidError(
-                "This tunnel is not configured for unencrypted TCP. Please use `forward(..., unencrypted=True)`."
-            )
+            raise InvalidError("This tunnel is not configured for unencrypted TCP. Please use `forward(..., unencrypted=True)`.")
         return (self.unencrypted_host, self.unencrypted_port)
 
 

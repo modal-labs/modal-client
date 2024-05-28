@@ -30,9 +30,7 @@ class _Secret(_Object, type_prefix="st"):
 
     @staticmethod
     def from_dict(
-        env_dict: Dict[
-            str, Union[str, None]
-        ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
+        env_dict: Dict[str, Union[str, None]] = {},  # dict of entries to be inserted as environment variables in functions using the secret
     ):
         """Create a secret from a str-str dictionary. Values can also be `None`, which is ignored.
 
@@ -82,9 +80,7 @@ class _Secret(_Object, type_prefix="st"):
                 return _Secret.from_dict({k: os.environ[k] for k in env_keys})
             except KeyError as exc:
                 missing_key = exc.args[0]
-                raise InvalidError(
-                    f"Could not find local environment variable '{missing_key}' for Secret.from_local_env_vars"
-                )
+                raise InvalidError(f"Could not find local environment variable '{missing_key}' for Secret.from_local_env_vars")
 
         return _Secret.from_dict({})
 
@@ -122,9 +118,7 @@ class _Secret(_Object, type_prefix="st"):
                 from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
             except ImportError:
-                raise ImportError(
-                    "Need the `dotenv` package installed. You can install it by running `pip install python-dotenv`."
-                )
+                raise ImportError("Need the `dotenv` package installed. You can install it by running `pip install python-dotenv`.")
 
             if path is not None:
                 # This basically implements the logic in find_dotenv

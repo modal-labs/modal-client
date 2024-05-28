@@ -45,9 +45,7 @@ async def _volume_download(
                         else:
                             shutil.rmtree(output_path)
                     else:
-                        raise UsageError(
-                            f"Output path '{output_path}' already exists. Use --force to overwrite the output directory"
-                        )
+                        raise UsageError(f"Output path '{output_path}' already exists. Use --force to overwrite the output directory")
                 await q.put((output_path, entry))
         # No more entries to process; issue one shutdown message for each consumer.
         for _ in range(num_consumers):

@@ -81,6 +81,4 @@ async def list(json: Optional[bool] = False):
         console.print(table)
 
     if env_based_workspace is not None:
-        console.print(
-            f"Using [bold]{env_based_workspace}[/bold] workspace based on environment variables", style="yellow"
-        )
+        console.print(f"Using [bold]{env_based_workspace}[/bold] workspace based on environment variables", style="yellow")

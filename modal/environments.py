@@ -37,9 +37,7 @@ async def update_environment(
     if new_web_suffix is not None:
         new_web_suffix_pb2 = StringValue(value=new_web_suffix)
 
-    update_payload = api_pb2.EnvironmentUpdateRequest(
-        current_name=current_name, name=new_name_pb2, web_suffix=new_web_suffix_pb2
-    )
+    update_payload = api_pb2.EnvironmentUpdateRequest(current_name=current_name, name=new_name_pb2, web_suffix=new_web_suffix_pb2)
     if client is None:
         client = await _Client.from_env()
     await client.stub.EnvironmentUpdate(update_payload)

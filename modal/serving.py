@@ -33,9 +33,7 @@ def _run_serve(app_ref: str, existing_app_id: str, is_ready: Event, environment_
     serve_update(blocking_app, existing_app_id, is_ready, environment_name)
 
 
-async def _restart_serve(
-    app_ref: str, existing_app_id: str, environment_name: str, timeout: float = 5.0
-) -> SpawnProcess:
+async def _restart_serve(app_ref: str, existing_app_id: str, environment_name: str, timeout: float = 5.0) -> SpawnProcess:
     ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
     is_ready = ctx.Event()
     p = ctx.Process(target=_run_serve, args=(app_ref, existing_app_id, is_ready, environment_name))
@@ -55,9 +53,7 @@ async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, ti
         if proc.exitcode is not None:
             output_mgr.print_if_visible(f"Serve process {proc.pid} terminated")
         else:
-            output_mgr.print_if_visible(
-                f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it[/red]"
-            )
+            output_mgr.print_if_visible(f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it[/red]")
             proc.kill()
     except ProcessLookupError:
         pass  # Child process already finished

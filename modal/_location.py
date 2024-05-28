@@ -17,9 +17,7 @@ def parse_cloud_provider(value: str) -> "api_pb2.CloudProvider.V":
     try:
         cloud_provider = CloudProvider[value.upper()]
     except KeyError:
-        raise InvalidError(
-            f"Invalid cloud provider: {value}. Value must be one of {[x.name.lower() for x in CloudProvider]} (case-insensitive)."
-        )
+        raise InvalidError(f"Invalid cloud provider: {value}. Value must be one of {[x.name.lower() for x in CloudProvider]} (case-insensitive).")
 
     return cloud_provider.value
 

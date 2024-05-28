@@ -69,9 +69,7 @@ async def _init_local_app_new(
     app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
     app_page_url = app_resp.app_logs_url
     logger.debug(f"Created new app with id {app_resp.app_id}")
-    return RunningApp(
-        app_resp.app_id, app_page_url=app_page_url, environment_name=environment_name, interactive=interactive
-    )
+    return RunningApp(app_resp.app_id, app_page_url=app_page_url, environment_name=environment_name, interactive=interactive)
 
 
 async def _init_local_app_from_name(
@@ -93,9 +91,7 @@ async def _init_local_app_from_name(
     if existing_app_id is not None:
         return await _init_local_app_existing(client, existing_app_id)
     else:
-        return await _init_local_app_new(
-            client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
-        )
+        return await _init_local_app_new(client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name)
 
 
 async def _create_all_objects(
@@ -203,14 +199,11 @@ async def _run_app(
 
     if not is_local():
         raise InvalidError(
-            "Can not run an app from within a container."
-            " Are you calling app.run() directly?"
-            " Consider using the `modal run` shell command."
+            "Can not run an app from within a container." " Are you calling app.run() directly?" " Consider using the `modal run` shell command."
         )
     if app._running_app:
         raise InvalidError(
-            "App is already running and can't be started again.\n"
-            "You should not use `app.run` or `run_app` within a Modal `local_entrypoint`"
+            "App is already running and can't be started again.\n" "You should not use `app.run` or `run_app` within a Modal `local_entrypoint`"
         )
 
     if app.description is None:
@@ -242,9 +235,7 @@ async def _run_app(
         tc.infinite_loop(lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL)
 
         with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-            initialized_msg = (
-                f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
-            )
+            initialized_msg = f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
             output_mgr.print_if_visible(step_completed(initialized_msg))
             output_mgr.update_app_page_url(running_app.app_page_url)
 
@@ -255,9 +246,7 @@ async def _run_app(
         exc_info: Optional[BaseException] = None
         try:
             # Create all members
-            await _create_all_objects(
-                client, running_app, app._indexed_objects, app_state, environment_name, output_mgr=output_mgr
-            )
+            await _create_all_objects(client, running_app, app._indexed_objects, app_state, environment_name, output_mgr=output_mgr)
 
             # Update all functions client-side to have the output mgr
             for obj in app.registered_functions.values():
@@ -292,13 +281,9 @@ async def _run_app(
                     logs_loop.cancel()
             else:
                 output_mgr.print_if_visible(
-                    step_completed(
-                        f"App aborted. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
-                    )
+                    step_completed(f"App aborted. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]")
                 )
-                output_mgr.print_if_visible(
-                    "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
-                )
+                output_mgr.print_if_visible("Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n")
         except BaseException as e:
             exc_info = e
             raise e
@@ -320,9 +305,7 @@ async def _run_app(
             await _disconnect(client, running_app.app_id, reason, exc_str)
             app._uncreate_all_objects()
 
-    output_mgr.print_if_visible(
-        step_completed(f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]")
-    )
+    output_mgr.print_if_visible(step_completed(f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"))
 
 
 async def _serve_update(
@@ -415,9 +398,7 @@ async def _deploy_app(
 
     output_mgr = OutputManager(stdout, show_progress)
 
-    running_app: RunningApp = await _init_local_app_from_name(
-        client, name, namespace, environment_name=environment_name
-    )
+    running_app: RunningApp = await _init_local_app_from_name(client, name, namespace, environment_name=environment_name)
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
@@ -444,9 +425,7 @@ async def _deploy_app(
                 name=name,
                 namespace=namespace,
                 object_entity="ap",
-                visibility=(
-                    api_pb2.APP_DEPLOY_VISIBILITY_PUBLIC if public else api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE
-                ),
+                visibility=(api_pb2.APP_DEPLOY_VISIBILITY_PUBLIC if public else api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE),
             )
             try:
                 deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)

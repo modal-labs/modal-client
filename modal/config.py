@@ -265,9 +265,7 @@ configure_logger(logger, config["loglevel"], config["log_format"])
 # Utils to write config
 
 
-def _store_user_config(
-    new_settings: Dict[str, Any], profile: Optional[str] = None, active_profile: Optional[str] = None
-):
+def _store_user_config(new_settings: Dict[str, Any], profile: Optional[str] = None, active_profile: Optional[str] = None):
     """Internal method, used by the CLI to set tokens."""
     if profile is None:
         profile = _profile

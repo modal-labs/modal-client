@@ -176,7 +176,8 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
     def f(ctx, *args, **kwargs):
         if ctx.obj["detach"]:
             print(
-                "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
+                "Note that running a local entrypoint in detached mode only keeps the last "
+                "triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
         with run_app(
@@ -267,9 +268,7 @@ def deploy(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
-    public: bool = typer.Option(
-        False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
-    ),
+    public: bool = typer.Option(False, help="[beta] Publicize the deployment so other workspaces can lookup the function."),
     skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
 ):
@@ -333,16 +332,10 @@ def shell(
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
     env: str = ENV_OPTION,
-    image: Optional[str] = typer.Option(
-        default=None, help="Container image tag for inside the shell (if not using FUNC_REF)."
-    ),
+    image: Optional[str] = typer.Option(default=None, help="Container image tag for inside the shell (if not using FUNC_REF)."),
     add_python: Optional[str] = typer.Option(default=None, help="Add Python to the image (if not using FUNC_REF)."),
-    cpu: Optional[int] = typer.Option(
-        default=None, help="Number of CPUs to allocate to the shell (if not using FUNC_REF)."
-    ),
-    memory: Optional[int] = typer.Option(
-        default=None, help="Memory to allocate for the shell, in MiB (if not using FUNC_REF)."
-    ),
+    cpu: Optional[int] = typer.Option(default=None, help="Number of CPUs to allocate to the shell (if not using FUNC_REF)."),
+    memory: Optional[int] = typer.Option(default=None, help="Memory to allocate for the shell, in MiB (if not using FUNC_REF)."),
     gpu: Optional[str] = typer.Option(
         default=None,
         help="GPUs to request for the shell, if any. Examples are `any`, `a10g`, `a100:4` (if not using FUNC_REF).",

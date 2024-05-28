@@ -81,9 +81,7 @@ ENVIRONMENT_UPDATE_HELP = """Update the name or web suffix of an environment"""
 def update(
     current_name: str,
     set_name: Optional[str] = typer.Option(default=None, help="New name of the environment"),
-    set_web_suffix: Optional[str] = typer.Option(
-        default=None, help="New web suffix of environment (empty string is no suffix)"
-    ),
+    set_web_suffix: Optional[str] = typer.Option(default=None, help="New web suffix of environment (empty string is no suffix)"),
 ):
     if set_name is None and set_web_suffix is None:
         raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix)")

@@ -84,9 +84,7 @@ def some_function():
     {env_var_code}
 """
     plural_s = "s" if len(env_dict) > 1 else ""
-    console.print(
-        f"""Created a new secret '{secret_name}' with the key{plural_s} {', '.join(repr(k) for k in env_dict.keys())}"""
-    )
+    console.print(f"""Created a new secret '{secret_name}' with the key{plural_s} {', '.join(repr(k) for k in env_dict.keys())}""")
     console.print("\nUse it in to your Modal app using:\n")
     console.print(Syntax(example_code, "python"))
 
@@ -104,9 +102,7 @@ def get_text_from_editor(key) -> str:
             status_code = os.system(bufferfile.name)
 
         if status_code != 0:
-            raise ValueError(
-                "Something went wrong with the external editor. Try again, or use '--' as the value to pass input through stdin instead"
-            )
+            raise ValueError("Something went wrong with the external editor. Try again, or use '--' as the value to pass input through stdin instead")
 
         bufferfile.seek(0)
         return bufferfile.read()

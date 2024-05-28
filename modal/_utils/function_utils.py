@@ -123,9 +123,7 @@ class FunctionInfo:
             self._file = os.path.abspath(module.__file__)
             package_paths = set([os.path.abspath(p) for p in __import__(module.__package__).__path__])
             # There might be multiple package paths in some weird cases
-            base_dirs = [
-                base_dir for base_dir in package_paths if os.path.commonpath((base_dir, self._file)) == base_dir
-            ]
+            base_dirs = [base_dir for base_dir in package_paths if os.path.commonpath((base_dir, self._file)) == base_dir]
 
             if not base_dirs:
                 logger.info(f"Module files: {self._file}")
@@ -163,9 +161,7 @@ class FunctionInfo:
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
             if not is_global_function(f.__qualname__):
-                raise LocalFunctionError(
-                    "Modal can only import functions defined in global scope unless they are `serialized=True`"
-                )
+                raise LocalFunctionError("Modal can only import functions defined in global scope unless they are `serialized=True`")
 
     def is_serialized(self) -> bool:
         return self.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
@@ -264,9 +260,7 @@ def get_referred_objects(f: Callable) -> List[Object]:
             try:
                 closure_vars = inspect.getclosurevars(obj)
             except ValueError:
-                logger.warning(
-                    f"Could not inspect closure vars of {f} - referenced global Modal objects may or may not work in that function"
-                )
+                logger.warning(f"Could not inspect closure vars of {f} - referenced global Modal objects may or may not work in that function")
                 continue
 
             for dep_obj in closure_vars.globals.values():
@@ -288,9 +282,7 @@ def method_has_params(f: Callable) -> bool:
         return num_params > 1
 
 
-async def _stream_function_call_data(
-    client, function_call_id: str, variant: Literal["data_in", "data_out"]
-) -> AsyncIterator[Any]:
+async def _stream_function_call_data(client, function_call_id: str, variant: Literal["data_in", "data_out"]) -> AsyncIterator[Any]:
     """Read from the `data_in` or `data_out` stream of a function call."""
     last_index = 0
     retries_remaining = 10
@@ -339,9 +331,7 @@ HINT: For relative imports to work, you might need to run your modal app as a mo
 - `python -m my_pkg.my_app` instead of `python my_pkg/my_app.py`
 - `modal deploy my_pkg.my_app` instead of `modal deploy my_pkg/my_app.py`
 """
-    elif isinstance(
-        exc, RuntimeError
-    ) and "CUDA error: no kernel image is available for execution on the device" in str(exc):
+    elif isinstance(exc, RuntimeError) and "CUDA error: no kernel image is available for execution on the device" in str(exc):
         msg = (
             exc.args[0]
             + """\n
