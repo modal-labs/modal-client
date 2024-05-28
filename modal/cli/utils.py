@@ -54,11 +54,14 @@ def display_table(
     columns: Sequence[Union[Column, str]],
     rows: Sequence[Sequence[Union[Text, str]]],
     json: bool = False,
-    title: str = None,
+    title: str = "",
 ):
+    def col_to_str(col: Union[Column, str]) -> str:
+        return str(col.header) if isinstance(col, Column) else col
+
     console = Console()
     if json:
-        json_data = [{col: _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
+        json_data = [{col_to_str(col): _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
         console.print(JSON.from_data(json_data))
     else:
         table = Table(*columns, title=title)
