@@ -1266,7 +1266,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if file.filename in self.volume_files[req.volume_id] and req.disallow_overwrite_existing_files:
                 raise GRPCError(
                     Status.ALREADY_EXISTS,
-                    f"{file.filename}: already exists (disallow_overwrite_existing_files={req.disallow_overwrite_existing_files}",
+                    (
+                        f"{file.filename}: already exists "
+                        f"(disallow_overwrite_existing_files={req.disallow_overwrite_existing_files}"
+                    ),
                 )
 
             self.volume_files[req.volume_id][file.filename] = VolumeFile(

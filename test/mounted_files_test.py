@@ -77,18 +77,19 @@ def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, serve
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
-    assert (
-        files
-        == {
-            "/root/serialized_fn.py",  # should serialized_fn be included? It's not needed to run the function, but it's loaded into sys.modules at definition time...
-            "/root/b/c.py",  # this is mounted under root since it's imported as `import b` and not `import pkg_a.b` from serialized_fn.py
-            "/root/b/e.py",  # same as above
-            "/root/a.py",  # same as above
-            "/root/pkg_b/__init__.py",
-            "/root/pkg_b/f.py",
-            "/root/pkg_b/g/h.py",
-        }
-    )
+    assert files == {
+        # should serialized_fn be included? It's not needed to run the function,
+        # but it's loaded into sys.modules at definition time...
+        "/root/serialized_fn.py",
+        # this is mounted under root since it's imported as `import b`
+        # and not `import pkg_a.b` from serialized_fn.py
+        "/root/b/c.py",
+        "/root/b/e.py",  # same as above
+        "/root/a.py",  # same as above
+        "/root/pkg_b/__init__.py",
+        "/root/pkg_b/f.py",
+        "/root/pkg_b/g/h.py",
+    }
 
 
 def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_url_env):

@@ -364,7 +364,8 @@ class _App:
                 if not is_notebook():
                     logger.warning(
                         f"Warning: Tag '{function.tag}' collision!"
-                        f" Overriding existing function [{old_function._info.module_name}].{old_function._info.function_name}"
+                        " Overriding existing function "
+                        f"[{old_function._info.module_name}].{old_function._info.function_name}"
                         f" with new function [{function._info.module_name}].{function._info.function_name}"
                     )
             else:
@@ -445,7 +446,8 @@ class _App:
         **Parsing Arguments**
 
         If your entrypoint function take arguments with primitive types, `modal run` automatically parses them as
-        CLI options. For example, the following function can be called with `modal run app_module.py --foo 1 --bar "hello"`:
+        CLI options.
+        For example, the following function can be called with `modal run app_module.py --foo 1 --bar "hello"`:
 
         ```python
         @app.local_entrypoint()
@@ -453,8 +455,8 @@ class _App:
             some_modal_function.call(foo, bar)
         ```
 
-        Currently, `str`, `int`, `float`, `bool`, and `datetime.datetime` are supported. Use `modal run app_module.py --help` for more
-        information on usage.
+        Currently, `str`, `int`, `float`, `bool`, and `datetime.datetime` are supported.
+        Use `modal run app_module.py --help` for more information on usage.
 
         """
         if _warn_parentheses_missing:
@@ -491,14 +493,14 @@ class _App:
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[
-            Union[int, Tuple[int, int]]
-        ] = None,  # Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        # Specify, in MiB, a memory request which is the minimum memory required.
+        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[
             int
-        ] = None,  # An optional maximum number of concurrent containers running the function (use keep_warm for minimum).
+        ] = None,  # An optional maximum number of concurrent containers running the function (keep_warm sets minimum).
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
@@ -514,9 +516,9 @@ class _App:
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
-        max_inputs: Optional[
-            int
-        ] = None,  # Maximum number of inputs a container should handle before shutting down. With `max_inputs = 1`, containers will be single-use.
+        # Maximum number of inputs a container should handle before shutting down.
+        # With `max_inputs = 1`, containers will be single-use.
+        max_inputs: Optional[int] = None,
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
@@ -580,7 +582,8 @@ class _App:
 
             if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
                 raise InvalidError(
-                    "`app.function` on methods is not allowed. See https://modal.com/docs/guide/lifecycle-functions instead"
+                    "`app.function` on methods is not allowed. "
+                    "See https://modal.com/docs/guide/lifecycle-functions instead"
                 )
 
             if is_generator is None:
@@ -648,9 +651,9 @@ class _App:
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[
-            Union[int, Tuple[int, int]]
-        ] = None,  # Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        # Specify, in MiB, a memory request which is the minimum memory required.
+        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
@@ -664,9 +667,9 @@ class _App:
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
         _allow_background_volume_commits: Optional[bool] = None,
-        max_inputs: Optional[
-            int
-        ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
+        # Limits the number of inputs a container handles before shutting down.
+        # Use `max_inputs = 1` for single-use containers.
+        max_inputs: Optional[int] = None,
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
@@ -747,9 +750,9 @@ class _App:
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[
-            Union[int, Tuple[int, int]]
-        ] = None,  # Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        # Specify, in MiB, a memory request which is the minimum memory required.
+        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
         block_network: bool = False,  # Whether to block network access
         volumes: Dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
@@ -763,7 +766,8 @@ class _App:
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
-        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandbox), which can be used to interact with the running sandbox.
+        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandbox),
+        which can be used to interact with the running sandbox.
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
@@ -827,7 +831,8 @@ class _App:
             existing_object = self._indexed_objects.get(tag)
             if existing_object and existing_object != object:
                 logger.warning(
-                    f"Named app object {tag} with existing value {existing_object} is being overwritten by a different object {object}"
+                    f"Named app object {tag} with existing value {existing_object} is being "
+                    f"overwritten by a different object {object}"
                 )
 
             self._add_object(tag, object)

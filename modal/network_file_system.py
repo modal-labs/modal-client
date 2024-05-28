@@ -197,7 +197,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ):
-        """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.from_name("my-volume", create_if_missing=True)` instead."""
+        """`NetworkFileSystem().persist("my-volume")` is deprecated.
+        Use `NetworkFileSystem.from_name("my-volume", create_if_missing=True)` instead."""
         deprecation_error((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
 
     @staticmethod
@@ -302,7 +303,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)
         * Passing a file path returns a list containing only that file's listing description
-        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        * Passing a glob path (including at least one * or ** sequence) returns all files matching
+        that glob path (using absolute paths)
         """
         req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self.object_id, path=path)
         async for batch in unary_stream(self._client.stub.SharedVolumeListFilesStream, req):
@@ -356,7 +358,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)
         * Passing a file path returns a list containing only that file's listing description
-        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        * Passing a glob path (including at least one * or ** sequence) returns all files matching
+        that glob path (using absolute paths)
         """
         return [entry async for entry in self.iterdir(path)]
 
