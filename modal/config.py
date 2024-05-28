@@ -202,6 +202,7 @@ _SETTINGS = {
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
     "worker_id": _Setting(),  # For internal debugging use.
     "restore_state_path": _Setting("/__modal/restore-state.json"),
+    "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint"),
     "force_build": _Setting(False, transform=_to_boolean),
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),

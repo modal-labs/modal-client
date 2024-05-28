@@ -68,6 +68,41 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
         # In-memory Client instance should have update credentials, not old credentials
         assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
 
+@skip_windows_unix_socket
+@pytest.mark.asyncio
+async def test_container_snapshot_restore_gpu(container_client, tmpdir, servicer):
+    # Get a reference to a Client instance in memory
+    old_client = container_client
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    io_manager.function_def = api_pb2.Function(resources=api_pb2.Resources(
+        gpu_config=api_pb2.GPUConfig(
+            count=1,
+            type=api_pb2.GPU_TYPE_T4,
+            memory=16000,
+        )
+    ))
+    # io_manager.function_def.resources.gpu_config.type = api_pb2.GPU_TYPE_T4
+    # io_manager.function_def.resources.gpu_config.memory = 32
+    print(io_manager.function_def)
+    restore_path = tmpdir.join("fake-restore-state.json")
+    # Write out a restore file so that snapshot+restore will complete
+    restore_path.write_text(
+        json.dumps(
+            {
+                "task_id": "ta-i-am-restored",
+                "task_secret": "ts-i-am-restored",
+                "function_id": "fu-i-am-restored",
+            }
+        ),
+        encoding="utf-8",
+    )
+    with mock.patch.dict(
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.remote_addr}
+    ):
+        io_manager.memory_snapshot()
+        # In-memory Client instance should have update credentials, not old credentials
+        assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
+
 
 @skip_windows_unix_socket
 def test_interact(container_client, unix_servicer):

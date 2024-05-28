@@ -7,6 +7,7 @@ import signal
 import time
 import traceback
 from pathlib import Path
+import subprocess
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple
 
 from google.protobuf.empty_pb2 import Empty
@@ -537,6 +538,8 @@ class _ContainerIOManager:
         await self.complete_call(started_at)
 
     async def memory_restore(self) -> None:
+        # put the bin in /__modal
+
         # Busy-wait for restore. `/__modal/restore-state.json` is created
         # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
@@ -547,6 +550,8 @@ class _ContainerIOManager:
             continue
 
         logger.debug("Container: restored")
+
+        # cuda-restore somewhere around here
 
         # Look for state file and create new client with updated credentials.
         # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
@@ -577,6 +582,37 @@ class _ContainerIOManager:
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
 
+        # check for gpu from func def
+        num_gpu = self.function_def.resources.gpu_config.count
+        if num_gpu > 0: # also check that this container HAS a GPU?
+            pid = os.getpid()
+
+            # Check a CUDA process is running
+            output = subprocess.check_output("nvidia-smi").decode('utf-8')
+            print("BEFORE CKPT:", output)
+
+            # Check that the PIDs match
+            # TODO
+
+            # Freeze the process
+            #stat = subprocess.run("/__modal/.bin/cuda-checkpoint --toggle --pid {pid}".split())
+            #print("stat", stat)
+
+            # Check that it was frozen successfully
+            output = subprocess.check_output("nvidia-smi").decode('utf-8')
+            print("GPU IS STOPPED:", stopped := "No running processes found" in output)
+            assert stopped 
+
+        # call the binary cuda ckpt here as subproc
+        # ps is containers pid (like runsc exec sh)
+        # sys getpid
+
+        # check no cuda procs after ckpt
+        # note async
+        
+        # test/ folder
+
+        # then call this
         await self._client.stub.ContainerCheckpoint(
             api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
         )
