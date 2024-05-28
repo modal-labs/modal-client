@@ -483,6 +483,22 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
     )
 
 
+def test_app_stop(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        # Deploy as a module
+        _run(["deploy", "myapp"])
+
+    res = _run(["app", "list"])
+    assert re.search("my_app .+ deployed", res.stdout)
+
+    _run(["app", "stop", "-n", "my_app"])
+
+    # Note that the mock servicer doesn't report "stopped" app statuses
+    # so we just check that it's not reported as deployed
+    res = _run(["app", "list"])
+    assert not re.search("my_app .+ deployed", res.stdout)
+
+
 def test_nfs_get(set_env_client, servicer):
     nfs_name = "my-shared-nfs"
     _run(["nfs", "create", nfs_name])
