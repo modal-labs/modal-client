@@ -256,6 +256,7 @@ def type_stubs(ctx):
 
     modules = [m for m in find_modal_modules() if len(get_wrapped_types(m))]
     subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
+    ctx.run("ruff format modal/ --exclude=*.py --no-respect-gitignore", pty=True)
 
 
 @task

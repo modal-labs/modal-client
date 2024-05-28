@@ -33,6 +33,7 @@ filterwarnings = [
 ]
 
 [tool.ruff]
+extend-include = ["*.pyi"]
 exclude = [
     '.venv',
     '.git',
