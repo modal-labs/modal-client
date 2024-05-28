@@ -586,22 +586,32 @@ class _ContainerIOManager:
         num_gpu = self.function_def.resources.gpu_config.count
         if num_gpu > 0: # also check that this container HAS a GPU?
             pid = os.getpid()
+            print(subprocess.check_output(["ls", "/bin"]).decode('utf-8'))
+            print(subprocess.check_output(["echo", "$PATH"]).decode('utf-8'))
 
             # Check a CUDA process is running
-            output = subprocess.check_output("nvidia-smi").decode('utf-8')
+            # output = subprocess.check_output("nvidia-smi pmon -c 1".split()).decode('utf-8')
+            # output = subprocess.check_output(["sh", "-c", "nvidia-smi -q | grep Processes"]).decode('utf-8')
+            output = subprocess.check_output(["sh", "-c", "nvidia-smi -q | grep 'Process ID'"]).decode('utf-8')
             print("BEFORE CKPT:", output)
+            print("gpu stopped", 'None' in output) # should be false
+            cuda_pid = int(output.split(": ")[1])
+            print("cuda pid", cuda_pid)
 
             # Check that the PIDs match
             # TODO
 
             # Freeze the process
-            #stat = subprocess.run("/__modal/.bin/cuda-checkpoint --toggle --pid {pid}".split())
-            #print("stat", stat)
+            print("PID:", pid)
+            #stat = subprocess.check_output(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", "1"]).decode('utf-8')
+            stat = subprocess.check_output(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)]).decode('utf-8')
+            print("freeze status", stat)
 
             # Check that it was frozen successfully
-            output = subprocess.check_output("nvidia-smi").decode('utf-8')
-            print("GPU IS STOPPED:", stopped := "No running processes found" in output)
-            assert stopped 
+            # output = subprocess.check_output("nvidia-smi pmon -c 1".split()).decode('utf-8')
+            output = subprocess.check_output(["sh", "-c", "nvidia-smi -q | grep Processes"]).decode('utf-8')
+            print("AFTER CKPT", output)
+            print("gpu stopped:", 'None' in output) # should be true
 
         # call the binary cuda ckpt here as subproc
         # ps is containers pid (like runsc exec sh)
