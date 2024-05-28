@@ -419,9 +419,9 @@ async def test_function_exception_async(client, servicer):
     async with app.run(client=client):
         with pytest.raises(CustomException) as excinfo:
             coro = failure_modal.remote.aio()
-            assert inspect.isawaitable(
-                coro
-            )  # mostly for mypy, since output could technically be an async generator which isn't awaitable in the same sense
+            # mostly for mypy, since output could technically be an async generator which
+            # isn't awaitable in the same sense
+            assert inspect.isawaitable(coro)
             await coro
         assert "foo!" in str(excinfo.value)
 

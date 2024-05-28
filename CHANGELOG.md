@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.185 (2024-05-28)
+
+- The `modal app stop` CLI command now accepts a `--name` (or `-n`) option to stop an App by name rather than by ID.
+
+
+
 ### 0.62.181 (2024-05-24)
 
 * Background committing on `modal.Volume` mounts is now default behavior.

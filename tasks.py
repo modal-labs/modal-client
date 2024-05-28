@@ -118,7 +118,8 @@ def check_copyright(ctx, fix=False):
             for fn in files
             if (
                 fn.endswith(".py")
-                # jupytext notebook formatted .py files can't be detected as notebooks if we put a copyright comment at the top
+                # jupytext notebook formatted .py files can't be detected as notebooks if we put a
+                # copyright comment at the top
                 and not fn.endswith(".notebook.py")
                 # vendored code has a different copyright
                 and "_vendor" not in root
@@ -256,6 +257,7 @@ def type_stubs(ctx):
 
     modules = [m for m in find_modal_modules() if len(get_wrapped_types(m))]
     subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
+    ctx.run("ruff format modal/ --exclude=*.py --no-respect-gitignore", pty=True)
 
 
 @task

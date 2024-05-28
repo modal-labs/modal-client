@@ -45,6 +45,9 @@ async def test_asgi_roundtrip():
 
 def test_deserialization_error(client):
     # Curated object that we should not be able to deserialize
-    obj = b"\x80\x04\x95(\x00\x00\x00\x00\x00\x00\x00\x8c\x17undeserializable_module\x94\x8c\x05Dummy\x94\x93\x94)\x81\x94."
+    obj = (
+        b"\x80\x04\x95(\x00\x00\x00\x00\x00\x00\x00\x8c\x17"
+        b"undeserializable_module\x94\x8c\x05Dummy\x94\x93\x94)\x81\x94."
+    )
     with pytest.raises(DeserializationError, match="'undeserializable_module' .+ local environment"):
         deserialize(obj, client)
