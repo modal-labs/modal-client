@@ -23,6 +23,7 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
+from ._utils.gpu_utils import nvidia_gpu_is_running
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InputCancellation, InvalidError
@@ -549,9 +550,16 @@ class _ContainerIOManager:
             await asyncio.sleep(0.01)
             continue
 
-        logger.debug("Container: restored")
+        logger.debug("Container: CPU state restored")
 
-        # cuda-restore somewhere around here
+        # Un-freeze the CUDA session
+        num_gpu = self.function_def.resources.gpu_config.count
+        if num_gpu > 0:
+            pid = os.getpid()
+            stat = subprocess.run(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)])
+            assert stat.returncode == 0
+            assert nvidia_gpu_is_running()
+            logger.debug("Container: CUDA restored")
 
         # Look for state file and create new client with updated credentials.
         # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
@@ -582,47 +590,22 @@ class _ContainerIOManager:
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
 
-        # check for gpu from func def
+        # Freeze the CUDA process
         num_gpu = self.function_def.resources.gpu_config.count
-        if num_gpu > 0: # also check that this container HAS a GPU?
+        if num_gpu > 0:
             pid = os.getpid()
-            print(subprocess.check_output(["ls", "/bin"]).decode('utf-8'))
-            print(subprocess.check_output(["echo", "$PATH"]).decode('utf-8'))
 
             # Check a CUDA process is running
-            # output = subprocess.check_output("nvidia-smi pmon -c 1".split()).decode('utf-8')
-            # output = subprocess.check_output(["sh", "-c", "nvidia-smi -q | grep Processes"]).decode('utf-8')
-            output = subprocess.check_output(["sh", "-c", "nvidia-smi -q | grep 'Process ID'"]).decode('utf-8')
-            print("BEFORE CKPT:", output)
-            print("gpu stopped", 'None' in output) # should be false
-            cuda_pid = int(output.split(": ")[1])
-            print("cuda pid", cuda_pid)
-
-            # Check that the PIDs match
-            # TODO
+            assert nvidia_gpu_is_running()
 
             # Freeze the process
-            print("PID:", pid)
-            #stat = subprocess.check_output(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", "1"]).decode('utf-8')
-            stat = subprocess.check_output(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)]).decode('utf-8')
-            print("freeze status", stat)
+            stat = subprocess.run(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)])
+            assert stat.returncode == 0
 
             # Check that it was frozen successfully
-            # output = subprocess.check_output("nvidia-smi pmon -c 1".split()).decode('utf-8')
-            output = subprocess.check_output(["sh", "-c", "nvidia-smi -q | grep Processes"]).decode('utf-8')
-            print("AFTER CKPT", output)
-            print("gpu stopped:", 'None' in output) # should be true
+            assert not nvidia_gpu_is_running()
+            logger.debug("Froze CUDA process state")
 
-        # call the binary cuda ckpt here as subproc
-        # ps is containers pid (like runsc exec sh)
-        # sys getpid
-
-        # check no cuda procs after ckpt
-        # note async
-        
-        # test/ folder
-
-        # then call this
         await self._client.stub.ContainerCheckpoint(
             api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
         )
