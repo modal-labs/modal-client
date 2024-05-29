@@ -105,7 +105,8 @@ def get_text_from_editor(key) -> str:
 
         if status_code != 0:
             raise ValueError(
-                "Something went wrong with the external editor. Try again, or use '--' as the value to pass input through stdin instead"
+                "Something went wrong with the external editor. "
+                "Try again, or use '--' as the value to pass input through stdin instead"
             )
 
         bufferfile.seek(0)

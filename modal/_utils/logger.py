@@ -17,7 +17,8 @@ def configure_logger(logger: logging.Logger, log_level: str, log_format: str):
         json_formatter = jsonlogger.JsonFormatter(
             fmt=(
                 "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] "
-                "[dd.service=%(dd.service)s dd.env=%(dd.env)s dd.version=%(dd.version)s dd.trace_id=%(dd.trace_id)s dd.span_id=%(dd.span_id)s] "
+                "[dd.service=%(dd.service)s dd.env=%(dd.env)s dd.version=%(dd.version)s dd.trace_id=%(dd.trace_id)s "
+                "dd.span_id=%(dd.span_id)s] "
                 "- %(message)s"
             ),
             datefmt="%Y-%m-%dT%H:%M:%S%z",

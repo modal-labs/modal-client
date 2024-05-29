@@ -250,6 +250,7 @@ class _FunctionSpec:
     cloud: Optional[str]
     cpu: Optional[float]
     memory: Optional[Union[int, Tuple[int, int]]]
+    ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
 
 
@@ -312,6 +313,7 @@ class _Function(_Object, type_prefix="fu"):
         allow_background_volume_commits: Optional[bool] = None,
         block_network: bool = False,
         max_inputs: Optional[int] = None,
+        ephemeral_disk: Optional[int] = None,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -343,7 +345,8 @@ class _Function(_Object, type_prefix="fu"):
                 (2024, 5, 13),
                 "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
             )
-            # TODO(Jonathon): make `True` when `None` to make background commits default, before later removing flag.
+        elif allow_background_volume_commits is None:
+            allow_background_volume_commits = True
 
         explicit_mounts = mounts
 
@@ -382,6 +385,7 @@ class _Function(_Object, type_prefix="fu"):
             cloud=cloud,
             cpu=cpu,
             memory=memory,
+            ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
         )
 
@@ -404,6 +408,7 @@ class _Function(_Object, type_prefix="fu"):
                     memory=memory,
                     timeout=86400,  # TODO: make this an argument to `@build()`
                     cpu=cpu,
+                    ephemeral_disk=ephemeral_disk,
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
@@ -419,7 +424,8 @@ class _Function(_Object, type_prefix="fu"):
 
         if (keep_warm is not None) and (concurrency_limit is not None) and concurrency_limit < keep_warm:
             raise InvalidError(
-                f"Function `{info.function_name}` has `{concurrency_limit=}`, strictly less than its `{keep_warm=}` parameter."
+                f"Function `{info.function_name}` has `{concurrency_limit=}`, "
+                f"strictly less than its `{keep_warm=}` parameter."
             )
 
         if not cloud and not is_builder_function:
@@ -530,13 +536,15 @@ class _Function(_Object, type_prefix="fu"):
                     raise InvalidError(
                         f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
                         "This is larger than the maximum limit of 16 MiB. "
-                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
+                        "Try reducing the size of the closure by using parameters or mounts, "
+                        "not large global variables."
                     )
                 elif len(function_serialized) > 256 << 10:  # 256 KiB
                     warnings.warn(
                         f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
                         "This is larger than the recommended limit of 256 KiB. "
-                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
+                        "Try reducing the size of the closure by using parameters or mounts, "
+                        "not large global variables."
                     )
             else:
                 function_serialized = None
@@ -575,7 +583,9 @@ class _Function(_Object, type_prefix="fu"):
                 function_serialized=function_serialized or b"",
                 class_serialized=class_serialized or b"",
                 function_type=function_type,
-                resources=convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu),
+                resources=convert_fn_config_to_resources_config(
+                    cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
+                ),
                 webhook_config=webhook_config,
                 shared_volume_mounts=network_file_system_mount_protos(
                     validated_network_file_systems, allow_cross_region_volumes
@@ -730,7 +740,8 @@ class _Function(_Object, type_prefix="fu"):
     async def keep_warm(self, warm_pool_size: int) -> None:
         """Set the warm pool size for the function (including parametrized functions).
 
-        Please exercise care when using this advanced feature! Setting and forgetting a warm pool on functions can lead to increased costs.
+        Please exercise care when using this advanced feature!
+        Setting and forgetting a warm pool on functions can lead to increased costs.
 
         ```python
         # Usage on a regular function.
@@ -885,7 +896,8 @@ class _Function(_Object, type_prefix="fu"):
         """URL of a Function running as a web endpoint."""
         if not self._web_url:
             raise ValueError(
-                f"No web_url can be found for function {self._function_name}. web_url can only be referenced from a running app context"
+                f"No web_url can be found for function {self._function_name}. web_url "
+                "can only be referenced from a running app context"
             )
         return self._web_url
 
@@ -901,9 +913,9 @@ class _Function(_Object, type_prefix="fu"):
     ) -> AsyncGenerator[Any, None]:
         """mdmd:hidden
 
-        Synchronicity-wrapped map implementation. To be safe against invocations of user code in the synchronicity thread
-        it doesn't accept an [async]iterator, and instead takes a _SynchronizedQueue instance that is fed by
-        higher level functions like .map()
+        Synchronicity-wrapped map implementation. To be safe against invocations of user code in
+        the synchronicity thread it doesn't accept an [async]iterator, and instead takes a
+          _SynchronizedQueue instance that is fed by higher level functions like .map()
 
         _SynchronizedQueue is used instead of asyncio.Queue so that the main thread can put
         items in the queue safely.
@@ -1061,7 +1073,8 @@ class _Function(_Object, type_prefix="fu"):
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
 
-        Returns a `modal.functions.FunctionCall` object, that can later be polled or waited for using `.get(timeout=...)`.
+        Returns a `modal.functions.FunctionCall` object, that can later be polled or
+        waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
 
         *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
@@ -1145,7 +1158,8 @@ class _FunctionCall(_Object, type_prefix="fc"):
         return _reconstruct_call_graph(response)
 
     async def cancel(self):
-        """Cancels the function call, which will stop its execution and mark its inputs as [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus)."""
+        """Cancels the function call, which will stop its execution and mark its inputs as
+        [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus)."""
         request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
         assert self._client and self._client.stub
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)

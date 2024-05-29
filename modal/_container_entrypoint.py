@@ -95,7 +95,8 @@ class DaemonizedThreadPool:
             # special case - allows us to exit the
             if self.inputs.unfinished_tasks:
                 logger.info(
-                    f"Exiting DaemonizedThreadPool with {self.inputs.unfinished_tasks} active inputs due to exception: {repr(exc_type)}"
+                    f"Exiting DaemonizedThreadPool with {self.inputs.unfinished_tasks} active "
+                    f"inputs due to exception: {repr(exc_type)}"
                 )
 
     def submit(self, func, *args):
@@ -158,7 +159,8 @@ class UserCodeEventLoop:
                 task.cancel()
                 return
 
-            raise KeyboardInterrupt()  # this should normally not happen, but the second sigint would "hard kill" the event loop!
+            # this should normally not happen, but the second sigint would "hard kill" the event loop!
+            raise KeyboardInterrupt()
 
         ignore_sigint = signal.getsignal(signal.SIGINT) == signal.SIG_IGN
         if not ignore_sigint:
@@ -388,7 +390,9 @@ def import_function(
 
     # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
     if active_app is None:
-        # This branch is reached in the special case that the imported function is 1) not serialized, and 2) isn't a FunctionHandle - i.e, not decorated at definition time
+        # This branch is reached in the special case that the imported function is:
+        # 1) not serialized, and
+        # 2) isn't a FunctionHandle - i.e, not decorated at definition time
         # Look at all instantiated apps - if there is only one with the indicated name, use that one
         app_name: Optional[str] = function_def.app_name or None  # coalesce protobuf field to None
         matching_apps = _App._all_apps.get(app_name, [])
@@ -398,11 +402,13 @@ def import_function(
             else:
                 warning_sub_message = "unnamed app"
             logger.warning(
-                f"You have more than one {warning_sub_message}. It's recommended to name all your Apps uniquely when using multiple apps"
+                f"You have more than one {warning_sub_message}. "
+                "It's recommended to name all your Apps uniquely when using multiple apps"
             )
         elif len(matching_apps) == 1:
             (active_app,) = matching_apps
-        # there could also technically be zero found apps, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
+        # there could also technically be zero found apps, but that should probably never be an
+        # issue since that would mean user won't use is_inside or other function handles anyway
 
     # Check this property before we turn it into a method (overriden by webhooks)
     is_async = get_is_async(user_defined_callable)
@@ -460,9 +466,9 @@ def call_lifecycle_functions(
             # We are deprecating parameterized exit methods but want to gracefully handle old code.
             # We can remove this once the deprecation in the actual @exit decorator is enforced.
             args = (None, None, None) if method_has_params(func) else ()
-            res = func(
-                *args
-            )  # in case func is non-async, it's executed here and sigint will by default interrupt it using a KeyboardInterrupt exception
+            # in case func is non-async, it's executed here and sigint will by default
+            # interrupt it using a KeyboardInterrupt exception
+            res = func(*args)
             if inspect.iscoroutine(res):
                 # if however func is async, we have to jump through some hoops
                 event_loop.run(res)
@@ -668,7 +674,8 @@ if __name__ == "__main__":
     if lingering_threads:
         thread_names = ", ".join(t.name for t in lingering_threads)
         logger.warning(
-            f"Detected {len(lingering_threads)} background thread(s) [{thread_names}] still running after container exit. This will prevent runner shutdown for up to 30 seconds."
+            f"Detected {len(lingering_threads)} background thread(s) [{thread_names}] still running "
+            "after container exit. This will prevent runner shutdown for up to 30 seconds."
         )
 
     logger.debug("Container: done")

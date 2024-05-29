@@ -33,6 +33,7 @@ filterwarnings = [
 ]
 
 [tool.ruff]
+extend-include = ["*.pyi"]
 exclude = [
     '.venv',
     '.git',
@@ -43,7 +44,7 @@ exclude = [
     'modal/_vendor',
 ]
 line-length = 120
-lint.ignore = ['E501', 'E741']
+lint.ignore = ['E741']
 lint.select = ['E', 'F', 'W', 'I']
 
 [tool.ruff.lint.per-file-ignores]
