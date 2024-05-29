@@ -103,7 +103,12 @@ class FinalizedFunction:
 
 
 class Service(metaclass=ABCMeta):
-    """Common interface for singular vs."""
+    """Common interface for singular functions and class-based "services"
+
+    There are differences in the importing/finalization logic, and this
+    "protocol"/abc basically defines a common interface for the two types
+    of "Services" after the point of import.
+    """
 
     obj: Any
     app: Optional[_App]
@@ -558,7 +563,7 @@ def import_function(
     )
 
 
-def import_class_function(
+def import_class_service(
     function_def: api_pb2.Function,
     ser_cls,
     ser_fun,
@@ -685,7 +690,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
             if container_args.function_def.is_class:
-                imp_fun = import_class_function(
+                imp_fun = import_class_service(
                     container_args.function_def,
                     ser_cls,
                     ser_fun,
