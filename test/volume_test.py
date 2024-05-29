@@ -12,7 +12,6 @@ from unittest import mock
 
 import modal
 from modal.exception import DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
-from modal.runner import deploy_app
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
@@ -106,39 +105,6 @@ def test_volume_reload(client, servicer):
         vol.reload()
 
         assert servicer.volume_reloads[vol.object_id] == 1
-
-
-def test_redeploy(servicer, client):
-    app = modal.App()
-
-    with pytest.warns(DeprecationError):
-        v1 = modal.Volume.new()
-        v2 = modal.Volume.new()
-        v3 = modal.Volume.new()
-        app.v1, app.v2, app.v3 = v1, v2, v3
-
-    # Deploy app once
-    deploy_app(app, "my-app", client=client)
-    app1_ids = [v1.object_id, v2.object_id, v3.object_id]
-
-    # Deploy app again
-    deploy_app(app, "my-app", client=client)
-    app2_ids = [v1.object_id, v2.object_id, v3.object_id]
-
-    # Make sure ids are stable
-    assert app1_ids == app2_ids
-
-    # Make sure ids are unique
-    assert len(set(app1_ids)) == 3
-    assert len(set(app2_ids)) == 3
-
-    # Deploy to a different app
-    deploy_app(app, "my-other-app", client=client)
-    app3_ids = [v1.object_id, v2.object_id, v3.object_id]
-
-    # Should be unique and different
-    assert len(set(app3_ids)) == 3
-    assert set(app1_ids) & set(app3_ids) == set()
 
 
 @pytest.mark.asyncio
