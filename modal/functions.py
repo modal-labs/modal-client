@@ -250,6 +250,7 @@ class _FunctionSpec:
     cloud: Optional[str]
     cpu: Optional[float]
     memory: Optional[Union[int, Tuple[int, int]]]
+    ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
 
 
@@ -312,6 +313,7 @@ class _Function(_Object, type_prefix="fu"):
         allow_background_volume_commits: Optional[bool] = None,
         block_network: bool = False,
         max_inputs: Optional[int] = None,
+        ephemeral_disk: Optional[int] = None,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -383,6 +385,7 @@ class _Function(_Object, type_prefix="fu"):
             cloud=cloud,
             cpu=cpu,
             memory=memory,
+            ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
         )
 
@@ -405,6 +408,7 @@ class _Function(_Object, type_prefix="fu"):
                     memory=memory,
                     timeout=86400,  # TODO: make this an argument to `@build()`
                     cpu=cpu,
+                    ephemeral_disk=ephemeral_disk,
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
@@ -579,7 +583,9 @@ class _Function(_Object, type_prefix="fu"):
                 function_serialized=function_serialized or b"",
                 class_serialized=class_serialized or b"",
                 function_type=function_type,
-                resources=convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu),
+                resources=convert_fn_config_to_resources_config(
+                    cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
+                ),
                 webhook_config=webhook_config,
                 shared_volume_mounts=network_file_system_mount_protos(
                     validated_network_file_systems, allow_cross_region_volumes
