@@ -12,7 +12,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.62.186 (2024-05-29)
 
-* `modal.Volume` background commits is now enabled by default when using `spawn_sandbox`.
+* `modal.Volume` background commits are now enabled by default when using `spawn_sandbox`.
 
 
 
