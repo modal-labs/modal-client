@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.190 (2024-05-29)
+
+* `modal.Function` now supports requesting ephemeral disk (SSD) via the new `ephemeral_disk` parameter. Intended for use in doing large dataset ingestion and transform.
+
+
+
 ### 0.62.186 (2024-05-29)
 
 * `modal.Volume` background commits are now enabled by default when using `spawn_sandbox`.
