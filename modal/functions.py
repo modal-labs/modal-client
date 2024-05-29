@@ -95,6 +95,8 @@ if TYPE_CHECKING:
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
+    stub: api_grpc.ModalClientStub
+
     def __init__(self, stub: api_grpc.ModalClientStub, function_call_id: str, client: _Client):
         self.stub = stub
         self.client = client  # Used by the deserializer.
@@ -279,8 +281,12 @@ class _Function(_Object, type_prefix="fu"):
 
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
-    _use_function_id: Optional[str]
-    _use_method_name: Optional[str] = ""
+    _use_function_id: str  # The function to invoke
+    _use_method_name: str = ""
+
+    _parent: Optional[
+        "_Function"
+    ] = None  # TODO: remove this. In case of instance functions, and methods bound on those, this references the parent class-function and is used to infer the client for lazy-loaded methods
 
     def _bind_method(
         self,
@@ -315,12 +321,17 @@ class _Function(_Object, type_prefix="fu"):
                 use_function_id=class_function.object_id,
                 use_method_name=method_name,
             )
+            assert class_function._app is not None
+            assert (
+                class_function._app.app_id is not None
+            )  # app id should be set when the resolver starts to load functions
             request = api_pb2.FunctionCreateRequest(
                 app_id=class_function._app.app_id,  #  TODO: should be able to use resolver.app_id, but can't with lazy hydration right now
                 function=function_definition,
                 #  method_bound_function.object_id usually gets set by preload
                 existing_function_id=existing_object_id or method_bound_function.object_id or "",
             )
+            assert resolver.client.stub is not None  # client should be connected when load is called
             response = await resolver.client.stub.FunctionCreate(request)
             method_bound_function._hydrate(
                 response.function_id,
@@ -341,6 +352,7 @@ class _Function(_Object, type_prefix="fu"):
                 use_method_name=method_name,
                 existing_function_id=existing_object_id or "",
             )
+            assert resolver.client.stub  # client should be connected at this point
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             method_bound_function._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
@@ -360,7 +372,7 @@ class _Function(_Object, type_prefix="fu"):
 
         return fun
 
-    def _bind_instance_method(instance_bound_class_function, class_bound_method: "_Function"):
+    def _bind_instance_method(self, class_bound_method: "_Function"):
         """mdmd:hidden
 
         Binds an instance-bound function (a "class function" with an instance object) to a specific method.
@@ -368,6 +380,8 @@ class _Function(_Object, type_prefix="fu"):
         it does it forward invocations to the underlying instance_bound_class_function with the specified method,
         and we don't support web_config for parameterized methods at the moment.
         """
+        instance_bound_class_function = self
+        assert instance_bound_class_function._obj
         method_name = class_bound_method._use_method_name
 
         def hydrate_from_instance_function(obj):
@@ -378,8 +392,8 @@ class _Function(_Object, type_prefix="fu"):
             obj._use_method_name = method_name
             obj._use_function_id = instance_bound_class_function.object_id
 
-        async def _load(self: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            hydrate_from_instance_function(self)
+        async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            hydrate_from_instance_function(fun)
 
         def _deps():
             return [instance_bound_class_function]
@@ -615,8 +629,13 @@ class _Function(_Object, type_prefix="fu"):
                     deps.append(cloud_bucket_mount.secret)
 
             # Add implicit dependencies from the function's code
-            objs: list[Object] = get_referred_objects(info.raw_f)
-            _objs: list[_Object] = synchronizer._translate_in(objs)  # type: ignore
+            if info.raw_f:
+                # TODO(elias): Remove this branch since we shouldn't need closure vars inspection anymore?
+                objs: list[Object] = get_referred_objects(info.raw_f)
+                _objs: list[_Object] = synchronizer._translate_in(objs)  # type: ignore
+            else:
+                _objs = []
+
             deps += _objs
             return deps
 
@@ -760,7 +779,7 @@ class _Function(_Object, type_prefix="fu"):
                 if exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
                 if exc.message and "Received :status = '413'" in exc.message:
-                    raise InvalidError(f"Function {raw_f} is too large to deploy.")
+                    raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                 raise
 
             if response.function.web_url:
@@ -829,6 +848,8 @@ class _Function(_Object, type_prefix="fu"):
         """
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            if self._parent is None:
+                raise ExecutionError("Can't find the parent class' service function")
             try:
                 identity = f"base {self._parent.info.function_name} function"
             except Exception:
@@ -845,6 +866,7 @@ class _Function(_Object, type_prefix="fu"):
             assert self._parent._client.stub
             serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
+            assert self._parent is not None
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=self._parent._object_id,
                 serialized_params=serialized_params,
@@ -868,7 +890,6 @@ class _Function(_Object, type_prefix="fu"):
         fun._is_generator = self._is_generator
         fun._is_method = True
         fun._parent = self
-        #        fun._app = self.app
         return fun
 
     @live_method
@@ -960,13 +981,16 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def app(self) -> "modal.app._App":
         """mdmd:hidden"""
+        if self._app is None:
+            raise ExecutionError("The app has not been assigned on the function at this point")
+
         return self._app
 
     @property
     def stub(self) -> "modal.app._App":
         """mdmd:hidden"""
         # Deprecated soon, only for backwards compatibility
-        return self._app
+        return self.app
 
     @property
     def info(self) -> FunctionInfo:
@@ -1071,7 +1095,7 @@ class _Function(_Object, type_prefix="fu"):
         )
 
         async for item in _map_invocation(
-            self,
+            self,  # type: ignore
             input_queue,
             self._client,
             order_outputs,
@@ -1155,10 +1179,12 @@ class _Function(_Object, type_prefix="fu"):
     def _get_is_remote_cls_method(self):
         return self._is_remote_cls_method
 
-    def _get_info(self):
+    def _get_info(self) -> FunctionInfo:
+        if not self._info:
+            raise ExecutionError("Can't get info for a function that isn't locally defined")
         return self._info
 
-    def _get_obj(self):
+    def _get_obj(self) -> Optional[Any]:
         if not self._is_method:
             return None
         elif not self._obj:
@@ -1177,7 +1203,7 @@ class _Function(_Object, type_prefix="fu"):
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
         info = self._get_info()
-        if not info:
+        if not info or not info.raw_f:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
                 "If this function was retrieved via `Function.lookup` you need to use `.remote()`."

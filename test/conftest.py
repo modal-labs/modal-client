@@ -132,7 +132,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.precreated_functions = set()
 
         self.app_functions = {}
-        self.bound_functions: Dict[Tuple[str, bytes]] = {}
+        self.bound_functions: Dict[Tuple[str, bytes], str] = {}
         self.fcidx = 0
 
         self.function_serialized = None

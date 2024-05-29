@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import uuid
 from functools import wraps
-from typing import Awaitable, Callable, ClassVar, Dict, Hashable, List, Optional, Type, TypeVar
+from typing import Awaitable, Callable, ClassVar, Dict, Hashable, List, Optional, Sequence, Type, TypeVar
 
 from google.protobuf.message import Message
 
@@ -138,7 +138,7 @@ class _Object:
         is_another_app: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
-        deps: Optional[Callable[..., List["_Object"]]] = None,
+        deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments

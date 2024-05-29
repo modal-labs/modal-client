@@ -9,6 +9,7 @@ import signal
 import sys
 import threading
 import time
+from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Type
 
@@ -94,11 +95,33 @@ def construct_webhook_callable(
 
 
 @dataclass
-class ImportedFunction:
+class FinalizedFunction:
+    callable: Callable[..., Any]
+    is_async: bool
+    is_generator: bool
+    data_format: int  # api_pb2.DataFormat
+
+
+class Service(metaclass=ABCMeta):
+    """Common interface for singular vs."""
+
+    obj: Any
+    app: Optional[_App]
+    is_auto_snapshot: bool
+    function: _Function
+
+    @abstractmethod
+    def get_finalized_functions(
+        self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
+    ) -> Dict[str, "FinalizedFunction"]:
+        ...
+
+
+@dataclass
+class ImportedFunction(Service):
     obj: Any
     user_defined_callable: Callable[..., Any]
     app: Optional[_App]
-    input_concurrency: int
     is_auto_snapshot: bool
     function: _Function
 
@@ -137,11 +160,10 @@ class ImportedFunction:
 
 
 @dataclass
-class ImportedClass:
+class ImportedClass(Service):
     obj: Any
     partial_functions: Dict[str, _PartialFunction]
     app: Optional[_App]
-    input_concurrency: int
     is_auto_snapshot: bool
     function: _Function
 
@@ -178,14 +200,6 @@ class ImportedClass:
                 )
             finalized_functions[method_name] = finalized_function
         return finalized_functions
-
-
-@dataclass
-class FinalizedFunction:
-    callable: Callable[..., Any]
-    is_async: bool
-    is_generator: bool
-    data_format: int  # api_pb2.DataFormat
 
 
 class DaemonizedThreadPool:
@@ -449,7 +463,7 @@ def import_function(
     ser_fun,
     ser_params: Optional[bytes],
     client: Client,
-) -> ImportedFunction:
+) -> Service:
     """Imports a function dynamically, and locates the app.
 
     This is somewhat complex because we're dealing with 3 quite different type of functions:
@@ -468,7 +482,7 @@ def import_function(
     * Otherwise, use the app name and look it up from a global list of apps: this
       typically only happens in case 2 above, or in sometimes for case 3
 
-    Note that `import_function` is *not* synchronized, becase we need it to run on the main
+    Note that `import_function` is *not* synchronized, because we need it to run on the main
     thread. This is so that any user code running in global scope (which executes as a part of
     the import) runs on the right thread.
     """
@@ -477,7 +491,6 @@ def import_function(
     user_defined_callable: Callable
     function: Optional[_Function] = None
     active_app: Optional[_App] = None
-    pty_info: api_pb2.PTYInfo = function_def.pty_info
 
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
@@ -519,17 +532,6 @@ def import_function(
         else:
             raise InvalidError(f"Invalid function qualname {qual_name}")
 
-    # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
-    if active_app is None:
-        active_app = get_active_app_fallback(function_def)
-
-    # Container can fetch multiple inputs simultaneously
-    if pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-        # Concurrency doesn't apply for `modal shell`.
-        input_concurrency = 1
-    else:
-        input_concurrency = function_def.allow_concurrent_inputs or 1
-
     # Instantiate the class if it's defined
     if cls:
         if ser_params:
@@ -549,7 +551,74 @@ def import_function(
         obj,
         user_defined_callable,
         active_app,
-        input_concurrency,
+        function_def.is_auto_snapshot,
+        function,
+    )
+
+
+def import_class_function(
+    function_def: api_pb2.Function,
+    ser_cls,
+    ser_fun,
+    ser_params: Optional[bytes],
+    client: Client,
+) -> Service:
+    """
+    This imports a full class to be able to execute any @method or webhook decorated methods.
+
+    See import_function.
+
+    TODO(elias): clean up/unify this with import_function
+    """
+    module: Optional[ModuleType] = None
+    cls: Optional[Type] = None
+    function: Optional[_Function] = None
+    active_app: Optional[_App] = None
+
+    if ser_fun is not None:
+        # This is a serialized function we already fetched from the server
+        cls, method_partials = ser_cls, ser_fun
+    else:
+        # Load the module dynamically
+        module = importlib.import_module(function_def.module_name)
+        qual_name: str = function_def.function_name
+
+        if not is_global_object(qual_name):
+            raise LocalFunctionError("Attempted to load a class defined in a function scope")
+
+        parts = qual_name.split(".")
+        if not (
+            len(parts) == 2 and parts[1] == "*"
+        ):  # the "function name" of a class function is expected to be "ClassName.*"
+            raise InvalidError(f"Invalid 'class function' identifier {qual_name}")
+
+        assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
+        cls_name = parts[0]
+        cls = getattr(module, cls_name)
+        if isinstance(cls, Cls):
+            # The cls decorator is in global scope
+            _cls = synchronizer._translate_in(cls)
+            method_partials = _cls._method_partials
+            active_app = _cls._app
+        else:
+            # This is a raw class - find all methods
+            method_partials = _find_partial_methods_for_cls(cls, _PartialFunctionFlags.all())
+
+    # Instantiate the class if it's defined
+    assert cls  # must be a class
+    if ser_params:
+        _client: _Client = synchronizer._translate_in(client)
+        args, kwargs = deserialize(ser_params, _client)
+    else:
+        args, kwargs = (), {}
+    obj = cls(*args, **kwargs)
+    if isinstance(cls, Cls):
+        obj = obj.get_obj()
+
+    return ImportedClass(
+        obj,
+        method_partials,
+        active_app,
         function_def.is_auto_snapshot,
         function,
     )
@@ -573,78 +642,6 @@ def get_active_app_fallback(function_def: api_pb2.Function) -> Optional[_App]:
         (active_app,) = matching_apps
     # there could also technically be zero found apps, but that should probably never be an issue since that would mean user won't use is_inside or other function handles anyway
     return active_app
-
-
-def import_class_function(
-    function_def: api_pb2.Function,
-    ser_cls,
-    ser_fun,
-    ser_params: Optional[bytes],
-    client: Client,
-) -> ImportedClass:
-    module: Optional[ModuleType] = None
-    cls: Optional[Type] = None
-    function: Optional[_Function] = None
-    active_app: Optional[_App] = None
-    pty_info: api_pb2.PTYInfo = function_def.pty_info
-
-    if ser_fun is not None:
-        # This is a serialized function we already fetched from the server
-        cls, method_partials = ser_cls, ser_fun
-    else:
-        # Load the module dynamically
-        module = importlib.import_module(function_def.module_name)
-        qual_name: str = function_def.function_name
-
-        if not is_global_object(qual_name):
-            raise LocalFunctionError("Attempted to load a class defined in a function scope")
-
-        parts = qual_name.split(".")
-        if not (len(parts) == 2 and parts[1] == "*"):  # new style "class function"
-            raise InvalidError(f"Invalid 'class function' identifier {qual_name}")
-
-        assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
-        cls_name = parts[0]
-        cls = getattr(module, cls_name)
-        if isinstance(cls, Cls):
-            # The cls decorator is in global scope
-            _cls = synchronizer._translate_in(cls)
-            method_partials = _cls._method_partials
-            active_app = _cls._app
-        else:
-            # This is a raw class find all methods
-            method_partials = _find_partial_methods_for_cls(cls, ~_PartialFunctionFlags(0))
-
-    # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
-    if active_app is None:
-        active_app = get_active_app_fallback(function_def)
-
-    # Container can fetch multiple inputs simultaneously
-    if pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-        # Concurrency doesn't apply for `modal shell`.
-        input_concurrency = 1
-    else:
-        input_concurrency = function_def.allow_concurrent_inputs or 1
-
-    # Instantiate the class if it's defined
-    assert cls  # must be a class
-    if ser_params:
-        _client: _Client = synchronizer._translate_in(client)
-        args, kwargs = deserialize(ser_params, _client)
-    else:
-        args, kwargs = (), {}
-    obj = cls(*args, **kwargs)
-    if isinstance(cls, Cls):
-        obj = obj.get_obj()
-
-    return ImportedClass(
-        obj,
-        method_partials,
-        active_app,
-        input_concurrency,
-        function_def.is_auto_snapshot,
-        function,
-    )
 
 
 def call_lifecycle_functions(
@@ -677,7 +674,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             ser_cls, ser_fun = container_io_manager.get_serialized_function()
         else:
             ser_cls, ser_fun = None, None
-
+        imp_fun: Service
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
             if container_args.function_def.is_class:
@@ -697,13 +694,26 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     client,
                 )
 
+            # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
+            active_app: Optional[_App] = imp_fun.app
+            if active_app is None:
+                # if the app can't be inferred by the imported function, use name-based fallback
+                active_app = get_active_app_fallback(container_args.function_def)
+
+        # Container can fetch multiple inputs simultaneously
+        if container_args.function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+            # Concurrency doesn't apply for `modal shell`.
+            input_concurrency = 1
+        else:
+            input_concurrency = container_args.function_def.allow_concurrent_inputs or 1
+
         # Get ids and metadata for objects (primarily functions and classes) on the app
         container_app: RunningApp = container_io_manager.get_app_objects()
 
         # Initialize objects on the app.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
-        if imp_fun.app is not None:
-            app: App = synchronizer._translate_out(imp_fun.app, Interface.BLOCKING)
+        if active_app is not None:
+            app: App = synchronizer._translate_out(active_app, Interface.BLOCKING)
             app._init_container(client, container_app)
 
         # Hydrate all function dependencies.
@@ -755,7 +765,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Execute the function.
         try:
-            call_function(event_loop, container_io_manager, finalized_functions, imp_fun.input_concurrency)
+            call_function(event_loop, container_io_manager, finalized_functions, input_concurrency)
         finally:
             # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
             # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that

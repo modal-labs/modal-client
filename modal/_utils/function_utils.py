@@ -189,7 +189,7 @@ class FunctionInfo:
             # other than the object id and hydration metadata
             from ..partial_function import _find_partial_methods_for_cls, _PartialFunctionFlags
 
-            partial_methods_dict = _find_partial_methods_for_cls(self.cls, ~_PartialFunctionFlags(0))
+            partial_methods_dict = _find_partial_methods_for_cls(self.cls, _PartialFunctionFlags.all())
             return serialize(partial_methods_dict)
 
     def get_globals(self) -> Dict[str, Any]:
