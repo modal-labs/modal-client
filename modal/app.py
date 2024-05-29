@@ -782,6 +782,14 @@ class _App:
         else:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
+        if _allow_background_volume_commits is False:
+            deprecation_warning(
+                (2024, 5, 13),
+                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+            )
+        elif _allow_background_volume_commits is None:
+            _allow_background_volume_commits = True
+
         # TODO(erikbern): pulling a lot of app internals here, let's clean up shortly
         resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
         obj = _Sandbox._new(
