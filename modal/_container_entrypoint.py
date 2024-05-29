@@ -112,7 +112,6 @@ class Service(metaclass=ABCMeta):
 
     obj: Any
     app: Optional[_App]
-    is_auto_snapshot: bool
     function: _Function
 
     @abstractmethod
@@ -127,7 +126,6 @@ class ImportedFunction(Service):
     obj: Any
     user_defined_callable: Callable[..., Any]
     app: Optional[_App]
-    is_auto_snapshot: bool
     function: _Function
 
     def get_finalized_functions(
@@ -169,7 +167,6 @@ class ImportedClass(Service):
     obj: Any
     partial_functions: Dict[str, _PartialFunction]
     app: Optional[_App]
-    is_auto_snapshot: bool
     function: _Function
 
     def get_finalized_functions(
@@ -558,7 +555,6 @@ def import_function(
         obj,
         user_defined_callable,
         active_app,
-        function_def.is_auto_snapshot,
         function,
     )
 
@@ -626,7 +622,6 @@ def import_class_service(
         obj,
         method_partials,
         active_app,
-        function_def.is_auto_snapshot,
         function,
     )
 
@@ -679,6 +674,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
     container_io_manager = ContainerIOManager(container_args, client)
+    active_app: Optional[_App] = None
+    service: Service
+    is_auto_snapshot: bool = container_args.function_def.is_auto_snapshot
 
     with container_io_manager.heartbeats(), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
@@ -686,11 +684,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             ser_cls, ser_fun = container_io_manager.get_serialized_function()
         else:
             ser_cls, ser_fun = None, None
-        imp_fun: Service
+
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
             if container_args.function_def.is_class:
-                imp_fun = import_class_service(
+                service = import_class_service(
                     container_args.function_def,
                     ser_cls,
                     ser_fun,
@@ -698,7 +696,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     client,
                 )
             else:
-                imp_fun = import_function(
+                service = import_function(
                     container_args.function_def,
                     ser_cls,
                     ser_fun,
@@ -707,7 +705,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 )
 
             # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
-            active_app: Optional[_App] = imp_fun.app
+            active_app = service.app
             if active_app is None:
                 # if the app can't be inferred by the imported function, use name-based fallback
                 active_app = get_active_app_fallback(container_args.function_def)
@@ -732,10 +730,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # TODO(erikbern): we an remove this once we
         # 1. Enable lazy hydration for all objects
         # 2. Fully deprecate .new() objects
-        if imp_fun.function:
+        if service.function:
             _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
             dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
-            function_deps = imp_fun.function.deps(only_explicit_mounts=True)
+            function_deps = service.function.deps(only_explicit_mounts=True)
             if len(function_deps) != len(dep_object_ids):
                 raise ExecutionError(
                     f"Function has {len(function_deps)} dependencies"
@@ -746,8 +744,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 obj._hydrate(object_id, _client, metadata)
 
         # Identify all "enter" methods that need to run before we snapshot.
-        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-            pre_snapshot_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+        if service.obj is not None and not is_auto_snapshot:
+            pre_snapshot_methods = _find_callables_for_obj(service.obj, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
             call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
 
         # If this container is being used to create a checkpoint, checkpoint the container after
@@ -768,12 +766,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             sys.breakpointhook = breakpoint_wrapper
 
         # Identify the "enter" methods to run after resuming from a snapshot.
-        if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-            post_snapshot_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
+        if service.obj is not None and not is_auto_snapshot:
+            post_snapshot_methods = _find_callables_for_obj(service.obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
 
         with container_io_manager.handle_user_exception():
-            finalized_functions = imp_fun.get_finalized_functions(container_args.function_def, container_io_manager)
+            finalized_functions = service.get_finalized_functions(container_args.function_def, container_io_manager)
 
         # Execute the function.
         try:
@@ -787,8 +785,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
             try:
                 # Identify "exit" methods and run them.
-                if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
-                    exit_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.EXIT)
+                if service.obj is not None and not is_auto_snapshot:
+                    exit_methods = _find_callables_for_obj(service.obj, _PartialFunctionFlags.EXIT)
                     call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
 
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
