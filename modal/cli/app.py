@@ -4,7 +4,6 @@ from typing import List, Optional, Union
 
 import typer
 from click import UsageError
-from grpclib import GRPCError, Status
 from rich.table import Column
 from rich.text import Text
 from typer import Argument, Option
@@ -13,10 +12,9 @@ from modal._utils.async_utils import synchronizer
 from modal.app_utils import _list_apps
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.exception import NotFoundError
 from modal_proto import api_pb2
 
-from .utils import ENV_OPTION, display_table, stream_app_logs, timestamp_to_local
+from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
@@ -33,7 +31,7 @@ APP_STATE_TO_MESSAGE = {
 
 @app_cli.command("list")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
     """List Modal apps that are currently deployed/running or recently stopped."""
     env = ensure_env(env)
 
@@ -84,7 +82,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 def logs(
     app_id: str = Argument("", help="Look up any App by its ID"),
     *,
-    name: Optional[str] = Option(None, "-n", "--name", help="Look up a deployed App by its name"),
+    name: str = Option("", "-n", "--name", help="Look up a deployed App by its name"),
     env: Optional[str] = ENV_OPTION,
 ):
     """Show App logs, streaming while active.
@@ -108,35 +106,21 @@ def logs(
         raise UsageError("Must pass either an ID or a name.")
 
     if not app_id:
-
-        @synchronizer.create_blocking
-        async def get_app_id():
-            client = await _Client.from_env()
-            env_name = ensure_env(env)
-            request = api_pb2.AppGetByDeploymentNameRequest(
-                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, name=name, environment_name=env_name
-            )
-            resp = await client.stub.AppGetByDeploymentName(request)
-            if not resp.app_id:
-                env_comment = f" in the '{env_name}' environment" if env_name else ""
-                raise NotFoundError(f"Could not find a deployed app named '{name}'{env_comment}.")
-            return resp.app_id
-
-        try:
-            app_id = get_app_id()
-        except GRPCError as exc:
-            if exc.status in (Status.INVALID_ARGUMENT, Status.NOT_FOUND):
-                raise UsageError(exc.message)
-            else:
-                raise
-
+        app_id = get_app_id_from_name(name, env)
     stream_app_logs(app_id)
 
 
-@app_cli.command("stop")
+@app_cli.command("stop", no_args_is_help=True)
 @synchronizer.create_blocking
-async def stop(app_id: str):
+async def stop(
+    app_id: str = Argument(""),
+    *,
+    name: str = Option("", "-n", "--name", help="Look up a deployed App by its name"),
+    env: Optional[str] = ENV_OPTION,
+):
     """Stop an app."""
     client = await _Client.from_env()
+    if not app_id:
+        app_id = await get_app_id_from_name.aio(name, env, client)
     req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
     await client.stub.AppStop(req)
