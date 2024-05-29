@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     import modal._container_io_manager
+    import modal.object
 
 
 def construct_webhook_callable(
@@ -112,7 +113,7 @@ class Service(metaclass=ABCMeta):
 
     obj: Any
     app: Optional[_App]
-    function: _Function
+    code_deps: Optional[List["modal.object._Object"]]
 
     @abstractmethod
     def get_finalized_functions(
@@ -126,7 +127,7 @@ class ImportedFunction(Service):
     obj: Any
     user_defined_callable: Callable[..., Any]
     app: Optional[_App]
-    function: _Function
+    code_deps: Optional[List["modal.object._Object"]]
 
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
@@ -167,7 +168,7 @@ class ImportedClass(Service):
     obj: Any
     partial_functions: Dict[str, _PartialFunction]
     app: Optional[_App]
-    function: _Function
+    code_deps: Optional[List["modal.object._Object"]]
 
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
@@ -461,7 +462,7 @@ def call_function(
                     signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
 
 
-def import_function(
+def import_single_function_service(
     function_def: api_pb2.Function,
     ser_cls,
     ser_fun,
@@ -494,6 +495,7 @@ def import_function(
     cls: Optional[Type] = None
     user_defined_callable: Callable
     function: Optional[_Function] = None
+    code_deps: Optional[List["modal.object._Object"]] = None
     active_app: Optional[_App] = None
 
     if ser_fun is not None:
@@ -551,11 +553,14 @@ def import_function(
     else:
         obj = None
 
+    if function:
+        code_deps = function.deps(only_explicit_mounts=True)
+
     return ImportedFunction(
         obj,
         user_defined_callable,
         active_app,
-        function,
+        code_deps,
     )
 
 
@@ -570,13 +575,11 @@ def import_class_service(
     This imports a full class to be able to execute any @method or webhook decorated methods.
 
     See import_function.
-
-    TODO(elias): clean up/unify this with import_function
     """
     module: Optional[ModuleType] = None
     cls: Optional[Type] = None
-    function: Optional[_Function] = None
     active_app: Optional[_App] = None
+    code_deps: Optional[List["modal.object._Object"]] = None
 
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
@@ -592,7 +595,7 @@ def import_class_service(
         parts = qual_name.split(".")
         if not (
             len(parts) == 2 and parts[1] == "*"
-        ):  # the "function name" of a class function is expected to be "ClassName.*"
+        ):  # the "function name" of a class service "function placeholder" is expected to be "ClassName.*"
             raise InvalidError(f"Invalid 'class function' identifier {qual_name}")
 
         assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
@@ -600,9 +603,10 @@ def import_class_service(
         cls = getattr(module, cls_name)
         if isinstance(cls, Cls):
             # The cls decorator is in global scope
-            _cls = synchronizer._translate_in(cls)
-            method_partials = _cls._method_partials
+            _cls: "modal.cls._Cls" = synchronizer._translate_in(cls)
+            method_partials = _cls._method_partials  # implementation to follow in cls refactor PR
             active_app = _cls._app
+            # TODO: set code deps using the decorator options of the cls - maybe using _cls.deps?
         else:
             # This is a raw class - find all methods
             method_partials = _find_partial_methods_for_cls(cls, _PartialFunctionFlags.all())
@@ -622,7 +626,7 @@ def import_class_service(
         obj,
         method_partials,
         active_app,
-        function,
+        code_deps,
     )
 
 
@@ -696,7 +700,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     client,
                 )
             else:
-                service = import_function(
+                service = import_single_function_service(
                     container_args.function_def,
                     ser_cls,
                     ser_fun,
@@ -730,16 +734,15 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # TODO(erikbern): we an remove this once we
         # 1. Enable lazy hydration for all objects
         # 2. Fully deprecate .new() objects
-        if service.function:
+        if service.code_deps is not None:  # this is not set for serialized or non-global scope functions
             _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
             dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
-            function_deps = service.function.deps(only_explicit_mounts=True)
-            if len(function_deps) != len(dep_object_ids):
+            if len(service.code_deps) != len(dep_object_ids):
                 raise ExecutionError(
-                    f"Function has {len(function_deps)} dependencies"
+                    f"Function has {len(service.code_deps)} dependencies"
                     f" but container got {len(dep_object_ids)} object ids."
                 )
-            for object_id, obj in zip(dep_object_ids, function_deps):
+            for object_id, obj in zip(dep_object_ids, service.code_deps):
                 metadata: Message = container_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, _client, metadata)
 
