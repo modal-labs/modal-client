@@ -16,7 +16,8 @@ class _CloudBucketMount:
 
     S3 buckets are mounted using [AWS S3 Mountpoint](https://github.com/awslabs/mountpoint-s3).
     S3 mounts are optimized for reading large files sequentially. It does not support every file operation; consult
-    [the AWS S3 Mountpoint documentation](https://github.com/awslabs/mountpoint-s3/blob/main/doc/SEMANTICS.md) for more information.
+    [the AWS S3 Mountpoint documentation](https://github.com/awslabs/mountpoint-s3/blob/main/doc/SEMANTICS.md)
+    for more information.
 
     **AWS S3 Usage**
 
@@ -43,8 +44,8 @@ class _CloudBucketMount:
 
     **Cloudflare R2 Usage**
 
-    Cloudflare R2 is [S3-compatible](https://developers.cloudflare.com/r2/api/s3/api/) so its setup looks very similar to S3.
-    But additionally the `bucket_endpoint_url` argument must be passed.
+    Cloudflare R2 is [S3-compatible](https://developers.cloudflare.com/r2/api/s3/api/) so its setup looks
+    very similar to S3. But additionally the `bucket_endpoint_url` argument must be passed.
 
     ```python
     import subprocess
@@ -125,7 +126,8 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
                 bucket_type = api_pb2.CloudBucketMount.BucketType.GCP
             else:
                 logger.warn(
-                    "CloudBucketMount received unrecognized bucket endpoint URL. Assuming AWS S3 configuration as fallback."
+                    "CloudBucketMount received unrecognized bucket endpoint URL. "
+                    "Assuming AWS S3 configuration as fallback."
                 )
                 bucket_type = api_pb2.CloudBucketMount.BucketType.S3
         else:

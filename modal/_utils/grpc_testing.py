@@ -26,7 +26,8 @@ def patch_mock_servicer(cls):
         await some_complex_method()
     assert ctx.calls == [("SomeMethod", MyMessage(foo="bar"))]
     ```
-    Also allows to set a predefined queue of responses, temporarily replacing a mock servicer's default responses for a method:
+    Also allows to set a predefined queue of responses, temporarily replacing
+    a mock servicer's default responses for a method:
 
     ```python notest
     with servicer.intercept() as ctx:

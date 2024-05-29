@@ -283,7 +283,8 @@ def get_referred_objects(f: Callable) -> List[Object]:
                 closure_vars = inspect.getclosurevars(obj)
             except ValueError:
                 logger.warning(
-                    f"Could not inspect closure vars of {f} - referenced global Modal objects may or may not work in that function"
+                    f"Could not inspect closure vars of {f} - "
+                    "referenced global Modal objects may or may not work in that function"
                 )
                 continue
 
@@ -413,8 +414,8 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
     except ModuleNotFoundError as deser_exc:
         raise ExecutionError(
             "Could not deserialize result due to error:\n"
-            + f"{deser_exc}\n"
-            + "This can happen if your local environment does not have a module that was used to construct the result. \n"
+            f"{deser_exc}\n"
+            "This can happen if your local environment does not have a module that was used to construct the result. \n"
         )
 
 

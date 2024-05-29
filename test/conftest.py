@@ -333,6 +333,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         await stream.send_message(api_pb2.AppListResponse(apps=apps))
 
+    async def AppStop(self, stream):
+        request: api_pb2.AppStopRequest = await stream.recv_message()
+        self.deployed_apps = {k: v for k, v in self.deployed_apps.items() if v != request.app_id}
+        await stream.send_message(Empty())
+
     ### Checkpoint
 
     async def ContainerCheckpoint(self, stream):
@@ -1306,7 +1311,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if file.filename in self.volume_files[req.volume_id] and req.disallow_overwrite_existing_files:
                 raise GRPCError(
                     Status.ALREADY_EXISTS,
-                    f"{file.filename}: already exists (disallow_overwrite_existing_files={req.disallow_overwrite_existing_files}",
+                    (
+                        f"{file.filename}: already exists "
+                        f"(disallow_overwrite_existing_files={req.disallow_overwrite_existing_files}"
+                    ),
                 )
 
             self.volume_files[req.volume_id][file.filename] = VolumeFile(

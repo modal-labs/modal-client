@@ -284,9 +284,9 @@ class _Function(_Object, type_prefix="fu"):
     _use_function_id: str  # The function to invoke
     _use_method_name: str = ""
 
-    _parent: Optional[
-        "_Function"
-    ] = None  # TODO: remove this. In case of instance functions, and methods bound on those, this references the parent class-function and is used to infer the client for lazy-loaded methods
+    # TODO (elias): remove _parent. In case of instance functions, and methods bound on those,
+    #  this references the parent class-function and is used to infer the client for lazy-loaded methods
+    _parent: Optional["_Function"] = None
 
     def _bind_method(
         self,
@@ -567,7 +567,8 @@ class _Function(_Object, type_prefix="fu"):
 
         if (keep_warm is not None) and (concurrency_limit is not None) and concurrency_limit < keep_warm:
             raise InvalidError(
-                f"Function `{info.function_name}` has `{concurrency_limit=}`, strictly less than its `{keep_warm=}` parameter."
+                f"Function `{info.function_name}` has `{concurrency_limit=}`, "
+                f"strictly less than its `{keep_warm=}` parameter."
             )
 
         if not cloud and not is_builder_function:
@@ -682,13 +683,15 @@ class _Function(_Object, type_prefix="fu"):
                     raise InvalidError(
                         f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
                         "This is larger than the maximum limit of 16 MiB. "
-                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
+                        "Try reducing the size of the closure by using parameters or mounts, "
+                        "not large global variables."
                     )
                 elif len(function_serialized) > 256 << 10:  # 256 KiB
                     warnings.warn(
                         f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
                         "This is larger than the recommended limit of 256 KiB. "
-                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
+                        "Try reducing the size of the closure by using parameters or mounts, "
+                        "not large global variables."
                     )
             else:
                 function_serialized = None
@@ -790,9 +793,8 @@ class _Function(_Object, type_prefix="fu"):
                 else:
                     suffix = ""
                 # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-                status_row.finish(
-                    f"Created {tag} => [magenta underline]{response.handle_metadata.web_url}[/magenta underline]{suffix}"
-                )
+                web_url = response.handle_metadata.web_url
+                status_row.finish(f"Created {tag} => [magenta underline]{web_url}[/magenta underline]{suffix}")
 
                 # Print custom domain in terminal
                 for custom_domain in response.function.custom_domain_info:
@@ -893,7 +895,8 @@ class _Function(_Object, type_prefix="fu"):
     async def keep_warm(self, warm_pool_size: int) -> None:
         """Set the warm pool size for the function (including parametrized functions).
 
-        Please exercise care when using this advanced feature! Setting and forgetting a warm pool on functions can lead to increased costs.
+        Please exercise care when using this advanced feature!
+        Setting and forgetting a warm pool on functions can lead to increased costs.
 
         ```python
         # Usage on a regular function.
@@ -1055,7 +1058,8 @@ class _Function(_Object, type_prefix="fu"):
         """URL of a Function running as a web endpoint."""
         if not self._web_url:
             raise ValueError(
-                f"No web_url can be found for function {self._function_name}. web_url can only be referenced from a running app context"
+                f"No web_url can be found for function {self._function_name}. web_url "
+                "can only be referenced from a running app context"
             )
         return self._web_url
 
@@ -1071,9 +1075,9 @@ class _Function(_Object, type_prefix="fu"):
     ) -> AsyncGenerator[Any, None]:
         """mdmd:hidden
 
-        Synchronicity-wrapped map implementation. To be safe against invocations of user code in the synchronicity thread
-        it doesn't accept an [async]iterator, and instead takes a _SynchronizedQueue instance that is fed by
-        higher level functions like .map()
+        Synchronicity-wrapped map implementation. To be safe against invocations of user code in
+        the synchronicity thread it doesn't accept an [async]iterator, and instead takes a
+          _SynchronizedQueue instance that is fed by higher level functions like .map()
 
         _SynchronizedQueue is used instead of asyncio.Queue so that the main thread can put
         items in the queue safely.
@@ -1234,7 +1238,8 @@ class _Function(_Object, type_prefix="fu"):
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
 
-        Returns a `modal.functions.FunctionCall` object, that can later be polled or waited for using `.get(timeout=...)`.
+        Returns a `modal.functions.FunctionCall` object, that can later be polled or
+        waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
 
         *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
@@ -1315,7 +1320,8 @@ class _FunctionCall(_Object, type_prefix="fc"):
         return _reconstruct_call_graph(response)
 
     async def cancel(self):
-        """Cancels the function call, which will stop its execution and mark its inputs as [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus)."""
+        """Cancels the function call, which will stop its execution and mark its inputs as
+        [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus)."""
         request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
         assert self._client and self._client.stub
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)

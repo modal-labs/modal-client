@@ -132,7 +132,8 @@ class _ContainerIOManager:
             await asyncio.sleep(time_until_next_hearbeat)
 
     async def _heartbeat_handle_cancellations(self) -> bool:
-        # Return True if a cancellation event was received, in that case we shouldn't wait too long for another heartbeat
+        # Return True if a cancellation event was received, in that case
+        # we shouldn't wait too long for another heartbeat
 
         # Don't send heartbeats for tasks waiting to be checkpointed.
         # Calling gRPC methods open new connections which block the
@@ -157,7 +158,8 @@ class _ContainerIOManager:
             if input_ids_to_cancel:
                 if self._input_concurrency > 1:
                     logger.info(
-                        "Shutting down task to stop some subset of inputs (concurrent functions don't support fine-grained cancellation)"
+                        "Shutting down task to stop some subset of inputs "
+                        "(concurrent functions don't support fine-grained cancellation)"
                     )
                     # This is equivalent to a task cancellation or preemption from worker code,
                     # except we do not send a SIGKILL to forcefully exit after 30 seconds.
@@ -487,8 +489,10 @@ class _ContainerIOManager:
             yield
         except (KeyboardInterrupt, GeneratorExit):
             # We need to explicitly reraise these BaseExceptions to not handle them in the catch-all:
-            # 1. KeyboardInterrupt can end up here even though this runs on non-main thread, since the code block yielded to could be sending back a main thread exception
-            # 2. GeneratorExit - raised if this (async) generator is garbage collected while waiting for the yield. Typically on event loop shutdown
+            # 1. KeyboardInterrupt can end up here even though this runs on non-main thread, since the
+            #    code block yielded to could be sending back a main thread exception
+            # 2. GeneratorExit - raised if this (async) generator is garbage collected while waiting
+            #    for the yield. Typically on event loop shutdown
             raise
         except (InputCancellation, asyncio.CancelledError):
             # just skip creating any output for this input and keep going with the next instead
@@ -623,12 +627,14 @@ class _ContainerIOManager:
 
         if not self.function_def.pty_info:
             raise InvalidError(
-                "Interactivity is not enabled in this function. Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
+                "Interactivity is not enabled in this function. "
+                "Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
             )
 
         if self.function_def.concurrency_limit > 1:
             print(
-                "Warning: Interactivity is not supported on functions with concurrency > 1. You may experience unexpected behavior."
+                "Warning: Interactivity is not supported on functions with concurrency > 1. "
+                "You may experience unexpected behavior."
             )
 
         # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here

@@ -178,7 +178,8 @@ async def test_first_message_timeout(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cancellation_cleanup(caplog):
-    # this test mostly exists to get some coverage on the cancellation/error paths and ensure nothing unexpected happens there
+    # this test mostly exists to get some coverage on the cancellation/error paths and
+    # ensure nothing unexpected happens there
     _set_current_context_ids("in-123", "fc-123")
     wrapped_app = asgi_app_wrapper(app, SlowIOManager())
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
