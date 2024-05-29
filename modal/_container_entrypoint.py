@@ -592,12 +592,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
             sys.breakpointhook = breakpoint_wrapper
 
-        # no gpu here
-
         # Identify the "enter" methods to run after resuming from a snapshot.
         if imp_fun.obj is not None and not imp_fun.is_auto_snapshot:
             post_snapshot_methods = _find_callables_for_obj(imp_fun.obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
-            # gpu runs fine here
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
 
         with container_io_manager.handle_user_exception():

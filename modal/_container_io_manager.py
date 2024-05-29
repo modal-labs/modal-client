@@ -55,6 +55,7 @@ class _ContainerIOManager:
     app_id: str
     function_def: api_pb2.Function
     checkpoint_id: Optional[str]
+    checkpoint_cuda: bool
 
     calls_completed: int
     total_user_time: float
@@ -82,6 +83,7 @@ class _ContainerIOManager:
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
         self.checkpoint_id = container_args.checkpoint_id or None
+        self.checkpoint_cuda = False
 
         self.calls_completed = 0
         self.total_user_time = 0.0
@@ -539,8 +541,6 @@ class _ContainerIOManager:
         await self.complete_call(started_at)
 
     async def memory_restore(self) -> None:
-        # put the bin in /__modal
-
         # Busy-wait for restore. `/__modal/restore-state.json` is created
         # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
@@ -554,12 +554,19 @@ class _ContainerIOManager:
 
         # Un-freeze the CUDA session
         num_gpu = self.function_def.resources.gpu_config.count
-        if num_gpu > 0:
+        logger.debug(f"{num_gpu=} {self.checkpoint_cuda=}")
+        if num_gpu > 0 and self.checkpoint_cuda:
             pid = os.getpid()
+            # assert nvidia_gpu_is_running(debug=True)
+            # TODO: We need to add a field to restore-state.json to mark whether a CUDA session
+            # was present at the time of the checkpoint. This is what will allow us to determine
+            # whether we should run cuda-checkpoint on restore.
             stat = subprocess.run(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)])
-            assert stat.returncode == 0
-            assert nvidia_gpu_is_running()
+            logger.debug(f"Ran CUDA checkpoint restore")
+            assert nvidia_gpu_is_running(debug=True)
             logger.debug("Container: CUDA restored")
+        else:
+            logger.debug("Did not run CUDA checkpoint restore")
 
         # Look for state file and create new client with updated credentials.
         # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
@@ -590,20 +597,22 @@ class _ContainerIOManager:
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
 
-        # Freeze the CUDA process
+        # Freeze the CUDA process if one exists
         num_gpu = self.function_def.resources.gpu_config.count
         if num_gpu > 0:
-            pid = os.getpid()
+            # If a CUDA process is present, freeze it
+            # TODO: clean up the branching and asserts
+            if nvidia_gpu_is_running(debug=True):
+                self.checkpoint_cuda = True
+                pid = os.getpid()
+                stat = subprocess.run(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)])
+                logger.debug(f"Ran CUDA checkpoint snapshot: {stat}")
+                # TODO: error handling
+            else:
+                logger.debug("Did not run CUDA checkpoint snapshot")
 
-            # Check a CUDA process is running
-            assert nvidia_gpu_is_running()
-
-            # Freeze the process
-            stat = subprocess.run(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)])
-            assert stat.returncode == 0
-
-            # Check that it was frozen successfully
-            assert not nvidia_gpu_is_running()
+            # Check that no CUDA process is running at the end of the checkpoint
+            assert not nvidia_gpu_is_running(debug=True)
             logger.debug("Froze CUDA process state")
 
         await self._client.stub.ContainerCheckpoint(
