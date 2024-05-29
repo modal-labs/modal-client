@@ -590,6 +590,33 @@ def test_volume_rm(servicer, set_env_client):
         _run(["volume", "get", vol_name, file_path.decode()], expected_exit_code=1, expected_stderr=None)
 
 
+def test_volume_ls(servicer, set_env_client):
+    vol_name = "my-test-vol"
+    _run(["volume", "create", vol_name])
+
+    fnames = ["a", "b", "c"]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for fname in fnames:
+            src_path = os.path.join(tmpdir, f"{fname}.txt")
+            with open(src_path, "w") as f:
+                f.write(fname * 5)
+            _run(["volume", "put", vol_name, src_path, f"data/{fname}.txt"])
+
+    res = _run(["volume", "ls", vol_name])
+    assert "data" in res.stdout
+
+    res = _run(["volume", "ls", vol_name, "data"])
+    for fname in fnames:
+        assert f"{fname}.txt" in res.stdout
+
+    res = _run(["volume", "ls", vol_name, "data", "--json"])
+    res_dict = json.loads(res.stdout)
+    assert len(res_dict) == len(fnames)
+    for entry, fname in zip(res_dict, fnames):
+        assert entry["Filename"] == f"data/{fname}.txt"
+        assert entry["Type"] == "file"
+
+
 def test_volume_create_delete(servicer, server_url_env, set_env_client):
     vol_name = "test-delete-vol"
     _run(["volume", "create", vol_name])
