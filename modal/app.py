@@ -496,6 +496,7 @@ class _App:
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, Tuple[int, int]]] = None,
+        ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[
@@ -608,14 +609,15 @@ class _App:
                 network_file_systems=network_file_systems,
                 allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
+                cpu=cpu,
                 memory=memory,
+                ephemeral_disk=ephemeral_disk,
                 proxy=proxy,
                 retries=retries,
                 concurrency_limit=concurrency_limit,
                 allow_concurrent_inputs=allow_concurrent_inputs,
                 container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
-                cpu=cpu,
                 keep_warm=keep_warm,
                 cloud=cloud,
                 webhook_config=webhook_config,
@@ -654,6 +656,7 @@ class _App:
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, Tuple[int, int]]] = None,
+        ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
@@ -695,6 +698,7 @@ class _App:
             volumes=volumes,
             cpu=cpu,
             memory=memory,
+            ephemeral_disk=ephemeral_disk,
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
