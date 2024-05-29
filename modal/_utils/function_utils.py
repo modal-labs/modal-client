@@ -49,8 +49,8 @@ def entrypoint_only_package_mount_condition(entrypoint_file):
     return inner
 
 
-def is_global_function(function_qual_name):
-    return "<locals>" not in function_qual_name.split(".")
+def is_global_object(object_qual_name):
+    return "<locals>" not in object_qual_name.split(".")
 
 
 def is_async(function):
@@ -162,7 +162,7 @@ class FunctionInfo:
         if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
-            if not is_global_function(f.__qualname__):
+            if not is_global_object(f.__qualname__):
                 raise LocalFunctionError(
                     "Modal can only import functions defined in global scope unless they are `serialized=True`"
                 )
