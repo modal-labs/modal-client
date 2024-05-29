@@ -15,7 +15,7 @@ from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
-from .exception import InvalidError, RequestSizeError, deprecation_warning
+from .exception import InvalidError, RequestSizeError, deprecation_error, deprecation_warning
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
@@ -92,14 +92,7 @@ class _Queue(_Object, type_prefix="qu"):
 
         Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues.
         """
-        deprecation_warning((2024, 3, 19), Queue.new.__doc__)
-
-        async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
-            request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
-            response = await resolver.client.stub.QueueCreate(request)
-            self._hydrate(response.queue_id, resolver.client, None)
-
-        return _Queue._from_loader(_load, "Queue()")
+        deprecation_error((2024, 3, 19), Queue.new.__doc__)
 
     def __init__(self):
         """mdmd:hidden"""

@@ -89,31 +89,13 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     """
 
     @staticmethod
-    def new(cloud: Optional[str] = None) -> "_NetworkFileSystem":
+    def new(cloud: Optional[str] = None):
         """`NetworkFileSystem.new` is deprecated.
 
         Please use `NetworkFileSystem.from_name` (for persisted) or `NetworkFileSystem.ephemeral`
         (for ephemeral) network filesystems.
         """
-        deprecation_warning((2024, 3, 20), NetworkFileSystem.new.__doc__)
-
-        async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
-            status_row = resolver.add_status_row()
-            if existing_object_id:
-                # Volume already exists; do nothing.
-                self._hydrate(existing_object_id, resolver.client, None)
-                return
-
-            if cloud:
-                deprecation_error((2024, 1, 17), "Argument `cloud` is deprecated (has no effect).")
-
-            status_row.message("Creating network file system...")
-            req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id)
-            resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
-            status_row.finish("Created network file system.")
-            self._hydrate(resp.shared_volume_id, resolver.client, None)
-
-        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
+        deprecation_error((2024, 3, 20), NetworkFileSystem.new.__doc__)
 
     @staticmethod
     def from_name(
