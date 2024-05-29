@@ -120,6 +120,7 @@ class _App:
     _description: Optional[str]
     _indexed_objects: Dict[str, _Object]
     _function_mounts: Dict[str, _Mount]
+    _image: Optional[_Image]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
     _volumes: Dict[Union[str, PurePosixPath], _Volume]
@@ -174,11 +175,8 @@ class _App:
             self._validate_blueprint_value(k, v)
 
         self._indexed_objects = kwargs
-        if image is not None:
-            self._indexed_objects["image"] = image  # backward compatibility since "image" used to be on the blueprint
-
+        self._image = image
         self._mounts = mounts
-
         self._secrets = secrets
         self._volumes = volumes
         self._local_entrypoints = {}
@@ -278,7 +276,7 @@ class _App:
         if tag in self.__annotations__:
             object.__setattr__(self, tag, obj)
         elif tag == "image":
-            self._indexed_objects["image"] = obj
+            self._image = obj
         else:
             self._validate_blueprint_value(tag, obj)
             deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
@@ -286,13 +284,11 @@ class _App:
 
     @property
     def image(self) -> _Image:
-        # Exists to get the type inference working for `app.image`
-        # Will also keep this one after we remove [get/set][item/attr]
-        return self._indexed_objects["image"]
+        return self._image
 
     @image.setter
     def image(self, value):
-        self._indexed_objects["image"] = value
+        self._image = value
 
     def _uncreate_all_objects(self):
         # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
@@ -343,8 +339,8 @@ class _App:
             yield self
 
     def _get_default_image(self):
-        if "image" in self._indexed_objects:
-            return self._indexed_objects["image"]
+        if self._image:
+            return self._image
         else:
             return _default_image
 
