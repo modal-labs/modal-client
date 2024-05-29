@@ -60,6 +60,8 @@ def is_async(function):
     # coerce the type. For now let's make a determination based on inspecting the function definition.
     # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
     # wraps async code or similar. Let's revisit this shortly.
+    if inspect.ismethod(function):
+        function = function.__func__  # inspect the underlying function
     if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
         return True
     elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
