@@ -137,17 +137,14 @@ async def _create_all_objects(
             # Note: preload only currently implemented for Functions, returns None otherwise
             # this is to ensure that directly referenced functions from the global scope has
             # ids associated with them when they are serialized into other functions
-            print(f"(Maybe) preloading {obj}, {existing_object_id}")
             await resolver.preload(obj, existing_object_id)
             if obj.object_id is not None:
-                print("Storing preloaded object id for", obj, obj.object_id)
                 tag_to_object_id[tag] = obj.object_id
 
         await TaskContext.gather(*(_preload(tag, obj) for tag, obj in indexed_objects.items()))
 
         async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
-            print(f"Toplevel load {obj=} {existing_object_id=}")
             await resolver.load(obj, existing_object_id)
             running_app.tag_to_object_id[tag] = obj.object_id
 

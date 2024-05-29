@@ -321,12 +321,9 @@ class _Function(_Object, type_prefix="fu"):
                 use_function_id=class_function.object_id,
                 use_method_name=method_name,
             )
-            assert class_function._app is not None
-            assert (
-                class_function._app.app_id is not None
-            )  # app id should be set when the resolver starts to load functions
+            assert resolver.app_id
             request = api_pb2.FunctionCreateRequest(
-                app_id=class_function._app.app_id,  #  TODO: should be able to use resolver.app_id, but can't with lazy hydration right now
+                app_id=resolver.app_id,
                 function=function_definition,
                 #  method_bound_function.object_id usually gets set by preload
                 existing_function_id=existing_object_id or method_bound_function.object_id or "",
@@ -342,7 +339,7 @@ class _Function(_Object, type_prefix="fu"):
         async def _preload(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
             if class_function._use_method_name:
                 raise ExecutionError(f"Can't bind method to already bound {class_function}")
-
+            assert resolver.app_id
             req = api_pb2.FunctionPrecreateRequest(
                 app_id=resolver.app_id,
                 function_name=full_name,
