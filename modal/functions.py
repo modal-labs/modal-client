@@ -61,6 +61,7 @@ from .exception import (
     ExecutionError,
     InvalidError,
     NotFoundError,
+    deprecation_error,
     deprecation_warning,
 )
 from .execution_context import current_input_id, is_local
@@ -327,11 +328,10 @@ class _Function(_Object, type_prefix="fu"):
                 )
 
         if secret is not None:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 1, 31),
                 "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
             )
-            secrets = [secret, *secrets]
 
         if checkpointing_enabled is not None:
             deprecation_warning(
