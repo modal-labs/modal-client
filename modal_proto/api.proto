@@ -915,7 +915,7 @@ message Function {
   bool is_builder_function = 32;
   bool is_auto_snapshot = 38;
   bool is_method = 39;
-  bool is_checkpointing_function = 40;
+  bool is_checkpointing_function = 40; // XXX: Deprecated after 
 
   // Checkpoint and restore
 

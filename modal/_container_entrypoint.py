@@ -583,7 +583,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and innitialization. Checkpointed containers run from this point onwards.
-        if container_args.function_def.is_checkpointing_function:
+        if container_args.function_def.checkpointing_enabled:
             container_io_manager.memory_snapshot()
 
         # Install hooks for interactive functions.

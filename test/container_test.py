@@ -90,7 +90,7 @@ def _container_args(
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
-    is_checkpointing_function: bool = False,
+    checkpointing_enabled: bool = False,
     deps: List[str] = ["im-1"],
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
@@ -116,7 +116,7 @@ def _container_args(
         is_builder_function=is_builder_function,
         is_auto_snapshot=is_auto_snapshot,
         allow_concurrent_inputs=allow_concurrent_inputs,
-        is_checkpointing_function=is_checkpointing_function,
+        checkpointing_enabled=checkpointing_enabled,
         object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         max_inputs=max_inputs,
     )
@@ -151,7 +151,7 @@ def _run_container(
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
-    is_checkpointing_function: bool = False,
+    checkpointing_enabled: bool = False,
     deps: List[str] = ["im-1"],
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
@@ -167,7 +167,7 @@ def _run_container(
         is_builder_function,
         allow_concurrent_inputs,
         serialized_params,
-        is_checkpointing_function,
+        checkpointing_enabled,
         deps,
         volume_mounts,
         is_auto_snapshot,
@@ -189,7 +189,7 @@ def _run_container(
 
         env = os.environ.copy()
         temp_restore_file_path = tempfile.NamedTemporaryFile()
-        if is_checkpointing_function:
+        if checkpointing_enabled:
             # State file is written to allow for a restore to happen.
             tmp_file_name = temp_restore_file_path.name
             with pathlib.Path(tmp_file_name).open("w") as target:
@@ -704,7 +704,7 @@ def test_checkpointing_cls_function(unix_servicer):
         "test.supports.functions",
         "CheckpointingCls.f",
         inputs=_get_inputs((("D",), {})),
-        is_checkpointing_function=True,
+        checkpointing_enabled=True,
     )
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
     for request in unix_servicer.requests:
@@ -990,7 +990,7 @@ def test_checkpoint_and_restore_success(unix_servicer):
         unix_servicer,
         "test.supports.functions",
         "square",
-        is_checkpointing_function=True,
+        checkpointing_enabled=True,
     )
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
     for request in unix_servicer.requests:
