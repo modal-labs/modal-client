@@ -562,11 +562,8 @@ class _ContainerIOManager:
         if num_gpu > 0 and self.checkpoint_cuda:
             pid = os.getpid()
             # assert nvidia_gpu_is_running(debug=True)
-            # TODO: We need to add a field to restore-state.json to mark whether a CUDA session
-            # was present at the time of the checkpoint. This is what will allow us to determine
-            # whether we should run cuda-checkpoint on restore.
             stat = subprocess.run(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)])
-            logger.debug(f"Ran CUDA checkpoint restore")
+            logger.debug(f"Ran CUDA checkpoint restore {stat=}")
             assert nvidia_gpu_is_running(debug=True)
             logger.debug("Container: CUDA restored")
         else:
@@ -610,7 +607,7 @@ class _ContainerIOManager:
                 self.checkpoint_cuda = True
                 pid = os.getpid()
                 stat = subprocess.run(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)])
-                logger.debug(f"Ran CUDA checkpoint snapshot: {stat}")
+                logger.debug(f"Ran CUDA checkpoint snapshot: {stat=}")
                 # TODO: error handling
             else:
                 logger.debug("Did not run CUDA checkpoint snapshot")
