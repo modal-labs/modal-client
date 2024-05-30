@@ -2,12 +2,12 @@
 import asyncio
 import sys
 
-from modal import Image, Stub
+from modal import App, Image
 
 
 async def main(client=None, python_version=None):
-    stub = Stub(image=Image.debian_slim(python_version))
-    async with stub.run.aio(client=client):
+    app = App(image=Image.debian_slim(python_version))
+    async with app.run.aio(client=client):
         pass
 
 
