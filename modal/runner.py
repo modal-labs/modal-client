@@ -212,6 +212,8 @@ async def _run_app(
             "App is already running and can't be started again.\n"
             "You should not use `app.run` or `run_app` within a Modal `local_entrypoint`"
         )
+    if not app.indexed_objects:
+        raise InvalidError("App does not have any functions / classes registered.")
 
     if app.description is None:
         import __main__
@@ -397,6 +399,9 @@ async def _deploy_app(
     """
     if environment_name is None:
         environment_name = config.get("environment")
+
+    if not app.indexed_objects:
+        raise InvalidError("App does not have any functions / classes registered.")
 
     if name is None:
         name = app.name
