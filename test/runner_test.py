@@ -4,8 +4,8 @@ import typing
 
 import modal
 from modal.client import Client
-from modal.exception import ExecutionError
-from modal.runner import run_app
+from modal.exception import ExecutionError, InvalidError
+from modal.runner import deploy_app, run_app
 from modal_proto import api_pb2
 
 T = typing.TypeVar("T")
@@ -83,3 +83,14 @@ def test_run_app_custom_env_with_refs(servicer, client, monkeypatch):
 
     secret_get_or_create_2 = ctx.pop_request("SecretGetOrCreate")
     assert secret_get_or_create_2.environment_name == "third"
+
+
+def test_empty_app():
+    app = modal.App("empty-app")
+
+    with pytest.raises(InvalidError, match="does not have any functions"):
+        with run_app(app):
+            pass
+
+    with pytest.raises(InvalidError, match="does not have any functions"):
+        deploy_app(app)
