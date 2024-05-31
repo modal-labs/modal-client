@@ -131,21 +131,20 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
     **SSH example:**
     This assumes you have a rsa keypair in `~/.ssh/id_rsa{.pub}, this is a bare-bones example
     letting you SSH into a Modal container.
+
     ```python
     import subprocess
     import time
     import modal
 
-
     app = modal.App()
-
-
     image = (
         modal.Image.debian_slim()
-             .apt_install("openssh-server")
-             .run_commands("mkdir /run/sshd")
-             .copy_local_file("~/.ssh/id_rsa.pub", "/root/.ssh/authorized_keys")
+        .apt_install("openssh-server")
+        .run_commands("mkdir /run/sshd")
+        .copy_local_file("~/.ssh/id_rsa.pub", "/root/.ssh/authorized_keys")
     )
+
 
     @app.function(image=image, timeout=3600)
     def some_function():
