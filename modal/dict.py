@@ -13,7 +13,7 @@ from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
-from .exception import RequestSizeError, deprecation_error, deprecation_warning
+from .exception import RequestSizeError, deprecation_error
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
@@ -145,10 +145,9 @@ class _Dict(_Object, type_prefix="di"):
     @staticmethod
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ) -> "_Dict":
+    ):
         """Deprecated! Use `Dict.from_name(name, create_if_missing=True)`."""
-        deprecation_warning((2024, 3, 1), _Dict.persisted.__doc__)
-        return _Dict.from_name(label, namespace, environment_name, create_if_missing=True)
+        deprecation_error((2024, 3, 1), _Dict.persisted.__doc__)
 
     @staticmethod
     async def lookup(

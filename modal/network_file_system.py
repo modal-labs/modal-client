@@ -18,7 +18,7 @@ from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
-from .exception import deprecation_error, deprecation_warning
+from .exception import deprecation_error
 from .object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -167,10 +167,9 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
-    ) -> "_NetworkFileSystem":
+    ):
         """Deprecated! Use `NetworkFileSystem.from_name(name, create_if_missing=True)`."""
-        deprecation_warning((2024, 3, 1), _NetworkFileSystem.persisted.__doc__)
-        return _NetworkFileSystem.from_name(label, namespace, environment_name, create_if_missing=True)
+        deprecation_error((2024, 3, 1), _NetworkFileSystem.persisted.__doc__)
 
     def persist(
         self,

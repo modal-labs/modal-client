@@ -224,10 +224,9 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
-    ) -> "_Volume":
+    ):
         """Deprecated! Use `Volume.from_name(name, create_if_missing=True)`."""
-        deprecation_warning((2024, 3, 1), _Volume.persisted.__doc__)
-        return _Volume.from_name(label, namespace, environment_name, create_if_missing=True)
+        deprecation_error((2024, 3, 1), _Volume.persisted.__doc__)
 
     @staticmethod
     async def lookup(
