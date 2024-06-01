@@ -187,6 +187,9 @@ def _web_endpoint(
     _warn_parentheses_missing=None,
     *,
     method: str = "GET",  # REST method for the created endpoint.
+    docs: bool = False,  # Whether to enable the Swagger UI documentation for this endpoint.
+    redoc: bool = False,  # Whether to enable the ReDoc documentation for this endpoint.
+    openapi: bool = False,  # Whether to expose the OpenAPI json for this endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[
@@ -234,12 +237,21 @@ def _web_endpoint(
 
         # self._loose_webhook_configs.add(raw_f)
 
+        docs_flags = 0
+        if docs:
+            docs_flags += 1
+        if redoc:
+            docs_flags += 2
+        if openapi:
+            docs_flags += 4
+
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
+                fastapi_endpoint_docs_flags=docs_flags,
                 requested_suffix=label,
                 async_mode=_response_mode,
                 custom_domains=_parse_custom_domains(custom_domains),

@@ -2088,6 +2088,7 @@ message WebhookConfig {
   repeated CustomDomainConfig custom_domains = 6;
   uint32 web_server_port = 7;
   float web_server_startup_timeout = 8;
+  uint32 fastapi_endpoint_docs_flags = 9;
 }
 
 message WorkspaceNameLookupResponse {

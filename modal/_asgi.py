@@ -137,13 +137,17 @@ def wsgi_app_wrapper(wsgi_app, function_io_manager):
     return asgi_app_wrapper(asgi_app, function_io_manager)
 
 
-def webhook_asgi_app(fn: Callable, method: str):
+def webhook_asgi_app(fn: Callable, method: str, docs_flags: int):
     """Return a FastAPI app wrapping a function handler."""
     # Pulls in `fastapi` module, which is slow to import.
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
-    app = FastAPI(docs_url=None, redoc_url=None)
+    docs_url = "/docs" if docs_flags & 1 else None
+    redoc_url = "/redoc" if docs_flags & 2 else None
+    openapi_url = "/openapi.json" if docs_flags & 4 else None
+
+    app = FastAPI(docs_url=docs_url, redoc_url=redoc_url, openapi_url=openapi_url)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
