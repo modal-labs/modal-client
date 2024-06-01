@@ -46,7 +46,7 @@ def test_webhook_cors():
     def handler():
         return {"message": "Hello, World!"}
 
-    app = webhook_asgi_app(handler, method="GET")
+    app = webhook_asgi_app(handler, method="GET", docs_flags=0)
     client = TestClient(app)
     resp = client.options(
         "/",
@@ -63,7 +63,7 @@ def test_webhook_cors():
 
 @pytest.mark.asyncio
 async def test_webhook_no_docs():
-    # FastAPI automatically sets docs URLs for apps, which we disable because it
+    # FastAPI automatically sets docs URLs for apps, which we disable by default because it
     # can be unexpected for users who are unfamilar with FastAPI.
     #
     # https://fastapi.tiangolo.com/tutorial/metadata/#docs-urls
@@ -71,10 +71,31 @@ async def test_webhook_no_docs():
     def handler():
         return {"message": "Hello, World!"}
 
-    app = webhook_asgi_app(handler, method="GET")
+    app = webhook_asgi_app(handler, method="GET", docs_flags=0)
     client = TestClient(app)
     assert client.get("/docs").status_code == 404
     assert client.get("/redoc").status_code == 404
+    assert client.get("/openapi.json").status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_webhook_docs():
+    # FastAPI docs on webhooks are enabled by flipping bits in the `docs_flags` parameter.
+
+    def handler():
+        return {"message": "Hello, World!"}
+
+    app = webhook_asgi_app(handler, method="GET", docs_flags=7)
+    client = TestClient(app)
+    assert client.get("/docs").status_code == 200
+    assert client.get("/redoc").status_code == 200
+    assert client.get("/openapi.json").status_code == 200
+
+    app = webhook_asgi_app(handler, method="GET", docs_flags=5)
+    client = TestClient(app)
+    assert client.get("/docs").status_code == 200
+    assert client.get("/redoc").status_code == 404
+    assert client.get("/openapi.json").status_code == 200
 
 
 def test_webhook_generator():
