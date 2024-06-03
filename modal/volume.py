@@ -26,7 +26,7 @@ import aiostream
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_warning
+from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_error, deprecation_warning
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -42,7 +42,6 @@ from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
-from .exception import deprecation_error
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 # Max duration for uploading to volumes files
@@ -139,27 +138,12 @@ class _Volume(_Object, type_prefix="vo"):
         self._lock = asyncio.Lock()
 
     @staticmethod
-    def new() -> "_Volume":
+    def new():
         """`Volume.new` is deprecated.
 
         Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes.
         """
-        deprecation_warning((2024, 3, 20), Volume.new.__doc__)
-
-        async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
-            status_row = resolver.add_status_row()
-            if existing_object_id:
-                # Volume already exists; do nothing.
-                self._hydrate(existing_object_id, resolver.client, None)
-                return
-
-            status_row.message("Creating volume...")
-            req = api_pb2.VolumeCreateRequest(app_id=resolver.app_id)
-            resp = await retry_transient_errors(resolver.client.stub.VolumeCreate, req)
-            status_row.finish("Created volume.")
-            self._hydrate(resp.volume_id, resolver.client, None)
-
-        return _Volume._from_loader(_load, "Volume()")
+        deprecation_error((2024, 3, 20), Volume.new.__doc__)
 
     @staticmethod
     def from_name(
