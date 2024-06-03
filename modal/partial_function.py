@@ -16,7 +16,7 @@ from modal_proto import api_pb2
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.function_utils import method_has_params
 from .config import logger
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 
 
@@ -121,8 +121,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
                 f" Please try using the `modal.{suggested}` decorator{async_suggestion} instead."
                 " See https://modal.com/docs/guide/lifecycle-functions for more information."
             )
-            deprecation_warning((2024, 2, 21), message, show_source=True)
-            functions[attr] = getattr(user_cls, attr)
+            deprecation_error((2024, 2, 21), message)
 
     # Grab new decorator-based methods
     for k, pf in _find_partial_methods_for_cls(user_cls, flags).items():

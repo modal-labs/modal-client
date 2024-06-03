@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 import threading
-from typing import TYPE_CHECKING, Callable, Dict
+from typing import TYPE_CHECKING, Dict
 
 from typing_extensions import assert_type
 
@@ -586,17 +586,11 @@ def test_deprecated_sync_methods():
 
     obj = ClsWithDeprecatedSyncMethods()
 
-    with pytest.warns(DeprecationError, match="Using `__enter__`.+`modal.enter` decorator"):
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
-    assert [meth() for meth in enter_methods.values()] == [42, 43]
+    with pytest.raises(DeprecationError, match="Using `__enter__`.+`modal.enter` decorator"):
+        _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
 
-    with pytest.warns(DeprecationError, match="Using `__exit__`.+`modal.exit` decorator"):
-        exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
-    assert [meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
-
-    app = App("deprecated-sync-cls")
-    with pytest.warns(DeprecationError):
-        app.cls()(ClsWithDeprecatedSyncMethods)()
+    with pytest.raises(DeprecationError, match="Using `__exit__`.+`modal.exit` decorator"):
+        _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
 
 
 @pytest.mark.asyncio
@@ -620,17 +614,11 @@ async def test_deprecated_async_methods():
 
     obj = ClsWithDeprecatedAsyncMethods()
 
-    with pytest.warns(DeprecationError, match=r"Using `__aenter__`.+`modal.enter` decorator \(on an async method\)"):
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
-    assert [await meth() for meth in enter_methods.values()] == [42, 43]
+    with pytest.raises(DeprecationError, match=r"Using `__aenter__`.+`modal.enter` decorator \(on an async method\)"):
+        _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
 
-    with pytest.warns(DeprecationError, match=r"Using `__aexit__`.+`modal.exit` decorator \(on an async method\)"):
-        exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
-    assert [await meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
-
-    app = App("deprecated-async-cls")
-    with pytest.warns(DeprecationError):
-        app.cls()(ClsWithDeprecatedAsyncMethods)()
+    with pytest.raises(DeprecationError, match=r"Using `__aexit__`.+`modal.exit` decorator \(on an async method\)"):
+        _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
 
 
 class HasSnapMethod:
