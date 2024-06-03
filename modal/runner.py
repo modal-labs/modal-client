@@ -373,6 +373,7 @@ async def _deploy_app(
     show_progress=True,
     environment_name: Optional[str] = None,
     public: bool = False,
+    tag: Optional[str] = None,
 ) -> DeployResult:
     """Deploy an app and export its objects persistently.
 
@@ -445,6 +446,7 @@ async def _deploy_app(
             deploy_req = api_pb2.AppDeployRequest(
                 app_id=running_app.app_id,
                 name=name,
+                tag=tag,
                 namespace=namespace,
                 object_entity="ap",
                 visibility=(
