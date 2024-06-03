@@ -241,7 +241,7 @@ def _web_endpoint(
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
-                fastapi_endpoint_docs=docs,
+                web_endpoint_docs=docs,
                 requested_suffix=label,
                 async_mode=_response_mode,
                 custom_domains=_parse_custom_domains(custom_domains),

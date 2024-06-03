@@ -504,7 +504,7 @@ def finalize_function(
             webhook_asgi_app(
                 imp_fun.user_defined_callable,
                 imp_fun.webhook_config.method,
-                imp_fun.webhook_config.fastapi_endpoint_docs,
+                imp_fun.webhook_config.web_endpoint_docs,
             ),
             container_io_manager,
         )
