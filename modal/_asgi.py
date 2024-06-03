@@ -143,7 +143,7 @@ def webhook_asgi_app(fn: Callable, method: str, docs: bool):
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
-    app = FastAPI(openapi_url="/openapi.json" if docs else None)  # disabling openapi.json disables all docs
+    app = FastAPI(openapi_url="/openapi.json" if docs else None)  # disabling openapi spec disables all docs
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
