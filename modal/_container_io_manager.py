@@ -222,7 +222,10 @@ class _ContainerIOManager:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)
-        fun = self.deserialize(response.function_serialized)
+        if response.function_serialized:
+            fun = self.deserialize(response.function_serialized)
+        else:
+            fun = None
 
         if response.class_serialized:
             cls = self.deserialize(response.class_serialized)

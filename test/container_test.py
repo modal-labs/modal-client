@@ -1522,21 +1522,23 @@ def test_class_as_service_serialized(unix_servicer):
         def __init__(self, x):
             self.x = x
 
+        @enter()
+        def some_enter(self):
+            self.x += "_enter"
+
         @method()
         def method_a(self, y):
-            return "a" * self.x * y
+            return self.x + f"_a_{y}"
 
         @method()
         def method_b(self, y):
-            return "b" * self.x * y
+            return self.x + f"_b_{y}"
 
     # Class used by the container entrypoint to instantiate the object tied to the function
     unix_servicer.class_serialized = serialize(Foo)
 
     # serialized versions of each PartialFunction - used by container entrypoint to execute the methods
-    unix_servicer.function_serialized = serialize(
-        {"method_a": Foo.__dict__["method_a"], "method_b": Foo.__dict__["method_b"]}
-    )
+    unix_servicer.function_serialized = None
 
     result = _run_container(
         unix_servicer,
@@ -1544,13 +1546,13 @@ def test_class_as_service_serialized(unix_servicer):
         "Foo.*",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
         is_class=True,
-        inputs=_get_multi_inputs_with_methods([("method_a", (3,), {}), ("method_b", (5,), {})]),
-        serialized_params=serialize((((), {"x": 2}))),
+        inputs=_get_multi_inputs_with_methods([("method_a", ("x",), {}), ("method_b", ("y",), {})]),
+        serialized_params=serialize((((), {"x": "s"}))),
     )
     assert len(result.items) == 2
     res_0 = result.items[0].result
     res_1 = result.items[1].result
     assert res_0.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert res_1.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert deserialize(res_0.data, result.client) == "a" * 6
-    assert deserialize(res_1.data, result.client) == "b" * 10
+    assert deserialize(res_0.data, result.client) == "s_enter_a_x"
+    assert deserialize(res_1.data, result.client) == "s_enter_b_y"

@@ -581,9 +581,11 @@ def import_class_service(
     active_app: Optional[_App] = None
     code_deps: Optional[List["modal.object._Object"]] = None
 
-    if ser_fun is not None:
+    if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+        assert ser_cls is not None
+        cls = ser_cls
         # This is a serialized function we already fetched from the server
-        cls, method_partials = ser_cls, ser_fun
+        method_partials = _find_partial_methods_for_cls(cls, _PartialFunctionFlags.all())
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
