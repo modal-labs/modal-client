@@ -137,7 +137,7 @@ def wsgi_app_wrapper(wsgi_app, function_io_manager):
     return asgi_app_wrapper(asgi_app, function_io_manager)
 
 
-def webhook_asgi_app(fn: Callable, method: str):
+def webhook_asgi_app(fn: Callable[..., Any], method: str):
     """Return a FastAPI app wrapping a function handler."""
     # Pulls in `fastapi` module, which is slow to import.
     from fastapi import FastAPI

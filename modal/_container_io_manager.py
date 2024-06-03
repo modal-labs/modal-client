@@ -218,7 +218,7 @@ class _ContainerIOManager:
             object_handle_metadata=object_handle_metadata,
         )
 
-    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable]:
+    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable[..., Any]]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)

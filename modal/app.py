@@ -5,6 +5,7 @@ import warnings
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
+import typing_extensions
 from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -81,6 +82,10 @@ def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[ty
 
 
 CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
+
+
+P = typing_extensions.ParamSpec("P")
+T = typing.TypeVar("T")
 
 
 class _App:
@@ -526,7 +531,7 @@ class _App:
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-    ) -> Callable[..., _Function]:
+    ) -> Callable[[Callable[P, T]], _Function[P, T]]:
         """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg

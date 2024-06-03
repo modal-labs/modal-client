@@ -96,7 +96,7 @@ def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) 
     return partial_functions
 
 
-def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, Callable]:
+def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
     """Grabs all method on a user class, and returns callables. Includes legacy methods."""
     functions: Dict[str, Callable] = {}
 
@@ -131,7 +131,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
     return functions
 
 
-def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict[str, Callable]:
+def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: Type = type(user_obj)
     return {k: meth.__get__(user_obj) for k, meth in _find_callables_for_cls(user_cls, flags).items()}

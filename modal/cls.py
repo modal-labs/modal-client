@@ -145,7 +145,7 @@ class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
     _functions: Dict[str, _Function]
     _options: Optional[api_pb2.FunctionOptions]
-    _callables: Dict[str, Callable]
+    _callables: Dict[str, Callable[..., Any]]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
     _app: Optional["modal.app._App"] = None  # not set for lookups
 

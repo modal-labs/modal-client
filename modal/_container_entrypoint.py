@@ -458,7 +458,7 @@ def import_function(
 def call_lifecycle_functions(
     event_loop: UserCodeEventLoop,
     container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
-    funcs: Sequence[Callable],
+    funcs: Sequence[Callable[..., Any]],
 ) -> None:
     """Call function(s), can be sync or async, but any return values are ignored."""
     with container_io_manager.handle_user_exception():

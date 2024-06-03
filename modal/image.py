@@ -1429,7 +1429,7 @@ class _Image(_Object, type_prefix="im"):
 
     def run_function(
         self,
-        raw_f: Callable,
+        raw_f: Callable[..., Any],
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),

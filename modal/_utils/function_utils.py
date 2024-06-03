@@ -241,7 +241,7 @@ class FunctionInfo:
         return True
 
 
-def get_referred_objects(f: Callable) -> List[Object]:
+def get_referred_objects(f: Callable[..., Any]) -> List[Object]:
     """Takes a function and returns any Modal Objects in global scope that it refers to.
 
     TODO: this does not yet support Object contained by another object,
@@ -277,7 +277,7 @@ def get_referred_objects(f: Callable) -> List[Object]:
     return ret
 
 
-def method_has_params(f: Callable) -> bool:
+def method_has_params(f: Callable[..., Any]) -> bool:
     """Return True if a method (bound or unbound) has parameters other than self.
 
     Used for deprecation of @exit() parameters.

@@ -54,7 +54,7 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, ParameterMetadata]:
+def _get_signature(f: Callable[..., Any], is_method: bool = False) -> Dict[str, ParameterMetadata]:
     try:
         type_hints = get_type_hints(f)
     except Exception as exc:

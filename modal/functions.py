@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 import time
+import typing
 import warnings
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -22,6 +23,7 @@ from typing import (
     Union,
 )
 
+import typing_extensions
 from aiostream import stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -215,7 +217,7 @@ class FunctionStats:
 
 def _parse_retries(
     retries: Optional[Union[int, Retries]],
-    raw_f: Optional[Callable] = None,
+    raw_f: Optional[Callable[..., Any]] = None,
 ) -> Optional[api_pb2.FunctionRetryPolicy]:
     if isinstance(retries, int):
         return Retries(
@@ -255,7 +257,11 @@ class _FunctionSpec:
     scheduler_placement: Optional[SchedulerPlacement]
 
 
-class _Function(_Object, type_prefix="fu"):
+P = typing_extensions.ParamSpec("P")
+T = typing.TypeVar("T")
+
+
+class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -969,7 +975,7 @@ class _Function(_Object, type_prefix="fu"):
 
     @synchronizer.no_io_translation
     @live_method
-    async def remote(self, *args, **kwargs) -> Any:
+    async def remote(self, *args: P.args, **kwargs: P.kwargs) -> T:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
