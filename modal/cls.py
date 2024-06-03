@@ -270,7 +270,6 @@ class _Cls(_Object, type_prefix="cs"):
         cls._callables = callables
         cls._method_partials = partials
         cls._from_other_workspace = False
-        setattr(cls._user_cls, "_modal_functions", functions)  # Needed for PartialFunction.__get__
         return cls
 
     @classmethod
@@ -350,7 +349,7 @@ class _Cls(_Object, type_prefix="cs"):
         """
         retry_policy = _parse_retries(retries)
         if gpu or cpu or memory:
-            resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu)
+            resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=None)
         else:
             resources = None
 
