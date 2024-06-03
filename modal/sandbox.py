@@ -295,6 +295,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 for path, volume in validated_volumes
             ]
 
+            ephemeral_disk = None  # Ephemeral disk requests not supported on Sandboxes.
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
                 image_id=image.object_id,
@@ -302,7 +303,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
                 workdir=workdir,
-                resources=convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu),
+                resources=convert_fn_config_to_resources_config(
+                    cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
+                ),
                 cloud_provider=parse_cloud_provider(cloud) if cloud else None,
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),

@@ -294,8 +294,10 @@ class _WarnIfGeneratorIsNotConsumed:
         if not self.iterated and not self.warned:
             self.warned = True
             logger.warning(
-                f"Warning: the results of a call to {self.function_name} was not consumed, so the call will never be executed."
-                f" Consider a for-loop like `for x in {self.function_name}(...)` or unpacking the generator using `list(...)`"
+                f"Warning: the results of a call to {self.function_name} was not consumed, "
+                "so the call will never be executed."
+                f" Consider a for-loop like `for x in {self.function_name}(...)` or "
+                "unpacking the generator using `list(...)`"
             )
 
     async def athrow(self, exc):

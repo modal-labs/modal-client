@@ -10,7 +10,6 @@ from grpclib import GRPCError, Status
 from rich.console import Console
 from rich.live import Live
 from rich.syntax import Syntax
-from rich.table import Table
 from typer import Argument, Option, Typer
 
 import modal
@@ -143,13 +142,12 @@ async def ls(
             raise UsageError(exc.message)
         raise
 
-    if sys.stdout.isatty():
-        console = Console()
-        console.print(f"Directory listing of '{path}' in '{volume_name}'")
-        table = Table()
-        for name in ["filename", "type", "created/modified", "size"]:
-            table.add_column(name)
-
+    if not json and not sys.stdout.isatty():
+        # Legacy behavior -- I am not sure why exactly we did this originally but I don't want to break it
+        for entry in entries:
+            print(entry.path)
+    else:
+        rows = []
         for entry in entries:
             if entry.type == api_pb2.FileEntry.FileType.DIRECTORY:
                 filetype = "dir"
@@ -157,16 +155,17 @@ async def ls(
                 filetype = "link"
             else:
                 filetype = "file"
-            table.add_row(
-                entry.path,
-                filetype,
-                timestamp_to_local(entry.mtime, False),
-                humanize_filesize(entry.size),
+            rows.append(
+                (
+                    entry.path,
+                    filetype,
+                    timestamp_to_local(entry.mtime, False),
+                    humanize_filesize(entry.size),
+                )
             )
-        console.print(table)
-    else:
-        for entry in entries:
-            print(entry.path)
+        columns = ["Filename", "Type", "Created/Modified", "Size"]
+        title = f"Directory listing of '{path}' in '{volume_name}'"
+        display_table(columns, rows, json, title)
 
 
 @volume_cli.command(
@@ -175,7 +174,8 @@ async def ls(
 
 Remote parent directories will be created as needed.
 
-Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file will be uploaded with its current name under that directory.
+Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory
+and the file will be uploaded with its current name under that directory.
 """,
     rich_help_panel="File operations",
 )

@@ -153,7 +153,8 @@ async def _set_token(
     with console.status("Storing token", spinner="dots"):
         _store_user_config(config_data, profile=profile, active_profile=active_profile)
     console.print(
-        f"[green]Token written to [magenta]{user_config_path}[/magenta] in profile [magenta]{profile}[/magenta].[/green]"
+        f"[green]Token written to [magenta]{user_config_path}[/magenta] in profile "
+        f"[magenta]{profile}[/magenta].[/green]"
     )
 
 

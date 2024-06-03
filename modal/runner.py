@@ -286,7 +286,9 @@ async def _run_app(
             if detach:
                 output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
                 output_mgr.print_if_visible(
-                    f"""The detached app keeps running. You can track its progress at: [magenta]{running_app.app_page_url}[/magenta]"""
+                    "The detached app keeps running. You can track its progress at: "
+                    f"[magenta]{running_app.app_page_url}[/magenta]"
+                    ""
                 )
                 if not shell:
                     logs_loop.cancel()
@@ -400,7 +402,8 @@ async def _deploy_app(
         name = app.name
     if name is None:
         raise InvalidError(
-            "You need to either supply an explicit deployment name to the deploy command, or have a name set on the app.\n"
+            "You need to either supply an explicit deployment name to the deploy command, "
+            "or have a name set on the app.\n"
             "\n"
             "Examples:\n"
             'app.deploy("some_name")\n\n'
@@ -513,12 +516,18 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
 
 
 def _run_stub(*args, **kwargs):
-    deprecation_warning((2024, 5, 1), "`run_stub` is deprecated. Please use `run_app` instead.")
+    """mdmd:hidden
+    `run_stub` has been renamed to `run_app` and is deprecated. Please update your code.
+    """
+    deprecation_warning(
+        (2024, 5, 1), "`run_stub` has been renamed to `run_app` and is deprecated. Please update your code."
+    )
     return _run_app(*args, **kwargs)
 
 
 def _deploy_stub(*args, **kwargs):
-    deprecation_warning((2024, 5, 1), "`deploy_stub` is deprecated. Please use `deploy_app` instead.")
+    """`deploy_stub` has been renamed to `deploy_app` and is deprecated. Please update your code."""
+    deprecation_warning((2024, 5, 1), str(_deploy_stub.__doc__))
     return _deploy_app(*args, **kwargs)
 
 

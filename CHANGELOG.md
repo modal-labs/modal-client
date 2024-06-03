@@ -10,6 +10,36 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.197 (2024-05-31)
+
+Adds Source to PyPI metadata
+
+
+
+### 0.62.190 (2024-05-29)
+
+* `modal.Function` now supports requesting ephemeral disk (SSD) via the new `ephemeral_disk` parameter. Intended for use in doing large dataset ingestion and transform.
+
+
+
+### 0.62.186 (2024-05-29)
+
+* `modal.Volume` background commits are now enabled by default when using `spawn_sandbox`.
+
+
+
+### 0.62.185 (2024-05-28)
+
+- The `modal app stop` CLI command now accepts a `--name` (or `-n`) option to stop an App by name rather than by ID.
+
+
+
+### 0.62.181 (2024-05-24)
+
+* Background committing on `modal.Volume` mounts is now default behavior.
+
+
+
 ### 0.62.178 (2024-05-21)
 
 - Added a `modal container stop` CLI command that will kill an active container and reassign its current inputs.
