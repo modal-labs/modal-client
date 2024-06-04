@@ -17,7 +17,7 @@ from ._resolver import Resolver
 from ._sandbox_shell import connect_to_sandbox
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
-from ._utils.name_utils import check_object_name
+from ._utils.name_utils import check_object_name, is_valid_tag
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import (
@@ -373,6 +373,7 @@ async def _deploy_app(
     show_progress=True,
     environment_name: Optional[str] = None,
     public: bool = False,
+    tag: Optional[str] = None,
 ) -> DeployResult:
     """Deploy an app and export its objects persistently.
 
@@ -413,6 +414,13 @@ async def _deploy_app(
     else:
         check_object_name(name, "App")
 
+    if tag is not None and not is_valid_tag(tag):
+        raise InvalidError(
+            f"Tag {tag} is invalid."
+            "\n\nTags may only contain alphanumeric characters, dashes, periods, and underscores, "
+            "and must be 50 characters or less"
+        )
+
     if client is None:
         client = await _Client.from_env()
 
@@ -445,6 +453,7 @@ async def _deploy_app(
             deploy_req = api_pb2.AppDeployRequest(
                 app_id=running_app.app_id,
                 name=name,
+                tag=tag,
                 namespace=namespace,
                 object_entity="ap",
                 visibility=(
