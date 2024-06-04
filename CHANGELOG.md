@@ -10,6 +10,13 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.199 (2024-06-04)
+
+- `web_endpoint`s now have the option to include interactive SwaggerUI/redoc docs by setting `docs=True`
+- `web_endpoint`s no longer include an OpenAPI JSON spec route by default
+
+
+
 ### 0.62.197 (2024-05-31)
 
 Adds Source to PyPI metadata
