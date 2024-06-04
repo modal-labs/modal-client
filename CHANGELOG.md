@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.201 (2024-06-04)
+
+- `modal deploy` now accepts a `--tag` optional parameter that allows you to specify a custom tag for the deployed version, making it easier to identify and manage different deployments of your app.
+
+
+
 ### 0.62.199 (2024-06-04)
 
 - `web_endpoint`s now have the option to include interactive SwaggerUI/redoc docs by setting `docs=True`
