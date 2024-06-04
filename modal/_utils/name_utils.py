@@ -24,6 +24,12 @@ def is_valid_environment_name(name: str) -> bool:
     return len(name) <= 64 and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-_.\/:]+$", name) is not None
 
 
+def is_valid_tag(tag: str) -> bool:
+    """Tags are alphanumeric, dashes, periods, and underscores, and must be 50 characters or less"""
+    pattern = r"^[a-zA-Z0-9._-]{1,50}$"
+    return bool(re.match(pattern, tag))
+
+
 def check_object_name(name: str, object_type: str, warn: bool = False) -> None:
     message = (
         f"Invalid {object_type} name: '{name}'."
