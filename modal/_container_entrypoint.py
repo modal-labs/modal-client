@@ -501,7 +501,11 @@ def finalize_function(
     elif imp_fun.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # Function is a webhook without an ASGI app. Create one for it.
         callable = asgi_app_wrapper(
-            webhook_asgi_app(imp_fun.user_defined_callable, imp_fun.webhook_config.method),
+            webhook_asgi_app(
+                imp_fun.user_defined_callable,
+                imp_fun.webhook_config.method,
+                imp_fun.webhook_config.web_endpoint_docs,
+            ),
             container_io_manager,
         )
 
