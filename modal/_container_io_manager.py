@@ -561,10 +561,8 @@ class _ContainerIOManager:
         logger.debug(f"{num_gpu=} {self.checkpoint_cuda=}")
         if num_gpu > 0 and self.checkpoint_cuda:
             pid = os.getpid()
-            # assert nvidia_gpu_is_running(debug=True)
             stat = subprocess.run(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)])
             logger.debug(f"Ran CUDA checkpoint restore {stat=}")
-            assert nvidia_gpu_is_running(debug=True)
             logger.debug("Container: CUDA restored")
         else:
             logger.debug("Did not run CUDA checkpoint restore")
@@ -603,18 +601,13 @@ class _ContainerIOManager:
         if num_gpu > 0:
             # If a CUDA process is present, freeze it
             # TODO: clean up the branching and asserts
-            if nvidia_gpu_is_running(debug=True):
+            if nvidia_gpu_is_running():
                 self.checkpoint_cuda = True
                 pid = os.getpid()
                 stat = subprocess.run(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)])
                 logger.debug(f"Ran CUDA checkpoint snapshot: {stat=}")
-                # TODO: error handling
             else:
                 logger.debug("Did not run CUDA checkpoint snapshot")
-
-            # Check that no CUDA process is running at the end of the checkpoint
-            assert not nvidia_gpu_is_running(debug=True)
-            logger.debug("Froze CUDA process state")
 
         await self._client.stub.ContainerCheckpoint(
             api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
