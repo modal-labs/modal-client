@@ -587,7 +587,11 @@ def import_class_service(
             len(parts) == 2 and parts[1] == "*"
         ):  # the "function name" of a class service "function placeholder" is expected to be "ClassName.*"
             raise ExecutionError(
+<<<<<<< HEAD
                 f"Internal error: Invalid 'service function' identifier {qual_name}. Please contact Modal support"
+=======
+                f"Internal error: Invalid service function identifier {qual_name}. Should be of the form <class-name>.*"
+>>>>>>> 1a4fa253 (Minor)
             )
 
         assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
