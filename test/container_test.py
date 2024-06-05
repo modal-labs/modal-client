@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
+import modal
 from modal import Client, is_local
 from modal._container_entrypoint import UserException, main
 from modal._serialization import (
@@ -1573,28 +1574,32 @@ def test_is_local(unix_servicer, event_loop):
     assert _unwrap_scalar(ret) == False
 
 
+class Foo:
+    def __init__(self, x):
+        self.x = x
+
+    @enter()
+    def some_enter(self):
+        self.x += "_enter"
+
+    @method()
+    def method_a(self, y):
+        return self.x + f"_a_{y}"
+
+    @method()
+    def method_b(self, y):
+        return self.x + f"_b_{y}"
+
+
 @skip_github_non_linux
 def test_class_as_service_serialized(unix_servicer):
     # TODO(elias): refactor once the loading code is merged
-    class Foo:
-        def __init__(self, x):
-            self.x = x
 
-        @enter()
-        def some_enter(self):
-            self.x += "_enter"
-
-        @method()
-        def method_a(self, y):
-            return self.x + f"_a_{y}"
-
-        @method()
-        def method_b(self, y):
-            return self.x + f"_b_{y}"
+    app = modal.App()
+    app.cls()(Foo)  # avoid errors about methods not being turned into functions
 
     # Class used by the container entrypoint to instantiate the object tied to the function
     unix_servicer.class_serialized = serialize(Foo)
-
     # serialized versions of each PartialFunction - used by container entrypoint to execute the methods
     unix_servicer.function_serialized = None
 

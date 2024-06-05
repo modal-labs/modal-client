@@ -99,11 +99,11 @@ class FunctionInfo:
         if name_override is not None:
             self.function_name = name_override
         elif f is None and cls:
-            # "class function"
-            self.function_name = cls.__name__
+            # "service function" for running all methods of a class
+            self.function_name = f"{cls.__name__}.*"
             self.is_class = True
         elif f.__qualname__ != f.__name__ and not serialized:
-            # Class function.
+            # single method of a class
             if len(f.__qualname__.split(".")) > 2:
                 raise InvalidError(
                     f"Cannot wrap `{f.__qualname__}`:"
@@ -244,10 +244,6 @@ class FunctionInfo:
         return []
 
     def get_tag(self):
-        if self.cls and not self.raw_f:
-            # class function, tag as function_name.* since there is already a *Cls* with the function_name tag
-            return f"{self.function_name}.*"
-
         return self.function_name
 
     def is_nullary(self):
