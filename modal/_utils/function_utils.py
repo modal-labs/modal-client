@@ -264,7 +264,7 @@ def get_referred_objects(f: Callable) -> List[Object]:
             try:
                 closure_vars = inspect.getclosurevars(obj)
             except ValueError:
-                logger.warning(
+                logger.debug(
                     f"Could not inspect closure vars of {f} - "
                     "referenced global Modal objects may or may not work in that function"
                 )
