@@ -561,8 +561,10 @@ class _ContainerIOManager:
         logger.debug(f"{num_gpu=} {self.checkpoint_cuda=}")
         if num_gpu > 0 and self.checkpoint_cuda:
             pid = os.getpid()
+            t0 = time.monotonic()
             stat = subprocess.run(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)])
-            logger.debug(f"Ran CUDA checkpoint restore {stat=}")
+            t = time.monotonic() - t0
+            logger.debug(f"Ran CUDA checkpoint restore {stat=}\n\tin {t=}")
             logger.debug("Container: CUDA restored")
         else:
             logger.debug("Did not run CUDA checkpoint restore")
@@ -604,8 +606,10 @@ class _ContainerIOManager:
             if nvidia_gpu_is_running():
                 self.checkpoint_cuda = True
                 pid = os.getpid()
+                t0 = time.monotonic()
                 stat = subprocess.run(["/__modal/.bin/cuda-checkpoint", "--toggle", "--pid", str(pid)])
-                logger.debug(f"Ran CUDA checkpoint snapshot: {stat=}")
+                t = time.monotonic() - t0
+                logger.debug(f"Ran CUDA checkpoint snapshot: {stat=}\n\tin {t=}")
             else:
                 logger.debug("Did not run CUDA checkpoint snapshot")
 
