@@ -588,7 +588,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and innitialization. Checkpointed containers run from this point onwards.
         if container_args.function_def.is_checkpointing_function:
-            container_io_manager.memory_snapshot()
+            enter_debugger = container_io_manager.memory_snapshot()
 
         # Install hooks for interactive functions.
         if container_args.function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
@@ -609,6 +609,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         with container_io_manager.handle_user_exception():
             finalized_function = finalize_function(imp_fun, container_io_manager)
+
+        # Start a debugger if the worker tells us to
+        if container_args.function_def.is_checkpointing_function and enter_debugger:
+            breakpoint()
 
         # Execute the function.
         try:

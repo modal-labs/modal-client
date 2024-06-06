@@ -576,6 +576,8 @@ class _ContainerIOManager:
         self._client = await _Client.from_env()
         self._waiting_for_memory_snapshot = False
 
+        return bool(int(restored_state["enter_debugger"]))
+
     async def memory_snapshot(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
         if self.checkpoint_id:
