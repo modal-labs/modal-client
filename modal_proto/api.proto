@@ -91,6 +91,7 @@ enum CloudProvider {
   CLOUD_PROVIDER_OCI = 4;
   CLOUD_PROVIDER_LAMBDA_LABS = 5;
   CLOUD_PROVIDER_FLUIDSTACK = 6;  // experimental
+  CLOUD_PROVIDER_LATITUDE = 7;  // experimental
 }
 
 enum DNSRecordType {
