@@ -54,7 +54,7 @@ class _PartialFunction:
 
     def __get__(self, obj, objtype=None) -> _Function:
         k = self.raw_f.__name__
-        if obj:  # Cls().fun
+        if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
                 # This happens inside "local" user methods when they refer to other methods,
                 # e.g. Foo().parent_method() doing self.local.other_method()
@@ -64,9 +64,10 @@ class _PartialFunction:
                 # unwrapped class (not using app.cls()) with @methods
                 # not sure what would be useful here, but lets return a bound version of the underlying function,
                 # since the class is just a vanilla class at this point
+                # This wouldn't let the user access `.remote()` and `.local()` etc. on the function
                 return self.raw_f.__get__(obj, objtype)
 
-        else:  # Cls.fun6
+        else:  # accessing a method directly on the class, e.g. `MyClass.fun`
             # This happens mainly during serialization of the wrapped underlying class of a Cls
             # since we don't have the instance info here we just return the PartialFunction itself
             # to let it be bound to a variable and become a Function later on
