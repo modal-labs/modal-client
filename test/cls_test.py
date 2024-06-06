@@ -1,12 +1,14 @@
 # Copyright Modal Labs 2022
 import inspect
 import pytest
+import subprocess
+import sys
 import threading
 from typing import TYPE_CHECKING, Dict
 
 from typing_extensions import assert_type
 
-import modal
+import modal.partial_function
 from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
 from modal._serialization import deserialize, serialize
 from modal._utils.async_utils import synchronizer
@@ -680,3 +682,12 @@ def test_partial_function_descriptors(client):
 
     # ensure that webhook metadata is kept
     assert synchronizer._translate_in(revived_class.web).webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
+
+
+def test_cross_process_userclass_serde(supports_dir):
+    res = subprocess.check_output([sys.executable, supports_dir / "serialize_class.py"])
+    assert len(res) < 2000  # should be ~1300 bytes as of 2024-06-05
+    revived_cls = deserialize(res, None)
+    method_without_descriptor_protocol = revived_cls.__dict__["method"]
+    assert isinstance(method_without_descriptor_protocol, modal.partial_function.PartialFunction)
+    assert revived_cls().method() == "a"  # this should be bound to the object
