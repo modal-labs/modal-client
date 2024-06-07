@@ -573,10 +573,21 @@ class _ContainerIOManager:
         self.current_input_id = None
         self.current_input_started_at = None
 
-        self._client = await _Client.from_env()
-        self._waiting_for_memory_snapshot = False
+        # Start a debugger if the worker tells us to
 
-        return bool(int(restored_state["enter_debugger"]))
+        enter_debugger = int(restored_state["enter_debugger"])
+        print(f"{enter_debugger=}")
+        if enter_debugger:
+            # self._client = await _Client.from_env(ip="http://172.21.0.1:9999")
+            print("starting debugger")
+            import pdb;
+            pdb.set_trace()
+        else:
+            print("not starting debugger")
+
+        self._waiting_for_memory_snapshot = False
+        self._client = await _Client.from_env()
+
 
     async def memory_snapshot(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""

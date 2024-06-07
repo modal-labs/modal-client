@@ -245,6 +245,8 @@ class Config:
             # This is used for restoring env vars from a memory snapshot.
             os.environ[key.upper()] = value
 
+        # os.environ["MODAL_SERVER_URL"] = "http://localhost:9999"
+
     def __getitem__(self, key):
         return self.get(key)
 
