@@ -27,6 +27,10 @@ class _PartialFunctionFlags(enum.IntFlag):
     ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
 
+    @staticmethod
+    def all() -> "_PartialFunctionFlags":
+        return ~_PartialFunctionFlags(0)  # type: ignore #  for some reason mypy things this has type int
+
 
 class _PartialFunction:
     """Intermediate function, produced by @method or @web_endpoint"""
