@@ -580,8 +580,9 @@ class _ContainerIOManager:
         if enter_debugger:
             # self._client = await _Client.from_env(ip="http://172.21.0.1:9999")
             print("starting debugger")
-            import pdb;
-            pdb.set_trace()
+            breakpoint()
+            # import pdb;
+            # pdb.set_trace()
         else:
             print("not starting debugger")
 
