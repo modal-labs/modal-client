@@ -17,7 +17,7 @@ from modal.exception import DeprecationError, ExecutionError, InvalidError, Pend
 from modal.partial_function import (
     PartialFunction,
     _find_callables_for_obj,
-    _find_partial_methods_for_cls,
+    _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
@@ -543,16 +543,16 @@ class ClsWithHandlers:
 def test_handlers():
     pfs: Dict[str, _PartialFunction]
 
-    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.BUILD)
+    pfs = _find_partial_methods_for_user_cls(ClsWithHandlers, _PartialFunctionFlags.BUILD)
     assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]
 
-    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+    pfs = _find_partial_methods_for_user_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
     assert list(pfs.keys()) == ["my_memory_snapshot"]
 
-    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
+    pfs = _find_partial_methods_for_user_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
     assert list(pfs.keys()) == ["my_enter", "my_build_and_enter"]
 
-    pfs = _find_partial_methods_for_cls(ClsWithHandlers, _PartialFunctionFlags.EXIT)
+    pfs = _find_partial_methods_for_user_cls(ClsWithHandlers, _PartialFunctionFlags.EXIT)
     assert list(pfs.keys()) == ["my_exit"]
 
 

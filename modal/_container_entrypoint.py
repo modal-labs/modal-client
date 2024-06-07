@@ -46,7 +46,7 @@ from .execution_context import _set_current_context_ids, interact
 from .functions import Function, _Function
 from .partial_function import (
     _find_callables_for_obj,
-    _find_partial_methods_for_cls,
+    _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
@@ -596,10 +596,10 @@ def import_class_service(
 
     if isinstance(cls, Cls):
         # The cls decorator is in global scope
-        raise NotImplementedError("Non-serialized class services not implemented yet.")
+        method_partials = cls._get_partial_functions()
     else:
         # Undecorated user class - find all methods
-        method_partials = _find_partial_methods_for_cls(cls, _PartialFunctionFlags.all())
+        method_partials = _find_partial_methods_for_user_cls(cls, _PartialFunctionFlags.all())
 
     # Instantiate the class if it's defined
     assert cls  # must be a class

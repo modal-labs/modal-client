@@ -189,9 +189,9 @@ class FunctionInfo:
             # we can't use the serialized_class attribute since that will have each method
             # serialized as a Function which is a thin Modal Object, not containing any code and specs
             # other than the object id and hydration metadata
-            from ..partial_function import _find_partial_methods_for_cls, _PartialFunctionFlags
+            from ..partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
-            partial_methods_dict = _find_partial_methods_for_cls(self.cls, _PartialFunctionFlags.all())
+            partial_methods_dict = _find_partial_methods_for_user_cls(self.cls, _PartialFunctionFlags.all())
             return serialize(partial_methods_dict)
 
     def get_globals(self) -> Dict[str, Any]:

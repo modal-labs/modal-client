@@ -23,9 +23,10 @@ from .functions import (
 from .gpu import GPU_T
 from .object import _get_environment_name, _Object
 from .partial_function import (
+    PartialFunction,
     _find_callables_for_cls,
     _find_callables_for_obj,
-    _find_partial_methods_for_cls,
+    _find_partial_methods_for_user_cls,
     _Function,
     _PartialFunction,
     _PartialFunctionFlags,
@@ -151,7 +152,6 @@ class _Cls(_Object, type_prefix="cs"):
     _functions: Dict[str, _Function]
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
-    _method_partials: Dict[str, _PartialFunction]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
     _app: Optional["modal.app._App"] = None  # not set for lookups
 
@@ -161,7 +161,6 @@ class _Cls(_Object, type_prefix="cs"):
         self._functions = {}
         self._options = None
         self._callables = {}
-        self._method_partials = {}
         self._from_other_workspace = None
         self._output_mgr: Optional[OutputManager] = None
 
@@ -171,12 +170,16 @@ class _Cls(_Object, type_prefix="cs"):
         self._functions = other._functions
         self._options = other._options
         self._callables = other._callables
-        self._method_partials = other._method_partials
         self._from_other_workspace = other._from_other_workspace
         self._output_mgr: Optional[OutputManager] = other._output_mgr
 
     def _set_output_mgr(self, output_mgr: OutputManager):
         self._output_mgr = output_mgr
+
+    def _get_partial_functions(self) -> Dict[str, PartialFunction]:
+        if not self._user_cls:
+            raise AttributeError("You can only get the partial functions of a local Cls instance")
+        return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
@@ -225,7 +228,7 @@ class _Cls(_Object, type_prefix="cs"):
         functions: Dict[str, _Function] = {}
         # first create a function representing the whole class, this is the single function id that will be used
         # by containers running methods
-        partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_cls(
+        partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         )
 
@@ -238,12 +241,11 @@ class _Cls(_Object, type_prefix="cs"):
             functions[method_name] = method_function
 
         # Disable the warning that these are not wrapped
-        for partial_function in _find_partial_methods_for_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
+        for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
             partial_function.wrapped = True
 
         # Get all callables
         callables: Dict[str, Callable] = _find_callables_for_cls(user_cls, ~_PartialFunctionFlags(0))
-        partials: Dict[str, Callable] = _find_partial_methods_for_cls(user_cls, ~_PartialFunctionFlags(0))
 
         def _deps() -> List[_Function]:
             return [cls_func] + list(functions.values())
@@ -268,7 +270,6 @@ class _Cls(_Object, type_prefix="cs"):
         cls._class_function = cls_func
         cls._functions = functions
         cls._callables = callables
-        cls._method_partials = partials
         cls._from_other_workspace = False
         return cls
 

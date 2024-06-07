@@ -98,7 +98,7 @@ class _PartialFunction:
 PartialFunction = synchronize_api(_PartialFunction)
 
 
-def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
+def _find_partial_methods_for_user_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class"""
     partial_functions: Dict[str, PartialFunction] = {}
     for parent_cls in user_cls.mro():
@@ -140,7 +140,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
             deprecation_error((2024, 2, 21), message)
 
     # Grab new decorator-based methods
-    for k, pf in _find_partial_methods_for_cls(user_cls, flags).items():
+    for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items():
         functions[k] = pf.raw_f
 
     return functions
