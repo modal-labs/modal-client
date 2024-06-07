@@ -3,11 +3,14 @@ import io
 import pickle
 from typing import Any
 
+from synchronicity.synchronizer import Interface
+
+from modal._utils.async_utils import synchronizer
 from modal_proto import api_pb2
 
 from ._vendor import cloudpickle
 from .config import logger
-from .exception import DeserializationError, InvalidError
+from .exception import DeserializationError, ExecutionError, InvalidError
 from .object import Object, _Object
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
@@ -18,10 +21,31 @@ class Pickler(cloudpickle.Pickler):
         super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
+        from modal.partial_function import PartialFunction
+
         if isinstance(obj, _Object):
             flag = "_o"
         elif isinstance(obj, Object):
             flag = "o"
+        elif isinstance(obj, PartialFunction):
+            # Special case for PartialObject since it's a synchronicity wrapped object
+            # that's set on serialized classes.
+            # The resulting pickled instance can't be deserialized without this in a
+            # new process, since the original referenced synchronizer will have different
+            # values for `._original_attr` etc.
+
+            impl_object = synchronizer._translate_in(obj)
+            attributes = impl_object.__dict__.copy()
+            # ugly - we remove the `._wrapped_attr` attribute from the implementation instance
+            # to avoid referencing and therefore pickling the wrapped instance despite having
+            # translated it to the implementation type
+
+            # it would be nice if we could avoid this by not having the wrapped instances
+            # be directly linked from objects and instead having a lookup table in the Synchronizer:
+            if synchronizer._wrapped_attr and synchronizer._wrapped_attr in attributes:
+                attributes.pop(synchronizer._wrapped_attr)
+
+            return ("sync", (impl_object.__class__, attributes))
         else:
             return
         if not obj.object_id:
@@ -35,8 +59,20 @@ class Unpickler(pickle.Unpickler):
         super().__init__(buf)
 
     def persistent_load(self, pid):
-        (object_id, flag, handle_proto) = pid
+        if len(pid) == 2:
+            # more general protocol
+            obj_type, obj_data = pid
+            if obj_type == "sync":  # synchronicity wrapped object
+                # not actually a proto object in this case but the underlying object of a synchronicity object
+                impl_class, attributes = obj_data
+                impl_instance = impl_class.__new__(impl_class)
+                impl_instance.__dict__.update(attributes)
+                return synchronizer._translate_out(impl_instance, interface=Interface.BLOCKING)
+            else:
+                raise ExecutionError("Unknown serialization format")
 
+        # old protocol, always a 3-tuple
+        (object_id, flag, handle_proto) = pid
         if flag in ("o", "p", "h"):
             return Object._new_hydrated(object_id, self.client, handle_proto)
         elif flag in ("_o", "_p", "_h"):

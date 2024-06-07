@@ -66,7 +66,7 @@ def construct_webhook_callable(
     # For webhooks, the user function is used to construct an asgi app:
     if webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # Function returns an asgi_app, which we can use as a callable.
-        return asgi_app_wrapper(user_defined_callable(), container_io_manager)
+        return asgi_app_wrapper(user_defined_callable(), container_io_manager, webhook_config.web_endpoint_docs)
 
     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
         # Function returns an wsgi_app, which we can use as a callable.
@@ -75,7 +75,7 @@ def construct_webhook_callable(
     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # Function is a webhook without an ASGI app. Create one for it.
         return asgi_app_wrapper(
-            webhook_asgi_app(user_defined_callable, webhook_config.method),
+            webhook_asgi_app(user_defined_callable, webhook_config.method, webhook_config.web_endpoint_docs),
             container_io_manager,
         )
 
@@ -90,7 +90,7 @@ def construct_webhook_callable(
         port = webhook_config.web_server_port
         startup_timeout = webhook_config.web_server_startup_timeout
         wait_for_web_server(host, port, timeout=startup_timeout)
-        return asgi_app_wrapper(web_server_proxy(host, port), container_io_manager)
+        return asgi_app_wrapper(web_server_proxy(host, port), container_io_manager, webhook_config.web_endpoint_docs)
     else:
         raise InvalidError(f"Unrecognized web endpoint type {webhook_config.type}")
 

@@ -91,6 +91,7 @@ enum CloudProvider {
   CLOUD_PROVIDER_OCI = 4;
   CLOUD_PROVIDER_LAMBDA_LABS = 5;
   CLOUD_PROVIDER_FLUIDSTACK = 6;  // experimental
+  CLOUD_PROVIDER_LATITUDE = 7;  // experimental
 }
 
 enum DNSRecordType {
@@ -231,6 +232,7 @@ message AppDeployRequest {
   string name = 3;
   string object_entity = 4;
   AppDeployVisibility visibility = 5;
+  string tag = 6;
 }
 
 message AppDeployResponse {
@@ -2088,6 +2090,7 @@ message WebhookConfig {
   repeated CustomDomainConfig custom_domains = 6;
   uint32 web_server_port = 7;
   float web_server_startup_timeout = 8;
+  bool web_endpoint_docs = 9;
 }
 
 message WorkspaceNameLookupResponse {
