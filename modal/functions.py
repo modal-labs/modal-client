@@ -346,7 +346,6 @@ class _Function(_Object, type_prefix="fu"):
         user_cls,
         method_name: str,
         partial_function: "modal.partial_function._PartialFunction",
-        serialized: bool,  # TODO: can we remove this?
     ):
         """mdmd:hidden
 
@@ -356,7 +355,8 @@ class _Function(_Object, type_prefix="fu"):
         Should only be used on "class functions". For "instance functions", we don't create an actual backend function,
         and instead do client-side "fake-hydration" only, see _bind_instance_method
         """
-        full_name = f"{self.info.function_name}.{method_name}"
+        serialized = self._info.is_serialized()
+        full_name = f"{user_cls.__name__}.{method_name}"
 
         if partial_function.is_generator:
             function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
@@ -1056,6 +1056,7 @@ class _Function(_Object, type_prefix="fu"):
         )
         self._function_name = None
         self._info = None
+        self._all_mounts = None  # used for file watching
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method

@@ -233,9 +233,7 @@ class _Cls(_Object, type_prefix="cs"):
         )
 
         for method_name, partial_function in partial_functions.items():
-            method_function = cls_func._bind_method(
-                user_cls, method_name, partial_function, cls_func._info.is_serialized()
-            )
+            method_function = cls_func._bind_method(user_cls, method_name, partial_function)
             app._add_function(method_function)
             partial_function.wrapped = True
             functions[method_name] = method_function

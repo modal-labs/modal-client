@@ -84,7 +84,7 @@ def test_call_class_sync(client, servicer):
     assert class_create.class_function_id
     print([fc.function.function_name for fc in function_creates_requests])
     function_creates = {fc.function.function_name: fc for fc in function_creates_requests}
-    assert function_creates.keys() == {"Foo", "Foo.bar"}
+    assert function_creates.keys() == {"Foo.*", "Foo.bar"}
     foobar_def = function_creates["Foo.bar"].function
     assert foobar_def.is_method
     assert foobar_def.use_method_name == "bar"
@@ -171,7 +171,7 @@ def test_run_class_serialized(client, servicer):
     assert servicer.n_functions == 2
     function_id, *_ = servicer.app_functions.keys()  # "class function" should be created first
     class_function = servicer.app_functions[function_id]
-    assert class_function.function_name.endswith("FooSer")  # because it's defined in a local scope
+    assert class_function.function_name.endswith("FooSer.*")  # using suffix because it's defined in a local scope
     assert class_function.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
     user_cls = deserialize(class_function.class_serialized, client)
     fun_callables = deserialize(class_function.function_serialized, client)
@@ -497,7 +497,7 @@ class XYZ:
 def test_method_args(servicer, client):
     with app_method_args.run(client=client):
         funcs = servicer.app_functions.values()
-        assert {f.function_name for f in funcs} == {"XYZ", "XYZ.foo", "XYZ.bar"}
+        assert {f.function_name for f in funcs} == {"XYZ.*", "XYZ.foo", "XYZ.bar"}
         assert {f.warm_pool_size for f in funcs} == {5, 0}
 
 
