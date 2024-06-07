@@ -390,7 +390,7 @@ class _ContainerIOManager:
                     self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[Tuple[str, str, Any, Any, str]]:
+    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[Tuple[str, str, str, Any, Any]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
@@ -401,7 +401,7 @@ class _ContainerIOManager:
         async for input_id, function_call_id, input_pb in self._generate_inputs():
             args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
             self.current_input_id, self.current_input_started_at = (input_id, time.time())
-            yield input_id, function_call_id, args, kwargs, input_pb.method_name
+            yield input_id, function_call_id, input_pb.method_name, args, kwargs
             self.current_input_id, self.current_input_started_at = (None, None)
 
         # collect all active input slots, meaning all inputs have wrapped up.
