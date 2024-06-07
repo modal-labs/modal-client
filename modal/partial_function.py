@@ -16,7 +16,7 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api, synchronizer
 from .config import logger
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 
 
@@ -58,7 +58,7 @@ class _PartialFunction:
 
     def __get__(self, obj, objtype=None) -> _Function:
         k = self.raw_f.__name__
-        if obj:  # Cls().fun
+        if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
                 # This happens inside "local" user methods when they refer to other methods,
                 # e.g. Foo().parent_method() doing self.local.other_method()
@@ -68,9 +68,10 @@ class _PartialFunction:
                 # unwrapped class (not using app.cls()) with @methods
                 # not sure what would be useful here, but lets return a bound version of the underlying function,
                 # since the class is just a vanilla class at this point
+                # This wouldn't let the user access `.remote()` and `.local()` etc. on the function
                 return self.raw_f.__get__(obj, objtype)
 
-        else:  # Cls.fun6
+        else:  # accessing a method directly on the class, e.g. `MyClass.fun`
             # This happens mainly during serialization of the wrapped underlying class of a Cls
             # since we don't have the instance info here we just return the PartialFunction itself
             # to let it be bound to a variable and become a Function later on
@@ -136,8 +137,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
                 f" Please try using the `modal.{suggested}` decorator{async_suggestion} instead."
                 " See https://modal.com/docs/guide/lifecycle-functions for more information."
             )
-            deprecation_warning((2024, 2, 21), message, show_source=True)
-            functions[attr] = getattr(user_cls, attr)
+            deprecation_error((2024, 2, 21), message)
 
     # Grab new decorator-based methods
     for k, pf in _find_partial_methods_for_cls(user_cls, flags).items():
@@ -215,6 +215,7 @@ def _web_endpoint(
     *,
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+    docs: bool = False,  # Whether to enable interactive documentation for this endpoint at /docs.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[
         Iterable[str]
@@ -267,6 +268,7 @@ def _web_endpoint(
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
+                web_endpoint_docs=docs,
                 requested_suffix=label,
                 async_mode=_response_mode,
                 custom_domains=_parse_custom_domains(custom_domains),

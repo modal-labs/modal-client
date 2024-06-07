@@ -86,6 +86,37 @@ class ContainerResult:
     task_result: api_pb2.GenericResult
 
 
+def _get_multi_inputs(args: List[Tuple[Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
+    responses = []
+    for input_n, input_args in enumerate(args):
+        resp = api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id=f"in-{input_n:03}", input=api_pb2.FunctionInput(args=serialize(input_args))
+                )
+            ]
+        )
+        responses.append(resp)
+
+    return responses + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
+
+
+def _get_multi_inputs_with_methods(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
+    responses = []
+    for input_n, (method_name, *input_args) in enumerate(args):
+        resp = api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id=f"in-{input_n:03}",
+                    input=api_pb2.FunctionInput(args=serialize(input_args), method_name=method_name),
+                )
+            ]
+        )
+        responses.append(resp)
+
+    return responses + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
+
+
 def _container_args(
     module_name,
     function_name,
@@ -1588,7 +1619,7 @@ def test_class_as_service_serialized(unix_servicer):
         "Foo.*",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
         is_class=True,
-        inputs=_get_multi_inputs([("method_a", ("x",), {}), ("method_b", ("y",), {})]),
+        inputs=_get_multi_inputs_with_methods([("method_a", ("x",), {}), ("method_b", ("y",), {})]),
         serialized_params=serialize((((), {"x": "s"}))),
     )
     assert len(result.items) == 2

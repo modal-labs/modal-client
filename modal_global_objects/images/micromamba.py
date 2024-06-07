@@ -2,12 +2,17 @@
 import asyncio
 import sys
 
-from modal import Image, Stub
+from modal import App, Image
+
+
+def dummy():
+    pass
 
 
 async def main(client=None, python_version=None):
-    stub = Stub(image=Image.micromamba(python_version))
-    async with stub.run.aio(client=client):
+    app = App(image=Image.micromamba(python_version))
+    app.function()(dummy)
+    async with app.run.aio(client=client):
         pass
 
 

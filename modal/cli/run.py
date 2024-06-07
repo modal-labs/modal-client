@@ -281,6 +281,7 @@ def deploy(
     ),
     skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
+    tag: str = typer.Option(None, help="Tag the deployment with a version."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -299,7 +300,7 @@ def deploy(
         ):
             return
 
-    res = deploy_app(app, name=name, environment_name=env, public=public)
+    res = deploy_app(app, name=name, environment_name=env, public=public, tag=tag)
 
     if stream_logs:
         stream_app_logs(res.app_id)

@@ -10,6 +10,7 @@ from modal._utils.name_utils import (
     is_valid_environment_name,
     is_valid_object_name,
     is_valid_subdomain_label,
+    is_valid_tag,
 )
 from modal.exception import DeprecationError, InvalidError
 
@@ -42,6 +43,13 @@ def test_environment_name():
     assert not is_valid_environment_name(":env")
     assert not is_valid_environment_name("/env")
     assert not is_valid_environment_name("")
+
+
+def test_tag():
+    assert is_valid_tag("v1.0.0")
+    assert is_valid_tag("a38298githash39920bk")
+    assert not is_valid_tag("v1 .0.0-alpha")
+    assert not is_valid_tag("$$$build")
 
 
 @pytest.mark.asyncio

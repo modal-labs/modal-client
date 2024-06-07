@@ -15,7 +15,7 @@ from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
-from .exception import InvalidError, RequestSizeError, deprecation_error, deprecation_warning
+from .exception import InvalidError, RequestSizeError, deprecation_error
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
@@ -177,10 +177,9 @@ class _Queue(_Object, type_prefix="qu"):
     @staticmethod
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ) -> "_Queue":
+    ):
         """Deprecated! Use `Queue.from_name(name, create_if_missing=True)`."""
-        deprecation_warning((2024, 3, 1), _Queue.persisted.__doc__)
-        return _Queue.from_name(label, namespace, environment_name, create_if_missing=True)
+        deprecation_error((2024, 3, 1), _Queue.persisted.__doc__)
 
     @staticmethod
     async def lookup(

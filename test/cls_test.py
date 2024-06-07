@@ -1,13 +1,15 @@
 # Copyright Modal Labs 2022
 import inspect
 import pytest
+import subprocess
+import sys
 import threading
 import typing
-from typing import TYPE_CHECKING, Callable, Dict
+from typing import TYPE_CHECKING, Dict
 
 from typing_extensions import assert_type
 
-import modal
+import modal.partial_function
 from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
 from modal._serialization import deserialize, serialize
 from modal._utils.async_utils import synchronizer
@@ -612,13 +614,11 @@ def test_deprecated_sync_methods():
 
     obj = ClsWithDeprecatedSyncMethods()
 
-    with pytest.warns(DeprecationError, match="Using `__enter__`.+`modal.enter` decorator"):
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
-    assert [meth() for meth in enter_methods.values()] == [42, 43]
+    with pytest.raises(DeprecationError, match="Using `__enter__`.+`modal.enter` decorator"):
+        _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
 
-    with pytest.warns(DeprecationError, match="Using `__exit__`.+`modal.exit` decorator"):
-        exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
-    assert [meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
+    with pytest.raises(DeprecationError, match="Using `__exit__`.+`modal.exit` decorator"):
+        _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
 
 
 @pytest.mark.asyncio
@@ -642,13 +642,11 @@ async def test_deprecated_async_methods():
 
     obj = ClsWithDeprecatedAsyncMethods()
 
-    with pytest.warns(DeprecationError, match=r"Using `__aenter__`.+`modal.enter` decorator \(on an async method\)"):
-        enter_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
-    assert [await meth() for meth in enter_methods.values()] == [42, 43]
+    with pytest.raises(DeprecationError, match=r"Using `__aenter__`.+`modal.enter` decorator \(on an async method\)"):
+        _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
 
-    with pytest.warns(DeprecationError, match=r"Using `__aexit__`.+`modal.exit` decorator \(on an async method\)"):
-        exit_methods: Dict[str, Callable] = _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
-    assert [await meth(None, None, None) for meth in exit_methods.values()] == [44, 45]
+    with pytest.raises(DeprecationError, match=r"Using `__aexit__`.+`modal.exit` decorator \(on an async method\)"):
+        _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
 
 
 class HasSnapMethod:
@@ -706,3 +704,12 @@ def test_partial_function_descriptors(client):
 
     # ensure that webhook metadata is kept
     assert synchronizer._translate_in(revived_class.web).webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
+
+
+def test_cross_process_userclass_serde(supports_dir):
+    res = subprocess.check_output([sys.executable, supports_dir / "serialize_class.py"])
+    assert len(res) < 2000  # should be ~1300 bytes as of 2024-06-05
+    revived_cls = deserialize(res, None)
+    method_without_descriptor_protocol = revived_cls.__dict__["method"]
+    assert isinstance(method_without_descriptor_protocol, modal.partial_function.PartialFunction)
+    assert revived_cls().method() == "a"  # this should be bound to the object
