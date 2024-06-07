@@ -215,7 +215,7 @@ class _Object:
                 f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}."
             )
         else:
-            print("Lazy loading", self)
+            # print("Lazy loading", self)
             # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
             resolver = Resolver(await _Client.from_env())
             await resolver.load(self)
