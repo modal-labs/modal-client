@@ -693,6 +693,11 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 _objs = []
 
+            if info.cls:
+                for method_callable in _find_callables_for_cls(info.cls, _PartialFunctionFlags.all()).values():
+                    method_objs: list[Object] = get_referred_objects(method_callable)
+                    _objs += synchronizer._translate_in(method_objs)  # type: ignore
+
             deps += _objs
             return deps
 
