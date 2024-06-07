@@ -521,7 +521,7 @@ def import_single_function_service(
                 user_defined_callable = f
         elif len(parts) == 2:
             # This is a method on a class - legacy "method"
-            # TODO: Remove this branch?
+            # TODO: Remove this branch when legacy non-class-pooled methods have been removed
             assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
             cls_name, fun_name = parts
             cls = getattr(module, cls_name)
@@ -554,29 +554,6 @@ def import_single_function_service(
         code_deps,
         user_defined_callable,
     )
-
-
-def get_user_class_instance(cls: typing.Union[type, Cls], ser_params: bytes, client: Client) -> typing.Any:
-    """Returns instance of the underlying class to be used as the `self`
-
-    The input `cls` can either be the raw Python class the user has declared ("user class"),
-    or an @app.cls-decorated version of it which is a modal.Cls-instance wrapping the user class.
-    """
-
-    if ser_params:
-        _client: _Client = synchronizer._translate_in(client)
-        args, kwargs = deserialize(ser_params, _client)
-    else:
-        args, kwargs = (), {}
-    if isinstance(cls, Cls):
-        # globally @app.cls-decorated class
-        modal_obj: Obj = cls(*args, **kwargs)
-        user_cls_instance = modal_obj.get_obj()
-    else:
-        # undecorated class (non-global decoration or serialized)
-        user_cls_instance = cls(*args, **kwargs)
-
-    return user_cls_instance
 
 
 def import_class_service(
@@ -634,6 +611,29 @@ def import_class_service(
         code_deps,
         method_partials,
     )
+
+
+def get_user_class_instance(cls: typing.Union[type, Cls], ser_params: bytes, client: Client) -> typing.Any:
+    """Returns instance of the underlying class to be used as the `self`
+
+    The input `cls` can either be the raw Python class the user has declared ("user class"),
+    or an @app.cls-decorated version of it which is a modal.Cls-instance wrapping the user class.
+    """
+
+    if ser_params:
+        _client: _Client = synchronizer._translate_in(client)
+        args, kwargs = deserialize(ser_params, _client)
+    else:
+        args, kwargs = (), {}
+    if isinstance(cls, Cls):
+        # globally @app.cls-decorated class
+        modal_obj: Obj = cls(*args, **kwargs)
+        user_cls_instance = modal_obj.get_obj()
+    else:
+        # undecorated class (non-global decoration or serialized)
+        user_cls_instance = cls(*args, **kwargs)
+
+    return user_cls_instance
 
 
 def get_active_app_fallback(function_def: api_pb2.Function) -> Optional[_App]:
