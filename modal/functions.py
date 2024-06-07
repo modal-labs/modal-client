@@ -106,7 +106,7 @@ class _Invocation:
     @staticmethod
     async def create(function: "_Function", args, kwargs, *, client: _Client) -> "_Invocation":
         assert client.stub
-        function_id = function._use_function_id
+        function_id = function._use_function_id if function._use_function_id else function.object_id
         item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
 
         request = api_pb2.FunctionMapRequest(
