@@ -324,6 +324,8 @@ def web_server_proxy(host: str, port: int):
                 timeout=aiohttp.ClientTimeout(total=3600),
                 auto_decompress=False,
                 read_bufsize=1024 * 1024,  # 1 MiB
+                max_line_size=64 * 1024,  # 64 KiB
+                max_field_size=64 * 1024,  # 64 KiB
             )
 
         try:
