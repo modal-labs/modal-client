@@ -579,32 +579,16 @@ class _ContainerIOManager:
         # Start a debugger if the worker tells us to
 
         self._enter_debugger = int(restored_state["enter_debugger"])
-        print(f"{self._enter_debugger=}")
         if self._enter_debugger:
-            self._enter_debugger = True
-            # don't use modal.sock, use the gateway ip
-            # also setting the client should happen before the debugger
-            # Now that the heartbeats aren't sending, do I even need to build a new client?
-            # Does this also eliminate the need for setting up the proxy? (prob not cuz of gvisor reading from sock)
-            print("building new client")
-            self._client = await _Client.from_env()
-            print("successfully built the new client")
-
-            print("installing pty")
-            await self.interact()
-            # breakpoint()
             print("starting debugger")
-            import pdb
-            pdb.set_trace()
-
-            # calling interact() doesn't seem to be the issue bc I tested with set_trace, not breakpoint.
-            # also tested with registering the custom hook after calling restore
-            # so it really prob is a heartbeat thing. why isn't the enter debugger bool updating? peculiar
+            # breakpoint()
+            # await self.interact()
+            import pdb; pdb.set_trace()
         else:
             print("not starting debugger")
 
+        self._client = await _Client.from_env()
         self._waiting_for_memory_snapshot = False
-
 
     async def memory_snapshot(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""

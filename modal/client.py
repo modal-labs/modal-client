@@ -208,7 +208,7 @@ class _Client:
             await client._close()
 
     @classmethod
-    async def from_env(cls, _override_config=None, ip=None) -> "_Client":
+    async def from_env(cls, _override_config=None) -> "_Client":
         """mdmd:hidden
         Singleton that is instantiated from the Modal config and reused on subsequent calls.
         """
@@ -218,14 +218,7 @@ class _Client:
         else:
             c = config
 
-
-        if ip:
-            print("overriding ip to ", ip)
-            server_url = ip
-        else:
-            server_url = c["server_url"]
-        print(f"from env url = {server_url}")
-        print("full config", c)
+        server_url = c["server_url"]
 
         token_id = c["token_id"]
         token_secret = c["token_secret"]
