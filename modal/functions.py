@@ -436,12 +436,13 @@ class _Function(_Object, type_prefix="fu"):
         instance_service_function = self
         assert instance_service_function._obj
         method_name = class_bound_method._use_method_name
+        full_function_name = f"{class_bound_method._function_name}[parameterized]"
 
         def hydrate_from_instance_function(obj):
             obj._hydrate_from_other(instance_service_function)
             obj._obj = instance_service_function._obj
             obj._web_url = class_bound_method._web_url  # TODO: this shouldn't be set when actual parameters are used
-            obj._function_name = f"{class_bound_method._function_name}[parameterized]"
+            obj._function_name = full_function_name
             obj._is_generator = class_bound_method._is_generator
             obj._use_method_name = method_name
             obj._use_function_id = instance_service_function.object_id
@@ -456,7 +457,7 @@ class _Function(_Object, type_prefix="fu"):
         def _deps():
             return [instance_service_function]
 
-        rep = f"ParametrizedMethodPlaceholder({method_name})"
+        rep = f"Method({full_function_name})"
 
         fun = _Function._from_loader(
             _load,
@@ -465,9 +466,11 @@ class _Function(_Object, type_prefix="fu"):
             hydrate_lazily=True,
         )
         if instance_service_function._can_use_base_function and instance_service_function.is_hydrated:
-            # skip loading in the arg-less instance case - in which case the instance_service_function
-            # has *also* skipped loading and is already hydrated
-            # Note: not sure if this could trigger due to stale state in reruns of apps?
+            # Eager hydration (skip load) if both the instance service function is already loaded
+            # This should only happen when default arguments are used to the constructor, since
+            # that will trigger similar eager hydration of the instance service function.
+            # In other cases, the instance service function will have to be lazy-loaded, as a dependency
+            # of this "fake" Function.
             hydrate_from_instance_function(fun)
 
         fun._info = class_bound_method._info
@@ -475,7 +478,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._is_method = True
         fun._parent = instance_service_function._parent
         fun._app = class_bound_method._app
-        fun._all_mounts = class_bound_method._all_mounts
+        fun._all_mounts = class_bound_method._all_mounts  # TODO: only used for mount-watching/modal serve
         return fun
 
     @staticmethod

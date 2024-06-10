@@ -20,6 +20,8 @@ from modal.partial_function import (
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
+    asgi_app,
+    web_endpoint,
 )
 from modal.runner import deploy_app
 from modal.running_app import RunningApp
@@ -485,11 +487,11 @@ app_method_args = App()
 
 @app_method_args.cls(keep_warm=5)
 class XYZ:
-    @method(keep_warm=3)
+    @method()  # warns - keep_warm is not supported on methods anymore
     def foo(self):
         ...
 
-    @method(keep_warm=7)
+    @method()  # warns - keep_warm is not supported on methods anymore
     def bar(self):
         ...
 
@@ -498,7 +500,10 @@ def test_method_args(servicer, client):
     with app_method_args.run(client=client):
         funcs = servicer.app_functions.values()
         assert {f.function_name for f in funcs} == {"XYZ.*", "XYZ.foo", "XYZ.bar"}
-        assert {f.warm_pool_size for f in funcs} == {5, 0}
+        warm_pools = {f.function_name: f.warm_pool_size for f in funcs}
+        assert warm_pools["XYZ.*"] == 5
+        del warm_pools["XYZ.*"]
+        assert set(warm_pools.values()) == {0}  # methods don't have warm pools themselves
 
 
 def test_keep_warm_depr():
@@ -554,6 +559,27 @@ def test_handlers():
 
     pfs = _find_partial_methods_for_user_cls(ClsWithHandlers, _PartialFunctionFlags.EXIT)
     assert list(pfs.keys()) == ["my_exit"]
+
+
+web_app_app = App()
+
+
+@web_app_app.cls()
+class WebCls:
+    @web_endpoint()
+    def endpoint(self):
+        pass
+
+    @asgi_app()
+    def asgi(self):
+        pass
+
+
+def test_web_cls(client):
+    with web_app_app.run(client=client):
+        c = WebCls()
+        assert c.endpoint.web_url == "http://xyz.internal"
+        assert c.asgi.web_url == "http://xyz.internal"
 
 
 handler_app = App("handler-app")

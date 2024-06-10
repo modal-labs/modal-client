@@ -178,10 +178,10 @@ def _method(
 
     if keep_warm is not None:
         deprecation_warning(
-            (2024, 5, 3),
-            f"{keep_warm=} is no longer supported per-method on Modal classes. "
+            (2024, 6, 10),
+            "`keep_warm=` is no longer supported per-method on Modal classes. "
             "Use keep_warm via the @app.cls() decorator instead. "
-            "All methods/web endpoints of classes use the same containers",
+            "All methods/web endpoints of a class use the same container pool",
             pending=True,
         )
 
