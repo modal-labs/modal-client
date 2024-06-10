@@ -186,7 +186,8 @@ def wait_for_web_server(host: str, port: int, *, timeout: float) -> None:
             if time.monotonic() - start_time >= timeout:
                 raise TimeoutError(
                     f"Waited too long for port {port} to start accepting connections. "
-                    + "Make sure the web server is listening on all interfaces, or adjust `startup_timeout`."
+                    "Make sure the web server is bound to 0.0.0.0 (rather than localhost or 127.0.0.1), "
+                    "or adjust `startup_timeout`."
                 ) from ex
 
 
