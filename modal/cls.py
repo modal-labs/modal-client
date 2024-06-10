@@ -88,7 +88,7 @@ class _Obj:
         else:
             self._local_obj_constr = None
 
-    async def keep_warm(self: "_Cls", warm_pool_size: int) -> None:
+    async def keep_warm(self, warm_pool_size: int) -> None:
         """Set the warm pool size for the class containers
 
         Please exercise care when using this advanced feature!
@@ -227,11 +227,7 @@ class _Cls(_Object, type_prefix="cs"):
                 )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
-        if self._class_service_function:
-            class_function_id = self._class_service_function.object_id
-        else:
-            class_function_id = ""
-
+        class_function_id = self._class_service_function.object_id
         class_handle_metadata = api_pb2.ClassHandleMetadata(class_function_id=class_function_id)
         for f_name, f in self._method_functions.items():
             class_handle_metadata.methods.append(

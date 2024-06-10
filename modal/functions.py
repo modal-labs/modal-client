@@ -28,6 +28,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal._output import FunctionCreationStatus
 from modal_proto import api_grpc, api_pb2
 
 from ._location import parse_cloud_provider
@@ -260,57 +261,6 @@ class _FunctionSpec:
     scheduler_placement: Optional[SchedulerPlacement]
 
 
-class FunctionCreationStatus:
-    tag: str
-    response: Optional[api_pb2.FunctionCreateResponse] = None
-
-    def __init__(self, resolver, tag):
-        self.resolver = resolver
-        self.tag = tag
-
-    def __enter__(self):
-        self.status_row = self.resolver.add_status_row()
-        self.status_row.message(f"Creating function {self.tag}...")
-        return self
-
-    def set_response(self, resp: api_pb2.FunctionCreateResponse):
-        self.response = resp
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type:
-            raise exc_val
-
-        if not self.response:
-            self.status_row.finish(f"Unknown error when creating function {self.tag}")
-
-        elif self.response.function.web_url:
-            url_info = self.response.function.web_url_info
-            # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
-            if url_info.truncated:
-                suffix = " [grey70](label truncated)[/grey70]"
-            elif url_info.has_unique_hash:
-                suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
-            elif url_info.label_stolen:
-                suffix = " [grey70](label stolen)[/grey70]"
-            else:
-                suffix = ""
-            # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            web_url = self.response.handle_metadata.web_url
-            self.status_row.finish(
-                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]{suffix}"
-            )
-
-            # Print custom domain in terminal
-            for custom_domain in self.response.function.custom_domain_info:
-                custom_domain_status_row = self.resolver.add_status_row()
-                custom_domain_status_row.finish(
-                    f"Custom domain for {self.tag} => [magenta underline]"
-                    f"{custom_domain.url}[/magenta underline]{suffix}"
-                )
-        else:
-            self.status_row.finish(f"Created function {self.tag}.")
-
-
 class _Function(_Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -332,7 +282,7 @@ class _Function(_Object, type_prefix="fu"):
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
-    _can_use_base_function: bool = False
+    _can_use_base_function: bool = False  # whether we need to call FunctionBindParams
 
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
@@ -356,7 +306,8 @@ class _Function(_Object, type_prefix="fu"):
 
         Should only be used on "class service functions". For "instance service functions",
         we don't create an actual backend function, and instead do client-side "fake-hydration"
-        only, see _bind_instance_method
+        only, see _bind_instance_method.
+
         """
         assert self._info  # has to be a local function to be able to "bind" it
         serialized = self._info.is_serialized()
