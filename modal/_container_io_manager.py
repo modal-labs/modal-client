@@ -64,6 +64,7 @@ class _ContainerIOManager:
     _environment_name: str
     _waiting_for_memory_snapshot: bool
     _heartbeat_loop: Optional[asyncio.Task]
+    _enter_debugger: bool
 
     _is_interactivity_enabled: bool
     _fetching_inputs: bool
@@ -92,6 +93,7 @@ class _ContainerIOManager:
         self._environment_name = container_args.environment_name
         self._waiting_for_memory_snapshot = False
         self._heartbeat_loop = None
+        self._enter_debugger = False
 
         self._is_interactivity_enabled = False
         self._fetching_inputs = True
@@ -138,7 +140,8 @@ class _ContainerIOManager:
         # Don't send heartbeats for tasks waiting to be checkpointed.
         # Calling gRPC methods open new connections which block the
         # checkpointing process.
-        if self._waiting_for_memory_snapshot:
+        # Also don't send heartbeats when in debug mode
+        if self._waiting_for_memory_snapshot or self._enter_debugger:
             return False
 
         request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
@@ -575,19 +578,32 @@ class _ContainerIOManager:
 
         # Start a debugger if the worker tells us to
 
-        enter_debugger = int(restored_state["enter_debugger"])
-        print(f"{enter_debugger=}")
-        if enter_debugger:
-            # self._client = await _Client.from_env(ip="http://172.21.0.1:9999")
+        self._enter_debugger = int(restored_state["enter_debugger"])
+        print(f"{self._enter_debugger=}")
+        if self._enter_debugger:
+            self._enter_debugger = True
+            # don't use modal.sock, use the gateway ip
+            # also setting the client should happen before the debugger
+            # Now that the heartbeats aren't sending, do I even need to build a new client?
+            # Does this also eliminate the need for setting up the proxy? (prob not cuz of gvisor reading from sock)
+            print("building new client")
+            self._client = await _Client.from_env()
+            print("successfully built the new client")
+
+            print("installing pty")
+            await self.interact()
+            # breakpoint()
             print("starting debugger")
-            breakpoint()
-            # import pdb;
-            # pdb.set_trace()
+            import pdb
+            pdb.set_trace()
+
+            # calling interact() doesn't seem to be the issue bc I tested with set_trace, not breakpoint.
+            # also tested with registering the custom hook after calling restore
+            # so it really prob is a heartbeat thing. why isn't the enter debugger bool updating? peculiar
         else:
             print("not starting debugger")
 
         self._waiting_for_memory_snapshot = False
-        self._client = await _Client.from_env()
 
 
     async def memory_snapshot(self) -> None:
