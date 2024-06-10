@@ -320,7 +320,7 @@ class _App:
     async def run(
         self,
         client: Optional[_Client] = None,
-        stdout: TextIOWrapper | None = None,
+        stdout: Optional[TextIOWrapper] = None,
         show_progress: bool = True,
         detach: bool = False,
         output_mgr: Optional[OutputManager] = None,
@@ -406,7 +406,7 @@ class _App:
         return self._web_endpoints
 
     def local_entrypoint(
-        self, _warn_parentheses_missing: bool | None = None, *, name: Optional[str] = None
+        self, _warn_parentheses_missing: Optional[bool] = None, *, name: Optional[str] = None
     ) -> Callable[[Callable[..., Any]], None]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
@@ -635,7 +635,7 @@ class _App:
 
     def cls(
         self,
-        _warn_parentheses_missing: bool | None = None,
+        _warn_parentheses_missing: Optional[bool] = None,
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
