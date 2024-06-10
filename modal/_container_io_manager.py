@@ -580,12 +580,13 @@ class _ContainerIOManager:
 
         self._enter_debugger = int(restored_state["enter_debugger"])
         if self._enter_debugger:
-            print("starting debugger")
+            logger.debug("starting debugger")
             # breakpoint()
             # await self.interact()
-            import pdb; pdb.set_trace()
+            import pdb;
+            pdb.set_trace()
         else:
-            print("not starting debugger")
+            logger.debug("not starting debugger")
 
         self._client = await _Client.from_env()
         self._waiting_for_memory_snapshot = False
