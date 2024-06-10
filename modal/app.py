@@ -547,11 +547,7 @@ class _App:
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
-            _cls: Optional[type] = None,  # deprecated - TODO: remove
         ) -> _Function:
-            assert (
-                not _cls
-            )  # Should not be used anymore - methods are now placeholders referencing the class service function
             nonlocal keep_warm, is_generator
 
             # Check if the decorated object is a class
@@ -559,8 +555,9 @@ class _App:
                 raise TypeError("The @app.function decorator cannot be used on a class. Please use @app.cls instead.")
 
             if isinstance(f, _PartialFunction):
+                # typically for @function-wrapped @web_endpoint and @asgi_app
                 f.wrapped = True
-                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name, cls=_cls)
+                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
                 is_generator = f.is_generator
@@ -571,8 +568,7 @@ class _App:
                         raise InvalidError("interactive=True is not supported with web endpoint functions")
                     self._web_endpoints.append(info.get_tag())
             else:
-                # f here could be either a vanilla python function *or* a class
-                info = FunctionInfo(f, serialized=serialized, name_override=name, cls=_cls)
+                info = FunctionInfo(f, serialized=serialized, name_override=name)
                 webhook_config = None
                 raw_f = f
 
@@ -580,12 +576,6 @@ class _App:
                 warnings.warn(
                     "Beware: the function name is `app`. Modal will soon rename `Stub` to `App`, "
                     "so you might run into issues if you have code like `app = modal.App()` in the same scope"
-                )
-
-            if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
-                raise InvalidError(
-                    "`app.function` on methods is not allowed. "
-                    "See https://modal.com/docs/guide/lifecycle-functions instead"
                 )
 
             if is_generator is None:
