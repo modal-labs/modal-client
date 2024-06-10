@@ -30,8 +30,8 @@ import re
 import sys
 from types import CodeType
 
-__version__ = "3.0.0"
-__all__ = "Traceback", "TracebackParseError", "Frame", "Code"
+__version__ = '3.0.0'
+__all__ = 'Traceback', 'TracebackParseError', 'Frame', 'Code'
 
 FRAME_RE = re.compile(r'^\s*File "(?P<co_filename>.+)", line (?P<tb_lineno>\d+)(, in (?P<co_name>.+))?$')
 
@@ -87,7 +87,7 @@ class Frame:
 
     def __init__(self, frame, *, get_locals=None):
         self.f_locals = {} if get_locals is None else get_locals(frame)
-        self.f_globals = {k: v for k, v in frame.f_globals.items() if k in ("__file__", "__name__")}
+        self.f_globals = {k: v for k, v in frame.f_globals.items() if k in ('__file__', '__name__')}
         self.f_code = Code(frame.f_code)
         self.f_lineno = frame.f_lineno
 
@@ -147,18 +147,10 @@ class Traceback:
         tb = None
         while current:
             f_code = current.tb_frame.f_code
-            code = compile(
-                "\n" * (current.tb_lineno - 1) + "raise __traceback_maker", current.tb_frame.f_code.co_filename, "exec"
-            )
-            if hasattr(code, "replace"):
+            code = compile('\n' * (current.tb_lineno - 1) + 'raise __traceback_maker', current.tb_frame.f_code.co_filename, 'exec')
+            if hasattr(code, 'replace'):
                 # Python 3.8 and newer
-                code = code.replace(
-                    co_argcount=0,
-                    co_filename=f_code.co_filename,
-                    co_name=f_code.co_name,
-                    co_freevars=(),
-                    co_cellvars=(),
-                )
+                code = code.replace(co_argcount=0, co_filename=f_code.co_filename, co_name=f_code.co_name, co_freevars=(), co_cellvars=())
             else:
                 code = CodeType(
                     0,
@@ -210,19 +202,19 @@ class Traceback:
             tb_next = self.tb_next.as_dict()
 
         code = {
-            "co_filename": self.tb_frame.f_code.co_filename,
-            "co_name": self.tb_frame.f_code.co_name,
+            'co_filename': self.tb_frame.f_code.co_filename,
+            'co_name': self.tb_frame.f_code.co_name,
         }
         frame = {
-            "f_globals": self.tb_frame.f_globals,
-            "f_locals": self.tb_frame.f_locals,
-            "f_code": code,
-            "f_lineno": self.tb_frame.f_lineno,
+            'f_globals': self.tb_frame.f_globals,
+            'f_locals': self.tb_frame.f_locals,
+            'f_code': code,
+            'f_lineno': self.tb_frame.f_lineno,
         }
         return {
-            "tb_frame": frame,
-            "tb_lineno": self.tb_lineno,
-            "tb_next": tb_next,
+            'tb_frame': frame,
+            'tb_lineno': self.tb_lineno,
+            'tb_next': tb_next,
         }
 
     to_dict = as_dict
@@ -232,24 +224,24 @@ class Traceback:
         """
         Creates an instance from a dictionary with the same structure as ``.as_dict()`` returns.
         """
-        if dct["tb_next"]:
-            tb_next = cls.from_dict(dct["tb_next"])
+        if dct['tb_next']:
+            tb_next = cls.from_dict(dct['tb_next'])
         else:
             tb_next = None
 
         code = _AttrDict(
-            co_filename=dct["tb_frame"]["f_code"]["co_filename"],
-            co_name=dct["tb_frame"]["f_code"]["co_name"],
+            co_filename=dct['tb_frame']['f_code']['co_filename'],
+            co_name=dct['tb_frame']['f_code']['co_name'],
         )
         frame = _AttrDict(
-            f_globals=dct["tb_frame"]["f_globals"],
-            f_locals=dct["tb_frame"].get("f_locals", {}),
+            f_globals=dct['tb_frame']['f_globals'],
+            f_locals=dct['tb_frame'].get('f_locals', {}),
             f_code=code,
-            f_lineno=dct["tb_frame"]["f_lineno"],
+            f_lineno=dct['tb_frame']['f_lineno'],
         )
         tb = _AttrDict(
             tb_frame=frame,
-            tb_lineno=dct["tb_lineno"],
+            tb_lineno=dct['tb_lineno'],
             tb_next=tb_next,
         )
         return cls(tb, get_locals=get_all_locals)
@@ -266,13 +258,13 @@ class Traceback:
         for line in string.splitlines():
             line = line.rstrip()
             if header:
-                if line == "Traceback (most recent call last):":
+                if line == 'Traceback (most recent call last):':
                     header = False
                 continue
             frame_match = FRAME_RE.match(line)
             if frame_match:
                 frames.append(frame_match.groupdict())
-            elif line.startswith("  "):
+            elif line.startswith('  '):
                 pass
             elif strict:
                 break  # traceback ended
@@ -285,18 +277,18 @@ class Traceback:
                     tb_frame=_AttrDict(
                         frame,
                         f_globals=_AttrDict(
-                            __file__=frame["co_filename"],
-                            __name__="?",
+                            __file__=frame['co_filename'],
+                            __name__='?',
                         ),
                         f_locals={},
                         f_code=_AttrDict(frame),
-                        f_lineno=int(frame["tb_lineno"]),
+                        f_lineno=int(frame['tb_lineno']),
                     ),
                     tb_next=previous,
                 )
             return cls(previous)
         else:
-            raise TracebackParseError("Could not find any frames in %r." % string)
+            raise TracebackParseError('Could not find any frames in %r.' % string)
 
 
 def get_all_locals(frame):

@@ -407,7 +407,6 @@ WSGIApp = Callable[[Environ, StartResponse], IterableChunks]
 
 ## BEGIN a2wsgi/wsgi.py
 
-
 class Body:
     def __init__(self, loop: asyncio.AbstractEventLoop, receive: Receive) -> None:
         self.buffer = bytearray()
@@ -548,10 +547,14 @@ class WSGIMiddleware:
     Convert WSGIApp to ASGIApp.
     """
 
-    def __init__(self, app: WSGIApp, workers: int = 10, send_queue_size: int = 10) -> None:
+    def __init__(
+        self, app: WSGIApp, workers: int = 10, send_queue_size: int = 10
+    ) -> None:
         self.app = app
         self.send_queue_size = send_queue_size
-        self.executor = ThreadPoolExecutor(thread_name_prefix="WSGI", max_workers=workers)
+        self.executor = ThreadPoolExecutor(
+            thread_name_prefix="WSGI", max_workers=workers
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
@@ -573,7 +576,9 @@ class WSGIMiddleware:
 
 
 class WSGIResponder:
-    def __init__(self, app: WSGIApp, executor: ThreadPoolExecutor, send_queue_size: int) -> None:
+    def __init__(
+        self, app: WSGIApp, executor: ThreadPoolExecutor, send_queue_size: int
+    ) -> None:
         self.app = app
         self.executor = executor
         self.loop = asyncio.get_event_loop()
@@ -589,12 +594,16 @@ class WSGIResponder:
             sender = self.loop.create_task(self.sender(send))
             context = contextvars.copy_context()
             func = functools.partial(context.run, self.wsgi)
-            await self.loop.run_in_executor(self.executor, func, environ, self.start_response)
+            await self.loop.run_in_executor(
+                self.executor, func, environ, self.start_response
+            )
             await self.send_queue.put(None)
             await self.send_queue.join()
             await asyncio.wait_for(sender, None)
             if self.exc_info is not None:
-                raise self.exc_info[0].with_traceback(self.exc_info[1], self.exc_info[2])
+                raise self.exc_info[0].with_traceback(
+                    self.exc_info[1], self.exc_info[2]
+                )
         finally:
             if sender and not sender.done():
                 sender.cancel()  # pragma: no cover
@@ -636,17 +645,21 @@ class WSGIResponder:
                     "headers": headers,
                 }
             )
-        return lambda chunk: self.send({"type": "http.response.body", "body": chunk, "more_body": True})
+        return lambda chunk: self.send(
+            {"type": "http.response.body", "body": chunk, "more_body": True}
+        )
 
     def wsgi(self, environ: Environ, start_response: StartResponse) -> None:
         iterable = self.app(environ, start_response)
         try:
             for chunk in iterable:
-                self.send({"type": "http.response.body", "body": chunk, "more_body": True})
+                self.send(
+                    {"type": "http.response.body", "body": chunk, "more_body": True}
+                )
 
             self.send({"type": "http.response.body", "body": b""})
         finally:
             getattr(iterable, "close", lambda: None)()
 
-
 ## END a2wsgi/wsgi.py
+
