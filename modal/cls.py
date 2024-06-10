@@ -69,7 +69,7 @@ class _Obj:
         for key, kwarg in kwargs.items():
             check_valid_cls_constructor_arg(key, kwarg)
 
-        self._functions = {}
+        self._method_functions = {}
         # first create the singular object function used by all methods on this parameterization
         self._instance_service_function = class_function._bind_parameters(
             self, from_other_workspace, options, args, kwargs
@@ -77,7 +77,7 @@ class _Obj:
         for method_name, class_bound_method in classbound_methods.items():
             method = self._instance_service_function._bind_instance_method(class_bound_method)
             method._set_output_mgr(output_mgr)
-            self._functions[method_name] = method
+            self._method_functions[method_name] = method
 
         # Used for construction local object lazily
         self._inited = False
@@ -108,7 +108,7 @@ class _Obj:
     def get_obj(self):
         """Constructs obj without any caching. Used by container entrypoint."""
         self._local_obj = self._local_obj_constr()
-        setattr(self._local_obj, "_modal_functions", self._functions)  # Needed for PartialFunction.__get__
+        setattr(self._local_obj, "_modal_functions", self._method_functions)  # Needed for PartialFunction.__get__
         return self._local_obj
 
     def get_local_obj(self):
@@ -153,8 +153,8 @@ class _Obj:
         self.entered = True
 
     def __getattr__(self, k):
-        if k in self._functions:
-            return self._functions[k]
+        if k in self._method_functions:
+            return self._method_functions[k]
         elif self._local_obj_constr:
             obj = self.get_local_obj()
             return getattr(obj, k)
@@ -167,8 +167,8 @@ Obj = synchronize_api(_Obj)
 
 class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
-    _class_function: _Function
-    _functions: Dict[str, _Function]
+    _class_service_function: _Function  # The _Function serving *all* methods of the class
+    _method_functions: Dict[str, _Function]  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
@@ -176,8 +176,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _initialize_from_empty(self):
         self._user_cls = None
-        self._class_function = None
-        self._functions = {}
+        self._class_service_function = None
+        self._method_functions = {}
         self._options = None
         self._callables = {}
         self._from_other_workspace = None
@@ -185,8 +185,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _initialize_from_other(self, other: "_Cls"):
         self._user_cls = other._user_cls
-        self._class_function = other._class_function
-        self._functions = other._functions
+        self._class_service_function = other._class_service_function
+        self._method_functions = other._method_functions
         self._options = other._options
         self._callables = other._callables
         self._from_other_workspace = other._from_other_workspace
@@ -205,35 +205,35 @@ class _Cls(_Object, type_prefix="cs"):
 
         if metadata.class_function_id:
             # we don't have any hydration metadata on "service function" themselves
-            if self._class_function:
-                self._class_function._hydrate(
+            if self._class_service_function:
+                self._class_service_function._hydrate(
                     metadata.class_function_id, self._client, metadata.class_function_metadata
                 )
             else:
-                self._class_function = _Function._new_hydrated(
+                self._class_service_function = _Function._new_hydrated(
                     metadata.class_function_id, self._client, metadata.class_function_metadata
                 )
 
         for method in metadata.methods:
-            if method.function_name in self._functions:
+            if method.function_name in self._method_functions:
                 # This happens when the class is loaded locally
                 # since each function will already be a loaded dependency _Function
-                self._functions[method.function_name]._hydrate(
+                self._method_functions[method.function_name]._hydrate(
                     method.function_id, self._client, method.function_handle_metadata
                 )
             else:
-                self._functions[method.function_name] = _Function._new_hydrated(
+                self._method_functions[method.function_name] = _Function._new_hydrated(
                     method.function_id, self._client, method.function_handle_metadata
                 )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
-        if self._class_function:
-            class_function_id = self._class_function.object_id
+        if self._class_service_function:
+            class_function_id = self._class_service_function.object_id
         else:
             class_function_id = ""
 
         class_handle_metadata = api_pb2.ClassHandleMetadata(class_function_id=class_function_id)
-        for f_name, f in self._functions.items():
+        for f_name, f in self._method_functions.items():
             class_handle_metadata.methods.append(
                 api_pb2.ClassMethod(
                     function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
@@ -271,7 +271,7 @@ class _Cls(_Object, type_prefix="cs"):
             req = api_pb2.ClassCreateRequest(
                 app_id=resolver.app_id, existing_class_id=existing_object_id, class_function_id=cls_func.object_id
             )
-            for f_name, f in self._functions.items():
+            for f_name, f in self._method_functions.items():
                 req.methods.append(
                     api_pb2.ClassMethod(
                         function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
@@ -284,8 +284,8 @@ class _Cls(_Object, type_prefix="cs"):
         cls: _Cls = _Cls._from_loader(_load, rep, deps=_deps)
         cls._app = app
         cls._user_cls = user_cls
-        cls._class_function = cls_func
-        cls._functions = functions
+        cls._class_service_function = cls_func
+        cls._method_functions = functions
         cls._callables = callables
         cls._from_other_workspace = False
         return cls
@@ -424,8 +424,8 @@ class _Cls(_Object, type_prefix="cs"):
         return _Obj(
             self._user_cls,
             self._output_mgr,
-            self._class_function,
-            self._functions,
+            self._class_service_function,
+            self._method_functions,
             self._from_other_workspace,
             self._options,
             args,
@@ -434,8 +434,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint
-        if k in self._functions:
-            return self._functions[k]
+        if k in self._method_functions:
+            return self._method_functions[k]
         return getattr(self._user_cls, k)
 
 

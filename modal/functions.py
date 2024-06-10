@@ -434,7 +434,7 @@ class _Function(_Object, type_prefix="fu"):
 
         Binds an "instance service function" to a specific method.
         This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
-        it does it forward invocations to the underlying instance_bound_class_function with the specified method,
+        it does it forward invocations to the underlying instance_service_function with the specified method,
         and we don't support web_config for parameterized methods at the moment.
         """
         instance_service_function = self

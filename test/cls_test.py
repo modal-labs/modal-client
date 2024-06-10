@@ -635,10 +635,9 @@ class ClsWithBuild:
 
 def test_build_image(client, servicer):
     with handler_app.run(client=client):
-        unwrapped_cls = synchronizer._translate_in(ClsWithBuild)
-        f_def = servicer.app_functions[unwrapped_cls._class_function.object_id]
+        service_function = servicer.function_by_name("ClsWithBuild.*")
         # The function image should have added a new layer with original image as the parent
-        f_image = servicer.images[f_def.image_id]
+        f_image = servicer.images[service_function.image_id]
         assert f_image.base_images[0].image_id == image.object_id
 
 
