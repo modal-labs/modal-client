@@ -433,23 +433,28 @@ class _Function(_Object, type_prefix="fu"):
         it does it forward invocations to the underlying instance_bound_class_function with the specified method,
         and we don't support web_config for parameterized methods at the moment.
         """
-        instance_bound_class_function = self
-        assert instance_bound_class_function._obj
+        instance_service_function = self
+        assert instance_service_function._obj
         method_name = class_bound_method._use_method_name
 
         def hydrate_from_instance_function(obj):
-            obj._hydrate_from_other(instance_bound_class_function)
-            obj._obj = instance_bound_class_function._obj
+            obj._hydrate_from_other(instance_service_function)
+            obj._obj = instance_service_function._obj
             obj._web_url = class_bound_method._web_url  # TODO: this shouldn't be set when actual parameters are used
+            obj._function_name = f"{class_bound_method._function_name}[parameterized]"
             obj._is_generator = class_bound_method._is_generator
             obj._use_method_name = method_name
-            obj._use_function_id = instance_bound_class_function.object_id
+            obj._use_function_id = instance_service_function.object_id
 
         async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            # there is currently no actual loading logic executed to create each method on
+            # the *parameterized* instance of a class - it uses the parameter-bound service-function
+            # for the instance. This load method just makes sure to set all attributes after the
+            # `instance_service_function` has been loaded (it's in the `_deps`)
             hydrate_from_instance_function(fun)
 
         def _deps():
-            return [instance_bound_class_function]
+            return [instance_service_function]
 
         rep = f"ParametrizedMethodPlaceholder({method_name})"
 
@@ -459,16 +464,16 @@ class _Function(_Object, type_prefix="fu"):
             deps=_deps,
             hydrate_lazily=True,
         )
-        if instance_bound_class_function.is_hydrated:
-            # skip loading in the arg-less instance case - in which case the instance_bound_class_function
+        if instance_service_function._can_use_base_function and instance_service_function.is_hydrated:
+            # skip loading in the arg-less instance case - in which case the instance_service_function
             # has *also* skipped loading and is already hydrated
             # Note: not sure if this could trigger due to stale state in reruns of apps?
             hydrate_from_instance_function(fun)
 
         fun._info = class_bound_method._info
-        fun._obj = instance_bound_class_function._obj
+        fun._obj = instance_service_function._obj
         fun._is_method = True
-        fun._parent = instance_bound_class_function._parent
+        fun._parent = instance_service_function._parent
         fun._app = class_bound_method._app
         fun._all_mounts = class_bound_method._all_mounts
         return fun
@@ -918,7 +923,10 @@ class _Function(_Object, type_prefix="fu"):
             self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
 
         fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
-        if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
+
+        # In some cases, reuse the base function, i.e. not create new clones of each method or the "service function"
+        fun._can_use_base_function = len(args) + len(kwargs) == 0 and not from_other_workspace and options is None
+        if fun._can_use_base_function and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
             # if the instance didn't use explicit constructor arguments
             fun._hydrate_from_other(self)
@@ -926,14 +934,14 @@ class _Function(_Object, type_prefix="fu"):
         fun._is_remote_cls_method = True  # TODO(erikbern): deprecated
         fun._info = self._info
         fun._obj = obj
-        fun._is_generator = self._is_generator
-        fun._is_method = True
+        fun._is_generator = self._is_generator  # TODO(elias): remove - this doesn't apply to "service functions"
+        fun._is_method = True  # TODO(elias): remove - this doesn't apply to "service functions"
         fun._parent = self
         return fun
 
     @live_method
     async def keep_warm(self, warm_pool_size: int) -> None:
-        """Set the warm pool size for the function (including parametrized functions).
+        """Set the warm pool size for the function.
 
         Please exercise care when using this advanced feature!
         Setting and forgetting a warm pool on functions can lead to increased costs.
@@ -948,7 +956,7 @@ class _Function(_Object, type_prefix="fu"):
         Model("fine-tuned-model").inference.keep_warm(2)
         ```
         """
-
+        # TODO(elias): Raise exception when used on methods, add equivalent on classes
         assert self._client and self._client.stub
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(
             function_id=self._object_id, warm_pool_size_override=warm_pool_size
