@@ -331,6 +331,7 @@ class _Function(_Object, type_prefix="fu"):
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
+    _can_use_base_function: bool = False
 
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
@@ -355,6 +356,7 @@ class _Function(_Object, type_prefix="fu"):
         Should only be used on "class functions". For "instance functions", we don't create an actual backend function,
         and instead do client-side "fake-hydration" only, see _bind_instance_method
         """
+        assert self._info  # has to be a local function to be able to "bind" it
         serialized = self._info.is_serialized()
         full_name = f"{user_cls.__name__}.{method_name}"
 
@@ -702,6 +704,8 @@ class _Function(_Object, type_prefix="fu"):
                 _objs = []
 
             if info.cls:
+                from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
+
                 for method_callable in _find_callables_for_cls(info.cls, _PartialFunctionFlags.all()).values():
                     method_objs: list[Object] = get_referred_objects(method_callable)
                     _objs += synchronizer._translate_in(method_objs)  # type: ignore
@@ -1072,8 +1076,8 @@ class _Function(_Object, type_prefix="fu"):
         )
         self._function_name = None
         self._info = None
-        self._all_mounts = None  # used for file watching
-        self._use_function_id = None
+        self._all_mounts = []  # used for file watching
+        self._use_function_id = ""
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method

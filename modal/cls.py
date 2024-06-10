@@ -23,7 +23,6 @@ from .functions import (
 from .gpu import GPU_T
 from .object import _get_environment_name, _Object
 from .partial_function import (
-    PartialFunction,
     _find_callables_for_cls,
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
@@ -176,7 +175,7 @@ class _Cls(_Object, type_prefix="cs"):
     def _set_output_mgr(self, output_mgr: OutputManager):
         self._output_mgr = output_mgr
 
-    def _get_partial_functions(self) -> Dict[str, PartialFunction]:
+    def _get_partial_functions(self) -> Dict[str, _PartialFunction]:
         if not self._user_cls:
             raise AttributeError("You can only get the partial functions of a local Cls instance")
         return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())

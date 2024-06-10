@@ -596,7 +596,7 @@ def import_class_service(
 
     if isinstance(cls, Cls):
         # The cls decorator is in global scope
-        method_partials = cls._get_partial_functions()
+        method_partials = synchronizer._translate_in(cls._get_partial_functions())
     else:
         # Undecorated user class - find all methods
         method_partials = _find_partial_methods_for_user_cls(cls, _PartialFunctionFlags.all())
