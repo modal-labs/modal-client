@@ -84,7 +84,6 @@ def test_call_class_sync(client, servicer):
     assert len(function_creates_requests) == 2
     (class_create,) = ctx.get_requests("ClassCreate")
     assert class_create.class_function_id
-    print([fc.function.function_name for fc in function_creates_requests])
     function_creates = {fc.function.function_name: fc for fc in function_creates_requests}
     assert function_creates.keys() == {"Foo.*", "Foo.bar"}
     foobar_def = function_creates["Foo.bar"].function
@@ -168,12 +167,8 @@ def test_run_class_serialized(client, servicer):
     with app_ser.run(client=client):
         pass
 
-    print(servicer.app_functions.keys())
-    print(servicer.precreated_functions)
     assert servicer.n_functions == 2
-    function_id, *_ = servicer.app_functions.keys()  # "class function" should be created first
-    class_function = servicer.app_functions[function_id]
-    assert class_function.function_name.endswith("FooSer.*")  # using suffix because it's defined in a local scope
+    class_function = servicer.function_by_name("FooSer.*")
     assert class_function.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
     user_cls = deserialize(class_function.class_serialized, client)
     fun_callables = deserialize(class_function.function_serialized, client)
@@ -506,7 +501,7 @@ def test_method_args(servicer, client):
         assert set(warm_pools.values()) == {0}  # methods don't have warm pools themselves
 
 
-def test_keep_warm_depr():
+def test_keep_warm_depr(client, set_env_client):
     app = App()
 
     with pytest.warns(PendingDeprecationError, match="keep_warm"):
@@ -520,6 +515,45 @@ def test_keep_warm_depr():
             @method()
             def bar(self):
                 ...
+
+    with app.run(client=client):
+        with pytest.raises(modal.exception.InvalidError, match="keep_warm"):
+            ClsWithKeepWarmMethod().bar.keep_warm(2)  # should not be usable on methods
+
+
+def test_cls_keep_warm(client, servicer):
+    app = App()
+
+    @app.cls(serialized=True)
+    class ClsWithMethod:
+        def __init__(self, arg=None):
+            self.arg = arg
+
+        @method()
+        def bar(self):
+            ...
+
+    with app.run(client=client):
+        assert len(servicer.app_functions) == 2  # class service function + method placeholder
+        cls_fun = servicer.function_by_name("ClsWithMethod.*")
+        method_placeholder_fun = servicer.function_by_name(
+            "ClsWithMethod.bar"
+        )  # there should be no containers at all for methods
+        assert cls_fun.is_class
+        assert method_placeholder_fun.is_method
+        assert cls_fun.warm_pool_size == 0
+        assert method_placeholder_fun.warm_pool_size == 0
+
+        ClsWithMethod().keep_warm(2)
+        assert cls_fun.warm_pool_size == 2
+        assert method_placeholder_fun.warm_pool_size == 0
+
+        ClsWithMethod("other-instance").keep_warm(5)
+        instance_service_function = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
+        assert len(servicer.app_functions) == 3  # + instance service function
+        assert cls_fun.warm_pool_size == 2
+        assert method_placeholder_fun.warm_pool_size == 0
+        assert instance_service_function.warm_pool_size == 5
 
 
 class ClsWithHandlers:

@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import inspect
+import textwrap
 import time
 import warnings
 from dataclasses import dataclass
@@ -353,8 +354,9 @@ class _Function(_Object, type_prefix="fu"):
         Creates a function placeholder function that binds a specific method name to
         this function for use when invoking the function.
 
-        Should only be used on "class functions". For "instance functions", we don't create an actual backend function,
-        and instead do client-side "fake-hydration" only, see _bind_instance_method
+        Should only be used on "class service functions". For "instance service functions",
+        we don't create an actual backend function, and instead do client-side "fake-hydration"
+        only, see _bind_instance_method
         """
         assert self._info  # has to be a local function to be able to "bind" it
         serialized = self._info.is_serialized()
@@ -430,7 +432,7 @@ class _Function(_Object, type_prefix="fu"):
     def _bind_instance_method(self, class_bound_method: "_Function"):
         """mdmd:hidden
 
-        Binds an instance-bound function (a "class function" with an instance object) to a specific method.
+        Binds an "instance service function" to a specific method.
         This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
         it does it forward invocations to the underlying instance_bound_class_function with the specified method,
         and we don't support web_config for parameterized methods at the moment.
@@ -532,7 +534,7 @@ class _Function(_Object, type_prefix="fu"):
                     f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
                 )
         else:
-            # must be a "class function"
+            # must be a "class service function"
             assert info.cls
             assert not webhook_config
             assert not schedule
@@ -871,7 +873,7 @@ class _Function(_Object, type_prefix="fu"):
         obj._app = app  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
-        obj._is_method = bool(info.cls)
+        obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
 
         # Used to check whether we should rebuild an image using run_function
@@ -903,10 +905,10 @@ class _Function(_Object, type_prefix="fu"):
             if self._parent is None:
                 raise ExecutionError("Can't find the parent class' service function")
             try:
-                identity = f"base {self._parent.info.function_name} function"
+                identity = f"{self._parent.info.function_name} class service function"
             except Exception:
                 # Can't always look up the function name that way, so fall back to generic message
-                identity = "base function for parameterized class"
+                identity = "class service function for a parameterized class"
             if not self._parent.is_hydrated:
                 if self._parent.app._running_app is None:
                     reason = ", because the App it is defined on is not running."
@@ -942,7 +944,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._info = self._info
         fun._obj = obj
         fun._is_generator = self._is_generator  # TODO(elias): remove - this doesn't apply to "service functions"
-        fun._is_method = True  # TODO(elias): remove - this doesn't apply to "service functions"
+        fun._is_method = False
         fun._parent = self
         return fun
 
@@ -960,10 +962,19 @@ class _Function(_Object, type_prefix="fu"):
 
         # Usage on a parametrized function.
         Model = modal.Cls.lookup("my-app", "Model")
-        Model("fine-tuned-model").inference.keep_warm(2)
+        Model("fine-tuned-model").keep_warm(2)
         ```
         """
-        # TODO(elias): Raise exception when used on methods, add equivalent on classes
+        if self._is_method:
+            raise InvalidError(
+                textwrap.dedent(
+                    """
+                The `.keep_warm()` method can no longer be used on Modal class methods.
+                For classes, all methods now share the same set of containers.
+                Use class_instance.keep_warm(...) instead for classes.
+            """
+                )
+            )
         assert self._client and self._client.stub
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(
             function_id=self._object_id, warm_pool_size_override=warm_pool_size

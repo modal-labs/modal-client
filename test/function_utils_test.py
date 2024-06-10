@@ -118,7 +118,7 @@ class Foo:
 
 
 def test_serialized_function_for_class():
-    # The serialized function for the "class function" itself
+    # The serialized function for the "service function" itself
     # should be a dict of all the _PartialFunction modal methods of
     # the class, to be used within the container entrypoint
     info = FunctionInfo(None, cls=Foo, serialized=True)

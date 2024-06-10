@@ -73,7 +73,7 @@ def is_async(function):
 class FunctionInfo:
     """Class that helps us extract a bunch of information about a function."""
 
-    raw_f: Optional[Callable[..., Any]]  # if None - this is a "class function"
+    raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
     cls: Optional[Type[Any]]
     definition_type: "api_pb2.Function.DefinitionType.ValueType"
@@ -185,7 +185,7 @@ class FunctionInfo:
             logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
             return serialized_bytes
         else:
-            # "class function" - needs to serialize every partial function into a dict
+            # "class service function" - needs to serialize every partial function into a dict
             # we can't use the serialized_class attribute since that will have each method
             # serialized as a Function which is a thin Modal Object, not containing any code and specs
             # other than the object id and hydration metadata

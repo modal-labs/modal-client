@@ -549,7 +549,9 @@ class _App:
             f: Union[_PartialFunction, Callable[..., Any], None],
             _cls: Optional[type] = None,  # deprecated - TODO: remove
         ) -> _Function:
-            assert not _cls  # Should not be used anymore - methods are now placeholders referencing the class function
+            assert (
+                not _cls
+            )  # Should not be used anymore - methods are now placeholders referencing the class service function
             nonlocal keep_warm, is_generator
 
             # Check if the decorated object is a class

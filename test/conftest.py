@@ -16,7 +16,7 @@ import threading
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple, get_args
+from typing import Any, Dict, Iterator, List, Optional, Tuple, get_args
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -131,8 +131,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.precreated_functions = set()
 
-        self.app_functions = {}
+        self.app_functions: Dict[str, api_pb2.Function] = {}
         self.bound_functions: Dict[Tuple[str, bytes], str] = {}
+        self.function_params: Dict[str, Tuple[Tuple, Dict[str, Any]]] = {}
         self.fcidx = 0
 
         self.function_serialized = None
@@ -189,6 +190,25 @@ class MockClientServicer(api_grpc.ModalClientBase):
         """Decorator for setting the function that will be called for any FunctionGetOutputs calls"""
         self._function_body = func
         return func
+
+    def function_by_name(self, name: str, params: Optional[Tuple[Tuple, Dict[str, Any]]] = None) -> api_pb2.Function:
+        matches = []
+        all_names = []
+        for function_id, fun in self.app_functions.items():
+            all_names.append(fun.function_name)
+            if fun.function_name != name:
+                continue
+            if fun.is_class and params:
+                if self.function_params.get(function_id, ((), {})) != params:
+                    continue
+
+            matches.append(fun)
+        if len(matches) == 1:
+            return matches[0]
+
+        if len(matches) > 1:
+            raise ValueError("More than 1 matching function")
+        raise ValueError(f"No function with name {name=} {params=} ({all_names=})")
 
     def container_heartbeat_return_now(self, response: api_pb2.ContainerHeartbeatResponse):
         self.container_heartbeat_response = response
@@ -553,9 +573,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         bound_func = api_pb2.Function()
         bound_func.CopyFrom(base_function)
-        bound_func.function_name += "(parametrized)"  # hack
         self.app_functions[function_id] = bound_func
         self.bound_functions[(request.function_id, request.serialized_params)] = function_id
+        from modal._serialization import deserialize
+
+        self.function_params[function_id] = deserialize(request.serialized_params, None)
 
         await stream.send_message(
             api_pb2.FunctionBindParamsResponse(
@@ -637,7 +659,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             self.n_functions += 1
             function_id = f"fu-{self.n_functions}"
-            print("Creating without existing id", request.function.function_name, function_id)
         if request.schedule:
             self.function2schedule[function_id] = request.schedule
         function = api_pb2.Function()
@@ -793,6 +814,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for chunk in req.data_chunks:
             await self.fc_data_out[req.function_call_id].put(chunk)
         await stream.send_message(Empty())
+
+    async def FunctionUpdateSchedulingParams(self, stream):
+        req: api_pb2.FunctionUpdateSchedulingParamsRequest = await stream.recv_message()
+        # update function definition
+        self.app_functions[req.function_id].warm_pool_size = req.warm_pool_size_override  # hacky
+        await stream.send_message(api_pb2.FunctionUpdateSchedulingParamsResponse())
 
     ### Image
 

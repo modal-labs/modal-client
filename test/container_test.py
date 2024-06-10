@@ -830,7 +830,6 @@ def test_cli(unix_servicer):
 @skip_github_non_linux
 def test_function_sibling_hydration(unix_servicer):
     deploy_app_externally(unix_servicer, "test.supports.functions", "app", capture_output=False)
-    print("Deployed")
     ret = _run_container(unix_servicer, "test.supports.functions", "check_sibling_hydration")
     assert _unwrap_scalar(ret) is None
 

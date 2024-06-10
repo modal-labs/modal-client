@@ -51,6 +51,7 @@ class _Obj:
     _entered: bool
     _local_obj: Any
     _local_obj_constr: Optional[Callable[[], Any]]
+    _instance_service_function: _Function
 
     def __init__(
         self,
@@ -70,9 +71,11 @@ class _Obj:
 
         self._functions = {}
         # first create the singular object function used by all methods on this parameterization
-        instance_function = class_function._bind_parameters(self, from_other_workspace, options, args, kwargs)
+        self._instance_service_function = class_function._bind_parameters(
+            self, from_other_workspace, options, args, kwargs
+        )
         for method_name, class_bound_method in classbound_methods.items():
-            method = instance_function._bind_instance_method(class_bound_method)
+            method = self._instance_service_function._bind_instance_method(class_bound_method)
             method._set_output_mgr(output_mgr)
             self._functions[method_name] = method
 
@@ -84,6 +87,23 @@ class _Obj:
             self._local_obj_constr = lambda: user_cls(*args, **kwargs)
         else:
             self._local_obj_constr = None
+
+    async def keep_warm(self: "_Cls", warm_pool_size: int) -> None:
+        """Set the warm pool size for the class containers
+
+        Please exercise care when using this advanced feature!
+        Setting and forgetting a warm pool on functions can lead to increased costs.
+
+        Note that all Modal methods and web endpoints of a class share the same set
+        of containers and the warm_pool_size affects that common container pool.
+
+        ```python
+        # Usage on a parametrized function.
+        Model = modal.Cls.lookup("my-app", "Model")
+        Model("fine-tuned-model").keep_warm(2)
+        ```
+        """
+        await self._instance_service_function.keep_warm(warm_pool_size)
 
     def get_obj(self):
         """Constructs obj without any caching. Used by container entrypoint."""
@@ -184,7 +204,7 @@ class _Cls(_Object, type_prefix="cs"):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
 
         if metadata.class_function_id:
-            # we don't have any hydration metadata on "class function" themselves at the moment
+            # we don't have any hydration metadata on "service function" themselves
             if self._class_function:
                 self._class_function._hydrate(
                     metadata.class_function_id, self._client, metadata.class_function_metadata
