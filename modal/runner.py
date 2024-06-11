@@ -106,7 +106,7 @@ async def _create_all_objects(
     new_app_state: int,
     environment_name: str,
     output_mgr: Optional[OutputManager] = None,
-) -> None:  # api_pb2.AppState.V
+) -> None:
     """Create objects that have been defined but not created on the server."""
     if not client.authenticated:
         raise ExecutionError("Objects cannot be created with an unauthenticated client")
