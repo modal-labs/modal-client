@@ -31,8 +31,7 @@ class _CloudBucketMount:
         # Required: specify the secret access key of your AWS account
         "AWS_SECRET_ACCESS_KEY": "...",
         # Optional: specify the region of your S3 bucket.
-        # This should resolve issues involving the container running on
-        # a worker in one region while the bucket is in another region.
+        # This can help when automatic detection of the bucket region fails.
         "AWS_REGION": "...",
     })
     @app.function(
