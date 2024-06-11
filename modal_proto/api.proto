@@ -1057,6 +1057,9 @@ message FunctionGetOutputsItem {
   string input_id = 3;
   int32 gen_index = 4;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 5; // for result.data_oneof
+  string task_id = 6;
+  double input_started_at = 7;
+  double output_created_at = 8;
 }
 
 message FunctionGetOutputsRequest {
