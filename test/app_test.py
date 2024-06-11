@@ -28,21 +28,9 @@ async def test_kwargs(servicer, client):
 
 @pytest.mark.asyncio
 async def test_attrs(servicer, client):
-    # Create some objects
-    Dict.lookup("xyz", create_if_missing=True, client=client)
-    Queue.lookup("xyz", create_if_missing=True, client=client)
-
-    # Test stub assignment
     app = App()
-    with pytest.warns(DeprecationError):
+    with pytest.raises(DeprecationError):
         app.d = Dict.from_name("xyz")
-        app.q = Queue.from_name("xyz")
-    async with app.run(client=client):
-        with pytest.warns(DeprecationError):
-            await app.d.put.aio("foo", "bar")  # type: ignore
-            await app.q.put.aio("baz")  # type: ignore
-            assert await app.d.get.aio("foo") == "bar"  # type: ignore
-            assert await app.q.get.aio() == "baz"  # type: ignore
 
 
 def square(x):

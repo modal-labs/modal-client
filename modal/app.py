@@ -247,16 +247,12 @@ class _App:
             d[x] = y  # Refer to d in global scope
         ```
         """
-        deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
-        return self._indexed_objects[tag]
+        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
 
     def __setitem__(self, tag: str, obj: _Object):
-        deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
-        self._validate_blueprint_value(tag, obj)
-        # Deprecated ?
-        self._add_object(tag, obj)
+        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
 
-    def __getattr__(self, tag: str) -> _Object:
+    def __getattr__(self, tag: str):
         # TODO(erikbern): remove this method later
         assert isinstance(tag, str)
         if tag.startswith("__"):
@@ -265,9 +261,7 @@ class _App:
         if tag not in self._indexed_objects:
             # Primarily to make hasattr work
             raise AttributeError(f"App has no member {tag}")
-        obj: _Object = self._indexed_objects[tag]
-        deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
-        return obj
+        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
 
     def __setattr__(self, tag: str, obj: _Object):
         # TODO(erikbern): remove this method later
@@ -278,9 +272,7 @@ class _App:
         elif tag == "image":
             self._image = obj
         else:
-            self._validate_blueprint_value(tag, obj)
-            deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
-            self._add_object(tag, obj)
+            deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
 
     @property
     def image(self) -> _Image:
