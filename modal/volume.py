@@ -26,7 +26,7 @@ import aiostream
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_warning
+from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_error, deprecation_warning
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -42,7 +42,6 @@ from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
-from .exception import deprecation_error
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 # Max duration for uploading to volumes files
@@ -80,7 +79,10 @@ class FileEntry:
     def __getattr__(self, name: str):
         deprecation_error(
             (2024, 4, 15),
-            f"The FileEntry dataclass was introduced to replace a private Protobuf message. This dataclass does not have the {name} attribute.",
+            (
+                f"The FileEntry dataclass was introduced to replace a private Protobuf message. "
+                f"This dataclass does not have the {name} attribute."
+            ),
         )
 
 
@@ -136,27 +138,12 @@ class _Volume(_Object, type_prefix="vo"):
         self._lock = asyncio.Lock()
 
     @staticmethod
-    def new() -> "_Volume":
+    def new():
         """`Volume.new` is deprecated.
 
         Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes.
         """
-        deprecation_warning((2024, 3, 20), Volume.new.__doc__)
-
-        async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
-            status_row = resolver.add_status_row()
-            if existing_object_id:
-                # Volume already exists; do nothing.
-                self._hydrate(existing_object_id, resolver.client, None)
-                return
-
-            status_row.message("Creating volume...")
-            req = api_pb2.VolumeCreateRequest(app_id=resolver.app_id)
-            resp = await retry_transient_errors(resolver.client.stub.VolumeCreate, req)
-            status_row.finish("Created volume.")
-            self._hydrate(resp.volume_id, resolver.client, None)
-
-        return _Volume._from_loader(_load, "Volume()")
+        deprecation_error((2024, 3, 20), Volume.new.__doc__)
 
     @staticmethod
     def from_name(
@@ -164,6 +151,7 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
+        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
         """Create a reference to a persisted volume. Optionally create it lazily.
 
@@ -190,6 +178,7 @@ class _Volume(_Object, type_prefix="vo"):
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+                version=version,
             )
             response = await resolver.client.stub.VolumeGetOrCreate(req)
             self._hydrate(response.volume_id, resolver.client, None)
@@ -202,6 +191,7 @@ class _Volume(_Object, type_prefix="vo"):
         cls: Type["_Volume"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
+        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Volume"]:
         """Creates a new ephemeral volume within a context manager:
@@ -220,6 +210,7 @@ class _Volume(_Object, type_prefix="vo"):
         request = api_pb2.VolumeGetOrCreateRequest(
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
             environment_name=_get_environment_name(environment_name),
+            version=version,
         )
         response = await client.stub.VolumeGetOrCreate(request)
         async with TaskContext() as tc:
@@ -233,10 +224,9 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
-    ) -> "_Volume":
+    ):
         """Deprecated! Use `Volume.from_name(name, create_if_missing=True)`."""
-        deprecation_warning((2024, 3, 1), _Volume.persisted.__doc__)
-        return _Volume.from_name(label, namespace, environment_name, create_if_missing=True)
+        deprecation_error((2024, 3, 1), _Volume.persisted.__doc__)
 
     @staticmethod
     async def lookup(
@@ -245,6 +235,7 @@ class _Volume(_Object, type_prefix="vo"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
+        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
         """Lookup a volume with a given name
 
@@ -254,7 +245,11 @@ class _Volume(_Object, type_prefix="vo"):
         ```
         """
         obj = _Volume.from_name(
-            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+            label,
+            namespace=namespace,
+            environment_name=environment_name,
+            create_if_missing=create_if_missing,
+            version=version,
         )
         if client is None:
             client = await _Client.from_env()
@@ -268,8 +263,10 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
+        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> str:
         """mdmd:hidden"""
+        check_object_name(deployment_name, "Volume", warn=True)
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.VolumeGetOrCreateRequest(
@@ -277,6 +274,7 @@ class _Volume(_Object, type_prefix="vo"):
             namespace=namespace,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+            version=version,
         )
         resp = await retry_transient_errors(client.stub.VolumeGetOrCreate, request)
         return resp.volume_id
@@ -345,14 +343,21 @@ class _Volume(_Object, type_prefix="vo"):
         # This allows us to remove the server shim after 0.62 is no longer supported.
         deprecation = deprecation_warning if (major_number, minor_number) <= (0, 62) else deprecation_error
         if path.endswith("**"):
+            msg = (
+                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
+                "Please pass recursive=True instead. For the CLI, just remove the glob suffix."
+            )
             deprecation(
                 (2024, 4, 23),
-                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please pass recursive=True instead. For the CLI, just remove the glob suffix.",
+                msg,
             )
         elif path.endswith("*"):
             deprecation(
                 (2024, 4, 23),
-                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. Please remove the glob `*` suffix.",
+                (
+                    "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
+                    "Please remove the glob `*` suffix."
+                ),
             )
 
         req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)

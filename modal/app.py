@@ -120,6 +120,7 @@ class _App:
     _description: Optional[str]
     _indexed_objects: Dict[str, _Object]
     _function_mounts: Dict[str, _Mount]
+    _image: Optional[_Image]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
     _volumes: Dict[Union[str, PurePosixPath], _Volume]
@@ -174,11 +175,8 @@ class _App:
             self._validate_blueprint_value(k, v)
 
         self._indexed_objects = kwargs
-        if image is not None:
-            self._indexed_objects["image"] = image  # backward compatibility since "image" used to be on the blueprint
-
+        self._image = image
         self._mounts = mounts
-
         self._secrets = secrets
         self._volumes = volumes
         self._local_entrypoints = {}
@@ -278,7 +276,7 @@ class _App:
         if tag in self.__annotations__:
             object.__setattr__(self, tag, obj)
         elif tag == "image":
-            self._indexed_objects["image"] = obj
+            self._image = obj
         else:
             self._validate_blueprint_value(tag, obj)
             deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
@@ -286,13 +284,11 @@ class _App:
 
     @property
     def image(self) -> _Image:
-        # Exists to get the type inference working for `app.image`
-        # Will also keep this one after we remove [get/set][item/attr]
-        return self._indexed_objects["image"]
+        return self._image
 
     @image.setter
     def image(self, value):
-        self._indexed_objects["image"] = value
+        self._image = value
 
     def _uncreate_all_objects(self):
         # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
@@ -343,8 +339,8 @@ class _App:
             yield self
 
     def _get_default_image(self):
-        if "image" in self._indexed_objects:
-            return self._indexed_objects["image"]
+        if self._image:
+            return self._image
         else:
             return _default_image
 
@@ -364,7 +360,8 @@ class _App:
                 if not is_notebook():
                     logger.warning(
                         f"Warning: Tag '{function.tag}' collision!"
-                        f" Overriding existing function [{old_function._info.module_name}].{old_function._info.function_name}"
+                        " Overriding existing function "
+                        f"[{old_function._info.module_name}].{old_function._info.function_name}"
                         f" with new function [{function._info.module_name}].{function._info.function_name}"
                     )
             else:
@@ -445,7 +442,8 @@ class _App:
         **Parsing Arguments**
 
         If your entrypoint function take arguments with primitive types, `modal run` automatically parses them as
-        CLI options. For example, the following function can be called with `modal run app_module.py --foo 1 --bar "hello"`:
+        CLI options.
+        For example, the following function can be called with `modal run app_module.py --foo 1 --bar "hello"`:
 
         ```python
         @app.local_entrypoint()
@@ -453,8 +451,8 @@ class _App:
             some_modal_function.call(foo, bar)
         ```
 
-        Currently, `str`, `int`, `float`, `bool`, and `datetime.datetime` are supported. Use `modal run app_module.py --help` for more
-        information on usage.
+        Currently, `str`, `int`, `float`, `bool`, and `datetime.datetime` are supported.
+        Use `modal run app_module.py --help` for more information on usage.
 
         """
         if _warn_parentheses_missing:
@@ -491,14 +489,15 @@ class _App:
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[
-            Union[int, Tuple[int, int]]
-        ] = None,  # Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        # Specify, in MiB, a memory request which is the minimum memory required.
+        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[
             int
-        ] = None,  # An optional maximum number of concurrent containers running the function (use keep_warm for minimum).
+        ] = None,  # An optional maximum number of concurrent containers running the function (keep_warm sets minimum).
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
@@ -514,14 +513,14 @@ class _App:
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
-        max_inputs: Optional[
-            int
-        ] = None,  # Maximum number of inputs a container should handle before shutting down. With `max_inputs = 1`, containers will be single-use.
+        # Maximum number of inputs a container should handle before shutting down.
+        # With `max_inputs = 1`, containers will be single-use.
+        max_inputs: Optional[int] = None,
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
-        _allow_background_volume_commits: bool = False,  # Experimental flag
+        _allow_background_volume_commits: Optional[bool] = None,
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
         _experimental_scheduler_placement: Optional[
@@ -580,7 +579,8 @@ class _App:
 
             if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
                 raise InvalidError(
-                    "`app.function` on methods is not allowed. See https://modal.com/docs/guide/lifecycle-functions instead"
+                    "`app.function` on methods is not allowed. "
+                    "See https://modal.com/docs/guide/lifecycle-functions instead"
                 )
 
             if is_generator is None:
@@ -605,14 +605,15 @@ class _App:
                 network_file_systems=network_file_systems,
                 allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
+                cpu=cpu,
                 memory=memory,
+                ephemeral_disk=ephemeral_disk,
                 proxy=proxy,
                 retries=retries,
                 concurrency_limit=concurrency_limit,
                 allow_concurrent_inputs=allow_concurrent_inputs,
                 container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
-                cpu=cpu,
                 keep_warm=keep_warm,
                 cloud=cloud,
                 webhook_config=webhook_config,
@@ -648,9 +649,10 @@ class _App:
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[
-            Union[int, Tuple[int, int]]
-        ] = None,  # Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        # Specify, in MiB, a memory request which is the minimum memory required.
+        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
@@ -663,10 +665,10 @@ class _App:
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
-        _allow_background_volume_commits: bool = False,
-        max_inputs: Optional[
-            int
-        ] = None,  # Limits the number of inputs a container handles before shutting down. Use `max_inputs = 1` for single-use containers.
+        _allow_background_volume_commits: Optional[bool] = None,
+        # Limits the number of inputs a container handles before shutting down.
+        # Use `max_inputs = 1` for single-use containers.
+        max_inputs: Optional[int] = None,
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
@@ -692,6 +694,7 @@ class _App:
             volumes=volumes,
             cpu=cpu,
             memory=memory,
+            ephemeral_disk=ephemeral_disk,
             proxy=proxy,
             retries=retries,
             concurrency_limit=concurrency_limit,
@@ -747,14 +750,14 @@ class _App:
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[
-            Union[int, Tuple[int, int]]
-        ] = None,  # Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        # Specify, in MiB, a memory request which is the minimum memory required.
+        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
         block_network: bool = False,  # Whether to block network access
         volumes: Dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
-        ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
-        _allow_background_volume_commits: bool = False,
+        ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
+        _allow_background_volume_commits: Optional[bool] = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
         _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
         _experimental_scheduler_placement: Optional[
@@ -763,7 +766,8 @@ class _App:
     ) -> _Sandbox:
         """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
 
-        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandbox), which can be used to interact with the running sandbox.
+        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandbox),
+        which can be used to interact with the running sandbox.
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
@@ -773,6 +777,14 @@ class _App:
             client = self._client
         else:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
+
+        if _allow_background_volume_commits is False:
+            deprecation_warning(
+                (2024, 5, 13),
+                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+            )
+        elif _allow_background_volume_commits is None:
+            _allow_background_volume_commits = True
 
         # TODO(erikbern): pulling a lot of app internals here, let's clean up shortly
         resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
@@ -827,7 +839,8 @@ class _App:
             existing_object = self._indexed_objects.get(tag)
             if existing_object and existing_object != object:
                 logger.warning(
-                    f"Named app object {tag} with existing value {existing_object} is being overwritten by a different object {object}"
+                    f"Named app object {tag} with existing value {existing_object} is being "
+                    f"overwritten by a different object {object}"
                 )
 
             self._add_object(tag, object)
@@ -848,7 +861,6 @@ class _Stub(_App):
             (2024, 4, 29),
             'The use of "Stub" has been deprecated in favor of "App".'
             " This is a pure name change with no other implications.",
-            pending=True,
         )
         return _App(*args, **kwargs)
 

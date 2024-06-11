@@ -52,7 +52,8 @@ def import_file_or_module(file_or_module: str):
         sys.path.insert(0, "")  # "" means the current working directory
 
     if file_or_module.endswith(".py"):
-        # when using a script path, that scripts directory should also be on the path as it is with `python some/script.py`
+        # when using a script path, that scripts directory should also be on the path as it is
+        # with `python some/script.py`
         full_path = Path(file_or_module).resolve()
         sys.path.insert(0, str(full_path.parent))
 
@@ -125,7 +126,6 @@ def get_by_object_path_try_possible_app_names(obj: Any, obj_path: Optional[str])
                 (2024, 5, 1),
                 "The symbol `app` is not present but `stub` is. This will not work in future"
                 " Modal versions. Suggestion: change the name of `stub` to `app`.",
-                pending=True
             )
             return stub
         else:
@@ -192,7 +192,8 @@ def _show_no_auto_detectable_app(app_ref: ImportRef) -> None:
 
     if object_path is None:
         guidance_msg = (
-            f"Expected to find an app variable named **`{DEFAULT_APP_NAME}`** (the default app name). If your `modal.App` is named differently, "
+            f"Expected to find an app variable named **`{DEFAULT_APP_NAME}`** (the default app name). "
+            "If your `modal.App` is named differently, "
             "you must specify it in the app ref argument. "
             f"For example an App variable `app_2 = modal.App()` in `{import_path}` would "
             f"be specified as `{import_path}::app_2`."
@@ -223,11 +224,13 @@ def _show_function_ref_help(app_ref: ImportRef, base_cmd: str) -> None:
     error_console = Console(stderr=True)
     if object_path:
         error_console.print(
-            f"[bold red]Could not find Modal function or local entrypoint '{object_path}' in '{import_path}'.[/bold red]"
+            f"[bold red]Could not find Modal function or local entrypoint"
+            f" '{object_path}' in '{import_path}'.[/bold red]"
         )
     else:
         error_console.print(
-            f"[bold red]No function was specified, and no [green]`app`[/green] variable could be found in '{import_path}'.[/bold red]"
+            f"[bold red]No function was specified, and no [green]`app`[/green] variable "
+            f"could be found in '{import_path}'.[/bold red]"
         )
     guidance_msg = f"""
 Usage:

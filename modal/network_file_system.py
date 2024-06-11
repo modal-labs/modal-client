@@ -18,7 +18,7 @@ from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
-from .exception import deprecation_warning
+from .exception import deprecation_error
 from .object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -89,31 +89,13 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     """
 
     @staticmethod
-    def new(cloud: Optional[str] = None) -> "_NetworkFileSystem":
+    def new(cloud: Optional[str] = None):
         """`NetworkFileSystem.new` is deprecated.
 
         Please use `NetworkFileSystem.from_name` (for persisted) or `NetworkFileSystem.ephemeral`
         (for ephemeral) network filesystems.
         """
-        deprecation_warning((2024, 3, 20), NetworkFileSystem.new.__doc__)
-
-        async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
-            status_row = resolver.add_status_row()
-            if existing_object_id:
-                # Volume already exists; do nothing.
-                self._hydrate(existing_object_id, resolver.client, None)
-                return
-
-            if cloud:
-                deprecation_warning((2024, 1, 17), "Argument `cloud` is deprecated (has no effect).")
-
-            status_row.message("Creating network file system...")
-            req = api_pb2.SharedVolumeCreateRequest(app_id=resolver.app_id)
-            resp = await retry_transient_errors(resolver.client.stub.SharedVolumeCreate, req)
-            status_row.finish("Created network file system.")
-            self._hydrate(resp.shared_volume_id, resolver.client, None)
-
-        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
+        deprecation_error((2024, 3, 20), NetworkFileSystem.new.__doc__)
 
     @staticmethod
     def from_name(
@@ -185,10 +167,9 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
-    ) -> "_NetworkFileSystem":
+    ):
         """Deprecated! Use `NetworkFileSystem.from_name(name, create_if_missing=True)`."""
-        deprecation_warning((2024, 3, 1), _NetworkFileSystem.persisted.__doc__)
-        return _NetworkFileSystem.from_name(label, namespace, environment_name, create_if_missing=True)
+        deprecation_error((2024, 3, 1), _NetworkFileSystem.persisted.__doc__)
 
     def persist(
         self,
@@ -197,9 +178,9 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ):
-        """`NetworkFileSystem().persist("my-volume")` is deprecated. Use `NetworkFileSystem.from_name("my-volume", create_if_missing=True)` instead."""
-        deprecation_warning((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
-        return self.persisted(label, namespace, environment_name, cloud)
+        """`NetworkFileSystem().persist("my-volume")` is deprecated.
+        Use `NetworkFileSystem.from_name("my-volume", create_if_missing=True)` instead."""
+        deprecation_error((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
 
     @staticmethod
     async def lookup(
@@ -233,6 +214,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
     ) -> str:
         """mdmd:hidden"""
+        check_object_name(deployment_name, "NetworkFileSystem", warn=True)
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(
@@ -302,7 +284,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)
         * Passing a file path returns a list containing only that file's listing description
-        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        * Passing a glob path (including at least one * or ** sequence) returns all files matching
+        that glob path (using absolute paths)
         """
         req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self.object_id, path=path)
         async for batch in unary_stream(self._client.stub.SharedVolumeListFilesStream, req):
@@ -356,7 +339,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)
         * Passing a file path returns a list containing only that file's listing description
-        * Passing a glob path (including at least one * or ** sequence) returns all files matching that glob path (using absolute paths)
+        * Passing a glob path (including at least one * or ** sequence) returns all files matching
+        that glob path (using absolute paths)
         """
         return [entry async for entry in self.iterdir(path)]
 

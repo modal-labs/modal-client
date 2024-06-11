@@ -35,7 +35,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
                 await messages_from_app.put(
                     {
                         "type": "http.response.body",
-                        "body": b"Missing request, possibly due to cancellation or crash",
+                        "body": b"Missing request, possibly due to expiry or cancellation",
                     }
                 )
             elif scope["type"] == "websocket":
@@ -43,7 +43,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
                     {
                         "type": "websocket.close",
                         "code": 1011,
-                        "reason": "Missing request, possibly due to cancellation or crash",
+                        "reason": "Missing request, possibly due to expiry or cancellation",
                     }
                 )
             await disconnect_app()
@@ -118,7 +118,8 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
                 if pop_task in done:
                     yield pop_task.result()
                 else:
-                    pop_task.cancel()  # clean up the popping task, or we will leak unresolved tasks every loop iteration
+                    # clean up the popping task, or we will leak unresolved tasks every loop iteration
+                    pop_task.cancel()
 
                 if app_task in done:
                     while not messages_from_app.empty():
@@ -136,13 +137,13 @@ def wsgi_app_wrapper(wsgi_app, function_io_manager):
     return asgi_app_wrapper(asgi_app, function_io_manager)
 
 
-def webhook_asgi_app(fn: Callable, method: str):
+def webhook_asgi_app(fn: Callable, method: str, docs: bool):
     """Return a FastAPI app wrapping a function handler."""
     # Pulls in `fastapi` module, which is slow to import.
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
-    app = FastAPI(docs_url=None, redoc_url=None)
+    app = FastAPI(openapi_url="/openapi.json" if docs else None)  # disabling openapi spec disables all docs
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -323,6 +324,8 @@ def web_server_proxy(host: str, port: int):
                 timeout=aiohttp.ClientTimeout(total=3600),
                 auto_decompress=False,
                 read_bufsize=1024 * 1024,  # 1 MiB
+                max_line_size=64 * 1024,  # 64 KiB
+                max_field_size=64 * 1024,  # 64 KiB
             )
 
         try:

@@ -15,7 +15,7 @@ from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
-from .exception import InvalidError, RequestSizeError, deprecation_warning
+from .exception import InvalidError, RequestSizeError, deprecation_error
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
@@ -29,20 +29,23 @@ class _Queue(_Object, type_prefix="qu"):
     **Queue partitions (beta)**
 
     Specifying partition keys gives access to other independent FIFO partitions within the same `Queue` object.
-    Across any two partitions, puts and gets are completely independent. For example, a put in one partition does not affect
-    a get in any other partition.
+    Across any two partitions, puts and gets are completely independent.
+    For example, a put in one partition does not affect a get in any other partition.
 
-    When no partition key is specified (by default), puts and gets will operate on a default partition. This default partition
-    is also isolated from all other partitions. Please see the Usage section below for an example using partitions.
+    When no partition key is specified (by default), puts and gets will operate on a default partition.
+    This default partition is also isolated from all other partitions.
+    Please see the Usage section below for an example using partitions.
 
     **Lifetime of a queue and its partitions**
 
-    By default, each partition is cleared 24 hours after the last `put` operation. A lower TTL can be specified by the `partition_ttl`
-    argument in the `put` or `put_many` methods. Each partition's expiry is handled independently.
+    By default, each partition is cleared 24 hours after the last `put` operation.
+    A lower TTL can be specified by the `partition_ttl` argument in the `put` or `put_many` methods.
+    Each partition's expiry is handled independently.
 
     As such, `Queue`s are best used for communication between active functions and not relied on for persistent storage.
 
-    On app completion or after stopping an app any associated `Queue` objects are cleaned up. All its partitions will be cleared.
+    On app completion or after stopping an app any associated `Queue` objects are cleaned up.
+    All its partitions will be cleared.
 
     **Limits**
 
@@ -89,14 +92,7 @@ class _Queue(_Object, type_prefix="qu"):
 
         Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues.
         """
-        deprecation_warning((2024, 3, 19), Queue.new.__doc__)
-
-        async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
-            request = api_pb2.QueueCreateRequest(app_id=resolver.app_id, existing_queue_id=existing_object_id)
-            response = await resolver.client.stub.QueueCreate(request)
-            self._hydrate(response.queue_id, resolver.client, None)
-
-        return _Queue._from_loader(_load, "Queue()")
+        deprecation_error((2024, 3, 19), Queue.new.__doc__)
 
     def __init__(self):
         """mdmd:hidden"""
@@ -181,10 +177,9 @@ class _Queue(_Object, type_prefix="qu"):
     @staticmethod
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ) -> "_Queue":
+    ):
         """Deprecated! Use `Queue.from_name(name, create_if_missing=True)`."""
-        deprecation_warning((2024, 3, 1), _Queue.persisted.__doc__)
-        return _Queue.from_name(label, namespace, environment_name, create_if_missing=True)
+        deprecation_error((2024, 3, 1), _Queue.persisted.__doc__)
 
     @staticmethod
     async def lookup(

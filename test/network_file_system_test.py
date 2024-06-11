@@ -6,7 +6,6 @@ from unittest import mock
 
 import modal
 from modal.exception import DeprecationError, InvalidError, NotFoundError
-from modal.runner import deploy_app
 
 
 def dummy():
@@ -95,46 +94,6 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
 
         _, blobs = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
-
-
-def test_old_syntax(client, servicer):
-    app = modal.App()
-    with pytest.raises(DeprecationError):
-        app.vol1 = modal.SharedVolume()  # type: ignore  # This is just a post-deprecation husk
-    with pytest.raises(DeprecationError):
-        app.vol2 = modal.SharedVolume.new()
-
-
-def test_redeploy(servicer, client):
-    app = modal.App()
-    with pytest.warns(DeprecationError):
-        n1 = modal.NetworkFileSystem.new()
-        n2 = modal.NetworkFileSystem.new()
-        n3 = modal.NetworkFileSystem.new()
-        app.n1, app.n2, app.n3 = n1, n2, n3
-
-    # Deploy app once
-    deploy_app(app, "my-app", client=client)
-    app1_ids = [n1.object_id, n2.object_id, n3.object_id]
-
-    # Deploy app again
-    deploy_app(app, "my-app", client=client)
-    app2_ids = [n1.object_id, n2.object_id, n3.object_id]
-
-    # Make sure ids are stable
-    assert app1_ids == app2_ids
-
-    # Make sure ids are unique
-    assert len(set(app1_ids)) == 3
-    assert len(set(app2_ids)) == 3
-
-    # Deploy to a different app
-    deploy_app(app, "my-other-app", client=client)
-    app3_ids = [n1.object_id, n2.object_id, n3.object_id]
-
-    # Should be unique and different
-    assert len(set(app3_ids)) == 3
-    assert set(app1_ids) & set(app3_ids) == set()
 
 
 def test_read_file(client, tmp_path, servicer):

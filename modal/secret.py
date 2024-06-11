@@ -136,8 +136,8 @@ class _Secret(_Object, type_prefix="st"):
                 else:
                     dotenv_path = ""
             else:
-                # TODO(erikbern): dotenv tries to locate .env files based on the location of the file in the stack frame.
-                # Since the modal code "intermediates" this, a .env file in the user's local directory won't be picked up.
+                # TODO(erikbern): dotenv tries to locate .env files based on location of the file in the stack frame.
+                # Since the modal code "intermediates" this, a .env file in user's local directory won't be picked up.
                 # To simplify this, we just support the cwd and don't do any automatic path inference.
                 dotenv_path = find_dotenv(filename, usecwd=True)
 
@@ -223,6 +223,7 @@ class _Secret(_Object, type_prefix="st"):
         overwrite: bool = False,
     ) -> str:
         """mdmd:hidden"""
+        check_object_name(deployment_name, "Secret", warn=True)
         if client is None:
             client = await _Client.from_env()
         if overwrite:

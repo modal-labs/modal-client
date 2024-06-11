@@ -13,7 +13,7 @@ from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
-from .exception import RequestSizeError, deprecation_warning
+from .exception import RequestSizeError, deprecation_error
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
@@ -57,23 +57,12 @@ class _Dict(_Object, type_prefix="di"):
     """
 
     @staticmethod
-    def new(data: Optional[dict] = None) -> "_Dict":
+    def new(data: Optional[dict] = None):
         """`Dict.new` is deprecated.
 
         Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts.
         """
-        deprecation_warning((2024, 3, 19), Dict.new.__doc__)
-
-        async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
-            serialized = _serialize_dict(data if data is not None else {})
-            req = api_pb2.DictCreateRequest(
-                app_id=resolver.app_id, data=serialized, existing_dict_id=existing_object_id
-            )
-            response = await resolver.client.stub.DictCreate(req)
-            logger.debug(f"Created dict with id {response.dict_id}")
-            self._hydrate(response.dict_id, resolver.client, None)
-
-        return _Dict._from_loader(_load, "Dict()")
+        deprecation_error((2024, 3, 19), Dict.new.__doc__)
 
     def __init__(self, data={}):
         """mdmd:hidden"""
@@ -111,7 +100,7 @@ class _Dict(_Object, type_prefix="di"):
             environment_name=_get_environment_name(environment_name),
             data=serialized,
         )
-        response = await client.stub.DictGetOrCreate(request)
+        response = await retry_transient_errors(client.stub.DictGetOrCreate, request, total_timeout=10.0)
         async with TaskContext() as tc:
             request = api_pb2.DictHeartbeatRequest(dict_id=response.dict_id)
             tc.infinite_loop(lambda: client.stub.DictHeartbeat(request), sleep=_heartbeat_sleep)
@@ -156,10 +145,9 @@ class _Dict(_Object, type_prefix="di"):
     @staticmethod
     def persisted(
         label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ) -> "_Dict":
+    ):
         """Deprecated! Use `Dict.from_name(name, create_if_missing=True)`."""
-        deprecation_warning((2024, 3, 1), _Dict.persisted.__doc__)
-        return _Dict.from_name(label, namespace, environment_name, create_if_missing=True)
+        deprecation_error((2024, 3, 1), _Dict.persisted.__doc__)
 
     @staticmethod
     async def lookup(

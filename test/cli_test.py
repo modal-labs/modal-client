@@ -10,7 +10,7 @@ import sys
 import tempfile
 import traceback
 from pickle import dumps
-from typing import List, Optional
+from typing import List
 from unittest import mock
 
 import click
@@ -38,7 +38,7 @@ assert mod.app == app
 dummy_other_module_file = "x = 42"
 
 
-def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: Optional[str] = ""):
+def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
     runner = click.testing.CliRunner(mix_stderr=False)
     with mock.patch.object(sys, "argv", args):
         res = runner.invoke(entrypoint_cli, args)
@@ -48,8 +48,10 @@ def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: Optional
         traceback.print_tb(res.exc_info[2])
         print(res.exception, file=sys.stderr)
         assert res.exit_code == expected_exit_code
-    if expected_stderr is not None:
-        assert res.stderr == expected_stderr
+    if expected_stderr:
+        assert re.search(expected_stderr, res.stderr), "stderr does not match expected string"
+    if expected_error:
+        assert re.search(expected_error, str(res.exception)), "exception message does not match expected string"
     return res
 
 
@@ -396,6 +398,7 @@ def mock_shell_pty():
 def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     webhook_app_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
+    cls_app_file = test_dir / "supports" / "app_run_tests" / "cls.py"
     fake_stdin, captured_out = mock_shell_pty
 
     fake_stdin.clear()
@@ -417,6 +420,10 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 
     # Function must be inferred
     _run(["shell", webhook_app_file.as_posix()])
+    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+    captured_out.clear()
+
+    _run(["shell", cls_app_file.as_posix()])
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
     captured_out.clear()
 
@@ -451,7 +458,7 @@ def test_app_descriptions(servicer, server_url_env, test_dir):
     assert "--timeout 0.0" not in description
 
 
-def test_logs(servicer, server_url_env):
+def test_logs(servicer, server_url_env, set_env_client, mock_dir):
     async def app_done(self, stream):
         await stream.recv_message()
         log = api_pb2.TaskLogs(data="hello\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
@@ -460,8 +467,41 @@ def test_logs(servicer, server_url_env):
 
     with servicer.intercept() as ctx:
         ctx.set_responder("AppGetLogs", app_done)
-        res = _run(["app", "logs", "ap-123"], expected_exit_code=0)
+
+        res = _run(["app", "logs", "ap-123"])
         assert res.stdout == "hello\n"
+
+        with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+            res = _run(["deploy", "myapp.py", "--name", "my-app", "--stream-logs"])
+            assert res.stdout.endswith("hello\n")
+
+    _run(
+        ["app", "logs", "app-123", "-n", "my-app"],
+        expected_exit_code=2,
+        expected_stderr="Must pass either an ID or a name",
+    )
+
+    _run(
+        ["app", "logs", "-n", "does-not-exist"],
+        expected_exit_code=1,
+        expected_error="Could not find a deployed app named 'does-not-exist'",
+    )
+
+
+def test_app_stop(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        # Deploy as a module
+        _run(["deploy", "myapp"])
+
+    res = _run(["app", "list"])
+    assert re.search("my_app .+ deployed", res.stdout)
+
+    _run(["app", "stop", "-n", "my_app"])
+
+    # Note that the mock servicer doesn't report "stopped" app statuses
+    # so we just check that it's not reported as deployed
+    res = _run(["app", "list"])
+    assert not re.search("my_app .+ deployed", res.stdout)
 
 
 def test_nfs_get(set_env_client, servicer):
@@ -553,6 +593,33 @@ def test_volume_rm(servicer, set_env_client):
 
         _run(["volume", "rm", vol_name, file_path.decode()])
         _run(["volume", "get", vol_name, file_path.decode()], expected_exit_code=1, expected_stderr=None)
+
+
+def test_volume_ls(servicer, set_env_client):
+    vol_name = "my-test-vol"
+    _run(["volume", "create", vol_name])
+
+    fnames = ["a", "b", "c"]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for fname in fnames:
+            src_path = os.path.join(tmpdir, f"{fname}.txt")
+            with open(src_path, "w") as f:
+                f.write(fname * 5)
+            _run(["volume", "put", vol_name, src_path, f"data/{fname}.txt"])
+
+    res = _run(["volume", "ls", vol_name])
+    assert "data" in res.stdout
+
+    res = _run(["volume", "ls", vol_name, "data"])
+    for fname in fnames:
+        assert f"{fname}.txt" in res.stdout
+
+    res = _run(["volume", "ls", vol_name, "data", "--json"])
+    res_dict = json.loads(res.stdout)
+    assert len(res_dict) == len(fnames)
+    for entry, fname in zip(res_dict, fnames):
+        assert entry["Filename"] == f"data/{fname}.txt"
+        assert entry["Type"] == "file"
 
 
 def test_volume_create_delete(servicer, server_url_env, set_env_client):
@@ -690,6 +757,9 @@ def test_list_apps(servicer, mock_dir, set_env_client):
 
     res = _run(["app", "list"])
     assert "my_app_foo" in res.stdout
+
+    res = _run(["app", "list", "--json"])
+    assert json.loads(res.stdout)
 
     _run(["volume", "create", "my-vol"])
     res = _run(["app", "list"])

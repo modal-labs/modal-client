@@ -220,7 +220,6 @@ class _Cls(_Object, type_prefix="cs"):
         cls._functions = functions
         cls._callables = callables
         cls._from_other_workspace = False
-        setattr(cls._user_cls, "_modal_functions", functions)  # Needed for PartialFunction.__get__
         return cls
 
     @classmethod
@@ -277,7 +276,7 @@ class _Cls(_Object, type_prefix="cs"):
         concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
-        allow_background_volume_commits: bool = False,
+        allow_background_volume_commits: Optional[bool] = None,
     ) -> "_Cls":
         """
         Beta: Allows for the runtime modification of a modal.Cls's configuration.
@@ -300,7 +299,7 @@ class _Cls(_Object, type_prefix="cs"):
         """
         retry_policy = _parse_retries(retries)
         if gpu or cpu or memory:
-            resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu)
+            resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=None)
         else:
             resources = None
 

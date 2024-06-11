@@ -53,14 +53,16 @@ class Retries:
         # The maximum number of retries that can be made in the presence of failures.
         max_retries: int,
         # Coefficent controlling how much the retry delay increases each retry attempt.
-        # A backoff coefficient of 1.0 creates fixed-delay retries where the delay period will always equal the initial delay.
+        # A backoff coefficient of 1.0 creates fixed-delay where the delay period always equals the initial delay.
         backoff_coefficient: float = 2.0,
         # Number of seconds that must elapse before the first retry occurs.
         initial_delay: float = 1.0,
         # Maximum length of retry delay in seconds, preventing the delay from growing infinitely.
         max_delay: float = 60.0,
     ):
-        """Construct a new retries policy, supporting exponential and fixed-interval delays via a backoff coefficient."""
+        """
+        Construct a new retries policy, supporting exponential and fixed-interval delays via a backoff coefficient.
+        """
         if max_retries < 0:
             raise InvalidError(f"Invalid retries number: {max_retries}. Function retries must be non-negative.")
 
@@ -84,7 +86,8 @@ class Retries:
 
         if not 1.0 <= backoff_coefficient <= 10.0:
             raise InvalidError(
-                f"Invalid backoff_coefficient: {backoff_coefficient}. Coefficient must be between 1.0 (fixed-interval backoff) and 10.0"
+                f"Invalid backoff_coefficient: {backoff_coefficient}. "
+                "Coefficient must be between 1.0 (fixed-interval backoff) and 10.0"
             )
 
         self.max_retries = max_retries

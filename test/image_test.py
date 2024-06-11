@@ -28,6 +28,10 @@ from modal_proto import api_pb2
 from .supports.skip import skip_windows
 
 
+def dummy():
+    ...
+
+
 def test_supported_python_series():
     assert SUPPORTED_PYTHON_SERIES == PYTHON_STANDALONE_VERSIONS.keys()
 
@@ -107,9 +111,10 @@ def test_image_base(builder_version, servicer, client, test_dir):
         (Image.micromamba, ()),
     ]
     for meth, args in constructors:
-        app.image = meth(*args)  # type: ignore
+        image = meth(*args)  # type: ignore
+        app.function(image=image)(dummy)
         with app.run(client=client):
-            commands = get_all_dockerfile_commands(app.image.object_id, servicer)
+            commands = get_all_dockerfile_commands(image.object_id, servicer)
             assert "COPY /modal_requirements.txt /modal_requirements.txt" in commands
             if builder_version == "2023.12":
                 assert "pip install -r /modal_requirements.txt" in commands
@@ -124,31 +129,34 @@ def test_python_version(builder_version, servicer, client, python_version):
     expected_python = local_python if python_version is None else python_version
 
     app = App()
-    app.image = Image.debian_slim() if python_version is None else Image.debian_slim(python_version)
+    image = Image.debian_slim() if python_version is None else Image.debian_slim(python_version)
+    app.function(image=image)(dummy)
     expected_dockerhub_python = _dockerhub_python_version(builder_version, expected_python)
     expected_dockerhub_debian = _dockerhub_debian_codename(builder_version)
     assert expected_dockerhub_python.startswith(expected_python)
     with app.run(client):
-        commands = get_all_dockerfile_commands(app.image.object_id, servicer)
+        commands = get_all_dockerfile_commands(image.object_id, servicer)
         assert re.match(rf"FROM python:{expected_dockerhub_python}-slim-{expected_dockerhub_debian}", commands)
 
-    app.image = Image.micromamba() if python_version is None else Image.micromamba(python_version)
+    image = Image.micromamba() if python_version is None else Image.micromamba(python_version)
+    app.function(image=image)(dummy)
     if python_version is None and builder_version == "2023.12":
         expected_python = "3.9"
     with app.run(client):
-        commands = get_all_dockerfile_commands(app.image.object_id, servicer)
+        commands = get_all_dockerfile_commands(image.object_id, servicer)
         assert re.search(rf"install.* python={expected_python}", commands)
 
 
 def test_image_python_packages(builder_version, servicer, client):
     app = App()
-    app.image = (
+    image = (
         Image.debian_slim()
         .pip_install("sklearn[xyz]")
         .pip_install("numpy", "scipy", extra_index_url="https://xyz", find_links="https://abc?q=123", pre=True)
     )
+    app.function(image=image)(dummy)
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        layers = get_image_layers(image.object_id, servicer)
         assert any("pip install 'sklearn[xyz]'" in cmd for cmd in layers[1].dockerfile_commands)
         assert any(
             "pip install numpy scipy --find-links 'https://abc?q=123' --extra-index-url https://xyz --pre" in cmd
@@ -158,11 +166,12 @@ def test_image_python_packages(builder_version, servicer, client):
 
 def test_image_kwargs_validation(builder_version, servicer, client):
     app = App()
-    app.image = Image.debian_slim().run_commands(
+    image = Image.debian_slim().run_commands(
         "echo hi", secrets=[Secret.from_dict({"xyz": "123"}), Secret.from_name("foo")]
     )
+    app.function(image=image)(dummy)
     with pytest.raises(InvalidError):
-        app.image = Image.debian_slim().run_commands(
+        Image.debian_slim().run_commands(
             "echo hi",
             secrets=[
                 Secret.from_dict({"xyz": "123"}),
@@ -171,12 +180,11 @@ def test_image_kwargs_validation(builder_version, servicer, client):
             ],  # Mount is not a valid Secret
         )
 
-    app = App()
-    app.image = Image.debian_slim().copy_local_dir("/", remote_path="/dummy")
-    app.image = Image.debian_slim().copy_mount(Mount.from_name("foo"), remote_path="/dummy")
+    Image.debian_slim().copy_local_dir("/", remote_path="/dummy")
+    Image.debian_slim().copy_mount(Mount.from_name("foo"), remote_path="/dummy")
     with pytest.raises(InvalidError):
         # Secret is not a valid Mount
-        app.image = Image.debian_slim().copy_mount(Secret.from_dict({"xyz": "123"}), remote_path="/dummy")  # type: ignore
+        Image.debian_slim().copy_mount(Secret.from_dict({"xyz": "123"}), remote_path="/dummy")  # type: ignore
 
 
 def test_wrong_type(builder_version, servicer, client):
@@ -197,9 +205,10 @@ def test_image_requirements_txt(builder_version, servicer, client):
     requirements_txt = os.path.join(os.path.dirname(__file__), "supports/test-requirements.txt")
 
     app = App()
-    app.image = Image.debian_slim().pip_install_from_requirements(requirements_txt)
+    image = Image.debian_slim().pip_install_from_requirements(requirements_txt)
+    app.function(image=image)(dummy)
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        layers = get_image_layers(image.object_id, servicer)
 
         assert any("COPY /.requirements.txt /.requirements.txt" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("pip install -r /.requirements.txt" in cmd for cmd in layers[0].dockerfile_commands)
@@ -216,6 +225,7 @@ def test_empty_install(builder_version, servicer, client):
         .run_commands()
         .micromamba_install()
     )
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -224,6 +234,7 @@ def test_empty_install(builder_version, servicer, client):
 
 def test_debian_slim_apt_install(builder_version, servicer, client):
     app = App(image=Image.debian_slim().pip_install("numpy").apt_install("git", "ssh").pip_install("scikit-learn"))
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -237,9 +248,10 @@ def test_image_pip_install_pyproject(builder_version, servicer, client):
     pyproject_toml = os.path.join(os.path.dirname(__file__), "supports/test-pyproject.toml")
 
     app = App()
-    app.image = Image.debian_slim().pip_install_from_pyproject(pyproject_toml)
+    image = Image.debian_slim().pip_install_from_pyproject(pyproject_toml)
+    app.function(image=image)(dummy)
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        layers = get_image_layers(image.object_id, servicer)
 
         print(layers[0].dockerfile_commands)
         assert any("pip install 'banana >=1.2.0' 'potato >=0.1.0'" in cmd for cmd in layers[0].dockerfile_commands)
@@ -249,9 +261,10 @@ def test_image_pip_install_pyproject_with_optionals(builder_version, servicer, c
     pyproject_toml = os.path.join(os.path.dirname(__file__), "supports/test-pyproject.toml")
 
     app = App()
-    app.image = Image.debian_slim().pip_install_from_pyproject(pyproject_toml, optional_dependencies=["dev", "test"])
+    image = Image.debian_slim().pip_install_from_pyproject(pyproject_toml, optional_dependencies=["dev", "test"])
+    app.function(image=image)(dummy)
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        layers = get_image_layers(image.object_id, servicer)
 
         print(layers[0].dockerfile_commands)
         assert any(
@@ -262,9 +275,8 @@ def test_image_pip_install_pyproject_with_optionals(builder_version, servicer, c
 
 
 def test_image_pip_install_private_repos(builder_version, servicer, client):
-    app = App()
     with pytest.raises(InvalidError):
-        app.image = Image.debian_slim().pip_install_private_repos(
+        Image.debian_slim().pip_install_private_repos(
             "github.com/ecorp/private-one@1.0.0",
             git_user="erikbern",
             secrets=[],  # Invalid: missing secret
@@ -276,13 +288,13 @@ def test_image_pip_install_private_repos(builder_version, servicer, client):
     ]
     for invalid_ref in bad_repo_refs:
         with pytest.raises(InvalidError):
-            app.image = Image.debian_slim().pip_install_private_repos(
+            Image.debian_slim().pip_install_private_repos(
                 invalid_ref,
                 git_user="erikbern",
                 secrets=[Secret.from_name("test-gh-read")],
             )
 
-    app.image = Image.debian_slim().pip_install_private_repos(
+    image = Image.debian_slim().pip_install_private_repos(
         "github.com/corp/private-one@1.0.0",
         "gitlab.com/corp2/private-two@0.0.2",
         git_user="erikbern",
@@ -291,9 +303,11 @@ def test_image_pip_install_private_repos(builder_version, servicer, client):
             Secret.from_dict({"GITLAB_TOKEN": "not-a-secret"}),
         ],
     )
+    app = App()
+    app.function(image=image)(dummy)
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        layers = get_image_layers(image.object_id, servicer)
         assert len(layers[0].secret_ids) == 2
         assert any(
             'pip install "git+https://erikbern:$GITHUB_TOKEN@github.com/corp/private-one@1.0.0"' in cmd
@@ -309,6 +323,7 @@ def test_dockerfile_image(builder_version, servicer, client):
     path = os.path.join(os.path.dirname(__file__), "supports/test-dockerfile")
 
     app = App(image=Image.from_dockerfile(path))
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -320,9 +335,10 @@ def test_conda_install(builder_version, servicer, client):
     with pytest.warns(DeprecationError, match="Image.micromamba"):
         image = Image.conda().pip_install("numpy").conda_install("pymc3", "theano").pip_install("scikit-learn")
     app = App(image=image)
+    app.function(image=image)(dummy)
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        layers = get_image_layers(image.object_id, servicer)
 
         assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("conda install pymc3 theano --yes" in cmd for cmd in layers[1].dockerfile_commands)
@@ -335,6 +351,7 @@ def test_conda_update_from_environment(builder_version, servicer, client):
     with pytest.warns(DeprecationError, match="Image.micromamba"):
         app = App(image=Image.conda().conda_update_from_environment(path))
 
+    app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
 
@@ -353,6 +370,7 @@ def test_micromamba_install(builder_version, servicer, client):
         .micromamba_install(spec_file=spec_file)
     )
     app = App(image=image)
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -376,6 +394,7 @@ def test_run_commands(builder_version, servicer, client):
 
     command = "echo 'Hello Modal'"
     app = App(image=base.run_commands(command))
+    app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert layers[0].dockerfile_commands[1] == f"RUN {command}"
@@ -383,6 +402,7 @@ def test_run_commands(builder_version, servicer, client):
     commands = ["echo 'Hello world'", "touch agi.yaml"]
     for image in [base.run_commands(commands), base.run_commands(*commands)]:
         app = App(image=image)
+        app.function()(dummy)
         with app.run(client=client):
             layers = get_image_layers(app.image.object_id, servicer)
             for i, cmd in enumerate(commands, 1):
@@ -391,6 +411,7 @@ def test_run_commands(builder_version, servicer, client):
 
 def test_dockerhub_install(builder_version, servicer, client):
     app = App(image=Image.from_registry("gisops/valhalla:latest", setup_dockerfile_commands=["RUN apt-get update"]))
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -409,6 +430,7 @@ def test_ecr_install(builder_version, servicer, client):
         )
     )
 
+    app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
 
@@ -426,6 +448,7 @@ def test_image_run_function(builder_version, servicer, client):
         Image.debian_slim().pip_install("pandas").run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})])
     )
 
+    app.function()(dummy)
     with app.run(client=client):
         image_id = app.image.object_id
         layers = get_image_layers(image_id, servicer)
@@ -449,6 +472,7 @@ def test_image_run_function(builder_version, servicer, client):
 def test_image_run_function_interactivity(builder_version, servicer, client):
     app = App()
     app.image = Image.debian_slim().pip_install("pandas").run_function(run_f)
+    app.function()(dummy)
 
     from modal.runner import run_app
 
@@ -476,6 +500,7 @@ def test_image_run_function_globals(builder_version, servicer, client):
 
     app = App()
     app.image = Image.debian_slim().run_function(run_f_globals)
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -505,6 +530,7 @@ def run_f_unserializable_globals():
 def test_image_run_unserializable_function(builder_version, servicer, client):
     app = App()
     app.image = Image.debian_slim().run_function(run_f_unserializable_globals)
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -519,6 +545,7 @@ def run_f_with_args(arg, *, kwarg):
 def test_image_run_function_with_args(builder_version, servicer, client):
     app = App()
     app.image = Image.debian_slim().run_function(run_f_with_args, args=("foo",), kwargs={"kwarg": "bar"})
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -543,9 +570,9 @@ def test_poetry(builder_version, servicer, client):
 
     # Build iamge
     app = App()
-    app.image = image
+    app.function(image=image)(dummy)
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        layers = get_image_layers(image.object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
         assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
 
@@ -561,17 +588,20 @@ def tmp_path_with_content(tmp_path):
 def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_content):
     app = App()
     app.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy")
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert "COPY . /dummy" in layers[0].dockerfile_commands
-        assert set(servicer.mount_contents["mo-1"].keys()) == {"/data.txt", "/data/sub"}
+        mount_id = layers[0].context_mount_id
+        assert set(servicer.mount_contents[mount_id].keys()) == {"/data.txt", "/data/sub"}
 
 
 def test_image_docker_command_copy(builder_version, servicer, client, tmp_path_with_content):
     app = App()
     data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
     app.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -588,6 +618,7 @@ def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_
     app = App()
     data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
     app.image = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -598,6 +629,7 @@ def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_
 
 def test_image_env(builder_version, servicer, client):
     app = App(image=Image.debian_slim().env({"HELLO": "world!"}))
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -606,17 +638,20 @@ def test_image_env(builder_version, servicer, client):
 
 def test_image_gpu(builder_version, servicer, client):
     app = App(image=Image.debian_slim().run_commands("echo 0"))
+    app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_UNSPECIFIED
 
     with pytest.warns(DeprecationError):
         app = App(image=Image.debian_slim().run_commands("echo 1", gpu=True))
+        app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_ANY
 
     app = App(image=Image.debian_slim().run_commands("echo 2", gpu=gpu.A10G()))
+    app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_A10G
@@ -625,6 +660,7 @@ def test_image_gpu(builder_version, servicer, client):
 def test_image_force_build(builder_version, servicer, client):
     app = App()
     app.image = Image.debian_slim().run_commands("echo 1").pip_install("foo", force_build=True).run_commands("echo 2")
+    app.function()(dummy)
     with app.run(client=client):
         assert servicer.force_built_images == ["im-3", "im-4"]
 
@@ -634,12 +670,14 @@ def test_image_force_build(builder_version, servicer, client):
         .pip_install("foo", force_build=True)
         .run_commands("echo 2")
     )
+    app.function()(dummy)
     with app.run(client=client):
         assert servicer.force_built_images == ["im-3", "im-4", "im-5", "im-6", "im-7", "im-8"]
 
 
 def test_workdir(builder_version, servicer, client):
     app = App(image=Image.debian_slim().workdir("/foo/bar"))
+    app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
@@ -753,6 +791,8 @@ def test_get_modal_requirements_path(builder_version, python_version):
 
 def test_image_builder_version(servicer, test_dir, modal_config):
     app = App(image=Image.debian_slim())
+    app.function()(dummy)
+
     # TODO use a single with statement and tuple of managers when we drop Py3.8
     test_requirements = str(test_dir / "supports" / "test-requirements.txt")
     with mock.patch("modal.image._get_modal_requirements_path", lambda *_, **__: test_requirements):
@@ -772,6 +812,8 @@ def test_image_builder_version(servicer, test_dir, modal_config):
 
 def test_image_builder_supported_versions(servicer):
     app = App(image=Image.debian_slim())
+    app.function()(dummy)
+
     # TODO use a single with statement and tuple of managers when we drop Py3.8
     with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
         with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
@@ -792,6 +834,7 @@ def force_2023_12(modal_config):
 def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     def get_hash(img: Image) -> str:
         app = App(image=img)
+        app.function()(dummy)
         with app.run(client=client):
             layers = get_image_layers(app.image.object_id, servicer)
             commands = [layer.dockerfile_commands for layer in layers]
@@ -865,6 +908,7 @@ def force_2024_04(modal_config):
 def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     def get_hash(img: Image) -> str:
         app = App(image=img)
+        app.function()(dummy)
         with app.run(client=client):
             layers = get_image_layers(app.image.object_id, servicer)
             commands = [layer.dockerfile_commands for layer in layers]
@@ -932,7 +976,7 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
         spec_file=test_dir / "supports" / "test-conda-environment.yml",
         channels=["conda-forge", "my-channel"],
     )
-    assert get_hash(img) == "cf6c956e7639afb51dcc46d98eb9aabb6472c0751ada28f41d2e7ad88275b9a0"
+    assert get_hash(img) == "d9d4c9fe24769ce587877b9752a64486e8f7d8520731110bd2fa666de82f43fd"
 
     img = base.poetry_install_from_file(
         test_dir / "supports" / "test-pyproject.toml",

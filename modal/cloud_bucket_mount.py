@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
+from .config import logger
 from .secret import _Secret
 
 
@@ -15,7 +16,8 @@ class _CloudBucketMount:
 
     S3 buckets are mounted using [AWS S3 Mountpoint](https://github.com/awslabs/mountpoint-s3).
     S3 mounts are optimized for reading large files sequentially. It does not support every file operation; consult
-    [the AWS S3 Mountpoint documentation](https://github.com/awslabs/mountpoint-s3/blob/main/doc/SEMANTICS.md) for more information.
+    [the AWS S3 Mountpoint documentation](https://github.com/awslabs/mountpoint-s3/blob/main/doc/SEMANTICS.md)
+    for more information.
 
     **AWS S3 Usage**
 
@@ -48,8 +50,8 @@ class _CloudBucketMount:
 
     **Cloudflare R2 Usage**
 
-    Cloudflare R2 is [S3-compatible](https://developers.cloudflare.com/r2/api/s3/api/) so its setup looks very similar to S3.
-    But additionally the `bucket_endpoint_url` argument must be passed.
+    Cloudflare R2 is [S3-compatible](https://developers.cloudflare.com/r2/api/s3/api/) so its setup looks
+    very similar to S3. But additionally the `bucket_endpoint_url` argument must be passed.
 
     ```python
     import subprocess
@@ -76,8 +78,8 @@ class _CloudBucketMount:
     **Google GCS Usage**
 
     Google Cloud Storage (GCS) is partially [S3-compatible](https://cloud.google.com/storage/docs/interoperability).
-    Currently **only `read_only=True`** is supported for GCS buckets. GCS Buckets also require a secret with Google-specific
-    key names (see below) populated with a [HMAC key](https://cloud.google.com/storage/docs/authentication/managing-hmackeys#create).
+    GCS Buckets also require a secret with Google-specific key names (see below) populated with
+    a [HMAC key](https://cloud.google.com/storage/docs/authentication/managing-hmackeys#create).
 
     ```python
     import subprocess
@@ -93,7 +95,6 @@ class _CloudBucketMount:
                 bucket_name="my-gcs-bucket",
                 bucket_endpoint_url="https://storage.googleapis.com",
                 secret=gcp_hmac_secret,
-                read_only=True,  # writing to bucket currently unsupported
             )
         }
     )
@@ -105,6 +106,8 @@ class _CloudBucketMount:
     bucket_name: str
     # Endpoint URL is used to support Cloudflare R2 and Google Cloud Platform GCS.
     bucket_endpoint_url: Optional[str] = None
+
+    key_prefix: Optional[str] = None
 
     # Credentials used to access a cloud bucket.
     # If the bucket is private, the secret **must** contain AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
@@ -127,18 +130,23 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
                 bucket_type = api_pb2.CloudBucketMount.BucketType.R2
             elif parse_result.hostname.endswith("storage.googleapis.com"):
                 bucket_type = api_pb2.CloudBucketMount.BucketType.GCP
-                if not mount.read_only:
-                    raise ValueError(
-                        f"CloudBucketMount of '{mount.bucket_name}' is invalid. Writing to GCP buckets with modal.CloudBucketMount in currently unsupported."
-                    )
             else:
-                raise ValueError(f"Unsupported bucket endpoint hostname '{parse_result.hostname}'")
+                logger.warn(
+                    "CloudBucketMount received unrecognized bucket endpoint URL. "
+                    "Assuming AWS S3 configuration as fallback."
+                )
+                bucket_type = api_pb2.CloudBucketMount.BucketType.S3
         else:
             # just assume S3; this is backwards and forwards compatible.
             bucket_type = api_pb2.CloudBucketMount.BucketType.S3
 
         if mount.requester_pays and not mount.secret:
             raise ValueError("Credentials required in order to use Requester Pays.")
+
+        if mount.key_prefix and not mount.key_prefix.endswith("/"):
+            raise ValueError("key_prefix will be prefixed to all object paths, so it must end in a '/'")
+        else:
+            key_prefix = mount.key_prefix
 
         cloud_bucket_mount = api_pb2.CloudBucketMount(
             bucket_name=mount.bucket_name,
@@ -148,6 +156,7 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
             read_only=mount.read_only,
             bucket_type=bucket_type,
             requester_pays=mount.requester_pays,
+            key_prefix=key_prefix,
         )
         cloud_bucket_mounts.append(cloud_bucket_mount)
 

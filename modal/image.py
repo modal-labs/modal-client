@@ -329,7 +329,9 @@ class _Image(_Object, type_prefix="im"):
                     except Exception:
                         # Skip unserializable values for now.
                         logger.warning(
-                            f"Skipping unserializable global variable {k} for {build_function._get_info().function_name}. Changes to this variable won't invalidate the image."
+                            f"Skipping unserializable global variable {k} for "
+                            f"{build_function._get_info().function_name}. "
+                            "Changes to this variable won't invalidate the image."
                         )
                         continue
                     filtered_globals[k] = v
@@ -474,7 +476,8 @@ class _Image(_Object, type_prefix="im"):
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
         """Copy a file into the image as a part of building it.
 
-        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) in a `Dockerfile`.
+        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
+        works in a `Dockerfile`.
         """
         basename = str(Path(local_path).name)
         mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
@@ -491,7 +494,8 @@ class _Image(_Object, type_prefix="im"):
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
-        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) in a `Dockerfile`.
+        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
+        works in a `Dockerfile`.
         """
         mount = _Mount.from_local_dir(local_path, remote_path="/")
 
@@ -589,7 +593,8 @@ class _Image(_Object, type_prefix="im"):
         """
         if not secrets:
             raise InvalidError(
-                "No secrets provided to function. Installing private packages requires tokens to be passed via modal.Secret objects."
+                "No secrets provided to function. "
+                "Installing private packages requires tokens to be passed via modal.Secret objects."
             )
 
         invalid_repos = []
@@ -617,11 +622,13 @@ class _Image(_Object, type_prefix="im"):
             commands = ["FROM base"]
             if any(r.startswith("github") for r in repositories):
                 commands.append(
-                    f"RUN bash -c \"[[ -v GITHUB_TOKEN ]] || (echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+                    'RUN bash -c "[[ -v GITHUB_TOKEN ]] || '
+                    f"(echo 'GITHUB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
                 )
             if any(r.startswith("gitlab") for r in repositories):
                 commands.append(
-                    f"RUN bash -c \"[[ -v GITLAB_TOKEN ]] || (echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
+                    'RUN bash -c "[[ -v GITLAB_TOKEN ]] || '
+                    f"(echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
                 )
 
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
@@ -711,8 +718,10 @@ class _Image(_Object, type_prefix="im"):
             if "project" not in config or "dependencies" not in config["project"]:
                 msg = (
                     "No [project.dependencies] section in pyproject.toml file. "
-                    "If your pyproject.toml instead declares [tool.poetry.dependencies], use `Image.poetry_install_from_file()`. "
-                    "See https://packaging.python.org/en/latest/guides/writing-pyproject-toml for further file format guidelines."
+                    "If your pyproject.toml instead declares [tool.poetry.dependencies], "
+                    "use `Image.poetry_install_from_file()`. "
+                    "See https://packaging.python.org/en/latest/guides/writing-pyproject-toml "
+                    "for further file format guidelines."
                 )
                 raise ValueError(msg)
             else:
@@ -782,7 +791,8 @@ class _Image(_Object, type_prefix="im"):
                     p = Path(poetry_pyproject_toml).parent / "poetry.lock"
                     if not p.exists():
                         raise NotFoundError(
-                            f"poetry.lock not found at inferred location: {p.absolute()}. If a lockfile is not needed, `ignore_lockfile=True` can be used."
+                            f"poetry.lock not found at inferred location: {p.absolute()}. "
+                            "If a lockfile is not needed, `ignore_lockfile=True` can be used."
                         )
                     poetry_lockfile = p.as_posix()
                 context_files["/.poetry.lock"] = poetry_lockfile
@@ -960,12 +970,15 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """DEPRECATED Install additional packages using Conda.
 
-        This method has been deprecated in favor of [`micromamba_install`](/docs/reference/modal.Image#micromamba_install),
+        Deprecated in favor of [`micromamba_install`](/docs/reference/modal.Image#micromamba_install),
         which should be used with the [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) constructor.
         Images will build faster and more reliably with `micromamba`.
         """
 
-        msg = "The `Image.conda_install` method has deprecated in favor of the faster and more reliable `Image.micromamba_install`."
+        msg = (
+            "The `Image.conda_install` method has deprecated in favor of the faster "
+            "and more reliable `Image.micromamba_install`."
+        )
         deprecation_warning((2024, 5, 2), msg)
 
         pkgs = _flatten_str_args("conda_install", "packages", packages)
@@ -1082,7 +1095,7 @@ class _Image(_Object, type_prefix="im"):
 
             space = " " if package_args else ""
             remote_spec_file = "" if spec_file is None else f"/{os.path.basename(spec_file)}"
-            file_arg = "" if spec_file is None else f"{space}-f {remote_spec_file}"
+            file_arg = "" if spec_file is None else f"{space}-f {remote_spec_file} -n base"
             copy_commands = [] if spec_file is None else [f"COPY {remote_spec_file} {remote_spec_file}"]
 
             commands = [
@@ -1156,10 +1169,11 @@ class _Image(_Object, type_prefix="im"):
         set a `SHELL`. Prefer `run_commands()` when possible though.
 
         To authenticate against a private registry with static credentials, you must set the `secret` parameter to
-        a `modal.Secret` containing a username (`REGISTRY_USERNAME`) and an access token or password (`REGISTRY_PASSWORD`).
+        a `modal.Secret` containing a username (`REGISTRY_USERNAME`) and
+        an access token or password (`REGISTRY_PASSWORD`).
 
-        To authenticate against private registries with credentials from a cloud provider, use `Image.from_gcp_artifact_registry()`
-        or `Image.from_aws_ecr()`.
+        To authenticate against private registries with credentials from a cloud provider,
+        use `Image.from_gcp_artifact_registry()` or `Image.from_aws_ecr()`.
 
         **Examples**
 
@@ -1204,13 +1218,16 @@ class _Image(_Object, type_prefix="im"):
         """Build a Modal image from a private image in Google Cloud Platform (GCP) Artifact Registry.
 
         You will need to pass a `modal.Secret` containing [your GCP service account key data](https://cloud.google.com/iam/docs/keys-create-delete#creating)
-        as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page. Your service account should be granted a specific
-        role depending on the GCP registry used:
+        as `SERVICE_ACCOUNT_JSON`. This can be done from the [Secrets](/secrets) page.
+        Your service account should be granted a specific role depending on the GCP registry used:
 
-        - For Artifact Registry images (`pkg.dev` domains) use the ["Artifact Registry Reader"](https://cloud.google.com/artifact-registry/docs/access-control#roles) role
-        - For Container Registry images (`gcr.io` domains) use the ["Storage Object Viewer"](https://cloud.google.com/artifact-registry/docs/transition/setup-gcr-repo#permissions) role
+        - For Artifact Registry images (`pkg.dev` domains) use
+          the ["Artifact Registry Reader"](https://cloud.google.com/artifact-registry/docs/access-control#roles) role
+        - For Container Registry images (`gcr.io` domains) use
+          the ["Storage Object Viewer"](https://cloud.google.com/artifact-registry/docs/transition/setup-gcr-repo) role
 
-        **Note:** This method does not use `GOOGLE_APPLICATION_CREDENTIALS` as that variable accepts a path to a JSON file, not the actual JSON string.
+        **Note:** This method does not use `GOOGLE_APPLICATION_CREDENTIALS` as that
+        variable accepts a path to a JSON file, not the actual JSON string.
 
         See `Image.from_registry()` for information about the other parameters.
 
@@ -1416,7 +1433,6 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),
-        shared_volumes: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
@@ -1427,13 +1443,15 @@ class _Image(_Object, type_prefix="im"):
         kwargs: Dict[str, Any] = {},  # Keyword arguments to the function.
     ) -> "_Image":
         """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
-        function, and any kwargs accepted by `@app.function` (such as `Mount`s, `NetworkFileSystem`s, and resource requests) can
-        be supplied to it. After it finishes execution, a snapshot of the resulting container file system is saved as an image.
+        function, and any kwargs accepted by `@app.function` (such as `Mount`s, `NetworkFileSystem`s,
+        and resource requests) can be supplied to it.
+        After it finishes execution, a snapshot of the resulting container file system is saved as an image.
 
         **Note**
 
-        Only the source code of `raw_f`, the contents of `**kwargs`, and any referenced *global* variables are used to determine whether the image has changed
-        and needs to be rebuilt. If this function references other functions or variables, the image will not be rebuilt if you
+        Only the source code of `raw_f`, the contents of `**kwargs`, and any referenced *global* variables
+        are used to determine whether the image has changed and needs to be rebuilt.
+        If this function references other functions or variables, the image will not be rebuilt if you
         make changes to them. You can force a rebuild by changing the function's source code itself.
 
         **Example**
@@ -1461,10 +1479,11 @@ class _Image(_Object, type_prefix="im"):
 
         info = FunctionInfo(raw_f)
 
-        if shared_volumes or network_file_systems:
+        if network_file_systems:
             warnings.warn(
                 "Mounting NetworkFileSystems or Volumes is usually not advised with `run_function`."
-                " If you are trying to download model weights, downloading it to the image itself is recommended and sufficient."
+                " If you are trying to download model weights, downloading it to the image itself is "
+                "recommended and sufficient."
             )
 
         function = _Function.from_args(

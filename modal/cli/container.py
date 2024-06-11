@@ -7,7 +7,8 @@ from rich.text import Text
 
 from modal._container_exec import container_exec
 from modal._utils.async_utils import synchronizer
-from modal.cli.utils import display_table, timestamp_to_local
+from modal._utils.grpc_utils import retry_transient_errors
+from modal.cli.utils import display_table, stream_app_logs, timestamp_to_local
 from modal.client import _Client
 from modal_proto import api_pb2
 
@@ -37,13 +38,31 @@ async def list(json: bool = False):
     display_table(column_names, rows, json=json, title="Active Containers")
 
 
+@container_cli.command("logs")
+def logs(container_id: str = typer.Argument(help="Container ID")):
+    """Show logs for a specific container, streaming while active."""
+    stream_app_logs(task_id=container_id)
+
+
 @container_cli.command("exec")
 @synchronizer.create_blocking
 async def exec(
-    container_id: str = typer.Argument(help="Container ID."),
+    container_id: str = typer.Argument(help="Container ID"),
     command: List[str] = typer.Argument(help="A command to run inside the container."),
     pty: bool = typer.Option(is_flag=True, default=True, help="Run the command using a PTY."),
 ):
     """Execute a command in a container."""
     client = await _Client.from_env()
     await container_exec(container_id, command, pty=pty, client=client)
+
+
+@container_cli.command("stop")
+@synchronizer.create_blocking
+async def stop(container_id: str = typer.Argument(help="Container ID")):
+    """Stop a currently-running container and reassign its in-progress inputs.
+
+    This will send the container a SIGINT signal that Modal will handle.
+    """
+    client = await _Client.from_env()
+    request = api_pb2.ContainerStopRequest(task_id=container_id)
+    await retry_transient_errors(client.stub.ContainerStop, request)

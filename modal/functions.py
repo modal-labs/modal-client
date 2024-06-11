@@ -27,6 +27,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal._output import FunctionCreationStatus
 from modal_proto import api_grpc, api_pb2
 
 from ._location import parse_cloud_provider
@@ -61,6 +62,7 @@ from .exception import (
     ExecutionError,
     InvalidError,
     NotFoundError,
+    deprecation_error,
     deprecation_warning,
 )
 from .execution_context import current_input_id, is_local
@@ -250,6 +252,7 @@ class _FunctionSpec:
     cloud: Optional[str]
     cpu: Optional[float]
     memory: Optional[Union[int, Tuple[int, int]]]
+    ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
 
 
@@ -309,9 +312,10 @@ class _Function(_Object, type_prefix="fu"):
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
         checkpointing_enabled: Optional[bool] = None,
-        allow_background_volume_commits: bool = False,
+        allow_background_volume_commits: Optional[bool] = None,
         block_network: bool = False,
         max_inputs: Optional[int] = None,
+        ephemeral_disk: Optional[int] = None,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -325,11 +329,10 @@ class _Function(_Object, type_prefix="fu"):
                 )
 
         if secret is not None:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 1, 31),
                 "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
             )
-            secrets = [secret, *secrets]
 
         if checkpointing_enabled is not None:
             deprecation_warning(
@@ -337,6 +340,14 @@ class _Function(_Object, type_prefix="fu"):
                 "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
             )
             enable_memory_snapshot = checkpointing_enabled
+
+        if allow_background_volume_commits is False:
+            deprecation_warning(
+                (2024, 5, 13),
+                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+            )
+        elif allow_background_volume_commits is None:
+            allow_background_volume_commits = True
 
         explicit_mounts = mounts
 
@@ -375,6 +386,7 @@ class _Function(_Object, type_prefix="fu"):
             cloud=cloud,
             cpu=cpu,
             memory=memory,
+            ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
         )
 
@@ -397,6 +409,7 @@ class _Function(_Object, type_prefix="fu"):
                     memory=memory,
                     timeout=86400,  # TODO: make this an argument to `@build()`
                     cpu=cpu,
+                    ephemeral_disk=ephemeral_disk,
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
@@ -412,7 +425,8 @@ class _Function(_Object, type_prefix="fu"):
 
         if (keep_warm is not None) and (concurrency_limit is not None) and concurrency_limit < keep_warm:
             raise InvalidError(
-                f"Function `{info.function_name}` has `{concurrency_limit=}`, strictly less than its `{keep_warm=}` parameter."
+                f"Function `{info.function_name}` has `{concurrency_limit=}`, "
+                f"strictly less than its `{keep_warm=}` parameter."
             )
 
         if not cloud and not is_builder_function:
@@ -495,152 +509,133 @@ class _Function(_Object, type_prefix="fu"):
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
-            status_row = resolver.add_status_row()
-            status_row.message(f"Creating {tag}...")
-
-            if is_generator:
-                function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-            else:
-                function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
-
-            timeout_secs = timeout
-
-            if app and app.is_interactive and not is_builder_function:
-                pty_info = get_pty_info(shell=False)
-            else:
-                pty_info = None
-
-            if info.is_serialized():
-                # Use cloudpickle. Used when working w/ Jupyter notebooks.
-                # serialize at _load time, not function decoration time
-                # otherwise we can't capture a surrounding class for lifetime methods etc.
-                function_serialized = info.serialized_function()
-                class_serialized = serialize(info.cls) if info.cls is not None else None
-
-                # Ensure that large data in global variables does not blow up the gRPC payload,
-                # which has maximum size 100 MiB. We set the limit lower for performance reasons.
-                if len(function_serialized) > 16 << 20:  # 16 MiB
-                    raise InvalidError(
-                        f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
-                        "This is larger than the maximum limit of 16 MiB. "
-                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
-                    )
-                elif len(function_serialized) > 256 << 10:  # 256 KiB
-                    warnings.warn(
-                        f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
-                        "This is larger than the recommended limit of 256 KiB. "
-                        "Try reducing the size of the closure by using parameters or mounts, not large global variables."
-                    )
-            else:
-                function_serialized = None
-                class_serialized = None
-
-            app_name = ""
-            if app and app.name:
-                app_name = app.name
-
-            # Relies on dicts being ordered (true as of Python 3.6).
-            volume_mounts = [
-                api_pb2.VolumeMount(
-                    mount_path=path,
-                    volume_id=volume.object_id,
-                    allow_background_commits=allow_background_volume_commits,
-                )
-                for path, volume in validated_volumes
-            ]
-            loaded_mount_ids = {m.object_id for m in all_mounts}
-
-            # Get object dependencies
-            object_dependencies = []
-            for dep in _deps(only_explicit_mounts=True):
-                if not dep.object_id:
-                    raise Exception(f"Dependency {dep} isn't hydrated")
-                object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
-
-            # Create function remotely
-            function_definition = api_pb2.Function(
-                module_name=info.module_name or "",
-                function_name=info.function_name,
-                mount_ids=loaded_mount_ids,
-                secret_ids=[secret.object_id for secret in secrets],
-                image_id=(image.object_id if image else ""),
-                definition_type=info.definition_type,
-                function_serialized=function_serialized or b"",
-                class_serialized=class_serialized or b"",
-                function_type=function_type,
-                resources=convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu),
-                webhook_config=webhook_config,
-                shared_volume_mounts=network_file_system_mount_protos(
-                    validated_network_file_systems, allow_cross_region_volumes
-                ),
-                volume_mounts=volume_mounts,
-                proxy_id=(proxy.object_id if proxy else None),
-                retry_policy=retry_policy,
-                timeout_secs=timeout_secs or 0,
-                task_idle_timeout_secs=container_idle_timeout or 0,
-                concurrency_limit=concurrency_limit or 0,
-                pty_info=pty_info,
-                cloud_provider=cloud_provider,
-                warm_pool_size=keep_warm or 0,
-                runtime=config.get("function_runtime"),
-                runtime_debug=config.get("function_runtime_debug"),
-                app_name=app_name,
-                is_builder_function=is_builder_function,
-                allow_concurrent_inputs=allow_concurrent_inputs or 0,
-                worker_id=config.get("worker_id"),
-                is_auto_snapshot=is_auto_snapshot,
-                is_method=bool(info.cls),
-                checkpointing_enabled=enable_memory_snapshot,
-                is_checkpointing_function=False,
-                object_dependencies=object_dependencies,
-                block_network=block_network,
-                max_inputs=max_inputs or 0,
-                cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
-                _experimental_boost=_experimental_boost,
-                _experimental_scheduler=_experimental_scheduler,
-                scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
-            )
-            request = api_pb2.FunctionCreateRequest(
-                app_id=resolver.app_id,
-                function=function_definition,
-                schedule=schedule.proto_message if schedule is not None else None,
-                existing_function_id=existing_object_id or "",
-            )
-            try:
-                response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
-                    resolver.client.stub.FunctionCreate, request
-                )
-            except GRPCError as exc:
-                if exc.status == Status.INVALID_ARGUMENT:
-                    raise InvalidError(exc.message)
-                if exc.status == Status.FAILED_PRECONDITION:
-                    raise InvalidError(exc.message)
-                if exc.message and "Received :status = '413'" in exc.message:
-                    raise InvalidError(f"Function {raw_f} is too large to deploy.")
-                raise
-
-            if response.function.web_url:
-                # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
-                if response.function.web_url_info.truncated:
-                    suffix = " [grey70](label truncated)[/grey70]"
-                elif response.function.web_url_info.has_unique_hash:
-                    suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
-                elif response.function.web_url_info.label_stolen:
-                    suffix = " [grey70](label stolen)[/grey70]"
+            with FunctionCreationStatus(resolver, tag) as function_creation_status:
+                if is_generator:
+                    function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
                 else:
-                    suffix = ""
-                # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-                status_row.finish(f"Created {tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}")
+                    function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-                # Print custom domain in terminal
-                for custom_domain in response.function.custom_domain_info:
-                    custom_domain_status_row = resolver.add_status_row()
-                    custom_domain_status_row.finish(
-                        f"Custom domain for {tag} => [magenta underline]{custom_domain.url}[/magenta underline]{suffix}"
+                timeout_secs = timeout
+
+                if app and app.is_interactive and not is_builder_function:
+                    pty_info = get_pty_info(shell=False)
+                else:
+                    pty_info = None
+
+                if info.is_serialized():
+                    # Use cloudpickle. Used when working w/ Jupyter notebooks.
+                    # serialize at _load time, not function decoration time
+                    # otherwise we can't capture a surrounding class for lifetime methods etc.
+                    function_serialized = info.serialized_function()
+                    class_serialized = serialize(info.cls) if info.cls is not None else None
+
+                    # Ensure that large data in global variables does not blow up the gRPC payload,
+                    # which has maximum size 100 MiB. We set the limit lower for performance reasons.
+                    if len(function_serialized) > 16 << 20:  # 16 MiB
+                        raise InvalidError(
+                            f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
+                            "This is larger than the maximum limit of 16 MiB. "
+                            "Try reducing the size of the closure by using parameters or mounts, "
+                            "not large global variables."
+                        )
+                    elif len(function_serialized) > 256 << 10:  # 256 KiB
+                        warnings.warn(
+                            f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
+                            "This is larger than the recommended limit of 256 KiB. "
+                            "Try reducing the size of the closure by using parameters or mounts, "
+                            "not large global variables."
+                        )
+                else:
+                    function_serialized = None
+                    class_serialized = None
+
+                app_name = ""
+                if app and app.name:
+                    app_name = app.name
+
+                # Relies on dicts being ordered (true as of Python 3.6).
+                volume_mounts = [
+                    api_pb2.VolumeMount(
+                        mount_path=path,
+                        volume_id=volume.object_id,
+                        allow_background_commits=bool(allow_background_volume_commits),
                     )
+                    for path, volume in validated_volumes
+                ]
+                loaded_mount_ids = {m.object_id for m in all_mounts}
 
-            else:
-                status_row.finish(f"Created {tag}.")
+                # Get object dependencies
+                object_dependencies = []
+                for dep in _deps(only_explicit_mounts=True):
+                    if not dep.object_id:
+                        raise Exception(f"Dependency {dep} isn't hydrated")
+                    object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
+
+                # Create function remotely
+                function_definition = api_pb2.Function(
+                    module_name=info.module_name or "",
+                    function_name=info.function_name,
+                    mount_ids=loaded_mount_ids,
+                    secret_ids=[secret.object_id for secret in secrets],
+                    image_id=(image.object_id if image else ""),
+                    definition_type=info.definition_type,
+                    function_serialized=function_serialized or b"",
+                    class_serialized=class_serialized or b"",
+                    function_type=function_type,
+                    resources=convert_fn_config_to_resources_config(
+                        cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
+                    ),
+                    webhook_config=webhook_config,
+                    shared_volume_mounts=network_file_system_mount_protos(
+                        validated_network_file_systems, allow_cross_region_volumes
+                    ),
+                    volume_mounts=volume_mounts,
+                    proxy_id=(proxy.object_id if proxy else None),
+                    retry_policy=retry_policy,
+                    timeout_secs=timeout_secs or 0,
+                    task_idle_timeout_secs=container_idle_timeout or 0,
+                    concurrency_limit=concurrency_limit or 0,
+                    pty_info=pty_info,
+                    cloud_provider=cloud_provider,
+                    warm_pool_size=keep_warm or 0,
+                    runtime=config.get("function_runtime"),
+                    runtime_debug=config.get("function_runtime_debug"),
+                    app_name=app_name,
+                    is_builder_function=is_builder_function,
+                    allow_concurrent_inputs=allow_concurrent_inputs or 0,
+                    worker_id=config.get("worker_id"),
+                    is_auto_snapshot=is_auto_snapshot,
+                    is_method=bool(info.cls),
+                    checkpointing_enabled=enable_memory_snapshot,
+                    is_checkpointing_function=False,
+                    object_dependencies=object_dependencies,
+                    block_network=block_network,
+                    max_inputs=max_inputs or 0,
+                    cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
+                    _experimental_boost=_experimental_boost,
+                    _experimental_scheduler=_experimental_scheduler,
+                    scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
+                )
+                request = api_pb2.FunctionCreateRequest(
+                    app_id=resolver.app_id,
+                    function=function_definition,
+                    schedule=schedule.proto_message if schedule is not None else None,
+                    existing_function_id=existing_object_id or "",
+                )
+                try:
+                    response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
+                        resolver.client.stub.FunctionCreate, request
+                    )
+                except GRPCError as exc:
+                    if exc.status == Status.INVALID_ARGUMENT:
+                        raise InvalidError(exc.message)
+                    if exc.status == Status.FAILED_PRECONDITION:
+                        raise InvalidError(exc.message)
+                    if exc.message and "Received :status = '413'" in exc.message:
+                        raise InvalidError(f"Function {raw_f} is too large to deploy.")
+                    raise
+
+                function_creation_status.set_response(response)
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
@@ -723,7 +718,8 @@ class _Function(_Object, type_prefix="fu"):
     async def keep_warm(self, warm_pool_size: int) -> None:
         """Set the warm pool size for the function (including parametrized functions).
 
-        Please exercise care when using this advanced feature! Setting and forgetting a warm pool on functions can lead to increased costs.
+        Please exercise care when using this advanced feature!
+        Setting and forgetting a warm pool on functions can lead to increased costs.
 
         ```python
         # Usage on a regular function.
@@ -878,7 +874,8 @@ class _Function(_Object, type_prefix="fu"):
         """URL of a Function running as a web endpoint."""
         if not self._web_url:
             raise ValueError(
-                f"No web_url can be found for function {self._function_name}. web_url can only be referenced from a running app context"
+                f"No web_url can be found for function {self._function_name}. web_url "
+                "can only be referenced from a running app context"
             )
         return self._web_url
 
@@ -894,9 +891,9 @@ class _Function(_Object, type_prefix="fu"):
     ) -> AsyncGenerator[Any, None]:
         """mdmd:hidden
 
-        Synchronicity-wrapped map implementation. To be safe against invocations of user code in the synchronicity thread
-        it doesn't accept an [async]iterator, and instead takes a _SynchronizedQueue instance that is fed by
-        higher level functions like .map()
+        Synchronicity-wrapped map implementation. To be safe against invocations of user code in
+        the synchronicity thread it doesn't accept an [async]iterator, and instead takes a
+          _SynchronizedQueue instance that is fed by higher level functions like .map()
 
         _SynchronizedQueue is used instead of asyncio.Queue so that the main thread can put
         items in the queue safely.
@@ -1016,7 +1013,8 @@ class _Function(_Object, type_prefix="fu"):
         Calls the function locally, executing it with the given arguments and returning the execution's result.
 
         The function will execute in the same environment as the caller, just like calling the underlying function
-        directly in Python. In particular, secrets will not be available through environment variables.
+        directly in Python. In particular, only secrets available in the caller environment will be available
+        through environment variables.
         """
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
@@ -1054,7 +1052,8 @@ class _Function(_Object, type_prefix="fu"):
     async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
         """Calls the function with the given arguments, without waiting for the results.
 
-        Returns a `modal.functions.FunctionCall` object, that can later be polled or waited for using `.get(timeout=...)`.
+        Returns a `modal.functions.FunctionCall` object, that can later be polled or
+        waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
 
         *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
@@ -1078,8 +1077,10 @@ class _Function(_Object, type_prefix="fu"):
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
         assert self._client.stub
-        resp = await self._client.stub.FunctionGetCurrentStats(
-            api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id)
+        resp = await retry_transient_errors(
+            self._client.stub.FunctionGetCurrentStats,
+            api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
+            total_timeout=10.0,
         )
         return FunctionStats(
             backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
@@ -1136,7 +1137,8 @@ class _FunctionCall(_Object, type_prefix="fc"):
         return _reconstruct_call_graph(response)
 
     async def cancel(self):
-        """Cancels the function call, which will stop its execution and mark its inputs as [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus)."""
+        """Cancels the function call, which will stop its execution and mark its inputs as
+        [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus)."""
         request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
         assert self._client and self._client.stub
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)

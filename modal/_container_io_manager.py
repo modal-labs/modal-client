@@ -132,7 +132,8 @@ class _ContainerIOManager:
             await asyncio.sleep(time_until_next_hearbeat)
 
     async def _heartbeat_handle_cancellations(self) -> bool:
-        # Return True if a cancellation event was received, in that case we shouldn't wait too long for another heartbeat
+        # Return True if a cancellation event was received, in that case
+        # we shouldn't wait too long for another heartbeat
 
         # Don't send heartbeats for tasks waiting to be checkpointed.
         # Calling gRPC methods open new connections which block the
@@ -157,7 +158,8 @@ class _ContainerIOManager:
             if input_ids_to_cancel:
                 if self._input_concurrency > 1:
                     logger.info(
-                        "Shutting down task to stop some subset of inputs (concurrent functions don't support fine-grained cancellation)"
+                        "Shutting down task to stop some subset of inputs "
+                        "(concurrent functions don't support fine-grained cancellation)"
                     )
                     # This is equivalent to a task cancellation or preemption from worker code,
                     # except we do not send a SIGKILL to forcefully exit after 30 seconds.
@@ -220,7 +222,10 @@ class _ContainerIOManager:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)
-        fun = self.deserialize(response.function_serialized)
+        if response.function_serialized:
+            fun = self.deserialize(response.function_serialized)
+        else:
+            fun = None
 
         if response.class_serialized:
             cls = self.deserialize(response.class_serialized)
@@ -385,7 +390,7 @@ class _ContainerIOManager:
                     self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[Tuple[str, str, Any, Any]]:
+    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[Tuple[str, str, str, Any, Any]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
@@ -393,16 +398,15 @@ class _ContainerIOManager:
         self._input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
-        try:
-            async for input_id, function_call_id, input_pb in self._generate_inputs():
-                args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
-                self.current_input_id, self.current_input_started_at = (input_id, time.time())
-                yield input_id, function_call_id, args, kwargs
-                self.current_input_id, self.current_input_started_at = (None, None)
-        finally:
-            # collect all active input slots, meaning all inputs have wrapped up.
-            for _ in range(input_concurrency):
-                await self._semaphore.acquire()
+        async for input_id, function_call_id, input_pb in self._generate_inputs():
+            args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
+            self.current_input_id, self.current_input_started_at = (input_id, time.time())
+            yield input_id, function_call_id, input_pb.method_name, args, kwargs
+            self.current_input_id, self.current_input_started_at = (None, None)
+
+        # collect all active input slots, meaning all inputs have wrapped up.
+        for _ in range(input_concurrency):
+            await self._semaphore.acquire()
 
     async def _push_output(self, input_id, started_at: float, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs):
         # upload data to S3 if too big.
@@ -486,7 +490,12 @@ class _ContainerIOManager:
         """Handle an exception while processing a function input."""
         try:
             yield
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, GeneratorExit):
+            # We need to explicitly reraise these BaseExceptions to not handle them in the catch-all:
+            # 1. KeyboardInterrupt can end up here even though this runs on non-main thread, since the
+            #    code block yielded to could be sending back a main thread exception
+            # 2. GeneratorExit - raised if this (async) generator is garbage collected while waiting
+            #    for the yield. Typically on event loop shutdown
             raise
         except (InputCancellation, asyncio.CancelledError):
             # just skip creating any output for this input and keep going with the next instead
@@ -621,12 +630,14 @@ class _ContainerIOManager:
 
         if not self.function_def.pty_info:
             raise InvalidError(
-                "Interactivity is not enabled in this function. Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
+                "Interactivity is not enabled in this function. "
+                "Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
             )
 
         if self.function_def.concurrency_limit > 1:
             print(
-                "Warning: Interactivity is not supported on functions with concurrency > 1. You may experience unexpected behavior."
+                "Warning: Interactivity is not supported on functions with concurrency > 1. "
+                "You may experience unexpected behavior."
             )
 
         # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here

@@ -31,7 +31,7 @@ class T4(_GPUConfig):
 
     def __init__(
         self,
-        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,  # Number of GPUs per container. Defaults to 1.
     ):
         super().__init__(api_pb2.GPU_TYPE_T4, count, 0)
 
@@ -43,12 +43,13 @@ class L4(_GPUConfig):
     """
     [NVIDIA L4 Tensor Core](https://www.nvidia.com/en-us/data-center/l4/) GPU class.
 
-    A mid-tier data center GPU based on the Ada Lovelace architecture, providing 24GiB of GPU memory. Includes RTX (ray tracing) support.
+    A mid-tier data center GPU based on the Ada Lovelace architecture, providing 24GiB of GPU memory.
+    Includes RTX (ray tracing) support.
     """
 
     def __init__(
         self,
-        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,  # Number of GPUs per container. Defaults to 1.
     ):
         super().__init__(api_pb2.GPU_TYPE_L4, count, 0)
 
@@ -66,12 +67,19 @@ class A100(_GPUConfig):
     def __init__(
         self,
         *,
-        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
-        memory: int = 0,  # Deprecated. Use `size` instead.
+        count: int = 1,  # Number of GPUs per container. Defaults to 1.
+        memory: Optional[int] = None,  # Deprecated. Use `size` instead.
         size: Union[str, None] = None,  # Select GiB configuration of GPU device: "40GB" or "80GB". Defaults to "40GB".
     ):
         allowed_memory_values = {40, 80}
         allowed_size_values = {"40GB", "80GB"}
+
+        if memory is not None:
+            deprecation_warning(
+                (2024, 5, 16),
+                "The `memory` parameter is deprecated. Use the `size='80GB'` parameter instead.",
+            )
+
         if memory == 20:
             raise ValueError(
                 "A100 20GB is unsupported, consider `modal.A10G`, `modal.A100(memory_gb='40')`, or `modal.H100` instead"
@@ -106,14 +114,17 @@ class A10G(_GPUConfig):
     """
     [NVIDIA A10G Tensor Core](https://www.nvidia.com/en-us/data-center/products/a10-gpu/) GPU class.
 
-    A mid-tier data center GPU based on the Ampere architecture, providing 24 GiB of memory. A10G GPUs deliver up to 3.3x better ML training performance, 3x better ML inference performance,
+    A mid-tier data center GPU based on the Ampere architecture, providing 24 GiB of memory.
+    A10G GPUs deliver up to 3.3x better ML training performance, 3x better ML inference performance,
     and 3x better graphics performance, in comparison to NVIDIA T4 GPUs.
     """
 
     def __init__(
         self,
         *,
-        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+        # Number of GPUs per container. Defaults to 1.
+        # Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,
     ):
         super().__init__(api_pb2.GPU_TYPE_A10G, count)
 
@@ -125,13 +136,17 @@ class H100(_GPUConfig):
     """
     [NVIDIA H100 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
 
-    The flagship data center GPU of the Hopper architecture. Enhanced support for FP8 precision and a Transformer Engine that provides up to 4X faster training over the prior generation for GPT-3 (175B) models.
+    The flagship data center GPU of the Hopper architecture.
+    Enhanced support for FP8 precision and a Transformer Engine that provides up to 4X faster training
+    over the prior generation for GPT-3 (175B) models.
     """
 
     def __init__(
         self,
         *,
-        count: int = 1,  # Number of GPUs per container. Defaults to 1. Useful if you have very large models that don't fit on a single GPU.
+        # Number of GPUs per container. Defaults to 1.
+        # Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,
     ):
         super().__init__(api_pb2.GPU_TYPE_H100, count)
 
@@ -163,7 +178,8 @@ display_string_to_config = "\n".join(
 __doc__ = f"""
 **GPU configuration shortcodes**
 
-The following are the valid `str` values for the `gpu` parameter of [`@app.function`](/docs/reference/modal.Stub#function).
+The following are the valid `str` values for the `gpu` parameter of
+[`@app.function`](/docs/reference/modal.Stub#function).
 
 {display_string_to_config}
 
@@ -194,7 +210,8 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
             return A100(size="80GB", count=count)
         elif value.lower() not in STRING_TO_GPU_CONFIG:
             raise InvalidError(
-                f"Invalid GPU type: {value}. Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive)."
+                f"Invalid GPU type: {value}. "
+                f"Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive)."
             )
         else:
             return STRING_TO_GPU_CONFIG[value.lower()](count=count)

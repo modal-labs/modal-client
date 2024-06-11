@@ -1,20 +1,20 @@
 # Copyright Modal Labs 2022
-import asyncio
 import time
 from typing import List, Optional, Union
 
 import typer
 from click import UsageError
-from grpclib import GRPCError, Status
+from rich.table import Column
 from rich.text import Text
+from typer import Argument, Option
 
-from modal._output import OutputManager, get_app_logs_loop
 from modal._utils.async_utils import synchronizer
 from modal.app_utils import _list_apps
-from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal_proto import api_pb2
+
+from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
@@ -31,11 +31,18 @@ APP_STATE_TO_MESSAGE = {
 
 @app_cli.command("list")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
     """List Modal apps that are currently deployed/running or recently stopped."""
     env = ensure_env(env)
 
-    column_names = ["App ID", "Description", "State", "Tasks", "Created at", "Stopped at"]
+    columns: List[Union[Column, str]] = [
+        Column("App ID", min_width=25),  # Ensure that App ID is not truncated in slim terminals
+        "Description",
+        "State",
+        "Tasks",
+        "Created at",
+        "Stopped at",
+    ]
     rows: List[List[Union[Text, str]]] = []
     apps: List[api_pb2.AppStats] = await _list_apps(env)
     now = time.time()
@@ -68,38 +75,52 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
         )
 
     env_part = f" in environment '{env}'" if env else ""
-    display_table(column_names, rows, json, title=f"Apps{env_part}")
+    display_table(columns, rows, json, title=f"Apps{env_part}")
 
 
-@app_cli.command("logs")
-def app_logs(app_id: str):
-    """Output logs for a running app."""
+@app_cli.command("logs", no_args_is_help=True)
+def logs(
+    app_id: str = Argument("", help="Look up any App by its ID"),
+    *,
+    name: str = Option("", "-n", "--name", help="Look up a deployed App by its name"),
+    env: Optional[str] = ENV_OPTION,
+):
+    """Show App logs, streaming while active.
 
-    @synchronizer.create_blocking
-    async def sync_command():
-        client = await _Client.from_env()
-        output_mgr = OutputManager(None, None, "Tailing logs for {app_id}")
-        try:
-            with output_mgr.show_status_spinner():
-                await get_app_logs_loop(app_id, client, output_mgr)
-        except asyncio.CancelledError:
-            pass
+    **Examples:**
 
-    try:
-        sync_command()
-    except GRPCError as exc:
-        if exc.status in (Status.INVALID_ARGUMENT, Status.NOT_FOUND):
-            raise UsageError(exc.message)
-        else:
-            raise
-    except KeyboardInterrupt:
-        pass
+    Get the logs based on an app ID:
+
+    ```bash
+    modal app logs ap-123456
+    ```
+
+    Get the logs for a currently deployed App based on its name:
+
+    ```bash
+    modal app logs --name my-app
+    ```
+
+    """
+    if not bool(app_id) ^ bool(name):
+        raise UsageError("Must pass either an ID or a name.")
+
+    if not app_id:
+        app_id = get_app_id_from_name(name, env)
+    stream_app_logs(app_id)
 
 
-@app_cli.command("stop")
+@app_cli.command("stop", no_args_is_help=True)
 @synchronizer.create_blocking
-async def stop(app_id: str):
+async def stop(
+    app_id: str = Argument(""),
+    *,
+    name: str = Option("", "-n", "--name", help="Look up a deployed App by its name"),
+    env: Optional[str] = ENV_OPTION,
+):
     """Stop an app."""
     client = await _Client.from_env()
+    if not app_id:
+        app_id = await get_app_id_from_name.aio(name, env, client)
     req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
     await client.stub.AppStop(req)
