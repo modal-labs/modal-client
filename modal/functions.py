@@ -608,7 +608,6 @@ class _Function(_Object, type_prefix="fu"):
                 is_auto_snapshot=is_auto_snapshot,
                 is_method=bool(info.cls),
                 checkpointing_enabled=enable_memory_snapshot,
-                is_checkpointing_function=False,
                 object_dependencies=object_dependencies,
                 block_network=block_network,
                 max_inputs=max_inputs or 0,
