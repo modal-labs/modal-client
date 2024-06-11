@@ -108,7 +108,7 @@ class _Invocation:
     @staticmethod
     async def create(function: "_Function", args, kwargs, *, client: _Client) -> "_Invocation":
         assert client.stub
-        function_id = function.invocation_function_id()
+        function_id = function._invocation_function_id()
         item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
 
         request = api_pb2.FunctionMapRequest(
@@ -1051,7 +1051,7 @@ class _Function(_Object, type_prefix="fu"):
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
 
-    def invocation_function_id(self) -> str:
+    def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id
 
     def _get_metadata(self):
