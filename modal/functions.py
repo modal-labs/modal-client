@@ -376,6 +376,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._app = class_function._app
         fun._is_generator = partial_function.is_generator
         fun._all_mounts = class_function._all_mounts
+        fun._spec = class_function._spec
         # TODO: set more attributes?
 
         return fun
