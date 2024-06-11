@@ -77,9 +77,7 @@ enum CheckpointStatus {
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
-  CLIENT_TYPE_WORKER = 2 [deprecated=true];
   CLIENT_TYPE_CONTAINER = 3;
-  CLIENT_TYPE_SERVER = 4 [deprecated=true];
   CLIENT_TYPE_WEB_SERVER = 5;
 }
 
@@ -215,8 +213,6 @@ message AppClientDisconnectRequest {
 message AppCreateRequest {
   string client_id = 1 [ (modal.options.audit_target_attr) = true ];
   string description = 2;    // Human readable label for the app
-  bool detach = 3 [deprecated=true]; // replaced by app_state in 0.55.3904
-  bool initializing = 4 [deprecated=true]; // replaced by app_state in 0.55.3904
   string environment_name = 5;
   AppState app_state = 6;
 }
@@ -1012,8 +1008,6 @@ message FunctionCreateRequest {
 
 message FunctionCreateResponse {
   string function_id = 1;
-  string web_url = 2;  // Deprecated - needed until 0.51 is the minimum version
-  WebUrlInfo web_url_info = 3;  // Deprecated - needed until 0.51 is the minimum version
   Function function = 4;
   FunctionHandleMetadata handle_metadata = 5;
 }

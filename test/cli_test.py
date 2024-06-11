@@ -398,6 +398,7 @@ def mock_shell_pty():
 def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     webhook_app_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
+    cls_app_file = test_dir / "supports" / "app_run_tests" / "cls.py"
     fake_stdin, captured_out = mock_shell_pty
 
     fake_stdin.clear()
@@ -419,6 +420,10 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 
     # Function must be inferred
     _run(["shell", webhook_app_file.as_posix()])
+    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+    captured_out.clear()
+
+    _run(["shell", cls_app_file.as_posix()])
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
     captured_out.clear()
 
