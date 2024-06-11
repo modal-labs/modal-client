@@ -1008,6 +1008,7 @@ message FunctionCreateRequest {
 
 message FunctionCreateResponse {
   string function_id = 1;
+  string __deprecated_web_url = 2  [ deprecated = true];  // Used up until 0.62.212
   Function function = 4;
   FunctionHandleMetadata handle_metadata = 5;
 }
