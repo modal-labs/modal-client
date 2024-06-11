@@ -529,7 +529,7 @@ def import_single_function_service(
                 # The cls decorator is in global scope
                 _cls = synchronizer._translate_in(cls)
                 user_defined_callable = _cls._callables[fun_name]
-                function = _cls._functions.get(fun_name)
+                function = _cls._method_functions.get(fun_name)
                 active_app = _cls._app
             else:
                 # This is a raw class

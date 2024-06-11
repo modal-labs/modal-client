@@ -195,7 +195,13 @@ def test_registered_web_endpoints(client, servicer):
     app.function()(web_endpoint()(web1))
     app.function()(web_endpoint()(web2))
 
-    assert app.registered_web_endpoints == ["web1", "web2"]
+    @app.cls(serialized=True)
+    class Cls:
+        @web_endpoint()
+        def cls_web_endpoint(self):
+            pass
+
+    assert app.registered_web_endpoints == ["web1", "web2", "Cls.cls_web_endpoint"]
 
 
 def test_init_types():

@@ -354,7 +354,7 @@ class _App:
 
         return [m for m in all_mounts if m.is_local()]
 
-    def _add_function(self, function: _Function):
+    def _add_function(self, function: _Function, is_web_endpoint: bool):
         if function.tag in self._indexed_objects:
             old_function = self._indexed_objects[function.tag]
             if isinstance(old_function, _Function):
@@ -369,6 +369,8 @@ class _App:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
 
         self._add_object(function.tag, function)
+        if is_web_endpoint:
+            self._web_endpoints.append(function.tag)
 
     def _init_container(self, client: _Client, running_app: RunningApp):
         self._client = client
@@ -563,10 +565,8 @@ class _App:
                 is_generator = f.is_generator
                 keep_warm = f.keep_warm or keep_warm
 
-                if webhook_config:
-                    if interactive:
-                        raise InvalidError("interactive=True is not supported with web endpoint functions")
-                    self._web_endpoints.append(info.get_tag())
+                if webhook_config and interactive:
+                    raise InvalidError("interactive=True is not supported with web endpoint functions")
             else:
                 info = FunctionInfo(f, serialized=serialized, name_override=name)
                 webhook_config = None
@@ -622,7 +622,7 @@ class _App:
                 _experimental_scheduler=_experimental_scheduler,
             )
 
-            self._add_function(function)
+            self._add_function(function, webhook_config is not None)
             return function
 
         return wrapped
@@ -743,7 +743,7 @@ class _App:
                 _experimental_scheduler=_experimental_scheduler,
             )
 
-            self._add_function(cls_func)
+            self._add_function(cls_func, is_web_endpoint=False)
 
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
 
