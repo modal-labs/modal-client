@@ -77,7 +77,9 @@ enum CheckpointStatus {
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
+  CLIENT_TYPE_WORKER = 2 [deprecated=true];
   CLIENT_TYPE_CONTAINER = 3;
+  CLIENT_TYPE_SERVER = 4 [deprecated=true];
   CLIENT_TYPE_WEB_SERVER = 5;
 }
 
@@ -131,7 +133,9 @@ enum GPUType {
   GPU_TYPE_A100 = 2;
   GPU_TYPE_A10G = 3;
   GPU_TYPE_ANY = 4;
-  reserved 5, 6, 7;
+  GPU_TYPE_A100_20G = 5 [deprecated=true];
+  GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
+  GPU_TYPE_INFERENTIA2 = 7 [deprecated=true];
   GPU_TYPE_A100_80GB = 8;
   GPU_TYPE_L4 = 9;
   GPU_TYPE_H100 = 10;
@@ -211,6 +215,8 @@ message AppClientDisconnectRequest {
 message AppCreateRequest {
   string client_id = 1 [ (modal.options.audit_target_attr) = true ];
   string description = 2;    // Human readable label for the app
+  bool detach = 3 [deprecated=true]; // replaced by app_state in 0.55.3904
+  bool initializing = 4 [deprecated=true]; // replaced by app_state in 0.55.3904
   string environment_name = 5;
   AppState app_state = 6;
 }
