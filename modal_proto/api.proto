@@ -878,7 +878,7 @@ message Function {
 
   uint32 concurrency_limit = 19;
 
-  bool keep_warm = 20;
+  reserved 20; // old fields
 
   uint32 timeout_secs = 21;
 
