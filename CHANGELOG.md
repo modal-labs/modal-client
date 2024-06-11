@@ -10,6 +10,25 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.208 (2024-06-08)
+
+- `@web_server` endpoints can now return HTTP headers of up to 64 KiB in length. Previously, they were limited to 8 KiB due to an implementation detail.
+
+
+
+### 0.62.201 (2024-06-04)
+
+- `modal deploy` now accepts a `--tag` optional parameter that allows you to specify a custom tag for the deployed version, making it easier to identify and manage different deployments of your app.
+
+
+
+### 0.62.199 (2024-06-04)
+
+- `web_endpoint`s now have the option to include interactive SwaggerUI/redoc docs by setting `docs=True`
+- `web_endpoint`s no longer include an OpenAPI JSON spec route by default
+
+
+
 ### 0.62.197 (2024-05-31)
 
 Adds Source to PyPI metadata

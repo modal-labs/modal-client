@@ -54,7 +54,7 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
     """Expose a port publicly from inside a running Modal container, with TLS.
 
     If `unencrypted` is set, this also exposes the TCP socket without encryption on a random port
-    number. This can be used to SSH into a container. Note that it is on the public Internet, so
+    number. This can be used to SSH into a container (see example below). Note that it is on the public Internet, so
     make sure you are using a secure protocol over TCP.
 
     **Important:** This is an experimental API which may change in the future.
@@ -126,6 +126,39 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
             #  nc <HOST> <PORT>
             print("TCP tunnel listening at:", tunnel.tcp_socket)
             run_echo_server(8000)
+    ```
+
+    **SSH example:**
+    This assumes you have a rsa keypair in `~/.ssh/id_rsa{.pub}, this is a bare-bones example
+    letting you SSH into a Modal container.
+
+    ```python
+    import subprocess
+    import time
+    import modal
+
+    app = modal.App()
+    image = (
+        modal.Image.debian_slim()
+        .apt_install("openssh-server")
+        .run_commands("mkdir /run/sshd")
+        .copy_local_file("~/.ssh/id_rsa.pub", "/root/.ssh/authorized_keys")
+    )
+
+
+    @app.function(image=image, timeout=3600)
+    def some_function():
+        subprocess.Popen(["/usr/sbin/sshd", "-D", "-e"])
+        with modal.forward(port=22, unencrypted=True) as tunnel:
+            hostname, port = tunnel.tcp_socket
+            connection_cmd = f'ssh -p {port} root@{hostname}'
+            print(f"ssh into container using:\n{connection_cmd}")
+            time.sleep(3600)  # keep alive for 1 hour or until killed
+    ```
+
+    If you intend to use this more generally, a suggestion is to put the subprocess and port
+    forwarding code in an `@enter` lifecycle method of an @app.cls, to only make a single
+    ssh server and port for each container (and not one for each input to the function).
     """
 
     if not isinstance(port, int):
