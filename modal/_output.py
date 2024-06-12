@@ -234,7 +234,7 @@ class OutputManager:
                 transient=True,
             )
             if self._current_render_group:
-                self._current_render_group.renderables.append(self._function_queueing_progress)
+                self._current_render_group.renderables.append(Text(self._function_queueing_progress))
         return self._function_queueing_progress
 
     def function_progress_callback(self, tag: str, total: Optional[int]) -> Callable[[int, int], None]:
