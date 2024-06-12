@@ -122,7 +122,6 @@ async def _serve_app(
 
     async with _run_app(app, client=client, output_mgr=output_mgr, environment_name=environment_name):
         app_id: str = app.app_id
-        client.set_pre_stop(lambda: _disconnect(client, app_id))
         async with TaskContext(grace=0.1) as tc:
             tc.create_task(_run_watch_loop(app_ref, app.app_id, output_mgr, watcher, environment_name))
             yield app
