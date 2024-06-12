@@ -629,28 +629,43 @@ def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_
 
 def test_image_docker_command_entrypoint(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
     app.image = Image.debian_slim().entrypoint([])
     app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert "ENTRYPOINT []" in layers[0].dockerfile_commands
-        files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
-        assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
+
+
+def test_image_docker_command_entrypoint_nonempty(builder_version, servicer, client, tmp_path_with_content):
+    app = App()
+    app.image = (
+        Image.debian_slim()
+        .dockerfile_commands(
+            [
+                "FROM public.ecr.aws/docker/library/alpine:3.19.1",
+                'RUN echo $\'#!/usr/bin/env sh\necho "hi"\nexec "$@"\' > /temp.sh',
+                "RUN chmod +x /temp.sh",
+            ]
+        )
+        .entrypoint(["/temp.sh"])
+    )
+
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        assert 'ENTRYPOINT ["/temp.sh"]' in layers[0].dockerfile_commands
 
 
 def test_image_docker_command_shell(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
     app.image = Image.debian_slim().shell(["/bin/sh", "-c"])
     app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert 'SHELL ["/bin/sh", "-c"]' in layers[0].dockerfile_commands
-        files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
-        assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
 
 
 def test_image_env(builder_version, servicer, client):
