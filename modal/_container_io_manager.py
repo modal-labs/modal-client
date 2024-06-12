@@ -64,7 +64,6 @@ class _ContainerIOManager:
     _environment_name: str
     _waiting_for_memory_snapshot: bool
     _heartbeat_loop: Optional[asyncio.Task]
-    _enter_debugger: bool
 
     _is_interactivity_enabled: bool
     _fetching_inputs: bool
@@ -93,7 +92,6 @@ class _ContainerIOManager:
         self._environment_name = container_args.environment_name
         self._waiting_for_memory_snapshot = False
         self._heartbeat_loop = None
-        self._enter_debugger = False
 
         self._is_interactivity_enabled = False
         self._fetching_inputs = True
@@ -140,8 +138,7 @@ class _ContainerIOManager:
         # Don't send heartbeats for tasks waiting to be checkpointed.
         # Calling gRPC methods open new connections which block the
         # checkpointing process.
-        # Also don't send heartbeats when in debug mode
-        if self._waiting_for_memory_snapshot or self._enter_debugger:
+        if self._waiting_for_memory_snapshot:
             return False
 
         request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
@@ -560,6 +557,14 @@ class _ContainerIOManager:
         with restored_path.open("r") as file:
             restored_state = json.load(file)
 
+        # Start a debugger if the worker tells us to
+        # TODO: Is calling interact() necessary?
+        enter_debugger = int(restored_state["enter_debugger"])
+        if enter_debugger:
+            logger.debug("starting debugger")
+            import pdb;
+            pdb.set_trace()
+
         # Local ContainerIOManager state.
         for key in ["task_id", "function_id"]:
             if value := restored_state.get(key):
@@ -575,18 +580,6 @@ class _ContainerIOManager:
         # Restore input to default state.
         self.current_input_id = None
         self.current_input_started_at = None
-
-        # Start a debugger if the worker tells us to
-
-        self._enter_debugger = int(restored_state["enter_debugger"])
-        if self._enter_debugger:
-            logger.debug("starting debugger")
-            # breakpoint()
-            # await self.interact()
-            import pdb;
-            pdb.set_trace()
-        else:
-            logger.debug("not starting debugger")
 
         self._client = await _Client.from_env()
         self._waiting_for_memory_snapshot = False

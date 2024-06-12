@@ -592,11 +592,14 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Install hooks for interactive functions.
         if container_args.function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
+
             def breakpoint_wrapper():
                 # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
                 interact()
                 import pdb
+
                 pdb.set_trace()
+
             sys.breakpointhook = breakpoint_wrapper
 
         # Identify the "enter" methods to run after resuming from a snapshot.
