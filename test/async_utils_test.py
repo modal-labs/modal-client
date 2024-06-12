@@ -12,8 +12,8 @@ from modal._utils.async_utils import (
     TaskContext,
     queue_batch_iterator,
     retry,
-    warn_if_generator_is_not_consumed,
     synchronize_api,
+    warn_if_generator_is_not_consumed,
 )
 
 skip_github_non_linux = pytest.mark.skipif(
