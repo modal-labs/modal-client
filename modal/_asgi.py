@@ -3,10 +3,10 @@ import asyncio
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, cast
 
 import aiohttp
-from packaging.version import Version
 
 from ._utils.async_utils import TaskContext
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from ._utils.package_utils import parse_major_minor_version
 from .config import logger
 from .exception import ExecutionError, InvalidError
 from .execution_context import current_function_call_id
@@ -332,7 +332,7 @@ def web_server_proxy(host: str, port: int):
                         max_line_size=64 * 1024,  # 64 KiB
                         max_field_size=64 * 1024,  # 64 KiB
                     )
-                    if Version(aiohttp.__version__) >= Version("3.9")
+                    if parse_major_minor_version(aiohttp.__version__) >= (3, 9)
                     else {}
                 ),
             )
