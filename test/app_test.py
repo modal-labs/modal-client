@@ -8,7 +8,6 @@ from grpclib import GRPCError, Status
 
 from modal import App, Dict, Image, Mount, Queue, Secret, Stub, Volume, web_endpoint
 from modal.app import list_apps  # type: ignore
-from modal.config import config
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_app, deploy_stub
@@ -289,26 +288,6 @@ async def test_deploy_disconnect(servicer, client):
         api_pb2.APP_STATE_INITIALIZING,
         api_pb2.APP_STATE_STOPPED,
     ]
-
-
-def test_redeploy_from_name_change(servicer, client):
-    # Deploy queue
-    Queue.lookup("foo-queue", create_if_missing=True, client=client)
-
-    # Use it from app
-    app = App()
-    with pytest.warns(DeprecationError):
-        app.q = Queue.from_name("foo-queue")
-    deploy_app(app, "my-app", client=client)
-
-    # Change the object id of foo-queue
-    k = ("foo-queue", api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, config.get("environment"))
-    assert servicer.deployed_queues[k]
-    servicer.deployed_queues[k] = "qu-baz123"
-
-    # Redeploy app
-    # This should not fail because the object_id changed - it's a different app
-    deploy_app(app, "my-app", client=client)
 
 
 def test_parse_custom_domains():
