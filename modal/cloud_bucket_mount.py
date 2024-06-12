@@ -26,8 +26,13 @@ class _CloudBucketMount:
 
     app = modal.App()  # Note: "app" was called "stub" up until April 2024
     secret = modal.Secret.from_dict({
+        # Required: specify the access key of your AWS account
         "AWS_ACCESS_KEY_ID": "...",
+        # Required: specify the secret access key of your AWS account
         "AWS_SECRET_ACCESS_KEY": "...",
+        # Optional: specify the region of your S3 bucket.
+        # This can help when automatic detection of the bucket region fails.
+        "AWS_REGION": "...",
     })
     @app.function(
         volumes={

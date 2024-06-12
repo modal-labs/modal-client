@@ -55,6 +55,11 @@ Other possible configuration options are:
   Defaults to True.
   By default, Modal automatically mounts modules imported in the current scope, that
   are deemed to be "local". This can be turned off by setting this to False.
+* `force_build` (in the .toml file) / `MODAL_FORCE_BUILD` (as an env var).
+  Defaults to False.
+  When set, ignores the Image cache and builds all Image layers. Note that this
+  will break the cache for all images based on the rebuilt layers, so other images
+  may rebuild on subsequent runs / deploys even if the config is reverted.
 * `traceback` (in the .toml file) / `MODAL_TRACEBACK` (as an env var).
   Defaults to False. Enables printing full tracebacks on unexpected CLI
   errors, which can be useful for debugging client issues.
