@@ -124,7 +124,8 @@ async def ls(
 
 Remote parent directories will be created as needed.
 
-Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file will be uploaded with its current name under that directory.
+Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file
+will be uploaded with its current name under that directory.
 """,
     rich_help_panel="File operations",
 )

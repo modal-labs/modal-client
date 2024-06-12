@@ -398,6 +398,7 @@ def mock_shell_pty():
 def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     webhook_app_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
+    cls_app_file = test_dir / "supports" / "app_run_tests" / "cls.py"
     fake_stdin, captured_out = mock_shell_pty
 
     fake_stdin.clear()
@@ -419,6 +420,10 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 
     # Function must be inferred
     _run(["shell", webhook_app_file.as_posix()])
+    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+    captured_out.clear()
+
+    _run(["shell", cls_app_file.as_posix()])
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
     captured_out.clear()
 
@@ -481,6 +486,22 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
         expected_exit_code=1,
         expected_error="Could not find a deployed app named 'does-not-exist'",
     )
+
+
+def test_app_stop(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        # Deploy as a module
+        _run(["deploy", "myapp"])
+
+    res = _run(["app", "list"])
+    assert re.search("my_app .+ deployed", res.stdout)
+
+    _run(["app", "stop", "-n", "my_app"])
+
+    # Note that the mock servicer doesn't report "stopped" app statuses
+    # so we just check that it's not reported as deployed
+    res = _run(["app", "list"])
+    assert not re.search("my_app .+ deployed", res.stdout)
 
 
 def test_nfs_get(set_env_client, servicer):
@@ -572,6 +593,33 @@ def test_volume_rm(servicer, set_env_client):
 
         _run(["volume", "rm", vol_name, file_path.decode()])
         _run(["volume", "get", vol_name, file_path.decode()], expected_exit_code=1, expected_stderr=None)
+
+
+def test_volume_ls(servicer, set_env_client):
+    vol_name = "my-test-vol"
+    _run(["volume", "create", vol_name])
+
+    fnames = ["a", "b", "c"]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for fname in fnames:
+            src_path = os.path.join(tmpdir, f"{fname}.txt")
+            with open(src_path, "w") as f:
+                f.write(fname * 5)
+            _run(["volume", "put", vol_name, src_path, f"data/{fname}.txt"])
+
+    res = _run(["volume", "ls", vol_name])
+    assert "data" in res.stdout
+
+    res = _run(["volume", "ls", vol_name, "data"])
+    for fname in fnames:
+        assert f"{fname}.txt" in res.stdout
+
+    res = _run(["volume", "ls", vol_name, "data", "--json"])
+    res_dict = json.loads(res.stdout)
+    assert len(res_dict) == len(fnames)
+    for entry, fname in zip(res_dict, fnames):
+        assert entry["Filename"] == f"data/{fname}.txt"
+        assert entry["Type"] == "file"
 
 
 def test_volume_create_delete(servicer, server_url_env, set_env_client):
@@ -709,6 +757,9 @@ def test_list_apps(servicer, mock_dir, set_env_client):
 
     res = _run(["app", "list"])
     assert "my_app_foo" in res.stdout
+
+    res = _run(["app", "list", "--json"])
+    assert json.loads(res.stdout)
 
     _run(["volume", "create", "my-vol"])
     res = _run(["app", "list"])

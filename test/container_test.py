@@ -32,7 +32,7 @@ from modal._serialization import (
 from modal._utils import async_utils
 from modal.app import _App
 from modal.exception import InvalidError
-from modal.partial_function import enter
+from modal.partial_function import enter, method
 from modal_proto import api_pb2
 
 from .helpers import deploy_app_externally
@@ -80,6 +80,22 @@ def _get_multi_inputs(args: List[Tuple[Tuple, Dict]] = []) -> List[api_pb2.Funct
     return responses + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
 
 
+def _get_multi_inputs_with_methods(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
+    responses = []
+    for input_n, (method_name, *input_args) in enumerate(args):
+        resp = api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id=f"in-{input_n:03}",
+                    input=api_pb2.FunctionInput(args=serialize(input_args), method_name=method_name),
+                )
+            ]
+        )
+        responses.append(resp)
+
+    return responses + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
+
+
 def _container_args(
     module_name,
     function_name,
@@ -95,6 +111,7 @@ def _container_args(
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
+    is_class: bool = False,
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -119,6 +136,7 @@ def _container_args(
         is_checkpointing_function=is_checkpointing_function,
         object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         max_inputs=max_inputs,
+        is_class=is_class,
     )
 
     return api_pb2.ContainerArguments(
@@ -156,6 +174,7 @@ def _run_container(
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
+    is_class=False,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -172,6 +191,7 @@ def _run_container(
         volume_mounts,
         is_auto_snapshot,
         max_inputs,
+        is_class,
     )
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -401,7 +421,8 @@ def _get_web_inputs(path="/"):
     return _get_inputs(((scope,), {}))
 
 
-@async_utils.synchronize_api  # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
+# needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
+@async_utils.synchronize_api
 async def _put_web_body(servicer, body: bytes):
     asgi = {"type": "http.request", "body": body, "more_body": False}
     data = serialize_data_format(asgi, api_pb2.DATA_FORMAT_ASGI)
@@ -433,6 +454,27 @@ def test_webhook(unix_servicer):
 
     # Check body
     assert json.loads(second_message["body"]) == {"hello": "space"}
+
+
+@skip_github_non_linux
+def test_webhook_setup_failure(unix_servicer):
+    inputs = _get_web_inputs()
+    _put_web_body(unix_servicer, b"")
+    with unix_servicer.intercept() as ctx:
+        ret = _run_container(
+            unix_servicer,
+            "test.supports.functions",
+            "error_in_asgi_setup",
+            inputs=inputs,
+            webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+        )
+
+    task_result_request: api_pb2.TaskResultRequest
+    (task_result_request,) = ctx.get_requests("TaskResult")
+    assert task_result_request.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "Error while setting up asgi app" in ret.task_result.exception
+    assert ret.items == []
+    # TODO: We should send some kind of 500 error back to modal-http here when the container can't start up
 
 
 @skip_github_non_linux
@@ -618,6 +660,30 @@ def test_cls_web_endpoint(unix_servicer):
 
 
 @skip_github_non_linux
+def test_cls_web_asgi_construction(unix_servicer):
+    unix_servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
+    unix_servicer.app_functions["fu-2"] = api_pb2.FunctionHandleMetadata()
+
+    inputs = _get_web_inputs()
+    ret = _run_container(
+        unix_servicer,
+        "test.supports.functions",
+        "Cls.asgi_web",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+
+    _, second_message = _unwrap_asgi(ret)
+    return_dict = json.loads(second_message["body"])
+    assert return_dict == {
+        "arg": "space",
+        "at_construction": 111,  # @enter should have run when the asgi app constructor is called
+        "at_runtime": 111,
+        "other_hydrated": True,
+    }
+
+
+@skip_github_non_linux
 def test_serialized_cls(unix_servicer):
     class Cls:
         @enter()
@@ -782,7 +848,8 @@ def test_multiapp_same_name_warning(unix_servicer, caplog, capsys):
 
 @skip_github_non_linux
 def test_multiapp_serialized_func(unix_servicer, caplog):
-    # serialized functions shouldn't warn about multiple/not finding apps, since they shouldn't load the module to begin with
+    # serialized functions shouldn't warn about multiple/not finding apps, since
+    # they shouldn't load the module to begin with
     def dummy(x):
         return x
 
@@ -1203,17 +1270,22 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
             servicer,
             "test.supports.functions",
             function_name,
-            inputs=[((20,), {})],
+            inputs=[((20,), {})] * 2,  # two inputs
             allow_concurrent_inputs=2,
         )
+        input_lock.wait()
         input_lock.wait()
 
     time.sleep(0.05)  # let the container get and start processing the input
     servicer.container_heartbeat_return_now(
-        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000"]))
+        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000", "in-001"]))
     )
     # container should exit soon!
     exit_code = container_process.wait(5)
+    assert (
+        len(servicer.container_outputs) == 0
+    )  # should not fail the outputs, as they would have been cancelled in backend already
+    assert "Traceback" not in container_process.stderr.read().decode("utf8")
     assert exit_code == 0  # container should exit gracefully
 
 
@@ -1307,6 +1379,39 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
     assert loop_iteration_failures > 5
     assert "error=Exception('oops')" in caplog.text
     assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_sigint_termination_input_concurrent(servicer):
+    # Sync and async container lifecycle methods on a sync function.
+    with servicer.input_lockstep() as input_barrier:
+        container_process = _run_container_process(
+            servicer,
+            "test.supports.functions",
+            "LifecycleCls.delay",
+            inputs=[((10,), {})] * 3,
+            cls_params=((), {"print_at_exit": True}),
+            allow_concurrent_inputs=2,
+        )
+        input_barrier.wait()  # get one input
+        input_barrier.wait()  # get one input
+        time.sleep(0.5)
+        # container won't be able to fetch next input
+        signal_time = time.monotonic()
+        os.kill(container_process.pid, signal.SIGINT)
+
+    stdout, stderr = container_process.communicate(timeout=5)
+    stop_duration = time.monotonic() - signal_time
+    assert len(servicer.container_outputs) == 0
+    assert (
+        container_process.returncode == 0
+    )  # container should catch and indicate successful termination by exiting cleanly when possible
+    assert "[events:enter_sync,enter_async,delay,delay,exit_sync,exit_async]" in stdout.decode()
+    assert "Traceback" not in stderr.decode()
+    assert "Traceback" not in stdout.decode()
+    assert stop_duration < 2.0  # if this would be ~4.5s, then the input isn't getting terminated
+    assert servicer.task_result is None
 
 
 @skip_github_non_linux
@@ -1408,3 +1513,46 @@ def test_is_local(unix_servicer, event_loop):
 
     ret = _run_container(unix_servicer, "test.supports.functions", "is_local_f")
     assert _unwrap_scalar(ret) == False
+
+
+@skip_github_non_linux
+def test_class_as_service_serialized(unix_servicer):
+    # TODO(elias): refactor once the loading code is merged
+    class Foo:
+        def __init__(self, x):
+            self.x = x
+
+        @enter()
+        def some_enter(self):
+            self.x += "_enter"
+
+        @method()
+        def method_a(self, y):
+            return self.x + f"_a_{y}"
+
+        @method()
+        def method_b(self, y):
+            return self.x + f"_b_{y}"
+
+    # Class used by the container entrypoint to instantiate the object tied to the function
+    unix_servicer.class_serialized = serialize(Foo)
+
+    # serialized versions of each PartialFunction - used by container entrypoint to execute the methods
+    unix_servicer.function_serialized = None
+
+    result = _run_container(
+        unix_servicer,
+        "nomodule",
+        "Foo.*",
+        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        is_class=True,
+        inputs=_get_multi_inputs_with_methods([("method_a", ("x",), {}), ("method_b", ("y",), {})]),
+        serialized_params=serialize((((), {"x": "s"}))),
+    )
+    assert len(result.items) == 2
+    res_0 = result.items[0].result
+    res_1 = result.items[1].result
+    assert res_0.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert res_1.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert deserialize(res_0.data, result.client) == "s_enter_a_x"
+    assert deserialize(res_1.data, result.client) == "s_enter_b_y"

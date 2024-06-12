@@ -152,6 +152,12 @@ def fastapi_app():
 
 
 @app.function()
+@asgi_app()
+def error_in_asgi_setup():
+    raise Exception("Error while setting up asgi app")
+
+
+@app.function()
 @wsgi_app()
 def basic_wsgi_app():
     def simple_app(environ, start_response):
@@ -181,6 +187,25 @@ class Cls:
     @web_endpoint()
     def web(self, arg):
         return {"ret": arg * self._k}
+
+    @asgi_app()
+    def asgi_web(self):
+        from fastapi import FastAPI
+
+        k_at_construction = self._k  # expected to be 111
+        hydrated_at_contruction = square.is_hydrated
+        web_app = FastAPI()
+
+        @web_app.get("/")
+        def k(arg: str):
+            return {
+                "at_construction": k_at_construction,
+                "at_runtime": self._k,
+                "arg": arg,
+                "other_hydrated": hydrated_at_contruction,
+            }
+
+        return web_app
 
     def _generator(self, x):
         yield x**3

@@ -176,7 +176,8 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
     def f(ctx, *args, **kwargs):
         if ctx.obj["detach"]:
             print(
-                "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
+                "Note that running a local entrypoint in detached mode only keeps the last "
+                "triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
         with run_app(
@@ -272,6 +273,7 @@ def deploy(
     ),
     skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
+    tag: str = typer.Option(None, help="Tag the deployment with a version."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -284,12 +286,13 @@ def deploy(
     if public and not skip_confirm:
         if not click.confirm(
             "⚠️ Public apps are a beta feature. ⚠️\n"
-            "Making an app public will allow any user (including from outside your workspace) to look up and use your functions.\n"
+            "Making an app public will allow any user (including from outside your workspace) "
+            "to look up and use your functions.\n"
             "Are you sure you want your app to be public?"
         ):
             return
 
-    res = deploy_app(app, name=name, environment_name=env, public=public)
+    res = deploy_app(app, name=name, environment_name=env, public=public, tag=tag)
 
     if stream_logs:
         stream_app_logs(res.app_id)
@@ -349,11 +352,17 @@ def shell(
     ),
     cloud: Optional[str] = typer.Option(
         default=None,
-        help="Cloud provider to run the shell on. Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF).",
+        help=(
+            "Cloud provider to run the shell on. "
+            "Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF)."
+        ),
     ),
     region: Optional[str] = typer.Option(
         default=None,
-        help="Region(s) to run the shell on. Can be a single region or a comma-separated list to choose from (if not using FUNC_REF).",
+        help=(
+            "Region(s) to run the shell on. "
+            "Can be a single region or a comma-separated list to choose from (if not using FUNC_REF)."
+        ),
     ),
 ):
     """Run an interactive shell inside a Modal image.

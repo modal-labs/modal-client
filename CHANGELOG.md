@@ -10,6 +10,85 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.208 (2024-06-08)
+
+- `@web_server` endpoints can now return HTTP headers of up to 64 KiB in length. Previously, they were limited to 8 KiB due to an implementation detail.
+
+
+
+### 0.62.201 (2024-06-04)
+
+- `modal deploy` now accepts a `--tag` optional parameter that allows you to specify a custom tag for the deployed version, making it easier to identify and manage different deployments of your app.
+
+
+
+### 0.62.199 (2024-06-04)
+
+- `web_endpoint`s now have the option to include interactive SwaggerUI/redoc docs by setting `docs=True`
+- `web_endpoint`s no longer include an OpenAPI JSON spec route by default
+
+
+
+### 0.62.197 (2024-05-31)
+
+Adds Source to PyPI metadata
+
+
+
+### 0.62.190 (2024-05-29)
+
+* `modal.Function` now supports requesting ephemeral disk (SSD) via the new `ephemeral_disk` parameter. Intended for use in doing large dataset ingestion and transform.
+
+
+
+### 0.62.186 (2024-05-29)
+
+* `modal.Volume` background commits are now enabled by default when using `spawn_sandbox`.
+
+
+
+### 0.62.185 (2024-05-28)
+
+- The `modal app stop` CLI command now accepts a `--name` (or `-n`) option to stop an App by name rather than by ID.
+
+
+
+### 0.62.181 (2024-05-24)
+
+* Background committing on `modal.Volume` mounts is now default behavior.
+
+
+
+### 0.62.178 (2024-05-21)
+
+- Added a `modal container stop` CLI command that will kill an active container and reassign its current inputs.
+
+
+
+### 0.62.175 (2024-05-17)
+
+* `modal.CloudBucketMount` now supports writing to Google Cloud Storage buckets.
+
+
+
+### 0.62.174 (2024-05-17)
+
+- Using `memory=` to specify the type of `modal.gpu.A100` is deprecated in favor of `size=`. Note that `size` accepts a string type (`"40GB"` or `"80GB"`) rather than an integer, as this is a request for a specific variant of the A100 GPU.
+
+
+
+### 0.62.173 (2024-05-17)
+
+- Added a `version` flag to the `modal.Volume` API and CLI, allow opting in to a new backend implementation.
+
+
+
+### 0.62.172 (2024-05-17)
+
+* Fixed a bug where other functions weren't callable from within an `asgi_app` or `wsgi_app` constructor function and side effects of `@enter` methods weren't available in that scope.
+
+
+
 ### 0.62.166 (2024-05-14)
 
 * Disabling background commits on `modal.Volume` volumes is now deprecated. Background commits will soon become mandatory behavior.
@@ -22,9 +101,15 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 
 
+### 0.62.162 (2024-05-13)
+
+- A deprecation warning is now raised when using `modal.Stub`, which has been renamed to `modal.App`. Additionally, it is recommended to use `app` as the variable name rather than `stub`, which matters when using the automatic app discovery feature in the `modal run` CLI command.
+
+
+
 ### 0.62.159 (2024-05-10)
 
-Added a `--stream-logs` flag to `modal deploy` that if True, begins streaming the app logs once deployment is complete.
+- Added a `--stream-logs` flag to `modal deploy` that, if True, begins streaming the app logs once deployment is complete.
 
 
 
@@ -36,13 +121,13 @@ Added a `--stream-logs` flag to `modal deploy` that if True, begins streaming th
 
 ### 0.62.150 (2024-05-08)
 
-Added validation that App `name`, if provided, is a string.
+- Added validation that App `name`, if provided, is a string.
 
 
 
 ### 0.62.149 (2024-05-08)
 
-The @app.function decorator now raises an error when it is used to decorate a class.
+- The `@app.function` decorator now raises an error when it is used to decorate a class (this was always invalid, but previously produced confusing behavior).
 
 
 
@@ -52,6 +137,13 @@ The @app.function decorator now raises an error when it is used to decorate a cl
     - Persistent storage objects like Volumes or Dicts are no longer included (these objects receive an app ID internally, but this is an implementation detail and subject to future change). You can use the dedicated CLI for each object (e.g. `modal volume list`) instead.
     - For Apps in a *stopped* state, the output is now limited to those stopped within the past 2 hours.
     - The number of tasks running for each App is now shown.
+
+
+
+### 0.62.146 (2024-05-07)
+
+- Added the `region` parameter to the `modal.App.function`  and `modal.App.cls` decorators. This feature allows the selection of specific regions for function execution. Note that it is available only on some plan types. See our [blog post](https://modal.com/blog/region-selection-launch) for more details.
+
 
 
 

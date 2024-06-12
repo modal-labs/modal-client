@@ -216,6 +216,11 @@ def test_function_cpu_request(client):
     app.function(cpu=2.0)(dummy)
 
 
+def test_function_disk_request(client):
+    app = App()
+    app.function(ephemeral_disk=1_000_000)(dummy)
+
+
 def later():
     return "hello"
 
@@ -414,9 +419,9 @@ async def test_function_exception_async(client, servicer):
     async with app.run(client=client):
         with pytest.raises(CustomException) as excinfo:
             coro = failure_modal.remote.aio()
-            assert inspect.isawaitable(
-                coro
-            )  # mostly for mypy, since output could technically be an async generator which isn't awaitable in the same sense
+            # mostly for mypy, since output could technically be an async generator which
+            # isn't awaitable in the same sense
+            assert inspect.isawaitable(coro)
             await coro
         assert "foo!" in str(excinfo.value)
 

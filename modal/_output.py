@@ -396,7 +396,9 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
         await finish_event.wait()
 
 
-async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputManager):
+async def get_app_logs_loop(
+    client: _Client, output_mgr: OutputManager, app_id: Optional[str] = None, task_id: Optional[str] = None
+):
     last_log_batch_entry_id = ""
     pty_shell_finish_event: Optional[asyncio.Event] = None
     pty_shell_task_id: Optional[str] = None
@@ -434,7 +436,8 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
         nonlocal last_log_batch_entry_id, pty_shell_finish_event, pty_shell_task_id
 
         request = api_pb2.AppGetLogsRequest(
-            app_id=app_id,
+            app_id=app_id or "",
+            task_id=task_id or "",
             timeout=55,
             last_entry_id=last_log_batch_entry_id,
         )
@@ -481,7 +484,8 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
             # TODO: this should come from the backend maybe
             app_logs_url = f"https://modal.com/logs/{app_id}"
             output_mgr.print_if_visible(
-                f"[red]Timed out waiting for logs. [grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
+                f"[red]Timed out waiting for logs. "
+                f"[grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
             )
             raise
         except (GRPCError, StreamTerminatedError) as exc:
@@ -505,3 +509,54 @@ async def get_app_logs_loop(app_id: str, client: _Client, output_mgr: OutputMana
     await stop_pty_shell()
 
     logger.debug("Logging exited gracefully")
+
+
+class FunctionCreationStatus:
+    tag: str
+    response: Optional[api_pb2.FunctionCreateResponse] = None
+
+    def __init__(self, resolver, tag):
+        self.resolver = resolver
+        self.tag = tag
+
+    def __enter__(self):
+        self.status_row = self.resolver.add_status_row()
+        self.status_row.message(f"Creating function {self.tag}...")
+        return self
+
+    def set_response(self, resp: api_pb2.FunctionCreateResponse):
+        self.response = resp
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            raise exc_val
+
+        if not self.response:
+            self.status_row.finish(f"Unknown error when creating function {self.tag}")
+
+        elif self.response.function.web_url:
+            url_info = self.response.function.web_url_info
+            # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
+            if url_info.truncated:
+                suffix = " [grey70](label truncated)[/grey70]"
+            elif url_info.has_unique_hash:
+                suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
+            elif url_info.label_stolen:
+                suffix = " [grey70](label stolen)[/grey70]"
+            else:
+                suffix = ""
+            # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
+            web_url = self.response.handle_metadata.web_url
+            self.status_row.finish(
+                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]{suffix}"
+            )
+
+            # Print custom domain in terminal
+            for custom_domain in self.response.function.custom_domain_info:
+                custom_domain_status_row = self.resolver.add_status_row()
+                custom_domain_status_row.finish(
+                    f"Custom domain for {self.tag} => [magenta underline]"
+                    f"{custom_domain.url}[/magenta underline]{suffix}"
+                )
+        else:
+            self.status_row.finish(f"Created function {self.tag}.")

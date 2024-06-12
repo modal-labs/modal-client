@@ -16,7 +16,7 @@ from modal_proto import api_pb2
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.function_utils import method_has_params
 from .config import logger
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 
 
@@ -26,6 +26,10 @@ class _PartialFunctionFlags(enum.IntFlag):
     ENTER_PRE_SNAPSHOT: int = 4
     ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
+
+    @staticmethod
+    def all() -> "_PartialFunctionFlags":
+        return ~_PartialFunctionFlags(0)  # type: ignore #  for some reason mypy things this has type int
 
 
 class _PartialFunction:
@@ -53,13 +57,25 @@ class _PartialFunction:
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
 
     def __get__(self, obj, objtype=None) -> _Function:
-        # This only happens inside user methods when they refer to other methods
         k = self.raw_f.__name__
-        if obj:  # Cls().fun
-            function = getattr(obj, "_modal_functions")[k]
-        else:  # Cls.fun
-            function = getattr(objtype, "_modal_functions")[k]
-        return function
+        if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
+            if hasattr(obj, "_modal_functions"):
+                # This happens inside "local" user methods when they refer to other methods,
+                # e.g. Foo().parent_method() doing self.local.other_method()
+                return getattr(obj, "_modal_functions")[k]
+            else:
+                # special edge case: referencing a method of an instance of an
+                # unwrapped class (not using app.cls()) with @methods
+                # not sure what would be useful here, but lets return a bound version of the underlying function,
+                # since the class is just a vanilla class at this point
+                # This wouldn't let the user access `.remote()` and `.local()` etc. on the function
+                return self.raw_f.__get__(obj, objtype)
+
+        else:  # accessing a method directly on the class, e.g. `MyClass.fun`
+            # This happens mainly during serialization of the wrapped underlying class of a Cls
+            # since we don't have the instance info here we just return the PartialFunction itself
+            # to let it be bound to a variable and become a Function later on
+            return self
 
     def __del__(self):
         if (self.flags & _PartialFunctionFlags.FUNCTION) and self.wrapped is False:
@@ -121,8 +137,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
                 f" Please try using the `modal.{suggested}` decorator{async_suggestion} instead."
                 " See https://modal.com/docs/guide/lifecycle-functions for more information."
             )
-            deprecation_warning((2024, 2, 21), message, show_source=True)
-            functions[attr] = getattr(user_cls, attr)
+            deprecation_error((2024, 2, 21), message)
 
     # Grab new decorator-based methods
     for k, pf in _find_partial_methods_for_cls(user_cls, flags).items():
@@ -165,7 +180,8 @@ def _method(
         if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
-                "Web endpoints on classes should not be wrapped by `@method`. Suggestion: remove the `@method` decorator."
+                "Web endpoints on classes should not be wrapped by `@method`. "
+                "Suggestion: remove the `@method` decorator."
             )
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
 
@@ -187,6 +203,7 @@ def _web_endpoint(
     *,
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+    docs: bool = False,  # Whether to enable interactive documentation for this endpoint at /docs.
     wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[
         Iterable[str]
@@ -239,6 +256,7 @@ def _web_endpoint(
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
+                web_endpoint_docs=docs,
                 requested_suffix=label,
                 async_mode=_response_mode,
                 custom_domains=_parse_custom_domains(custom_domains),
@@ -318,8 +336,9 @@ def _wsgi_app(
     """Decorator for registering a WSGI app with a Modal function.
 
     Web Server Gateway Interface (WSGI) is a standard for synchronous Python web apps.
-    It has been [succeeded by the ASGI interface](https://asgi.readthedocs.io/en/latest/introduction.html#wsgi-compatibility) which is compatible with ASGI and supports
-    additional functionality such as web sockets. Modal supports ASGI via [`asgi_app`](/docs/reference/modal.asgi_app).
+    It has been [succeeded by the ASGI interface](https://asgi.readthedocs.io/en/latest/introduction.html#wsgi-compatibility)
+    which is compatible with ASGI and supports additional functionality such as web sockets.
+    Modal supports ASGI via [`asgi_app`](/docs/reference/modal.asgi_app).
 
     **Usage:**
 
