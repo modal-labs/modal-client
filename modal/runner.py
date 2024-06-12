@@ -170,7 +170,7 @@ async def _create_all_objects(
 async def _disconnect(
     client: _Client,
     app_id: str,
-    reason: "Optional[api_pb2.AppDisconnectReason.ValueType]" = None,
+    reason: "api_pb2.AppDisconnectReason.ValueType",
     exc_str: Optional[str] = None,
 ):
     """Tell the server the client has disconnected for this app. Terminates all running tasks
