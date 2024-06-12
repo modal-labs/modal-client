@@ -474,7 +474,7 @@ class _App:
 
     def function(
         self,
-        _warn_parentheses_missing: bool | None = None,
+        _warn_parentheses_missing: Optional[bool] = None,
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
