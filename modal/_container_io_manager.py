@@ -562,7 +562,7 @@ class _ContainerIOManager:
         enter_debugger = int(restored_state["enter_debugger"])
         if enter_debugger:
             logger.debug("starting debugger")
-            import pdb;
+            import pdb
             pdb.set_trace()
 
         # Local ContainerIOManager state.
