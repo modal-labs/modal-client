@@ -328,7 +328,7 @@ def web_server_proxy(host: str, port: int):
                 **(
                     # These options were introduced in aiohttp 3.9, and we can remove the
                     # conditional after deprecating image builder version 2023.12.
-                    dict(
+                    dict(  # type: ignore
                         max_line_size=64 * 1024,  # 64 KiB
                         max_field_size=64 * 1024,  # 64 KiB
                     )
