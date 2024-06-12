@@ -858,10 +858,10 @@ class _Image(_Object, type_prefix="im"):
 
     def entrypoint(
         self,
-        entrypoint_args: List[str],
+        entrypoint_commands: List[str],
     ) -> "_Image":
         """Set the entrypoint for the image."""
-        args_str = _flatten_str_args("entrypoint", "entrypoint_files", entrypoint_args)
+        args_str = _flatten_str_args("entrypoint", "entrypoint_files", entrypoint_commands)
         args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
         dockerfile_cmd = f"ENTRYPOINT [{args_str}]"
 
