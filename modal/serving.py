@@ -18,7 +18,7 @@ from .cli.import_refs import import_app
 from .client import _Client
 from .config import config
 from .exception import deprecation_warning
-from .runner import _disconnect, _run_app, serve_update
+from .runner import _run_app, serve_update
 
 if TYPE_CHECKING:
     from .app import _App
@@ -121,7 +121,6 @@ async def _serve_app(
         watcher = watch(mounts_to_watch, output_mgr)
 
     async with _run_app(app, client=client, output_mgr=output_mgr, environment_name=environment_name):
-        app_id: str = app.app_id
         async with TaskContext(grace=0.1) as tc:
             tc.create_task(_run_watch_loop(app_ref, app.app_id, output_mgr, watcher, environment_name))
             yield app
