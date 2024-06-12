@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.219 (2024-06-12)
+
+- Fix an issue with `@web_server` decorator not working on image builder version 2023.12
+
+
+
 ### 0.62.208 (2024-06-08)
 
 - `@web_server` endpoints can now return HTTP headers of up to 64 KiB in length. Previously, they were limited to 8 KiB due to an implementation detail.
