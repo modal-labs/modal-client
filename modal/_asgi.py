@@ -3,6 +3,7 @@ import asyncio
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, cast
 
 import aiohttp
+from packaging.version import Version
 
 from ._utils.async_utils import TaskContext
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
@@ -323,6 +324,16 @@ def web_server_proxy(host: str, port: int):
                 timeout=aiohttp.ClientTimeout(total=3600),
                 auto_decompress=False,
                 read_bufsize=1024 * 1024,  # 1 MiB
+                **(
+                    # These options were introduced in aiohttp 3.9, and we can remove the
+                    # conditional after deprecating image builder version 2023.12.
+                    dict(
+                        max_line_size=64 * 1024,  # 64 KiB
+                        max_field_size=64 * 1024,  # 64 KiB
+                    )
+                    if Version(aiohttp.__version__) >= Version("3.9")
+                    else {}
+                ),
             )
 
         try:
