@@ -4,6 +4,7 @@ import importlib.util
 import typing
 from importlib.metadata import PackageNotFoundError, files
 from pathlib import Path
+from typing import Tuple
 
 from ..exception import ModuleNotMountable
 
@@ -46,3 +47,16 @@ def get_module_mount_info(module_name: str) -> typing.Sequence[typing.Tuple[bool
     if not entries:
         raise ModuleNotMountable(f"{module_name} has no mountable paths")
     return entries
+
+
+def parse_major_minor_version(version_string: str) -> Tuple[int, int]:
+    parts = version_string.split(".")
+    if len(parts) < 2:
+        raise ValueError("version_string must have at least an 'X.Y' format")
+    try:
+        major = int(parts[0])
+        minor = int(parts[1])
+    except ValueError:
+        raise ValueError("version_string must have at least an 'X.Y' format with integral major/minor values")
+
+    return major, minor
