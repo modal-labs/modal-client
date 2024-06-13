@@ -151,6 +151,10 @@ class _Invocation:
                 request,
                 attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
+
+            if response.is_expired:
+                raise TimeoutError("Function call outputs expired")
+
             if len(response.outputs) > 0:
                 for item in response.outputs:
                     yield item
@@ -181,7 +185,7 @@ class _Invocation:
         )
 
         if len(items) == 0:
-            raise TimeoutError()
+            raise TimeoutError("Function call has not finished")
 
         return await _process_result(items[0].result, items[0].data_format, self.stub, self.client)
 
