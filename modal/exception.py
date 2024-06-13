@@ -86,6 +86,10 @@ class DeserializationError(Error):
     """Raised to provide more context when an error is encountered during deserialization."""
 
 
+class OutputExpiredError(Error):
+    """Raised when the Output exceeds expiration and times out."""
+
+
 class RequestSizeError(Error):
     """Raised when an operation produces a gRPC request that is rejected by the server for being too large."""
 

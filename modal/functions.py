@@ -62,6 +62,7 @@ from .exception import (
     ExecutionError,
     InvalidError,
     NotFoundError,
+    OutputExpiredError,
     deprecation_error,
     deprecation_warning,
 )
@@ -152,8 +153,8 @@ class _Invocation:
                 attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
-            if response.is_expired:
-                raise TimeoutError("Function call outputs expired")
+            if len(response.outputs) == 0 and response.is_expired:
+                raise OutputExpiredError()
 
             if len(response.outputs) > 0:
                 for item in response.outputs:
@@ -185,7 +186,7 @@ class _Invocation:
         )
 
         if len(items) == 0:
-            raise TimeoutError("Function call has not finished")
+            raise TimeoutError()
 
         return await _process_result(items[0].result, items[0].data_format, self.stub, self.client)
 
