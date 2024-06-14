@@ -559,11 +559,28 @@ class _ContainerIOManager:
 
         # Start a debugger if the worker tells us to
         # TODO: Is calling interact() necessary?
-        enter_debugger = int(restored_state["enter_debugger"])
-        if enter_debugger:
-            logger.debug("starting debugger")
+        # enter_debugger = int(restored_state["enter_debugger"])
+        # if enter_debugger:
+        if True:
+            logger.debug("Starting debugger")
+
+
+            # await self.interact()
+            print("pty:")
+            print(self.function_def.pty_info)
+
+            # x = 12345
             import pdb
             pdb.set_trace()
+            # f = lambda t: t*100
+            # print(pdb.run("f(19)"))
+
+            # while True:
+                # x = input("PROMPT:")
+                # print("ECHO:", x)
+                # current theory is that the message isn't getting received here.
+                # like the Rpc::ContainerInput is being sent, but never read from
+                # that code probably exists somewhere in the client
 
         # Local ContainerIOManager state.
         for key in ["task_id", "function_id"]:
