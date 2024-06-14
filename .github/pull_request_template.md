@@ -2,8 +2,7 @@
 
 - _Provide Linear issue reference (e.g. MOD-1234) if available._
 
-
-## Backward/forward compatibility checks
+<details> <summary>Backward/forward compatibility checks</summary>
 
 Check these boxes or delete any item (or this section) if not relevant for this PR.
 
@@ -13,6 +12,7 @@ Check these boxes or delete any item (or this section) if not relevant for this 
 Note on protobuf: protobuf message changes in one place may have impact to
 multiple entities (client, server, worker, database). See points above.
 
+</details>
 
 ## Changelog
 
