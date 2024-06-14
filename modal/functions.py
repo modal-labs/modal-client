@@ -162,7 +162,7 @@ class _Invocation:
                 # update timeout in retry loop
                 backend_timeout = min(OUTPUTS_TIMEOUT, t0 + timeout - time.time())
                 if backend_timeout < 0:
-                    if len(response.outputs) == 0 and response.num_inputs == 0:
+                    if len(response.outputs) == 0 and response.num_unfinished_inputs == 0:
                         raise OutputExpiredError()
                     break
 
