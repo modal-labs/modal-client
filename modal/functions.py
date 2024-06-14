@@ -210,8 +210,18 @@ class FunctionStats:
     """Simple data structure storing stats for a running function."""
 
     backlog: int
-    num_active_runners: int
     num_total_runners: int
+
+    def __getattr__(self, name):
+        if name == "num_active_runners":
+            msg = (
+                "'FunctionStats.num_active_runners' is deprecated."
+                " It currently always has a value of 0,"
+                " but it will be removed in a future release."
+            )
+            deprecation_warning((2024, 6, 14), msg)
+            return 0
+        raise AttributeError(f"'FunctionStats' object has no attribute '{name}'")
 
 
 def _parse_retries(
@@ -1082,9 +1092,7 @@ class _Function(_Object, type_prefix="fu"):
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
             total_timeout=10.0,
         )
-        return FunctionStats(
-            backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
-        )
+        return FunctionStats(backlog=resp.backlog, num_total_runners=resp.num_total_tasks)
 
     # A bit hacky - but the map-style functions need to not be synchronicity-wrapped
     # in order to not execute their input iterators on the synchronicity event loop.
