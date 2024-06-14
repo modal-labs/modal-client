@@ -153,9 +153,6 @@ class _Invocation:
                 attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
-            if len(response.outputs) == 0 and response.is_expired:
-                raise OutputExpiredError()
-
             if len(response.outputs) > 0:
                 for item in response.outputs:
                     yield item
@@ -165,6 +162,8 @@ class _Invocation:
                 # update timeout in retry loop
                 backend_timeout = min(OUTPUTS_TIMEOUT, t0 + timeout - time.time())
                 if backend_timeout < 0:
+                    if len(response.outputs) == 0 and response.num_inputs == 0:
+                        raise OutputExpiredError()
                     break
 
     async def run_function(self) -> Any:

@@ -1069,7 +1069,7 @@ message FunctionGetOutputsResponse {
   repeated int32 idxs = 3;
   repeated FunctionGetOutputsItem outputs = 4;
   string last_entry_id = 5;
-  bool is_expired = 6;
+  int32 num_inputs = 6;
 }
 
 message FunctionGetRequest {
