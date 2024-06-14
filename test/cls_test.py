@@ -171,13 +171,10 @@ def test_run_class_serialized(client, servicer):
     class_function = servicer.function_by_name("FooSer.*")
     assert class_function.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
     user_cls = deserialize(class_function.class_serialized, client)
-    fun_callables = deserialize(class_function.function_serialized, client)
-    assert fun_callables.keys() == {"bar"}
-    assert isinstance(fun_callables["bar"], _PartialFunction)
 
     # Create bound method
     obj = user_cls()
-    bound_bar = fun_callables["bar"].raw_f.__get__(obj)
+    bound_bar = user_cls.bar.__get__(obj)
     # Make sure it's callable
     assert bound_bar(100) == 1000000
 

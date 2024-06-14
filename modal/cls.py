@@ -57,7 +57,7 @@ class _Obj:
         self,
         user_cls: type,
         output_mgr: Optional[OutputManager],
-        class_function: _Function,
+        class_service_function: _Function,
         classbound_methods: Dict[str, _Function],
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
@@ -71,7 +71,7 @@ class _Obj:
 
         self._method_functions = {}
         # first create the singular object function used by all methods on this parameterization
-        self._instance_service_function = class_function._bind_parameters(
+        self._instance_service_function = class_service_function._bind_parameters(
             self, from_other_workspace, options, args, kwargs
         )
         for method_name, class_bound_method in classbound_methods.items():
@@ -204,7 +204,9 @@ class _Cls(_Object, type_prefix="cs"):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
 
         if metadata.class_function_id:
-            # we don't have any hydration metadata on "service function" themselves
+            # "class service function" themselves don't have hydration metadata, but we
+            # still send in a valid FunctionHandleMetadata object in hydration, since
+            # there is a run-time type check of that _Function._hydrate_metadata
             if self._class_service_function:
                 self._class_service_function._hydrate(
                     metadata.class_function_id, self._client, metadata.class_function_metadata
@@ -238,17 +240,15 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
-    def from_local(user_cls, app: "modal.app._App", cls_func: _Function) -> "_Cls":
+    def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
         """mdmd:hidden"""
         functions: Dict[str, _Function] = {}
-        # first create a function representing the whole class, this is the single function id that will be used
-        # by containers running methods
         partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         )
 
         for method_name, partial_function in partial_functions.items():
-            method_function = cls_func._bind_method(user_cls, method_name, partial_function)
+            method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
             app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
             partial_function.wrapped = True
             functions[method_name] = method_function
@@ -261,11 +261,13 @@ class _Cls(_Object, type_prefix="cs"):
         callables: Dict[str, Callable] = _find_callables_for_cls(user_cls, ~_PartialFunctionFlags(0))
 
         def _deps() -> List[_Function]:
-            return [cls_func] + list(functions.values())
+            return [class_service_function] + list(functions.values())
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(
-                app_id=resolver.app_id, existing_class_id=existing_object_id, class_function_id=cls_func.object_id
+                app_id=resolver.app_id,
+                existing_class_id=existing_object_id,
+                class_function_id=class_service_function.object_id,
             )
             for f_name, f in self._method_functions.items():
                 req.methods.append(
@@ -280,7 +282,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls: _Cls = _Cls._from_loader(_load, rep, deps=_deps)
         cls._app = app
         cls._user_cls = user_cls
-        cls._class_service_function = cls_func
+        cls._class_service_function = class_service_function
         cls._method_functions = functions
         cls._callables = callables
         cls._from_other_workspace = False

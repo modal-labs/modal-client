@@ -230,7 +230,6 @@ class _App:
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, self._client, metadata)
 
-        # traceback.print_stack(limit=5, file=sys.stdout)
         self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
@@ -677,12 +676,6 @@ class _App:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
-        if isinstance(_warn_parentheses_missing, _Image):
-            # Handle edge case where maybe (?) some users passed image as a positional arg
-            raise InvalidError("`image` needs to be a keyword argument: `@app.function(image=image)`.")
-        if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@app.function()`.")
-
         if interactive:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
@@ -701,7 +694,6 @@ class _App:
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
             info = FunctionInfo(None, serialized=serialized, cls=user_cls)
-            webhook_config = None
 
             scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
             if region:
@@ -715,7 +707,6 @@ class _App:
                 image=image,
                 secret=secret,
                 secrets=secrets,
-                is_generator=False,  # TODO: weird?
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
@@ -732,7 +723,6 @@ class _App:
                 cpu=cpu,
                 keep_warm=keep_warm,
                 cloud=cloud,
-                webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
                 checkpointing_enabled=checkpointing_enabled,
                 allow_background_volume_commits=_allow_background_volume_commits,
@@ -741,6 +731,10 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
                 _experimental_scheduler=_experimental_scheduler,
+                # class service function, so the following attributes which relate to
+                # the callable itself are invalid and set to defaults:
+                webhook_config=None,
+                is_generator=False,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)

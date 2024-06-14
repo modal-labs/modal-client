@@ -273,7 +273,7 @@ class _Function(_Object, type_prefix="fu"):
     _info: Optional[FunctionInfo]
     _all_mounts: Collection[_Mount]
     _app: Optional["modal.app._App"] = None
-    _obj: Any
+    _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
     _web_url: Optional[str]
     _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
     _function_name: Optional[str]
@@ -283,6 +283,7 @@ class _Function(_Object, type_prefix="fu"):
     _raw_f: Callable[..., Any]
     _build_args: dict
     _can_use_base_function: bool = False  # whether we need to call FunctionBindParams
+    _is_generator: Optional[bool] = None
 
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
@@ -309,8 +310,10 @@ class _Function(_Object, type_prefix="fu"):
         only, see _bind_instance_method.
 
         """
-        assert self._info  # has to be a local function to be able to "bind" it
-        serialized = self._info.is_serialized()
+        class_service_function = self
+        assert class_service_function._info  # has to be a local function to be able to "bind" it
+        assert not class_service_function._is_method  # should not be used on an already bound method placeholder
+        assert not class_service_function._obj  # should only be used on base function / class service function
         full_name = f"{user_cls.__name__}.{method_name}"
 
         if partial_function.is_generator:
@@ -318,15 +321,13 @@ class _Function(_Object, type_prefix="fu"):
         else:
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-        class_function = self
-
         async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
             function_definition = api_pb2.Function(
                 function_name=full_name,
                 webhook_config=partial_function.webhook_config,
                 function_type=function_type,
                 is_method=True,
-                use_function_id=class_function.object_id,
+                use_function_id=class_service_function.object_id,
                 use_method_name=method_name,
             )
             assert resolver.app_id
@@ -347,15 +348,15 @@ class _Function(_Object, type_prefix="fu"):
                 function_creation_status.set_response(response)
 
         async def _preload(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            if class_function._use_method_name:
-                raise ExecutionError(f"Can't bind method to already bound {class_function}")
+            if class_service_function._use_method_name:
+                raise ExecutionError(f"Can't bind method to already bound {class_service_function}")
             assert resolver.app_id
             req = api_pb2.FunctionPrecreateRequest(
                 app_id=resolver.app_id,
                 function_name=full_name,
                 function_type=function_type,
                 webhook_config=partial_function.webhook_config,
-                use_function_id=class_function.object_id,
+                use_function_id=class_service_function.object_id,
                 use_method_name=method_name,
                 existing_function_id=existing_object_id or "",
             )
@@ -364,19 +365,22 @@ class _Function(_Object, type_prefix="fu"):
             method_bound_function._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         def _deps():
-            return [class_function]
+            return [class_service_function]
 
         rep = f"Method({full_name})"
 
         fun = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
         fun._tag = full_name
         fun._raw_f = partial_function.raw_f
-        fun._info = FunctionInfo(partial_function.raw_f, cls=user_cls, serialized=serialized)  # needed for .local()
+        fun._info = FunctionInfo(
+            partial_function.raw_f, cls=user_cls, serialized=class_service_function.info.is_serialized()
+        )  # needed for .local()
         fun._use_method_name = method_name
-        fun._app = class_function._app
+        fun._app = class_service_function._app
         fun._is_generator = partial_function.is_generator
-        fun._all_mounts = class_function._all_mounts
-        fun._spec = class_function._spec
+        fun._all_mounts = class_service_function._all_mounts
+        fun._spec = class_service_function._spec
+        fun._is_method = True
         # TODO: set more attributes?
 
         return fun
@@ -791,7 +795,7 @@ class _Function(_Object, type_prefix="fu"):
                     _experimental_boost=_experimental_boost,
                     _experimental_scheduler=_experimental_scheduler,
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
-                    is_class=info.is_class,
+                    is_class=info.is_service_class(),
                 )
                 request = api_pb2.FunctionCreateRequest(
                     app_id=resolver.app_id,

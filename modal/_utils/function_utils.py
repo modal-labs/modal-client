@@ -78,12 +78,17 @@ class FunctionInfo:
     cls: Optional[Type[Any]]
     definition_type: "api_pb2.Function.DefinitionType.ValueType"
     module_name: Optional[str]
-    is_class: bool
 
     _type: FunctionInfoType
     _file: Optional[str]
     _base_dir: str
     _remote_dir: Optional[PurePosixPath] = None
+
+    def is_service_class(self):
+        if self.raw_f is None:
+            assert self.cls
+            return True
+        return False
 
     # TODO: we should have a bunch of unit tests for this
     def __init__(
@@ -95,15 +100,14 @@ class FunctionInfo:
     ):
         self.raw_f = f
         self.cls = cls
-        self.is_class = False
+
         if name_override is not None:
             self.function_name = name_override
         elif f is None and cls:
             # "service function" for running all methods of a class
             self.function_name = f"{cls.__name__}.*"
-            self.is_class = True
         elif f.__qualname__ != f.__name__ and not serialized:
-            # single method of a class
+            # single method of a class - should be only @build-methods at this point
             if len(f.__qualname__.split(".")) > 2:
                 raise InvalidError(
                     f"Cannot wrap `{f.__qualname__}`:"
@@ -185,14 +189,8 @@ class FunctionInfo:
             logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
             return serialized_bytes
         else:
-            # "class service function" - needs to serialize every partial function into a dict
-            # we can't use the serialized_class attribute since that will have each method
-            # serialized as a Function which is a thin Modal Object, not containing any code and specs
-            # other than the object id and hydration metadata
-            from ..partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
-
-            partial_methods_dict = _find_partial_methods_for_user_cls(self.cls, _PartialFunctionFlags.all())
-            return serialize(partial_methods_dict)
+            logger.debug(f"Serializing function for class service function {self.cls.__qualname__} as empty")
+            return b""
 
     def get_globals(self) -> Dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals
