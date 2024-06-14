@@ -4,6 +4,8 @@
 
 <details> <summary>Backward/forward compatibility checks</summary>
 
+---
+
 Check these boxes or delete any item (or this section) if not relevant for this PR.
 
 - [ ] Client+Server: this change is compatible with old servers
@@ -11,6 +13,8 @@ Check these boxes or delete any item (or this section) if not relevant for this 
 
 Note on protobuf: protobuf message changes in one place may have impact to
 multiple entities (client, server, worker, database). See points above.
+
+---
 
 </details>
 
