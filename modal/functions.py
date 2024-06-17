@@ -163,6 +163,7 @@ class _Invocation:
 
             if len(response.outputs) > 0:
                 yield response
+                return
 
     async def run_function(self) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
