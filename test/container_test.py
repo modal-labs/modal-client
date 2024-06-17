@@ -32,7 +32,7 @@ from modal._serialization import (
 from modal._utils import async_utils
 from modal.app import _App
 from modal.exception import InvalidError
-from modal.partial_function import enter
+from modal.partial_function import enter, method
 from modal_proto import api_pb2
 
 from .helpers import deploy_app_externally
@@ -80,6 +80,22 @@ def _get_multi_inputs(args: List[Tuple[Tuple, Dict]] = []) -> List[api_pb2.Funct
     return responses + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
 
 
+def _get_multi_inputs_with_methods(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
+    responses = []
+    for input_n, (method_name, *input_args) in enumerate(args):
+        resp = api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id=f"in-{input_n:03}",
+                    input=api_pb2.FunctionInput(args=serialize(input_args), method_name=method_name),
+                )
+            ]
+        )
+        responses.append(resp)
+
+    return responses + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
+
+
 def _container_args(
     module_name,
     function_name,
@@ -95,6 +111,7 @@ def _container_args(
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
+    is_class: bool = False,
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -119,6 +136,7 @@ def _container_args(
         is_checkpointing_function=is_checkpointing_function,
         object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         max_inputs=max_inputs,
+        is_class=is_class,
     )
 
     return api_pb2.ContainerArguments(
@@ -156,6 +174,7 @@ def _run_container(
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
+    is_class=False,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -172,6 +191,7 @@ def _run_container(
         volume_mounts,
         is_auto_snapshot,
         max_inputs,
+        is_class,
     )
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -1493,3 +1513,46 @@ def test_is_local(unix_servicer, event_loop):
 
     ret = _run_container(unix_servicer, "test.supports.functions", "is_local_f")
     assert _unwrap_scalar(ret) == False
+
+
+@skip_github_non_linux
+def test_class_as_service_serialized(unix_servicer):
+    # TODO(elias): refactor once the loading code is merged
+    class Foo:
+        def __init__(self, x):
+            self.x = x
+
+        @enter()
+        def some_enter(self):
+            self.x += "_enter"
+
+        @method()
+        def method_a(self, y):
+            return self.x + f"_a_{y}"
+
+        @method()
+        def method_b(self, y):
+            return self.x + f"_b_{y}"
+
+    # Class used by the container entrypoint to instantiate the object tied to the function
+    unix_servicer.class_serialized = serialize(Foo)
+
+    # serialized versions of each PartialFunction - used by container entrypoint to execute the methods
+    unix_servicer.function_serialized = None
+
+    result = _run_container(
+        unix_servicer,
+        "nomodule",
+        "Foo.*",
+        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        is_class=True,
+        inputs=_get_multi_inputs_with_methods([("method_a", ("x",), {}), ("method_b", ("y",), {})]),
+        serialized_params=serialize((((), {"x": "s"}))),
+    )
+    assert len(result.items) == 2
+    res_0 = result.items[0].result
+    res_1 = result.items[1].result
+    assert res_0.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert res_1.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert deserialize(res_0.data, result.client) == "s_enter_a_x"
+    assert deserialize(res_1.data, result.client) == "s_enter_b_y"

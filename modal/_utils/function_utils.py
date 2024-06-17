@@ -49,8 +49,8 @@ def entrypoint_only_package_mount_condition(entrypoint_file):
     return inner
 
 
-def is_global_function(function_qual_name):
-    return "<locals>" not in function_qual_name.split(".")
+def is_global_object(object_qual_name):
+    return "<locals>" not in object_qual_name.split(".")
 
 
 def is_async(function):
@@ -60,6 +60,8 @@ def is_async(function):
     # coerce the type. For now let's make a determination based on inspecting the function definition.
     # This sometimes isn't correct, since a "vanilla" Python function can return a coroutine if it
     # wraps async code or similar. Let's revisit this shortly.
+    if inspect.ismethod(function):
+        function = function.__func__  # inspect the underlying function
     if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
         return True
     elif inspect.isfunction(function) or inspect.isgeneratorfunction(function):
@@ -162,7 +164,7 @@ class FunctionInfo:
         if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
-            if not is_global_function(f.__qualname__):
+            if not is_global_object(f.__qualname__):
                 raise LocalFunctionError(
                     "Modal can only import functions defined in global scope unless they are `serialized=True`"
                 )
@@ -264,7 +266,7 @@ def get_referred_objects(f: Callable) -> List[Object]:
             try:
                 closure_vars = inspect.getclosurevars(obj)
             except ValueError:
-                logger.warning(
+                logger.debug(
                     f"Could not inspect closure vars of {f} - "
                     "referenced global Modal objects may or may not work in that function"
                 )

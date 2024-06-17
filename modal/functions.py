@@ -27,6 +27,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal._output import FunctionCreationStatus
 from modal_proto import api_grpc, api_pb2
 
 from ._location import parse_cloud_provider
@@ -209,8 +210,18 @@ class FunctionStats:
     """Simple data structure storing stats for a running function."""
 
     backlog: int
-    num_active_runners: int
     num_total_runners: int
+
+    def __getattr__(self, name):
+        if name == "num_active_runners":
+            msg = (
+                "'FunctionStats.num_active_runners' is deprecated."
+                " It currently always has a value of 0,"
+                " but it will be removed in a future release."
+            )
+            deprecation_warning((2024, 6, 14), msg)
+            return 0
+        raise AttributeError(f"'FunctionStats' object has no attribute '{name}'")
 
 
 def _parse_retries(
@@ -508,156 +519,133 @@ class _Function(_Object, type_prefix="fu"):
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
-            status_row = resolver.add_status_row()
-            status_row.message(f"Creating {tag}...")
-
-            if is_generator:
-                function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-            else:
-                function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
-
-            timeout_secs = timeout
-
-            if app and app.is_interactive and not is_builder_function:
-                pty_info = get_pty_info(shell=False)
-            else:
-                pty_info = None
-
-            if info.is_serialized():
-                # Use cloudpickle. Used when working w/ Jupyter notebooks.
-                # serialize at _load time, not function decoration time
-                # otherwise we can't capture a surrounding class for lifetime methods etc.
-                function_serialized = info.serialized_function()
-                class_serialized = serialize(info.cls) if info.cls is not None else None
-
-                # Ensure that large data in global variables does not blow up the gRPC payload,
-                # which has maximum size 100 MiB. We set the limit lower for performance reasons.
-                if len(function_serialized) > 16 << 20:  # 16 MiB
-                    raise InvalidError(
-                        f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
-                        "This is larger than the maximum limit of 16 MiB. "
-                        "Try reducing the size of the closure by using parameters or mounts, "
-                        "not large global variables."
-                    )
-                elif len(function_serialized) > 256 << 10:  # 256 KiB
-                    warnings.warn(
-                        f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
-                        "This is larger than the recommended limit of 256 KiB. "
-                        "Try reducing the size of the closure by using parameters or mounts, "
-                        "not large global variables."
-                    )
-            else:
-                function_serialized = None
-                class_serialized = None
-
-            app_name = ""
-            if app and app.name:
-                app_name = app.name
-
-            # Relies on dicts being ordered (true as of Python 3.6).
-            volume_mounts = [
-                api_pb2.VolumeMount(
-                    mount_path=path,
-                    volume_id=volume.object_id,
-                    allow_background_commits=bool(allow_background_volume_commits),
-                )
-                for path, volume in validated_volumes
-            ]
-            loaded_mount_ids = {m.object_id for m in all_mounts}
-
-            # Get object dependencies
-            object_dependencies = []
-            for dep in _deps(only_explicit_mounts=True):
-                if not dep.object_id:
-                    raise Exception(f"Dependency {dep} isn't hydrated")
-                object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
-
-            # Create function remotely
-            function_definition = api_pb2.Function(
-                module_name=info.module_name or "",
-                function_name=info.function_name,
-                mount_ids=loaded_mount_ids,
-                secret_ids=[secret.object_id for secret in secrets],
-                image_id=(image.object_id if image else ""),
-                definition_type=info.definition_type,
-                function_serialized=function_serialized or b"",
-                class_serialized=class_serialized or b"",
-                function_type=function_type,
-                resources=convert_fn_config_to_resources_config(
-                    cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
-                ),
-                webhook_config=webhook_config,
-                shared_volume_mounts=network_file_system_mount_protos(
-                    validated_network_file_systems, allow_cross_region_volumes
-                ),
-                volume_mounts=volume_mounts,
-                proxy_id=(proxy.object_id if proxy else None),
-                retry_policy=retry_policy,
-                timeout_secs=timeout_secs or 0,
-                task_idle_timeout_secs=container_idle_timeout or 0,
-                concurrency_limit=concurrency_limit or 0,
-                pty_info=pty_info,
-                cloud_provider=cloud_provider,
-                warm_pool_size=keep_warm or 0,
-                runtime=config.get("function_runtime"),
-                runtime_debug=config.get("function_runtime_debug"),
-                app_name=app_name,
-                is_builder_function=is_builder_function,
-                allow_concurrent_inputs=allow_concurrent_inputs or 0,
-                worker_id=config.get("worker_id"),
-                is_auto_snapshot=is_auto_snapshot,
-                is_method=bool(info.cls),
-                checkpointing_enabled=enable_memory_snapshot,
-                is_checkpointing_function=False,
-                object_dependencies=object_dependencies,
-                block_network=block_network,
-                max_inputs=max_inputs or 0,
-                cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
-                _experimental_boost=_experimental_boost,
-                _experimental_scheduler=_experimental_scheduler,
-                scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
-            )
-            request = api_pb2.FunctionCreateRequest(
-                app_id=resolver.app_id,
-                function=function_definition,
-                schedule=schedule.proto_message if schedule is not None else None,
-                existing_function_id=existing_object_id or "",
-            )
-            try:
-                response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
-                    resolver.client.stub.FunctionCreate, request
-                )
-            except GRPCError as exc:
-                if exc.status == Status.INVALID_ARGUMENT:
-                    raise InvalidError(exc.message)
-                if exc.status == Status.FAILED_PRECONDITION:
-                    raise InvalidError(exc.message)
-                if exc.message and "Received :status = '413'" in exc.message:
-                    raise InvalidError(f"Function {raw_f} is too large to deploy.")
-                raise
-
-            if response.function.web_url:
-                # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
-                if response.function.web_url_info.truncated:
-                    suffix = " [grey70](label truncated)[/grey70]"
-                elif response.function.web_url_info.has_unique_hash:
-                    suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
-                elif response.function.web_url_info.label_stolen:
-                    suffix = " [grey70](label stolen)[/grey70]"
+            with FunctionCreationStatus(resolver, tag) as function_creation_status:
+                if is_generator:
+                    function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
                 else:
-                    suffix = ""
-                # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-                status_row.finish(f"Created {tag} => [magenta underline]{response.web_url}[/magenta underline]{suffix}")
+                    function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
-                # Print custom domain in terminal
-                for custom_domain in response.function.custom_domain_info:
-                    custom_domain_status_row = resolver.add_status_row()
-                    custom_domain_status_row.finish(
-                        f"Custom domain for {tag} => [magenta underline]{custom_domain.url}[/magenta underline]{suffix}"
+                timeout_secs = timeout
+
+                if app and app.is_interactive and not is_builder_function:
+                    pty_info = get_pty_info(shell=False)
+                else:
+                    pty_info = None
+
+                if info.is_serialized():
+                    # Use cloudpickle. Used when working w/ Jupyter notebooks.
+                    # serialize at _load time, not function decoration time
+                    # otherwise we can't capture a surrounding class for lifetime methods etc.
+                    function_serialized = info.serialized_function()
+                    class_serialized = serialize(info.cls) if info.cls is not None else None
+
+                    # Ensure that large data in global variables does not blow up the gRPC payload,
+                    # which has maximum size 100 MiB. We set the limit lower for performance reasons.
+                    if len(function_serialized) > 16 << 20:  # 16 MiB
+                        raise InvalidError(
+                            f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
+                            "This is larger than the maximum limit of 16 MiB. "
+                            "Try reducing the size of the closure by using parameters or mounts, "
+                            "not large global variables."
+                        )
+                    elif len(function_serialized) > 256 << 10:  # 256 KiB
+                        warnings.warn(
+                            f"Function {info.raw_f} has size {len(function_serialized)} bytes when packaged. "
+                            "This is larger than the recommended limit of 256 KiB. "
+                            "Try reducing the size of the closure by using parameters or mounts, "
+                            "not large global variables."
+                        )
+                else:
+                    function_serialized = None
+                    class_serialized = None
+
+                app_name = ""
+                if app and app.name:
+                    app_name = app.name
+
+                # Relies on dicts being ordered (true as of Python 3.6).
+                volume_mounts = [
+                    api_pb2.VolumeMount(
+                        mount_path=path,
+                        volume_id=volume.object_id,
+                        allow_background_commits=bool(allow_background_volume_commits),
                     )
+                    for path, volume in validated_volumes
+                ]
+                loaded_mount_ids = {m.object_id for m in all_mounts}
 
-            else:
-                status_row.finish(f"Created {tag}.")
+                # Get object dependencies
+                object_dependencies = []
+                for dep in _deps(only_explicit_mounts=True):
+                    if not dep.object_id:
+                        raise Exception(f"Dependency {dep} isn't hydrated")
+                    object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
+
+                # Create function remotely
+                function_definition = api_pb2.Function(
+                    module_name=info.module_name or "",
+                    function_name=info.function_name,
+                    mount_ids=loaded_mount_ids,
+                    secret_ids=[secret.object_id for secret in secrets],
+                    image_id=(image.object_id if image else ""),
+                    definition_type=info.definition_type,
+                    function_serialized=function_serialized or b"",
+                    class_serialized=class_serialized or b"",
+                    function_type=function_type,
+                    resources=convert_fn_config_to_resources_config(
+                        cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
+                    ),
+                    webhook_config=webhook_config,
+                    shared_volume_mounts=network_file_system_mount_protos(
+                        validated_network_file_systems, allow_cross_region_volumes
+                    ),
+                    volume_mounts=volume_mounts,
+                    proxy_id=(proxy.object_id if proxy else None),
+                    retry_policy=retry_policy,
+                    timeout_secs=timeout_secs or 0,
+                    task_idle_timeout_secs=container_idle_timeout or 0,
+                    concurrency_limit=concurrency_limit or 0,
+                    pty_info=pty_info,
+                    cloud_provider=cloud_provider,
+                    warm_pool_size=keep_warm or 0,
+                    runtime=config.get("function_runtime"),
+                    runtime_debug=config.get("function_runtime_debug"),
+                    app_name=app_name,
+                    is_builder_function=is_builder_function,
+                    allow_concurrent_inputs=allow_concurrent_inputs or 0,
+                    worker_id=config.get("worker_id"),
+                    is_auto_snapshot=is_auto_snapshot,
+                    is_method=bool(info.cls),
+                    checkpointing_enabled=enable_memory_snapshot,
+                    is_checkpointing_function=False,
+                    object_dependencies=object_dependencies,
+                    block_network=block_network,
+                    max_inputs=max_inputs or 0,
+                    cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
+                    _experimental_boost=_experimental_boost,
+                    _experimental_scheduler=_experimental_scheduler,
+                    scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
+                )
+                request = api_pb2.FunctionCreateRequest(
+                    app_id=resolver.app_id,
+                    function=function_definition,
+                    schedule=schedule.proto_message if schedule is not None else None,
+                    existing_function_id=existing_object_id or "",
+                )
+                try:
+                    response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
+                        resolver.client.stub.FunctionCreate, request
+                    )
+                except GRPCError as exc:
+                    if exc.status == Status.INVALID_ARGUMENT:
+                        raise InvalidError(exc.message)
+                    if exc.status == Status.FAILED_PRECONDITION:
+                        raise InvalidError(exc.message)
+                    if exc.message and "Received :status = '413'" in exc.message:
+                        raise InvalidError(f"Function {raw_f} is too large to deploy.")
+                    raise
+
+                function_creation_status.set_response(response)
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
@@ -1035,7 +1023,8 @@ class _Function(_Object, type_prefix="fu"):
         Calls the function locally, executing it with the given arguments and returning the execution's result.
 
         The function will execute in the same environment as the caller, just like calling the underlying function
-        directly in Python. In particular, secrets will not be available through environment variables.
+        directly in Python. In particular, only secrets available in the caller environment will be available
+        through environment variables.
         """
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
@@ -1103,9 +1092,7 @@ class _Function(_Object, type_prefix="fu"):
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
             total_timeout=10.0,
         )
-        return FunctionStats(
-            backlog=resp.backlog, num_active_runners=resp.num_active_tasks, num_total_runners=resp.num_total_tasks
-        )
+        return FunctionStats(backlog=resp.backlog, num_total_runners=resp.num_total_tasks)
 
     # A bit hacky - but the map-style functions need to not be synchronicity-wrapped
     # in order to not execute their input iterators on the synchronicity event loop.

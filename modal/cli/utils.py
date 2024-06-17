@@ -99,6 +99,6 @@ ENV_OPTION_HELP = """Environment to interact with.
 If not specified, Modal will use the default environment of your current profile, or the `MODAL_ENVIRONMENT` variable.
 Otherwise, raises an error if the workspace has multiple environments.
 """
-ENV_OPTION = typer.Option(default=None, help=ENV_OPTION_HELP)
+ENV_OPTION = typer.Option(None, "-e", "--env", help=ENV_OPTION_HELP)
 
 YES_OPTION = typer.Option(False, "-y", "--yes", help="Run without pausing for confirmation.")

@@ -1,14 +1,20 @@
 # Copyright Modal Labs 2022
+import inspect
 import pytest
+import subprocess
+import sys
 import threading
 from typing import TYPE_CHECKING, Dict
 
 from typing_extensions import assert_type
 
+import modal.partial_function
 from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
-from modal._serialization import deserialize
+from modal._serialization import deserialize, serialize
+from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.partial_function import (
+    PartialFunction,
     _find_callables_for_obj,
     _find_partial_methods_for_cls,
     _PartialFunction,
@@ -634,3 +640,54 @@ class HasSnapMethod:
 def test_snap_method_without_snapshot_enabled():
     with pytest.raises(InvalidError, match="A class must have `enable_memory_snapshot=True`"):
         app.cls(enable_memory_snapshot=False)(HasSnapMethod)
+
+
+def test_partial_function_descriptors(client):
+    class Foo:
+        def __init__(self):
+            pass
+
+        @modal.enter()
+        def enter_method(self):
+            pass
+
+        @modal.method()
+        def bar(self):
+            return "a"
+
+        @modal.web_endpoint()
+        def web(self):
+            pass
+
+    assert isinstance(Foo.bar, PartialFunction)
+
+    assert Foo().bar() == "a"
+    assert inspect.ismethod(Foo().bar)
+    app = modal.App()
+
+    modal_foo_class = app.cls(serialized=True)(Foo)
+
+    wrapped_method = modal_foo_class().bar
+    assert isinstance(wrapped_method, Function)
+
+    serialized_class = serialize(Foo)
+    revived_class = deserialize(serialized_class, client)
+
+    assert (
+        revived_class().bar() == "a"
+    )  # this instantiates the underlying "user_cls", so it should work basically like a normal Python class
+    assert isinstance(
+        revived_class.bar, PartialFunction
+    )  # but it should be a PartialFunction, so it keeps associated metadata!
+
+    # ensure that webhook metadata is kept
+    assert synchronizer._translate_in(revived_class.web).webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
+
+
+def test_cross_process_userclass_serde(supports_dir):
+    res = subprocess.check_output([sys.executable, supports_dir / "serialize_class.py"])
+    assert len(res) < 2000  # should be ~1300 bytes as of 2024-06-05
+    revived_cls = deserialize(res, None)
+    method_without_descriptor_protocol = revived_cls.__dict__["method"]
+    assert isinstance(method_without_descriptor_protocol, modal.partial_function.PartialFunction)
+    assert revived_cls().method() == "a"  # this should be bound to the object
