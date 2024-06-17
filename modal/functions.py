@@ -139,7 +139,6 @@ class _Invocation:
         else:
             backend_timeout = min(OUTPUTS_TIMEOUT, timeout)  # refresh backend call every 55s
 
-        response: Optional[api_pb2.FunctionGetOutputsResponse] = None
         while True:
             # always execute at least one poll for results, regardless if timeout is 0
             request = api_pb2.FunctionGetOutputsRequest(
@@ -148,7 +147,7 @@ class _Invocation:
                 last_entry_id="0-0",
                 clear_on_success=clear_on_success,
             )
-            response = await retry_transient_errors(
+            response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
                 request,
                 attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
@@ -184,6 +183,7 @@ class _Invocation:
         )
         items = [item for response in responses for item in response.outputs]
         if len(items) == 0 and responses[-1].num_unfinished_inputs == 0:
+            # if no unfinished inputs and no outputs, then function expired
             raise OutputExpiredError()
         elif len(items) == 0:
             raise TimeoutError()
