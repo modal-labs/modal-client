@@ -559,7 +559,7 @@ class _ContainerIOManager:
         # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
         with restored_path.open("r") as file:
             restored_state = json.load(file)
-        
+
         # Start a debugger if the worker tells us to
         if int(restored_state["snapshot_debug"]):
             logger.debug("Entering snapshot debugger")
