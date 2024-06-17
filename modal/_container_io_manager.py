@@ -560,10 +560,8 @@ class _ContainerIOManager:
         with restored_path.open("r") as file:
             restored_state = json.load(file)
         
-        print(restored_state)
-
         # Start a debugger if the worker tells us to
-        if int(restored_state["enter_debugger"]):
+        if int(restored_state["snapshot_debug"]):
             logger.debug("Entering snapshot debugger")
             import pdb
             pdb.set_trace()
