@@ -455,6 +455,9 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 raise InvalidError("Webhooks cannot be generators")
 
+        if container_idle_timeout is not None and container_idle_timeout <= 0:
+            raise InvalidError("`container_idle_timeout` must be > 0")
+
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
