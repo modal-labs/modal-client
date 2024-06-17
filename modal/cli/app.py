@@ -20,9 +20,9 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 
 APP_STATE_TO_MESSAGE = {
     api_pb2.APP_STATE_DEPLOYED: Text("deployed", style="green"),
-    api_pb2.APP_STATE_DETACHED: Text("running (detached)", style="green"),
+    api_pb2.APP_STATE_DETACHED: Text("ephemeral (detached)", style="green"),
     api_pb2.APP_STATE_DISABLED: Text("disabled", style="dim"),
-    api_pb2.APP_STATE_EPHEMERAL: Text("running", style="green"),
+    api_pb2.APP_STATE_EPHEMERAL: Text("ephemeral", style="green"),
     api_pb2.APP_STATE_INITIALIZING: Text("initializing...", style="green"),
     api_pb2.APP_STATE_STOPPED: Text("stopped", style="blue"),
     api_pb2.APP_STATE_STOPPING: Text("stopping...", style="blue"),
