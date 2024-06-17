@@ -132,13 +132,14 @@ class _Invocation:
 
     async def pop_function_call_outputs(
         self, timeout: Optional[float], clear_on_success: bool
-    ) -> AsyncIterator[api_pb2.FunctionGetOutputsItem]:
+    ) -> AsyncIterator[api_pb2.FunctionGetOutputsResponse]:
         t0 = time.time()
         if timeout is None:
             backend_timeout = OUTPUTS_TIMEOUT
         else:
             backend_timeout = min(OUTPUTS_TIMEOUT, timeout)  # refresh backend call every 55s
 
+        response: Optional[api_pb2.FunctionGetOutputsResponse] = None
         while True:
             # always execute at least one poll for results, regardless if timeout is 0
             request = api_pb2.FunctionGetOutputsRequest(
@@ -147,30 +148,28 @@ class _Invocation:
                 last_entry_id="0-0",
                 clear_on_success=clear_on_success,
             )
-            response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
+            response = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
                 request,
                 attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
-            if len(response.outputs) > 0:
-                for item in response.outputs:
-                    yield item
-                return
-
             if timeout is not None:
                 # update timeout in retry loop
                 backend_timeout = min(OUTPUTS_TIMEOUT, t0 + timeout - time.time())
                 if backend_timeout < 0:
-                    if len(response.outputs) == 0 and response.num_unfinished_inputs == 0:
-                        raise OutputExpiredError()
+                    # return the last response to check for state of num_unfinished_inputs
+                    yield response
                     break
+
+            if len(response.outputs) > 0:
+                yield response
 
     async def run_function(self) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True))
-        )[0]
+        )[0].outputs[0]
         assert not item.result.gen_status
         return await _process_result(item.result, item.data_format, self.stub, self.client)
 
@@ -180,11 +179,13 @@ class _Invocation:
         If timeout is `None`, waits indefinitely. This function is not
         cancellation-safe.
         """
-        items: List[api_pb2.FunctionGetOutputsItem] = await stream.list(
+        responses: List[api_pb2.FunctionGetOutputsResponse] = await stream.list(
             self.pop_function_call_outputs(timeout=timeout, clear_on_success=False)
         )
-
-        if len(items) == 0:
+        items = [item for response in responses for item in response.outputs]
+        if len(items) == 0 and responses[-1].num_unfinished_inputs == 0:
+            raise OutputExpiredError()
+        elif len(items) == 0:
             raise TimeoutError()
 
         return await _process_result(items[0].result, items[0].data_format, self.stub, self.client)
