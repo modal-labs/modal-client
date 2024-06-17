@@ -556,12 +556,12 @@ class _ContainerIOManager:
         # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
         with restored_path.open("r") as file:
             restored_state = json.load(file)
+        
+        print(restored_state)
 
         # Start a debugger if the worker tells us to
-        # TODO: Is calling interact() necessary?
-        enter_debugger = int(restored_state["enter_debugger"])
-        if enter_debugger:
-            logger.debug("starting debugger")
+        if int(restored_state["enter_debugger"]):
+            logger.debug("Entering snapshot debugger")
             import pdb
             pdb.set_trace()
 
