@@ -11,7 +11,7 @@ from tornado.web import Application
 
 import modal._asgi
 
-# TODO: add some test of may
+# TODO: add more tests
 
 
 @dataclass
@@ -47,13 +47,14 @@ async def http_dummy_server():
     async def hello(request):
         assertion_log.append("request")
         try:
-            res = await request.read()
-            print("res", res)
+            await request.read()
         except asyncio.CancelledError:
             assertion_log.append("cancelled")
+            raise
         except OSError:
             # disconnect
             assertion_log.append("disconnect")
+            return
 
         return web.Response(text="Hello, world")
 
@@ -74,6 +75,5 @@ async def test_web_server_wrapper_immediate_disconnect(http_dummy_server):
         print("msg", msg)
 
     scope = {"type": "http", "method": "POST", "path": "/", "headers": []}
-    res = await proxy_asgi_app(scope, recv, send)
-    assert http_dummy_server.assertion_log == ["request", "cancelled"]
-    print(res)
+    await proxy_asgi_app(scope, recv, send)
+    assert http_dummy_server.assertion_log == ["request", "disconnect"]
