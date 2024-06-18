@@ -19,10 +19,6 @@ from .supports.skip import skip_windows_unix_socket
 def my_f_1(x):
     pass
 
-# Simulate calling `breakpoint()` in test
-def test_breakpoint():
-    return True
-
 @skip_windows_unix_socket
 @pytest.mark.asyncio
 async def test_container_function_lazily_imported(container_client):
@@ -82,6 +78,9 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
         json.dumps({"snapshot_debug": "1"}),
         encoding="utf-8",
     )
+
+    # Test that the breakpoint was called
+    test_breakpoint = mock.Mock()
     with mock.patch("sys.breakpointhook", test_breakpoint):
         with mock.patch.dict(
             os.environ, {
@@ -89,6 +88,7 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
                 "MODAL_SERVER_URL": servicer.remote_addr
                 }):
             io_manager.memory_snapshot()
+            test_breakpoint.assert_called_once()
 
 
 @skip_windows_unix_socket
