@@ -406,7 +406,7 @@ class _App:
         return self._web_endpoints
 
     def local_entrypoint(
-        self, _warn_parentheses_missing: Optional[bool] = None, *, name: Optional[str] = None
+        self, _warn_parentheses_missing: Any = None, *, name: Optional[str] = None
     ) -> Callable[[Callable[..., Any]], None]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
@@ -474,7 +474,7 @@ class _App:
 
     def function(
         self,
-        _warn_parentheses_missing: Optional[bool] = None,
+        _warn_parentheses_missing: Any = None,
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
