@@ -125,7 +125,7 @@ class _Dict(_Object, type_prefix="di"):
         dict[123] = 456
         ```
         """
-        check_object_name(label, "Dict", warn=True)
+        check_object_name(label, "Dict")
 
         async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
@@ -143,9 +143,7 @@ class _Dict(_Object, type_prefix="di"):
         return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(
-        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ):
+    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
         """Deprecated! Use `Dict.from_name(name, create_if_missing=True)`."""
         deprecation_error((2024, 3, 1), _Dict.persisted.__doc__)
 
