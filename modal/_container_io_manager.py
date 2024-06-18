@@ -560,6 +560,11 @@ class _ContainerIOManager:
         with restored_path.open("r") as file:
             restored_state = json.load(file)
 
+        # Start a debugger if the worker tells us to
+        if int(restored_state.get("snapshot_debug", 0)):
+            logger.debug("Entering snapshot debugger")
+            breakpoint()
+
         # Local ContainerIOManager state.
         for key in ["task_id", "function_id"]:
             if value := restored_state.get(key):
