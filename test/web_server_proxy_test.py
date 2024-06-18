@@ -25,9 +25,9 @@ class DummyHttpServer:
 async def run_temporary_http_server(app: Application):
     # Allocates a random port, runs a server in a context manager
     sock = socket.socket()
-    sock.bind(("", 0))
-    port = sock.getsockname()[1]
     host = "127.0.0.1"
+    sock.bind((host, 0))
+    port = sock.getsockname()[1]
     runner = AppRunner(app)
     await runner.setup()
     site = SockSite(runner, sock=sock)
