@@ -2,7 +2,6 @@
 import json
 import os
 import pytest
-import sys
 from typing import Dict
 from unittest import mock
 
@@ -23,8 +22,6 @@ def my_f_1(x):
 # Simulate calling `breakpoint()` in test
 def test_breakpoint():
     return True
-
-sys.breakpointhook = test_breakpoint
 
 @skip_windows_unix_socket
 @pytest.mark.asyncio
@@ -85,14 +82,13 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
         json.dumps({"snapshot_debug": "1"}),
         encoding="utf-8",
     )
-    with mock.patch.dict(
-        os.environ, {
-            "MODAL_RESTORE_STATE_PATH": str(restore_path),
-            "MODAL_SERVER_URL": servicer.remote_addr
-            }):
-
-        # This will call the breakpoint hook
-        io_manager.memory_snapshot()
+    with mock.patch("sys.breakpointhook", test_breakpoint):
+        with mock.patch.dict(
+            os.environ, {
+                "MODAL_RESTORE_STATE_PATH": str(restore_path),
+                "MODAL_SERVER_URL": servicer.remote_addr
+                }):
+            io_manager.memory_snapshot()
 
 
 @skip_windows_unix_socket
