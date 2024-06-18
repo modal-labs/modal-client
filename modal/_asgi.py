@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-import typing
-from typing import Any, AsyncGenerator, Callable, Dict, Optional, cast
+from typing import Any, AsyncGenerator, Callable, Dict, NoReturn, Optional, cast
 
 import aiohttp
 
@@ -234,7 +233,7 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
             await send(msg)
         await send({"type": "http.response.body"})
 
-    async def listen_for_disconnect() -> typing.NoReturn:
+    async def listen_for_disconnect() -> NoReturn:
         while True:
             message = await receive()
             if message["type"] == "http.disconnect":
