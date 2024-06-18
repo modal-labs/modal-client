@@ -56,8 +56,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
             # (it is also used in the web interface, where apps are organized by tabs and paginated).
             # So we semi-arbitrarily limit the stopped apps to those stopped within the past 2 hours.
             or (
-                app_stats.state in {api_pb2.AppState.APP_STATE_STOPPED, api_pb2.AppState.APP_STATE_DERIVED}
-                and (now - app_stats.stopped_at) > (2 * 60 * 60)
+                app_stats.state in {api_pb2.AppState.APP_STATE_STOPPED} and (now - app_stats.stopped_at) > (2 * 60 * 60)
             )
         ):
             continue
