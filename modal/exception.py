@@ -58,6 +58,10 @@ class InteractiveTimeoutError(TimeoutError):
     """Raised when interactive frontends time out while trying to connect to a container."""
 
 
+class OutputExpiredError(TimeoutError):
+    """Raised when the Output exceeds expiration and times out."""
+
+
 class AuthError(Error):
     """Raised when a client has missing or invalid authentication."""
 
