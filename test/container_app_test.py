@@ -2,6 +2,7 @@
 import json
 import os
 import pytest
+import sys
 from typing import Dict
 from unittest import mock
 
@@ -19,6 +20,11 @@ from .supports.skip import skip_windows_unix_socket
 def my_f_1(x):
     pass
 
+# Simulate calling `breakpoint()` in test
+def test_breakpoint():
+    return True
+
+sys.breakpointhook = test_breakpoint
 
 @skip_windows_unix_socket
 @pytest.mark.asyncio
@@ -67,6 +73,26 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
         io_manager.memory_snapshot()
         # In-memory Client instance should have update credentials, not old credentials
         assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
+
+@skip_windows_unix_socket
+@pytest.mark.asyncio
+async def test_container_debug_snapshot(container_client, tmpdir, servicer):
+    # Get an IO manager, where restore takes place
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    restore_path = tmpdir.join("fake-restore-state.json")
+    # Write the restore file to start a debugger
+    restore_path.write_text(
+        json.dumps({"snapshot_debug": "1"}),
+        encoding="utf-8",
+    )
+    with mock.patch.dict(
+        os.environ, {
+            "MODAL_RESTORE_STATE_PATH": str(restore_path),
+            "MODAL_SERVER_URL": servicer.remote_addr
+            }):
+
+        # This will call the breakpoint hook
+        io_manager.memory_snapshot()
 
 
 @skip_windows_unix_socket
