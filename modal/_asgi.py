@@ -6,6 +6,7 @@ import aiohttp
 
 from ._utils.async_utils import TaskContext
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from ._utils.package_utils import parse_major_minor_version
 from .config import logger
 from .exception import ExecutionError, InvalidError
 from .execution_context import current_function_call_id
@@ -186,7 +187,8 @@ def wait_for_web_server(host: str, port: int, *, timeout: float) -> None:
             if time.monotonic() - start_time >= timeout:
                 raise TimeoutError(
                     f"Waited too long for port {port} to start accepting connections. "
-                    + "Make sure the web server is listening on all interfaces, or adjust `startup_timeout`."
+                    "Make sure the web server is bound to 0.0.0.0 (rather than localhost or 127.0.0.1), "
+                    "or adjust `startup_timeout`."
                 ) from ex
 
 
@@ -324,8 +326,16 @@ def web_server_proxy(host: str, port: int):
                 timeout=aiohttp.ClientTimeout(total=3600),
                 auto_decompress=False,
                 read_bufsize=1024 * 1024,  # 1 MiB
-                max_line_size=64 * 1024,  # 64 KiB
-                max_field_size=64 * 1024,  # 64 KiB
+                **(
+                    # These options were introduced in aiohttp 3.9, and we can remove the
+                    # conditional after deprecating image builder version 2023.12.
+                    dict(  # type: ignore
+                        max_line_size=64 * 1024,  # 64 KiB
+                        max_field_size=64 * 1024,  # 64 KiB
+                    )
+                    if parse_major_minor_version(aiohttp.__version__) >= (3, 9)
+                    else {}
+                ),
             )
 
         try:

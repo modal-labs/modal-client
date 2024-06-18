@@ -221,6 +221,12 @@ def test_function_disk_request(client):
     app.function(ephemeral_disk=1_000_000)(dummy)
 
 
+def test_idle_timeout_must_be_positive():
+    app = App()
+    with pytest.raises(InvalidError, match="must be > 0"):
+        app.function(container_idle_timeout=0)(dummy)
+
+
 def later():
     return "hello"
 

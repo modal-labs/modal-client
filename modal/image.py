@@ -856,6 +856,28 @@ class _Image(_Object, type_prefix="im"):
             force_build=self.force_build or force_build,
         )
 
+    def entrypoint(
+        self,
+        entrypoint_commands: List[str],
+    ) -> "_Image":
+        """Set the entrypoint for the image."""
+        args_str = _flatten_str_args("entrypoint", "entrypoint_files", entrypoint_commands)
+        args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
+        dockerfile_cmd = f"ENTRYPOINT [{args_str}]"
+
+        return self.dockerfile_commands(dockerfile_cmd)
+
+    def shell(
+        self,
+        shell_commands: List[str],
+    ) -> "_Image":
+        """Overwrite default shell for the image."""
+        args_str = _flatten_str_args("shell", "shell_commands", shell_commands)
+        args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
+        dockerfile_cmd = f"SHELL [{args_str}]"
+
+        return self.dockerfile_commands(dockerfile_cmd)
+
     def run_commands(
         self,
         *commands: Union[str, List[str]],
