@@ -372,7 +372,6 @@ async def _deploy_app(
     stdout=None,
     show_progress=True,
     environment_name: Optional[str] = None,
-    public: bool = False,
     tag: Optional[str] = None,
 ) -> DeployResult:
     """Deploy an app and export its objects persistently.
@@ -456,9 +455,7 @@ async def _deploy_app(
                 tag=tag,
                 namespace=namespace,
                 object_entity="ap",
-                visibility=(
-                    api_pb2.APP_DEPLOY_VISIBILITY_PUBLIC if public else api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE
-                ),
+                visibility=api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE,
             )
             try:
                 deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)
