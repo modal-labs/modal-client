@@ -59,8 +59,8 @@ jobs:
       - name: Run docstring tests
         env:
           MODAL_ENVIRONMENT: client-doc-tests
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          # MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          # MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: pytest --markdown-docs -m markdown-docs modal
 
   container-dependencies:
