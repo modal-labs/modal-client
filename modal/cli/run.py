@@ -268,7 +268,6 @@ def deploy(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
-    skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
     tag: str = typer.Option(None, help="Tag the deployment with a version."),
 ):
