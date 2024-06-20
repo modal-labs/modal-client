@@ -108,7 +108,7 @@ class _Volume(_Object, type_prefix="vo"):
 
     **Usage**
 
-    ```python
+    ```python notest
     import modal
 
     app = modal.App()  # Note: "app" was called "stub" up until April 2024
@@ -157,7 +157,7 @@ class _Volume(_Object, type_prefix="vo"):
 
         **Example Usage**
 
-        ```python
+        ```python notest
         import modal
 
         volume = modal.Volume.from_name("my-volume", create_if_missing=True)

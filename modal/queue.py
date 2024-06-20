@@ -153,7 +153,7 @@ class _Queue(_Object, type_prefix="qu"):
 
         **Examples**
 
-        ```python
+        ```python notest
         from modal import Queue
 
         queue = Queue.from_name("my-queue", create_if_missing=True)

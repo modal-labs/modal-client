@@ -36,7 +36,7 @@ class _Dict(_Object, type_prefix="di"):
 
     **Usage**
 
-    ```python
+    ```python notest
     from modal import Dict
 
     my_dict = Dict.from_name("my-persisted_dict", create_if_missing=True)
@@ -118,7 +118,7 @@ class _Dict(_Object, type_prefix="di"):
 
         **Examples**
 
-        ```python
+        ```python notest
         from modal import Dict
 
         dict = Dict.from_name("my-dict", create_if_missing=True)

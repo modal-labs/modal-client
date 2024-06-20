@@ -58,7 +58,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
     **Usage**
 
-    ```python
+    ```python notest
     import modal
 
     nfs = modal.NetworkFileSystem.from_name("my-nfs", create_if_missing=True)

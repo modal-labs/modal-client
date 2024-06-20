@@ -239,7 +239,7 @@ class _App:
         in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
         need to assign those objects to the app. Example:
 
-        ```python
+        ```python notest
         d = modal.Dict.from_name("my-dict", create_if_missing=True)
 
         @app.function()
