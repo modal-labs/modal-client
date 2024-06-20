@@ -39,6 +39,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Check info
+        run: echo ${{ github.event.pull_request.head.repo.fork }}
+
       - uses: ./.github/actions/setup-cached-python
         with:
           version: ${{ matrix.python-version }}
