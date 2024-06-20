@@ -170,7 +170,7 @@ class _Volume(_Object, type_prefix="vo"):
             pass
         ```
         """
-        check_object_name(label, "Volume", warn=True)
+        check_object_name(label, "Volume")
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.VolumeGetOrCreateRequest(
@@ -266,7 +266,7 @@ class _Volume(_Object, type_prefix="vo"):
         version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> str:
         """mdmd:hidden"""
-        check_object_name(deployment_name, "Volume", warn=True)
+        check_object_name(deployment_name, "Volume")
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.VolumeGetOrCreateRequest(

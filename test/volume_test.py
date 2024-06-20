@@ -365,5 +365,5 @@ async def test_open_files_error_annotation(tmp_path):
 
 @pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
 def test_invalid_name(servicer, client, name):
-    with pytest.raises(DeprecationError, match="Invalid Volume name"):
+    with pytest.raises(InvalidError, match="Invalid Volume name"):
         modal.Volume.lookup(name)

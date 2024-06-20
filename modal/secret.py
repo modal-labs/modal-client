@@ -170,10 +170,6 @@ class _Secret(_Object, type_prefix="st"):
            ...
         ```
         """
-        # Unlike other objects, you can't create secrets through this method, but we will still
-        # warn here so that people get the message when they *look up* secrets with illegal names.
-        # We can just remove the check after the deprecation period, instead of converting to an error.
-        check_object_name(label, "Secret", warn=True)
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
@@ -223,7 +219,7 @@ class _Secret(_Object, type_prefix="st"):
         overwrite: bool = False,
     ) -> str:
         """mdmd:hidden"""
-        check_object_name(deployment_name, "Secret", warn=True)
+        check_object_name(deployment_name, "Secret")
         if client is None:
             client = await _Client.from_env()
         if overwrite:

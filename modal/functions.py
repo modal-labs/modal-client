@@ -10,7 +10,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
-    AsyncIterator,
     Callable,
     Collection,
     Dict,
@@ -63,6 +62,7 @@ from .exception import (
     ExecutionError,
     InvalidError,
     NotFoundError,
+    OutputExpiredError,
     deprecation_error,
     deprecation_warning,
 )
@@ -137,7 +137,7 @@ class _Invocation:
 
     async def pop_function_call_outputs(
         self, timeout: Optional[float], clear_on_success: bool
-    ) -> AsyncIterator[api_pb2.FunctionGetOutputsItem]:
+    ) -> api_pb2.FunctionGetOutputsResponse:
         t0 = time.time()
         if timeout is None:
             backend_timeout = OUTPUTS_TIMEOUT
@@ -157,22 +157,22 @@ class _Invocation:
                 request,
                 attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
+
             if len(response.outputs) > 0:
-                for item in response.outputs:
-                    yield item
-                return
+                return response
 
             if timeout is not None:
                 # update timeout in retry loop
                 backend_timeout = min(OUTPUTS_TIMEOUT, t0 + timeout - time.time())
                 if backend_timeout < 0:
-                    break
+                    # return the last response to check for state of num_unfinished_inputs
+                    return response
 
     async def run_function(self) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
-            await stream.list(self.pop_function_call_outputs(timeout=None, clear_on_success=True))
-        )[0]
+            await self.pop_function_call_outputs(timeout=None, clear_on_success=True)
+        ).outputs[0]
         assert not item.result.gen_status
         return await _process_result(item.result, item.data_format, self.stub, self.client)
 
@@ -182,14 +182,18 @@ class _Invocation:
         If timeout is `None`, waits indefinitely. This function is not
         cancellation-safe.
         """
-        items: List[api_pb2.FunctionGetOutputsItem] = await stream.list(
-            self.pop_function_call_outputs(timeout=timeout, clear_on_success=False)
+        response: api_pb2.FunctionGetOutputsResponse = await self.pop_function_call_outputs(
+            timeout=timeout, clear_on_success=False
         )
-
-        if len(items) == 0:
+        if len(response.outputs) == 0 and response.num_unfinished_inputs == 0:
+            # if no unfinished inputs and no outputs, then function expired
+            raise OutputExpiredError()
+        elif len(response.outputs) == 0:
             raise TimeoutError()
 
-        return await _process_result(items[0].result, items[0].data_format, self.stub, self.client)
+        return await _process_result(
+            response.outputs[0].result, response.outputs[0].data_format, self.stub, self.client
+        )
 
     async def run_generator(self):
         data_stream = _stream_function_call_data(self.client, self.function_call_id, variant="data_out")

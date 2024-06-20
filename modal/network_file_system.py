@@ -116,7 +116,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             pass
         ```
         """
-        check_object_name(label, "NetworkFileSystem", warn=True)
+        check_object_name(label, "NetworkFileSystem")
 
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
@@ -214,7 +214,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
     ) -> str:
         """mdmd:hidden"""
-        check_object_name(deployment_name, "NetworkFileSystem", warn=True)
+        check_object_name(deployment_name, "NetworkFileSystem")
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(
