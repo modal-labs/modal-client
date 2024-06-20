@@ -197,7 +197,7 @@ class _Secret(_Object, type_prefix="st"):
     ) -> "_Secret":
         """Lookup a secret with a given name
 
-        ```python
+        ```python notest
         s = modal.Secret.lookup("my-secret")
         print(s.object_id)
         ```

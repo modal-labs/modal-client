@@ -340,7 +340,7 @@ class _Cls(_Object, type_prefix="cs"):
     ) -> "_Cls":
         """Lookup a class with a given name and tag.
 
-        ```python
+        ```python notest
         Class = modal.Cls.lookup("other-app", "Class")
         ```
         """

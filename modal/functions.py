@@ -738,7 +738,7 @@ class _Function(_Object, type_prefix="fu"):
         Please exercise care when using this advanced feature!
         Setting and forgetting a warm pool on functions can lead to increased costs.
 
-        ```python
+        ```python notest
         # Usage on a regular function.
         f = modal.Function.lookup("my-app", "function")
         f.keep_warm(2)
@@ -801,7 +801,7 @@ class _Function(_Object, type_prefix="fu"):
     ) -> "_Function":
         """Lookup a function with a given name and tag.
 
-        ```python
+        ```python notest
         other_function = modal.Function.lookup("other-app", "function")
         ```
         """

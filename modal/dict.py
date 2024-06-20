@@ -158,7 +158,7 @@ class _Dict(_Object, type_prefix="di"):
     ) -> "_Dict":
         """Lookup a dict with a given name and tag.
 
-        ```python
+        ```python notest
         from modal import Dict
 
         d = Dict.lookup("my-dict")

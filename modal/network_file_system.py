@@ -192,7 +192,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     ) -> "_NetworkFileSystem":
         """Lookup a network file system with a given name
 
-        ```python
+        ```python notest
         n = modal.NetworkFileSystem.lookup("my-nfs")
         print(n.listdir("/"))
         ```

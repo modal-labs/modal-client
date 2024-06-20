@@ -189,7 +189,7 @@ class _Queue(_Object, type_prefix="qu"):
     ) -> "_Queue":
         """Lookup a queue with a given name and tag.
 
-        ```python
+        ```python notest
         from modal import Queue
 
         q = modal.Queue.lookup("my-queue")

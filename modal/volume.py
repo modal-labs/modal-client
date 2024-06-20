@@ -239,7 +239,7 @@ class _Volume(_Object, type_prefix="vo"):
     ) -> "_Volume":
         """Lookup a volume with a given name
 
-        ```python
+        ```python notest
         n = modal.Volume.lookup("my-volume")
         print(n.listdir("/"))
         ```
