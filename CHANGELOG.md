@@ -30,6 +30,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 ### 0.62.219 (2024-06-12)
 
 - Fix an issue with `@web_server` decorator not working on image builder version 2023.12
+- Added support for entrypoint and shell for custom containers: `Image.debian_slim().entrypoint([])` can be used interchangeably with `.dockerfile_commands('ENTRYPOINT []')`, and `.shell(["/bin/bash", "-c"])` can be used interchangeably with `.dockerfile_commands('SHELL ["/bin/bash", "-c"]')`
 
 
 
