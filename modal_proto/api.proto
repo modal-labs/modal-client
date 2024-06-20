@@ -49,7 +49,7 @@ enum AppState {
   APP_STATE_DETACHED_DISCONNECTED = 8;
 
   // App is derived from another workspace. Acts as a static, immutable group of functions.
-  APP_STATE_DERIVED = 9;
+  APP_STATE_DERIVED = 9 [deprecated=true];
 }
 
 enum AppStopSource {
