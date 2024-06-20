@@ -268,10 +268,6 @@ def deploy(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
-    public: bool = typer.Option(
-        False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
-    ),
-    skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
     tag: str = typer.Option(None, help="Tag the deployment with a version."),
 ):
@@ -283,16 +279,7 @@ def deploy(
     if name is None:
         name = app.name
 
-    if public and not skip_confirm:
-        if not click.confirm(
-            "⚠️ Public apps are a beta feature. ⚠️\n"
-            "Making an app public will allow any user (including from outside your workspace) "
-            "to look up and use your functions.\n"
-            "Are you sure you want your app to be public?"
-        ):
-            return
-
-    res = deploy_app(app, name=name, environment_name=env, public=public, tag=tag)
+    res = deploy_app(app, name=name, environment_name=env, tag=tag)
 
     if stream_logs:
         stream_app_logs(res.app_id)
