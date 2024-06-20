@@ -1,20 +1,8 @@
 # Copyright Modal Labs 2022
 import pytest
 
-from modal import App, Queue, Secret
-from modal.exception import DeprecationError, InvalidError
-
-
-@pytest.mark.asyncio
-async def test_async_factory(client):
-    Queue.lookup("xyz", create_if_missing=True, client=client)
-
-    app = App()
-    with pytest.warns(DeprecationError):
-        app.my_factory = Queue.from_name("xyz")
-        async with app.run(client=client):
-            assert isinstance(app.my_factory, Queue)
-            assert app.my_factory.object_id == "qu-1"
+from modal import Secret
+from modal.exception import InvalidError
 
 
 def test_new_hydrated(client):
