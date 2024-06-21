@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from typing import List
 
 import pytest_asyncio
+from aiohttp.web import Application
 from aiohttp.web_runner import AppRunner, SockSite
-from tornado.web import Application
 
 import modal._asgi
 
