@@ -19,6 +19,7 @@ import modal._asgi
 class DummyHttpServer:
     host: str
     port: int
+    event: asyncio.Event
     assertion_log: List[str]
 
 
@@ -44,6 +45,7 @@ async def http_dummy_server():
     from aiohttp import web
 
     assertion_log = []
+    event = asyncio.Event()
 
     async def hello(request):
         assertion_log.append("request")
@@ -55,6 +57,7 @@ async def http_dummy_server():
         except OSError:
             # disconnect
             assertion_log.append("disconnect")
+            event.set()
             return
 
         return web.Response(text="Hello, world")
@@ -62,11 +65,11 @@ async def http_dummy_server():
     app = web.Application()
     app.add_routes(([web.post("/", hello)]))
     async with run_temporary_http_server(app) as (host, port):
-        yield DummyHttpServer(host=host, port=port, assertion_log=assertion_log)
+        yield DummyHttpServer(host=host, port=port, event=event, assertion_log=assertion_log)
 
 
 @pytest.mark.asyncio
-async def test_web_server_wrapper_immediate_disconnect(http_dummy_server):
+async def test_web_server_wrapper_immediate_disconnect(http_dummy_server: DummyHttpServer):
     proxy_asgi_app = modal._asgi.web_server_proxy(http_dummy_server.host, http_dummy_server.port)
 
     async def recv():
@@ -77,4 +80,5 @@ async def test_web_server_wrapper_immediate_disconnect(http_dummy_server):
 
     scope = {"type": "http", "method": "POST", "path": "/", "headers": []}
     await proxy_asgi_app(scope, recv, send)
+    await http_dummy_server.event.wait()
     assert http_dummy_server.assertion_log == ["request", "disconnect"]
