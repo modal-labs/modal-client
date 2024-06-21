@@ -204,10 +204,7 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
                 if not message.get("more_body", False):
                     break
             elif message["type"] == "http.disconnect":
-                if proxy_response:
-                    proxy_response.connection.transport.abort()  # Abort the connection.
-                else:
-                    raise NameError("Proxy response not defined")
+                raise ConnectionAbortedError("Disconnect message received")
             else:
                 raise ExecutionError(f"Unexpected message type: {message['type']}")
 
@@ -223,35 +220,35 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
             data=None if scope["method"] in aiohttp.ClientRequest.GET_METHODS else request_generator(),
             allow_redirects=False,
         )
-    except aiohttp.ClientConnectionError as e:
-        if isinstance(e.__cause__, NameError):
+    except ConnectionAbortedError:
+        return
+    except aiohttp.ClientConnectionError as e:  # some versions of aiohttp wrap the error
+        if isinstance(e.__cause__, ConnectionAbortedError):
             return
-        else:
-            raise e.__cause__
-    else:
+        raise
 
-        async def send_response() -> None:
-            msg = {
-                "type": "http.response.start",
-                "status": proxy_response.status,
-                "headers": [(k.encode(), v.encode()) for k, v in proxy_response.headers.items()],
-            }
+    async def send_response() -> None:
+        msg = {
+            "type": "http.response.start",
+            "status": proxy_response.status,
+            "headers": [(k.encode(), v.encode()) for k, v in proxy_response.headers.items()],
+        }
+        await send(msg)
+        async for data in proxy_response.content.iter_any():
+            msg = {"type": "http.response.body", "body": data, "more_body": True}
             await send(msg)
-            async for data in proxy_response.content.iter_any():
-                msg = {"type": "http.response.body", "body": data, "more_body": True}
-                await send(msg)
-            await send({"type": "http.response.body"})
+        await send({"type": "http.response.body"})
 
-        async def listen_for_disconnect() -> NoReturn:
-            while True:
-                message = await receive()
-                if message["type"] == "http.disconnect":
-                    proxy_response.connection.transport.abort()
+    async def listen_for_disconnect() -> NoReturn:
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                proxy_response.connection.transport.abort()
 
-        async with TaskContext() as tc:
-            send_response_task = tc.create_task(send_response())
-            disconnect_task = tc.create_task(listen_for_disconnect())
-            await asyncio.wait([send_response_task, disconnect_task], return_when=asyncio.FIRST_COMPLETED)
+    async with TaskContext() as tc:
+        send_response_task = tc.create_task(send_response())
+        disconnect_task = tc.create_task(listen_for_disconnect())
+        await asyncio.wait([send_response_task, disconnect_task], return_when=asyncio.FIRST_COMPLETED)
 
 
 async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receive, send) -> None:
