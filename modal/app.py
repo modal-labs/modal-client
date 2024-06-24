@@ -2,6 +2,7 @@
 import inspect
 import typing
 import warnings
+from io import TextIOWrapper
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -49,11 +50,11 @@ class _LocalEntrypoint:
     _info: FunctionInfo
     _app: "_App"
 
-    def __init__(self, info, app):
-        self._info = info  # type: ignore
+    def __init__(self, info: FunctionInfo, app: "_App") -> None:
+        self._info = info
         self._app = app
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return self._info.raw_f(*args, **kwargs)
 
     @property
@@ -73,7 +74,7 @@ class _LocalEntrypoint:
 LocalEntrypoint = synchronize_api(_LocalEntrypoint)
 
 
-def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[typing.Any], error_msg: str):
+def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[typing.Any], error_msg: str) -> None:
     if not isinstance(items, (list, tuple)):
         raise InvalidError(error_msg)
     if not all(isinstance(v, item_type) for v in items):
@@ -247,16 +248,12 @@ class _App:
             d[x] = y  # Refer to d in global scope
         ```
         """
-        deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
-        return self._indexed_objects[tag]
+        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
 
     def __setitem__(self, tag: str, obj: _Object):
-        deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
-        self._validate_blueprint_value(tag, obj)
-        # Deprecated ?
-        self._add_object(tag, obj)
+        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
 
-    def __getattr__(self, tag: str) -> _Object:
+    def __getattr__(self, tag: str):
         # TODO(erikbern): remove this method later
         assert isinstance(tag, str)
         if tag.startswith("__"):
@@ -265,9 +262,7 @@ class _App:
         if tag not in self._indexed_objects:
             # Primarily to make hasattr work
             raise AttributeError(f"App has no member {tag}")
-        obj: _Object = self._indexed_objects[tag]
-        deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
-        return obj
+        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
 
     def __setattr__(self, tag: str, obj: _Object):
         # TODO(erikbern): remove this method later
@@ -278,9 +273,7 @@ class _App:
         elif tag == "image":
             self._image = obj
         else:
-            self._validate_blueprint_value(tag, obj)
-            deprecation_warning((2024, 3, 25), _App.__getitem__.__doc__)
-            self._add_object(tag, obj)
+            deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
 
     @property
     def image(self) -> _Image:
@@ -319,7 +312,7 @@ class _App:
     async def run(
         self,
         client: Optional[_Client] = None,
-        stdout=None,
+        stdout: Optional[TextIOWrapper] = None,
         show_progress: bool = True,
         detach: bool = False,
         output_mgr: Optional[OutputManager] = None,
@@ -407,7 +400,7 @@ class _App:
         return self._web_endpoints
 
     def local_entrypoint(
-        self, _warn_parentheses_missing=None, *, name: Optional[str] = None
+        self, _warn_parentheses_missing: Any = None, *, name: Optional[str] = None
     ) -> Callable[[Callable[..., Any]], None]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
@@ -475,7 +468,7 @@ class _App:
 
     def function(
         self,
-        _warn_parentheses_missing=None,
+        _warn_parentheses_missing: Any = None,
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -628,7 +621,7 @@ class _App:
 
     def cls(
         self,
-        _warn_parentheses_missing=None,
+        _warn_parentheses_missing: Optional[bool] = None,
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container

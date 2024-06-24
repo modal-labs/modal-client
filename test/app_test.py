@@ -8,7 +8,6 @@ from grpclib import GRPCError, Status
 
 from modal import App, Dict, Image, Mount, Queue, Secret, Stub, Volume, web_endpoint
 from modal.app import list_apps  # type: ignore
-from modal.config import config
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_app, deploy_stub
@@ -28,21 +27,9 @@ async def test_kwargs(servicer, client):
 
 @pytest.mark.asyncio
 async def test_attrs(servicer, client):
-    # Create some objects
-    Dict.lookup("xyz", create_if_missing=True, client=client)
-    Queue.lookup("xyz", create_if_missing=True, client=client)
-
-    # Test stub assignment
     app = App()
-    with pytest.warns(DeprecationError):
+    with pytest.raises(DeprecationError):
         app.d = Dict.from_name("xyz")
-        app.q = Queue.from_name("xyz")
-    async with app.run(client=client):
-        with pytest.warns(DeprecationError):
-            await app.d.put.aio("foo", "bar")  # type: ignore
-            await app.q.put.aio("baz")  # type: ignore
-            assert await app.d.get.aio("foo") == "bar"  # type: ignore
-            assert await app.q.get.aio() == "baz"  # type: ignore
 
 
 def square(x):
@@ -307,26 +294,6 @@ async def test_deploy_disconnect(servicer, client):
         api_pb2.APP_STATE_INITIALIZING,
         api_pb2.APP_STATE_STOPPED,
     ]
-
-
-def test_redeploy_from_name_change(servicer, client):
-    # Deploy queue
-    Queue.lookup("foo-queue", create_if_missing=True, client=client)
-
-    # Use it from app
-    app = App()
-    with pytest.warns(DeprecationError):
-        app.q = Queue.from_name("foo-queue")
-    deploy_app(app, "my-app", client=client)
-
-    # Change the object id of foo-queue
-    k = ("foo-queue", api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, config.get("environment"))
-    assert servicer.deployed_queues[k]
-    servicer.deployed_queues[k] = "qu-baz123"
-
-    # Redeploy app
-    # This should not fail because the object_id changed - it's a different app
-    deploy_app(app, "my-app", client=client)
 
 
 def test_parse_custom_domains():

@@ -22,6 +22,7 @@ from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
@@ -29,6 +30,7 @@ from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret
+from .volume import _Volume
 
 if typing.TYPE_CHECKING:
     import modal.functions
@@ -1454,8 +1456,9 @@ class _Image(_Object, type_prefix="im"):
         raw_f: Callable,
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
-        mounts: Sequence[_Mount] = (),
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
+        mounts: Sequence[_Mount] = (),  # Mounts attached to the function
+        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
+        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
@@ -1501,13 +1504,6 @@ class _Image(_Object, type_prefix="im"):
 
         info = FunctionInfo(raw_f)
 
-        if network_file_systems:
-            warnings.warn(
-                "Mounting NetworkFileSystems or Volumes is usually not advised with `run_function`."
-                " If you are trying to download model weights, downloading it to the image itself is "
-                "recommended and sufficient."
-            )
-
         function = _Function.from_args(
             info,
             app=None,
@@ -1516,6 +1512,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
             gpu=gpu,
             mounts=mounts,
+            volumes=volumes,
             network_file_systems=network_file_systems,
             memory=memory,
             timeout=timeout,

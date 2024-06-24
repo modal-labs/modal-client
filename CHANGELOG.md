@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.62.236 (2024-06-21)
+
+- Added support for mounting Volume or CloudBucketMount storage in `Image.run_function`. Note that this is *typically* not necessary, as data downloaded during the Image build can be stored directly in the Image filesystem.
+
+
+
 ### v0.62.230 (2024-06-18)
 
 - It is now an error to create or lookup Modal objects (`Volume`, `Dict`, `Secret`, etc.) with an invalid name. Object names must be shorter than 64 characters and may contain only alphanumeric characters, dashes, periods, and underscores. The name check had inadvertently been removed for a brief time following an internal refactor and then reintroduced as a warning. It is once more a hard error. Please get in touch if this is blocking access to your data.
@@ -24,6 +30,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 ### 0.62.223 (2024-06-14)
 
 - All modal CLI commands now accept `-e` as a short-form of `--env`
+
+
+
+### 0.62.220 (2024-06-12)
+
+- Added support for entrypoint and shell for custom containers: `Image.debian_slim().entrypoint([])` can be used interchangeably with `.dockerfile_commands('ENTRYPOINT []')`, and `.shell(["/bin/bash", "-c"])` can be used interchangeably with `.dockerfile_commands('SHELL ["/bin/bash", "-c"]')`
 
 
 
