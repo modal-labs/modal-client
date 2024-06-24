@@ -23,11 +23,11 @@ from .functions import (
 from .gpu import GPU_T
 from .object import _get_environment_name, _Object
 from .partial_function import (
-    PartialFunction,
     _find_callables_for_cls,
     _find_callables_for_obj,
-    _find_partial_methods_for_cls,
+    _find_partial_methods_for_user_cls,
     _Function,
+    _PartialFunction,
     _PartialFunctionFlags,
 )
 from .retries import Retries
@@ -51,12 +51,14 @@ class _Obj:
     _entered: bool
     _local_obj: Any
     _local_obj_constr: Optional[Callable[[], Any]]
+    _instance_service_function: _Function
 
     def __init__(
         self,
         user_cls: type,
         output_mgr: Optional[OutputManager],
-        base_functions: Dict[str, _Function],
+        class_service_function: _Function,
+        classbound_methods: Dict[str, _Function],
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args,
@@ -67,10 +69,15 @@ class _Obj:
         for key, kwarg in kwargs.items():
             check_valid_cls_constructor_arg(key, kwarg)
 
-        self._functions = {}
-        for k, fun in base_functions.items():
-            self._functions[k] = fun.from_parametrized(self, from_other_workspace, options, args, kwargs)
-            self._functions[k]._set_output_mgr(output_mgr)
+        self._method_functions = {}
+        # first create the singular object function used by all methods on this parameterization
+        self._instance_service_function = class_service_function._bind_parameters(
+            self, from_other_workspace, options, args, kwargs
+        )
+        for method_name, class_bound_method in classbound_methods.items():
+            method = self._instance_service_function._bind_instance_method(class_bound_method)
+            method._set_output_mgr(output_mgr)
+            self._method_functions[method_name] = method
 
         # Used for construction local object lazily
         self._inited = False
@@ -81,10 +88,27 @@ class _Obj:
         else:
             self._local_obj_constr = None
 
+    async def keep_warm(self, warm_pool_size: int) -> None:
+        """Set the warm pool size for the class containers
+
+        Please exercise care when using this advanced feature!
+        Setting and forgetting a warm pool on functions can lead to increased costs.
+
+        Note that all Modal methods and web endpoints of a class share the same set
+        of containers and the warm_pool_size affects that common container pool.
+
+        ```python
+        # Usage on a parametrized function.
+        Model = modal.Cls.lookup("my-app", "Model")
+        Model("fine-tuned-model").keep_warm(2)
+        ```
+        """
+        await self._instance_service_function.keep_warm(warm_pool_size)
+
     def get_obj(self):
         """Constructs obj without any caching. Used by container entrypoint."""
         self._local_obj = self._local_obj_constr()
-        setattr(self._local_obj, "_modal_functions", self._functions)  # Needed for PartialFunction.__get__
+        setattr(self._local_obj, "_modal_functions", self._method_functions)  # Needed for PartialFunction.__get__
         return self._local_obj
 
     def get_local_obj(self):
@@ -129,8 +153,8 @@ class _Obj:
         self.entered = True
 
     def __getattr__(self, k):
-        if k in self._functions:
-            return self._functions[k]
+        if k in self._method_functions:
+            return self._method_functions[k]
         elif self._local_obj_constr:
             obj = self.get_local_obj()
             return getattr(obj, k)
@@ -143,7 +167,8 @@ Obj = synchronize_api(_Obj)
 
 class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
-    _functions: Dict[str, _Function]
+    _class_service_function: _Function  # The _Function serving *all* methods of the class
+    _method_functions: Dict[str, _Function]  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
@@ -151,7 +176,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _initialize_from_empty(self):
         self._user_cls = None
-        self._functions = {}
+        self._class_service_function = None
+        self._method_functions = {}
         self._options = None
         self._callables = {}
         self._from_other_workspace = None
@@ -159,7 +185,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _initialize_from_other(self, other: "_Cls"):
         self._user_cls = other._user_cls
-        self._functions = other._functions
+        self._class_service_function = other._class_service_function
+        self._method_functions = other._method_functions
         self._options = other._options
         self._callables = other._callables
         self._from_other_workspace = other._from_other_workspace
@@ -168,20 +195,43 @@ class _Cls(_Object, type_prefix="cs"):
     def _set_output_mgr(self, output_mgr: OutputManager):
         self._output_mgr = output_mgr
 
+    def _get_partial_functions(self) -> Dict[str, _PartialFunction]:
+        if not self._user_cls:
+            raise AttributeError("You can only get the partial functions of a local Cls instance")
+        return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
+
     def _hydrate_metadata(self, metadata: Message):
+        assert isinstance(metadata, api_pb2.ClassHandleMetadata)
+
+        if metadata.class_function_id:
+            # "class service function" themselves don't have hydration metadata, but we
+            # still send in a valid FunctionHandleMetadata object in hydration, since
+            # there is a run-time type check of that _Function._hydrate_metadata
+            if self._class_service_function:
+                self._class_service_function._hydrate(
+                    metadata.class_function_id, self._client, metadata.class_function_metadata
+                )
+            else:
+                self._class_service_function = _Function._new_hydrated(
+                    metadata.class_function_id, self._client, metadata.class_function_metadata
+                )
+
         for method in metadata.methods:
-            if method.function_name in self._functions:
-                self._functions[method.function_name]._hydrate(
+            if method.function_name in self._method_functions:
+                # This happens when the class is loaded locally
+                # since each function will already be a loaded dependency _Function
+                self._method_functions[method.function_name]._hydrate(
                     method.function_id, self._client, method.function_handle_metadata
                 )
             else:
-                self._functions[method.function_name] = _Function._new_hydrated(
+                self._method_functions[method.function_name] = _Function._new_hydrated(
                     method.function_id, self._client, method.function_handle_metadata
                 )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
-        class_handle_metadata = api_pb2.ClassHandleMetadata()
-        for f_name, f in self._functions.items():
+        class_function_id = self._class_service_function.object_id
+        class_handle_metadata = api_pb2.ClassHandleMetadata(class_function_id=class_function_id)
+        for f_name, f in self._method_functions.items():
             class_handle_metadata.methods.append(
                 api_pb2.ClassMethod(
                     function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
@@ -190,34 +240,50 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
-    def from_local(user_cls, app, decorator: Callable[[PartialFunction, type], _Function]) -> "_Cls":
+    def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
         """mdmd:hidden"""
         functions: Dict[str, _Function] = {}
-        for k, partial_function in _find_partial_methods_for_cls(user_cls, _PartialFunctionFlags.FUNCTION).items():
-            functions[k] = decorator(partial_function, user_cls)
+        partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
+            user_cls, _PartialFunctionFlags.FUNCTION
+        )
+
+        for method_name, partial_function in partial_functions.items():
+            method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
+            app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
+            partial_function.wrapped = True
+            functions[method_name] = method_function
 
         # Disable the warning that these are not wrapped
-        for partial_function in _find_partial_methods_for_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
+        for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
             partial_function.wrapped = True
 
         # Get all callables
         callables: Dict[str, Callable] = _find_callables_for_cls(user_cls, ~_PartialFunctionFlags(0))
 
         def _deps() -> List[_Function]:
-            return list(functions.values())
+            return [class_service_function] + list(functions.values())
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
-            req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
-            for f_name, f in functions.items():
-                req.methods.append(api_pb2.ClassMethod(function_name=f_name, function_id=f.object_id))
+            req = api_pb2.ClassCreateRequest(
+                app_id=resolver.app_id,
+                existing_class_id=existing_object_id,
+                class_function_id=class_service_function.object_id,
+            )
+            for f_name, f in self._method_functions.items():
+                req.methods.append(
+                    api_pb2.ClassMethod(
+                        function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
+                    )
+                )
             resp = await resolver.client.stub.ClassCreate(req)
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
-        cls = _Cls._from_loader(_load, rep, deps=_deps)
+        cls: _Cls = _Cls._from_loader(_load, rep, deps=_deps)
         cls._app = app
         cls._user_cls = user_cls
-        cls._functions = functions
+        cls._class_service_function = class_service_function
+        cls._method_functions = functions
         cls._callables = callables
         cls._from_other_workspace = False
         return cls
@@ -354,13 +420,20 @@ class _Cls(_Object, type_prefix="cs"):
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
         return _Obj(
-            self._user_cls, self._output_mgr, self._functions, self._from_other_workspace, self._options, args, kwargs
+            self._user_cls,
+            self._output_mgr,
+            self._class_service_function,
+            self._method_functions,
+            self._from_other_workspace,
+            self._options,
+            args,
+            kwargs,
         )
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint
-        if k in self._functions:
-            return self._functions[k]
+        if k in self._method_functions:
+            return self._method_functions[k]
         return getattr(self._user_cls, k)
 
 

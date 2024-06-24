@@ -9,6 +9,7 @@ from grpclib import GRPCError, Status
 from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext
+from .client import _Client
 from .exception import ExecutionError, NotFoundError
 
 if TYPE_CHECKING:
@@ -48,6 +49,7 @@ class Resolver:
     _environment_name: Optional[str]
     _app_id: Optional[str]
     _deduplication_cache: Dict[Hashable, Future]
+    _client: _Client
 
     def __init__(
         self,

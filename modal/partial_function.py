@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import enum
+import inspect
 from typing import (
     Any,
     Callable,
@@ -98,7 +99,7 @@ class _PartialFunction:
 PartialFunction = synchronize_api(_PartialFunction)
 
 
-def _find_partial_methods_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
+def _find_partial_methods_for_user_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class"""
     partial_functions: Dict[str, PartialFunction] = {}
     for parent_cls in user_cls.mro():
@@ -140,7 +141,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
             deprecation_error((2024, 2, 21), message)
 
     # Grab new decorator-based methods
-    for k, pf in _find_partial_methods_for_cls(user_cls, flags).items():
+    for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items():
         functions[k] = pf.raw_f
 
     return functions
@@ -158,7 +159,7 @@ def _method(
     # Set this to True if it's a non-generator function returning
     # a [sync/async] generator object
     is_generator: Optional[bool] = None,
-    keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
+    keep_warm: Optional[int] = None,  # Deprecated: Use keep_warm on @app.cls() instead
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for methods that should be transformed into a Modal Function registered against this class's app.
 
@@ -176,13 +177,27 @@ def _method(
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
 
+    if keep_warm is not None:
+        deprecation_warning(
+            (2024, 6, 10),
+            (
+                "`keep_warm=` is no longer supported per-method on Modal classes. "
+                "All methods and web endpoints of a class use the same set of containers now. "
+                "Use keep_warm via the @app.cls() decorator instead. "
+            ),
+            pending=True,
+        )
+
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        nonlocal is_generator
         if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
                 "Web endpoints on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
+        if is_generator is None:
+            is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
 
     return wrapper
@@ -527,6 +542,7 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "exit")
+
         if method_has_params(f):
             message = (
                 "Support for decorating parameterized methods with `@exit` has been deprecated."

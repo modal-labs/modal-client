@@ -32,7 +32,7 @@ from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
-from .partial_function import PartialFunction, _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
+from .partial_function import _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
 from .proxy import _Proxy
 from .retries import Retries
 from .runner import _run_app
@@ -346,7 +346,7 @@ class _App:
 
         return [m for m in all_mounts if m.is_local()]
 
-    def _add_function(self, function: _Function):
+    def _add_function(self, function: _Function, is_web_endpoint: bool):
         if function.tag in self._indexed_objects:
             old_function = self._indexed_objects[function.tag]
             if isinstance(old_function, _Function):
@@ -361,6 +361,8 @@ class _App:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
 
         self._add_object(function.tag, function)
+        if is_web_endpoint:
+            self._web_endpoints.append(function.tag)
 
     def _init_container(self, client: _Client, running_app: RunningApp):
         self._client = client
@@ -538,8 +540,7 @@ class _App:
         secrets = [*self._secrets, *secrets]
 
         def wrapped(
-            f: Union[_PartialFunction, Callable[..., Any]],
-            _cls: Optional[type] = None,  # Used for methods only
+            f: Union[_PartialFunction, Callable[..., Any], None],
         ) -> _Function:
             nonlocal keep_warm, is_generator
 
@@ -548,19 +549,18 @@ class _App:
                 raise TypeError("The @app.function decorator cannot be used on a class. Please use @app.cls instead.")
 
             if isinstance(f, _PartialFunction):
+                # typically for @function-wrapped @web_endpoint and @asgi_app
                 f.wrapped = True
-                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name, cls=_cls)
+                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
                 is_generator = f.is_generator
                 keep_warm = f.keep_warm or keep_warm
 
-                if webhook_config:
-                    if interactive:
-                        raise InvalidError("interactive=True is not supported with web endpoint functions")
-                    self._web_endpoints.append(info.get_tag())
+                if webhook_config and interactive:
+                    raise InvalidError("interactive=True is not supported with web endpoint functions")
             else:
-                info = FunctionInfo(f, serialized=serialized, name_override=name, cls=_cls)
+                info = FunctionInfo(f, serialized=serialized, name_override=name)
                 webhook_config = None
                 raw_f = f
 
@@ -568,12 +568,6 @@ class _App:
                 warnings.warn(
                     "Beware: the function name is `app`. Modal will soon rename `Stub` to `App`, "
                     "so you might run into issues if you have code like `app = modal.App()` in the same scope"
-                )
-
-            if not _cls and not info.is_serialized() and "." in info.function_name:  # This is a method
-                raise InvalidError(
-                    "`app.function` on methods is not allowed. "
-                    "See https://modal.com/docs/guide/lifecycle-functions instead"
                 )
 
             if is_generator is None:
@@ -620,7 +614,7 @@ class _App:
                 _experimental_scheduler=_experimental_scheduler,
             )
 
-            self._add_function(function)
+            self._add_function(function, webhook_config is not None)
             return function
 
         return wrapped
@@ -675,54 +669,76 @@ class _App:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
-        decorator: Callable[[PartialFunction, type], _Function] = self.function(
-            image=image,
-            secret=secret,
-            secrets=secrets,
-            gpu=gpu,
-            serialized=serialized,
-            mounts=mounts,
-            network_file_systems=network_file_systems,
-            allow_cross_region_volumes=allow_cross_region_volumes,
-            volumes=volumes,
-            cpu=cpu,
-            memory=memory,
-            ephemeral_disk=ephemeral_disk,
-            proxy=proxy,
-            retries=retries,
-            concurrency_limit=concurrency_limit,
-            allow_concurrent_inputs=allow_concurrent_inputs,
-            container_idle_timeout=container_idle_timeout,
-            timeout=timeout,
-            interactive=interactive,
-            keep_warm=keep_warm,
-            cloud=cloud,
-            region=region,
-            enable_memory_snapshot=enable_memory_snapshot,
-            checkpointing_enabled=checkpointing_enabled,
-            block_network=block_network,
-            _allow_background_volume_commits=_allow_background_volume_commits,
-            max_inputs=max_inputs,
-            _experimental_boost=_experimental_boost,
-            _experimental_scheduler=_experimental_scheduler,
-            _experimental_scheduler_placement=_experimental_scheduler_placement,
-        )
+        if interactive:
+            deprecation_error(
+                (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+            )
+
+        if image is None:
+            image = self._get_default_image()
+
+        secrets = [*self._secrets, *secrets]
 
         def wrapper(user_cls: CLS_T) -> _Cls:
-            cls: _Cls = _Cls.from_local(user_cls, self, decorator)
+            nonlocal keep_warm
+
+            # Check if the decorated object is a class
+            if not inspect.isclass(user_cls):
+                raise TypeError("The @app.cls decorator must be used on a class.")
+
+            info = FunctionInfo(None, serialized=serialized, cls=user_cls)
+
+            scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
+            if region:
+                if scheduler_placement:
+                    raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
+                scheduler_placement = SchedulerPlacement(region=region)
+
+            cls_func = _Function.from_args(
+                info,
+                app=self,
+                image=image,
+                secret=secret,
+                secrets=secrets,
+                gpu=gpu,
+                mounts=[*self._mounts, *mounts],
+                network_file_systems=network_file_systems,
+                allow_cross_region_volumes=allow_cross_region_volumes,
+                volumes={**self._volumes, **volumes},
+                memory=memory,
+                ephemeral_disk=ephemeral_disk,
+                proxy=proxy,
+                retries=retries,
+                concurrency_limit=concurrency_limit,
+                allow_concurrent_inputs=allow_concurrent_inputs,
+                container_idle_timeout=container_idle_timeout,
+                timeout=timeout,
+                cpu=cpu,
+                keep_warm=keep_warm,
+                cloud=cloud,
+                enable_memory_snapshot=enable_memory_snapshot,
+                checkpointing_enabled=checkpointing_enabled,
+                allow_background_volume_commits=_allow_background_volume_commits,
+                block_network=block_network,
+                max_inputs=max_inputs,
+                scheduler_placement=scheduler_placement,
+                _experimental_boost=_experimental_boost,
+                _experimental_scheduler=_experimental_scheduler,
+                # class service function, so the following attributes which relate to
+                # the callable itself are invalid and set to defaults:
+                webhook_config=None,
+                is_generator=False,
+            )
+
+            self._add_function(cls_func, is_web_endpoint=False)
+
+            cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
 
             if (
                 _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
                 and not enable_memory_snapshot
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
-
-            if len(cls._functions) > 1 and keep_warm is not None:
-                deprecation_warning(
-                    (2023, 10, 20),
-                    "`@app.cls(keep_warm=...)` is deprecated when there is more than 1 method."
-                    " Use `@method(keep_warm=...)` on each method instead!",
-                )
 
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
