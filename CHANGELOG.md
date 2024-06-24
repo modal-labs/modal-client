@@ -10,6 +10,16 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.0 (2024-06-24)
+
+* Changes how containers are associated with methods of `@app.cls()`-decorated Modal "classes".
+* `keep_warm` for classes is now an attribute of the `@app.cls()` decorator rather than individual methods.
+
+Previously each `@method` and web endpoint of a class would get its own set of isolated containers and never run in the same container as other sibling methods. 
+Starting in this version, all `@methods` and web endpoints will be part of the same container pool. Notably, this means all methods will scale up/down together, and options like `keep_warm` and `concurrency_limit` will affect the total number of containers for all methods in the class combined, rather than individually.
+
+
+
 ### 0.62.236 (2024-06-21)
 
 - Added support for mounting Volume or CloudBucketMount storage in `Image.run_function`. Note that this is *typically* not necessary, as data downloaded during the Image build can be stored directly in the Image filesystem.
