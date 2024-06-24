@@ -192,7 +192,7 @@ def wait_for_web_server(host: str, port: int, *, timeout: float) -> None:
 
 
 async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, send) -> None:
-    proxy_response: Optional[aiohttp.ClientResponse] = None
+    proxy_response: aiohttp.ClientResponse
 
     async def request_generator() -> AsyncGenerator[bytes, None]:
         while True:
@@ -243,7 +243,8 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
         while True:
             message = await receive()
             if message["type"] == "http.disconnect":
-                proxy_response.connection.transport.abort()
+                # based on the aiottp code, there should be a connection set after session.request
+                proxy_response.connection.transport.abort()  # type: ignore
 
     async with TaskContext() as tc:
         send_response_task = tc.create_task(send_response())
