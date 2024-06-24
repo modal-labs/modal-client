@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
+import modal
 from modal import Client, is_local
 from modal._container_entrypoint import UserException, main
 from modal._serialization import (
@@ -32,7 +33,7 @@ from modal._serialization import (
 from modal._utils import async_utils
 from modal.app import _App
 from modal.exception import InvalidError
-from modal.partial_function import enter
+from modal.partial_function import enter, method
 from modal_proto import api_pb2
 
 from .helpers import deploy_app_externally
@@ -44,9 +45,14 @@ SLEEP_DELAY = 0.1
 
 
 def _get_inputs(
-    args: Tuple[Tuple, Dict] = ((42,), {}), n: int = 1, kill_switch=True
+    args: Tuple[Tuple, Dict] = ((42,), {}),
+    n: int = 1,
+    kill_switch=True,
+    method_name: Optional[str] = None,
 ) -> List[api_pb2.FunctionGetInputsResponse]:
-    input_pb = api_pb2.FunctionInput(args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE)
+    input_pb = api_pb2.FunctionInput(
+        args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+    )
     inputs = [
         *(
             api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
@@ -57,6 +63,22 @@ def _get_inputs(
     return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
 
 
+def _get_multi_inputs(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
+    responses = []
+    for input_n, (method_name, input_args, input_kwargs) in enumerate(args):
+        resp = api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id=f"in-{input_n:03}",
+                    input=api_pb2.FunctionInput(args=serialize((input_args, input_kwargs)), method_name=method_name),
+                )
+            ]
+        )
+        responses.append(resp)
+
+    return responses + [api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)])]
+
+
 @dataclasses.dataclass
 class ContainerResult:
     client: Client
@@ -65,13 +87,14 @@ class ContainerResult:
     task_result: api_pb2.GenericResult
 
 
-def _get_multi_inputs(args: List[Tuple[Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
+def _get_multi_inputs_with_methods(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
     responses = []
-    for input_n, input_args in enumerate(args):
+    for input_n, (method_name, *input_args) in enumerate(args):
         resp = api_pb2.FunctionGetInputsResponse(
             inputs=[
                 api_pb2.FunctionGetInputsItem(
-                    input_id=f"in-{input_n:03}", input=api_pb2.FunctionInput(args=serialize(input_args))
+                    input_id=f"in-{input_n:03}",
+                    input=api_pb2.FunctionInput(args=serialize(input_args), method_name=method_name),
                 )
             ]
         )
@@ -95,6 +118,7 @@ def _container_args(
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
+    is_class: bool = False,
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -119,6 +143,7 @@ def _container_args(
         is_checkpointing_function=is_checkpointing_function,
         object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         max_inputs=max_inputs,
+        is_class=is_class,
     )
 
     return api_pb2.ContainerArguments(
@@ -156,6 +181,7 @@ def _run_container(
     volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
+    is_class: bool = False,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -172,6 +198,7 @@ def _run_container(
         volume_mounts,
         is_auto_snapshot,
         max_inputs,
+        is_class=is_class,
     )
     with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -389,7 +416,7 @@ def test_from_local_python_packages_inside_container(unix_servicer):
     assert _unwrap_scalar(ret) == 0
 
 
-def _get_web_inputs(path="/"):
+def _get_web_inputs(path="/", method_name=""):
     scope = {
         "method": "GET",
         "type": "http",
@@ -398,7 +425,7 @@ def _get_web_inputs(path="/"):
         "query_string": b"arg=space",
         "http_version": "2",
     }
-    return _get_inputs(((scope,), {}))
+    return _get_inputs(((scope,), {}), method_name=method_name)
 
 
 # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
@@ -596,19 +623,37 @@ def test_webhook_streaming_async(unix_servicer):
 
 @skip_github_non_linux
 def test_cls_function(unix_servicer):
-    ret = _run_container(unix_servicer, "test.supports.functions", "Cls.f")
+    ret = _run_container(
+        unix_servicer,
+        "test.supports.functions",
+        "Cls.*",
+        is_class=True,
+        inputs=_get_inputs(method_name="f"),
+    )
     assert _unwrap_scalar(ret) == 42 * 111
 
 
 @skip_github_non_linux
 def test_lifecycle_enter_sync(unix_servicer):
-    ret = _run_container(unix_servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=_get_inputs(((), {})))
+    ret = _run_container(
+        unix_servicer,
+        "test.supports.functions",
+        "LifecycleCls.*",
+        inputs=_get_inputs(((), {}), method_name="f_sync"),
+        is_class=True,
+    )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync"]
 
 
 @skip_github_non_linux
 def test_lifecycle_enter_async(unix_servicer):
-    ret = _run_container(unix_servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=_get_inputs(((), {})))
+    ret = _run_container(
+        unix_servicer,
+        "test.supports.functions",
+        "LifecycleCls.*",
+        inputs=_get_inputs(((), {}), method_name="f_async"),
+        is_class=True,
+    )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async"]
 
 
@@ -618,21 +663,23 @@ def test_param_cls_function(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "ParamCls.f",
+        "ParamCls.*",
         serialized_params=serialized_params,
+        is_class=True,
+        inputs=_get_inputs(method_name="f"),
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
 
 
 @skip_github_non_linux
 def test_cls_web_endpoint(unix_servicer):
-    inputs = _get_web_inputs()
+    inputs = _get_web_inputs(method_name="web")
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "Cls.web",
+        "Cls.*",
         inputs=inputs,
-        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+        is_class=True,
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -644,13 +691,13 @@ def test_cls_web_asgi_construction(unix_servicer):
     unix_servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
     unix_servicer.app_functions["fu-2"] = api_pb2.FunctionHandleMetadata()
 
-    inputs = _get_web_inputs()
+    inputs = _get_web_inputs(method_name="asgi_web")
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "Cls.asgi_web",
+        "Cls.*",
         inputs=inputs,
-        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+        is_class=True,
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -670,16 +717,21 @@ def test_serialized_cls(unix_servicer):
         def enter(self):
             self.power = 5
 
+        @method()
         def method(self, x):
             return x**self.power
 
     unix_servicer.class_serialized = serialize(Cls)
-    unix_servicer.function_serialized = serialize(Cls.method)
+    unix_servicer.function_serialized = serialize(
+        {"method": Cls.__dict__["method"]}
+    )  # can't use Cls.method because of descriptor protocol that returns Function instead of PartialFunction
     ret = _run_container(
         unix_servicer,
         "module.doesnt.matter",
         "function.doesnt.matter",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        is_class=True,
+        inputs=_get_inputs(method_name="method"),
     )
     assert _unwrap_scalar(ret) == 42**5
 
@@ -689,8 +741,10 @@ def test_cls_generator(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "Cls.generator",
+        "Cls.*",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        is_class=True,
+        inputs=_get_inputs(method_name="generator"),
     )
     items, exc = _unwrap_generator(ret)
     assert items == [42**3]
@@ -702,9 +756,10 @@ def test_checkpointing_cls_function(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "CheckpointingCls.f",
-        inputs=_get_inputs((("D",), {})),
+        "CheckpointingCls.*",
+        inputs=_get_inputs((("D",), {}), method_name="f"),
         is_checkpointing_function=True,
+        is_class=True,
     )
     assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in unix_servicer.requests)
     for request in unix_servicer.requests:
@@ -718,8 +773,9 @@ def test_cls_enter_uses_event_loop(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "EventLoopCls.f",
-        inputs=_get_inputs(((), {})),
+        "EventLoopCls.*",
+        inputs=_get_inputs(((), {}), method_name="f"),
+        is_class=True,
     )
     assert _unwrap_scalar(ret) == True
 
@@ -773,7 +829,7 @@ def test_cli(unix_servicer):
 
 @skip_github_non_linux
 def test_function_sibling_hydration(unix_servicer):
-    deploy_app_externally(unix_servicer, "test.supports.functions", "app")
+    deploy_app_externally(unix_servicer, "test.supports.functions", "app", capture_output=False)
     ret = _run_container(unix_servicer, "test.supports.functions", "check_sibling_hydration")
     assert _unwrap_scalar(ret) is None
 
@@ -940,8 +996,10 @@ def test_param_cls_function_calling_local(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "ParamCls.g",
+        "ParamCls.*",
         serialized_params=serialized_params,
+        inputs=_get_inputs(method_name="g"),
+        is_class=True,
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
 
@@ -951,8 +1009,9 @@ def test_derived_cls(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "DerivedCls.run",
-        inputs=_get_inputs(((3,), {})),
+        "DerivedCls.*",
+        inputs=_get_inputs(((3,), {}), method_name="run"),
+        is_class=True,
     )
     assert _unwrap_scalar(ret) == 6
 
@@ -1088,10 +1147,11 @@ def test_build_decorator_cls(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "BuildCls.build1",
-        inputs=_get_inputs(((), {})),
+        "BuildCls.*",
+        inputs=_get_inputs(((), {}), method_name="build1"),
         is_builder_function=True,
         is_auto_snapshot=True,
+        is_class=True,
     )
     assert _unwrap_scalar(ret) == 101
     # TODO: this is GENERIC_STATUS_FAILURE when `@exit` fails,
@@ -1105,10 +1165,11 @@ def test_multiple_build_decorator_cls(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.functions",
-        "BuildCls.build2",
-        inputs=_get_inputs(((), {})),
+        "BuildCls.*",
+        inputs=_get_inputs(((), {}), method_name="build2"),
         is_builder_function=True,
         is_auto_snapshot=True,
+        is_class=True,
     )
     assert _unwrap_scalar(ret) == 1001
     assert ret.task_result is None
@@ -1161,17 +1222,19 @@ def _run_container_process(
     module_name,
     function_name,
     *,
-    inputs: List[Tuple[Tuple, Dict[str, Any]]],
+    inputs: List[Tuple[str, Tuple, Dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
     cls_params: Tuple[Tuple, Dict[str, Any]] = ((), {}),
     print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
+    is_class=False,
 ) -> subprocess.Popen:
     container_args = _container_args(
         module_name,
         function_name,
         allow_concurrent_inputs=allow_concurrent_inputs,
         serialized_params=serialize(cls_params),
+        is_class=is_class,
     )
     encoded_container_args = base64.b64encode(container_args.SerializeToString())
     servicer.container_inputs = _get_multi_inputs(inputs)
@@ -1208,7 +1271,7 @@ def test_cancellation_aborts_current_input_on_match(
             servicer,
             "test.supports.functions",
             function_name,
-            inputs=[((arg,), {}) for arg in input_args],
+            inputs=[("", (arg,), {}) for arg in input_args],
         )
         time.sleep(1)
         input_lock.wait()
@@ -1250,7 +1313,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
             servicer,
             "test.supports.functions",
             function_name,
-            inputs=[((20,), {})] * 2,  # two inputs
+            inputs=[("", (20,), {})] * 2,  # two inputs
             allow_concurrent_inputs=2,
         )
         input_lock.wait()
@@ -1274,7 +1337,12 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
 def test_lifecycle_full(servicer):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
-        servicer, "test.supports.functions", "LifecycleCls.f_sync", inputs=[((), {})], cls_params=((True,), {})
+        servicer,
+        "test.supports.functions",
+        "LifecycleCls.*",
+        inputs=[("f_sync", (), {})],
+        cls_params=((True,), {}),
+        is_class=True,
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
@@ -1282,7 +1350,12 @@ def test_lifecycle_full(servicer):
 
     # Sync and async container lifecycle methods on an async function.
     container_process = _run_container_process(
-        servicer, "test.supports.functions", "LifecycleCls.f_async", inputs=[((), {})], cls_params=((True,), {})
+        servicer,
+        "test.supports.functions",
+        "LifecycleCls.*",
+        inputs=[("f_async", (), {})],
+        cls_params=((True,), {}),
+        is_class=True,
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
@@ -1297,8 +1370,9 @@ def test_stop_fetching_inputs(unix_servicer):
     ret = _run_container(
         unix_servicer,
         "test.supports.experimental",
-        "StopFetching.after_two",
-        inputs=_get_inputs(((42,), {}), n=4, kill_switch=False),
+        "StopFetching.*",
+        inputs=_get_inputs(((42,), {}), n=4, kill_switch=False, method_name="after_two"),
+        is_class=True,
     )
 
     assert len(ret.items) == 2
@@ -1369,10 +1443,11 @@ def test_sigint_termination_input_concurrent(servicer):
         container_process = _run_container_process(
             servicer,
             "test.supports.functions",
-            "LifecycleCls.delay",
-            inputs=[((10,), {})] * 3,
+            "LifecycleCls.*",
+            inputs=[("delay", (10,), {})] * 3,
             cls_params=((), {"print_at_exit": True}),
             allow_concurrent_inputs=2,
+            is_class=True,
         )
         input_barrier.wait()  # get one input
         input_barrier.wait()  # get one input
@@ -1403,9 +1478,10 @@ def test_sigint_termination_input(servicer, method):
         container_process = _run_container_process(
             servicer,
             "test.supports.functions",
-            f"LifecycleCls.{method}",
-            inputs=[((5,), {})],
+            "LifecycleCls.*",
+            inputs=[(method, (5,), {})],
             cls_params=((), {"print_at_exit": True}),
+            is_class=True,
         )
         input_barrier.wait()  # get input
         time.sleep(0.5)
@@ -1433,9 +1509,10 @@ def test_sigint_termination_enter_handler(servicer, method, enter_type):
     container_process = _run_container_process(
         servicer,
         "test.supports.functions",
-        f"LifecycleCls.{method}",
-        inputs=[((5,), {})],
+        "LifecycleCls.*",
+        inputs=[(method, (5,), {})],
         cls_params=((), {"print_at_exit": True, f"{enter_type}_duration": 10}),
+        is_class=True,
     )
     time.sleep(1)  # should be enough to start the enter method
     signal_time = time.monotonic()
@@ -1464,9 +1541,10 @@ def test_sigint_termination_exit_handler(servicer, exit_type):
         container_process = _run_container_process(
             servicer,
             "test.supports.functions",
-            "LifecycleCls.delay",
-            inputs=[((0,), {})],
+            "LifecycleCls.*",
+            inputs=[("delay", (0,), {})],
             cls_params=((), {"print_at_exit": True, f"{exit_type}_duration": 2}),
+            is_class=True,
         )
         outputs.wait()  # wait for first output to be emitted
     time.sleep(1)  # give some time for container to end up in the exit handler
@@ -1493,3 +1571,50 @@ def test_is_local(unix_servicer, event_loop):
 
     ret = _run_container(unix_servicer, "test.supports.functions", "is_local_f")
     assert _unwrap_scalar(ret) == False
+
+
+class Foo:
+    def __init__(self, x):
+        self.x = x
+
+    @enter()
+    def some_enter(self):
+        self.x += "_enter"
+
+    @method()
+    def method_a(self, y):
+        return self.x + f"_a_{y}"
+
+    @method()
+    def method_b(self, y):
+        return self.x + f"_b_{y}"
+
+
+@skip_github_non_linux
+def test_class_as_service_serialized(unix_servicer):
+    # TODO(elias): refactor once the loading code is merged
+
+    app = modal.App()
+    app.cls()(Foo)  # avoid errors about methods not being turned into functions
+
+    # Class used by the container entrypoint to instantiate the object tied to the function
+    unix_servicer.class_serialized = serialize(Foo)
+    # serialized versions of each PartialFunction - used by container entrypoint to execute the methods
+    unix_servicer.function_serialized = None
+
+    result = _run_container(
+        unix_servicer,
+        "nomodule",
+        "Foo.*",
+        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        is_class=True,
+        inputs=_get_multi_inputs_with_methods([("method_a", ("x",), {}), ("method_b", ("y",), {})]),
+        serialized_params=serialize((((), {"x": "s"}))),
+    )
+    assert len(result.items) == 2
+    res_0 = result.items[0].result
+    res_1 = result.items[1].result
+    assert res_0.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert res_1.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert deserialize(res_0.data, result.client) == "s_enter_a_x"
+    assert deserialize(res_1.data, result.client) == "s_enter_b_y"

@@ -6,6 +6,7 @@ import re
 import shlex
 import sys
 import time
+import typing
 from functools import partial
 from typing import Any, Callable, Dict, Optional, get_type_hints
 
@@ -14,6 +15,7 @@ import typer
 from rich.console import Console
 from typing_extensions import TypedDict
 
+from .. import Cls
 from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
@@ -132,12 +134,16 @@ def _get_clean_app_description(func_ref: str) -> str:
 def _get_click_command_for_function(app: App, function_tag):
     function = app.indexed_objects[function_tag]
     assert isinstance(function, Function)
-
+    function = typing.cast(Function, function)
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
     signature: Dict[str, ParameterMetadata]
+    cls: Optional[Cls] = None
+    method_name: Optional[str] = None
     if function.info.cls is not None:
+        class_name, method_name = function_tag.rsplit(".", 1)
+        cls = typing.cast(Cls, app.indexed_objects[class_name])
         cls_signature = _get_signature(function.info.cls)
         fun_signature = _get_signature(function.info.raw_f, is_method=True)
         signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
@@ -154,14 +160,16 @@ def _get_click_command_for_function(app: App, function_tag):
             environment_name=ctx.obj["env"],
             interactive=ctx.obj["interactive"],
         ):
-            if function.info.cls is None:
+            if cls is None:
                 function.remote(**kwargs)
             else:
                 # unpool class and method arguments
                 # TODO(erikbern): this code is a bit hacky
                 cls_kwargs = {k: kwargs[k] for k in cls_signature}
                 fun_kwargs = {k: kwargs[k] for k in fun_signature}
-                method = function.from_parametrized(None, False, None, tuple(), cls_kwargs)
+
+                instance = cls(**cls_kwargs)
+                method: Function = getattr(instance, method_name)
                 method.remote(**fun_kwargs)
 
     with_click_options = _add_click_options(f, signature)
@@ -268,11 +276,8 @@ def deploy(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
-    public: bool = typer.Option(
-        False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
-    ),
-    skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
+    tag: str = typer.Option(None, help="Tag the deployment with a version."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -282,16 +287,7 @@ def deploy(
     if name is None:
         name = app.name
 
-    if public and not skip_confirm:
-        if not click.confirm(
-            "⚠️ Public apps are a beta feature. ⚠️\n"
-            "Making an app public will allow any user (including from outside your workspace) "
-            "to look up and use your functions.\n"
-            "Are you sure you want your app to be public?"
-        ):
-            return
-
-    res = deploy_app(app, name=name, environment_name=env, public=public)
+    res = deploy_app(app, name=name, environment_name=env, tag=tag)
 
     if stream_logs:
         stream_app_logs(res.app_id)

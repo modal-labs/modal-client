@@ -12,6 +12,7 @@ from modal._utils.async_utils import (
     TaskContext,
     queue_batch_iterator,
     retry,
+    synchronize_api,
     warn_if_generator_is_not_consumed,
 )
 
@@ -230,3 +231,22 @@ def test_exit_handler():
 
     sync._close_loop()  # this is called on exit by synchronicity, which shuts down the event loop
     assert result == "bye"
+
+
+def test_synchronize_api_blocking_name():
+    class _MyClass:
+        async def foo(self):
+            await asyncio.sleep(0.1)
+            return "bar"
+
+    async def _myfunc():
+        await asyncio.sleep(0.1)
+        return "bar"
+
+    MyClass = synchronize_api(_MyClass)
+    assert MyClass.__name__ == "MyClass"
+    assert MyClass().foo() == "bar"
+
+    myfunc = synchronize_api(_myfunc)
+    assert myfunc.__name__ == "myfunc"
+    assert myfunc() == "bar"

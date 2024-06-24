@@ -16,7 +16,7 @@ import threading
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, get_args
+from typing import Any, Dict, Iterator, List, Optional, Tuple, get_args
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -130,7 +130,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.blob_multipart_threshold = 10_000_000
 
         self.precreated_functions = set()
-        self.app_functions = {}
+
+        self.app_functions: Dict[str, api_pb2.Function] = {}
+        self.bound_functions: Dict[Tuple[str, bytes], str] = {}
+        self.function_params: Dict[str, Tuple[Tuple, Dict[str, Any]]] = {}
         self.fcidx = 0
 
         self.function_serialized = None
@@ -188,6 +191,25 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self._function_body = func
         return func
 
+    def function_by_name(self, name: str, params: Optional[Tuple[Tuple, Dict[str, Any]]] = None) -> api_pb2.Function:
+        matches = []
+        all_names = []
+        for function_id, fun in self.app_functions.items():
+            all_names.append(fun.function_name)
+            if fun.function_name != name:
+                continue
+            if fun.is_class and params:
+                if self.function_params.get(function_id, ((), {})) != params:
+                    continue
+
+            matches.append(fun)
+        if len(matches) == 1:
+            return matches[0]
+
+        if len(matches) > 1:
+            raise ValueError("More than 1 matching function")
+        raise ValueError(f"No function with name {name=} {params=} ({all_names=})")
+
     def container_heartbeat_return_now(self, response: api_pb2.ContainerHeartbeatResponse):
         self.container_heartbeat_response = response
         self.container_heartbeat_abort.set()
@@ -199,17 +221,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function_type=definition.function_type,
             web_url=definition.web_url,
             is_method=definition.is_method,
+            use_method_name=definition.use_method_name,
+            use_function_id=definition.use_function_id,
         )
 
     def get_class_metadata(self, object_id: str) -> api_pb2.ClassHandleMetadata:
-        class_handle_metadata = api_pb2.ClassHandleMetadata()
+        class_function_id = self.classes[object_id]["*"]
+        class_handle_metadata = api_pb2.ClassHandleMetadata(
+            class_function_id=self.classes[object_id]["*"],
+            class_function_metadata=self.get_function_metadata(class_function_id),
+        )
         for f_name, f_id in self.classes[object_id].items():
+            if f_name == "*":
+                continue
             function_handle_metadata = self.get_function_metadata(f_id)
             class_handle_metadata.methods.append(
                 api_pb2.ClassMethod(
                     function_name=f_name, function_id=f_id, function_handle_metadata=function_handle_metadata
                 )
             )
+
         return class_handle_metadata
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -383,6 +414,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ClassCreateRequest = await stream.recv_message()
         assert request.app_id
         methods: dict[str, str] = {method.function_name: method.function_id for method in request.methods}
+        methods["*"] = request.class_function_id
         class_id = "cs-" + str(len(self.classes))
         self.classes[class_id] = methods
         await stream.send_message(
@@ -530,10 +562,35 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.FunctionBindParamsRequest = await stream.recv_message()
         assert request.function_id
         assert request.serialized_params
+        existing_func_id = self.bound_functions.get((request.function_id, request.serialized_params), None)
+        if existing_func_id:
+            return self.app_functions[existing_func_id]
+
         self.n_functions += 1
         function_id = f"fu-{self.n_functions}"
+        base_function = self.app_functions[request.function_id]
+        assert not base_function.use_method_name
 
-        await stream.send_message(api_pb2.FunctionBindParamsResponse(bound_function_id=function_id))
+        bound_func = api_pb2.Function()
+        bound_func.CopyFrom(base_function)
+        self.app_functions[function_id] = bound_func
+        self.bound_functions[(request.function_id, request.serialized_params)] = function_id
+        from modal._serialization import deserialize
+
+        self.function_params[function_id] = deserialize(request.serialized_params, None)
+
+        await stream.send_message(
+            api_pb2.FunctionBindParamsResponse(
+                bound_function_id=function_id,
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    function_name=base_function.function_name,
+                    function_type=base_function.function_type,
+                    web_url=base_function.web_url,
+                    use_function_id=function_id,
+                    use_method_name="",
+                ),
+            )
+        )
 
     @contextlib.contextmanager
     def input_lockstep(self) -> Iterator[threading.Barrier]:
@@ -587,6 +644,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     function_name=req.function_name,
                     function_type=req.function_type,
                     web_url=web_url,
+                    use_function_id=req.use_function_id or function_id,
+                    use_method_name=req.use_method_name,
                 ),
             )
         )
@@ -616,6 +675,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     function_name=function.function_name,
                     function_type=function.function_type,
                     web_url=function.web_url,
+                    use_function_id=function.use_function_id or function_id,
+                    use_method_name=function.use_method_name,
                 ),
             )
         )
@@ -721,7 +782,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
             await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[output]))
         else:
-            await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[]))
+            await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[], num_unfinished_inputs=1))
 
     async def FunctionGetSerialized(self, stream):
         await stream.send_message(
@@ -753,6 +814,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for chunk in req.data_chunks:
             await self.fc_data_out[req.function_call_id].put(chunk)
         await stream.send_message(Empty())
+
+    async def FunctionUpdateSchedulingParams(self, stream):
+        req: api_pb2.FunctionUpdateSchedulingParamsRequest = await stream.recv_message()
+        # update function definition
+        self.app_functions[req.function_id].warm_pool_size = req.warm_pool_size_override  # hacky
+        await stream.send_message(api_pb2.FunctionUpdateSchedulingParamsResponse())
 
     ### Image
 

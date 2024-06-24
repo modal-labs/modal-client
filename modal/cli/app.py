@@ -20,9 +20,9 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 
 APP_STATE_TO_MESSAGE = {
     api_pb2.APP_STATE_DEPLOYED: Text("deployed", style="green"),
-    api_pb2.APP_STATE_DETACHED: Text("running (detached)", style="green"),
+    api_pb2.APP_STATE_DETACHED: Text("ephemeral (detached)", style="green"),
     api_pb2.APP_STATE_DISABLED: Text("disabled", style="dim"),
-    api_pb2.APP_STATE_EPHEMERAL: Text("running", style="green"),
+    api_pb2.APP_STATE_EPHEMERAL: Text("ephemeral", style="green"),
     api_pb2.APP_STATE_INITIALIZING: Text("initializing...", style="green"),
     api_pb2.APP_STATE_STOPPED: Text("stopped", style="blue"),
     api_pb2.APP_STATE_STOPPING: Text("stopping...", style="blue"),
@@ -56,8 +56,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
             # (it is also used in the web interface, where apps are organized by tabs and paginated).
             # So we semi-arbitrarily limit the stopped apps to those stopped within the past 2 hours.
             or (
-                app_stats.state in {api_pb2.AppState.APP_STATE_STOPPED, api_pb2.AppState.APP_STATE_DERIVED}
-                and (now - app_stats.stopped_at) > (2 * 60 * 60)
+                app_stats.state in {api_pb2.AppState.APP_STATE_STOPPED} and (now - app_stats.stopped_at) > (2 * 60 * 60)
             )
         ):
             continue

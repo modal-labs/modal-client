@@ -7,7 +7,7 @@ from ._version_generated import build_number
 major_number = 0
 
 # Bump this manually on breaking changes, then reset the number in _version_generated.py
-minor_number = 62
+minor_number = 63
 
 # Right now, automatically increment the patch number in CI
 __version__ = f"{major_number}.{minor_number}.{max(build_number, 0)}"

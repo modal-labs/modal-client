@@ -135,7 +135,7 @@ def get_by_object_path_try_possible_app_names(obj: Any, obj_path: Optional[str])
 def _infer_function_or_help(
     app: App, module, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint]:
-    function_choices = set(app.registered_functions.keys())
+    function_choices = set(tag for tag, func in app.registered_functions.items() if not func.info.is_service_class())
     if not accept_webhook:
         function_choices -= set(app.registered_web_endpoints)
     if accept_local_entrypoint:

@@ -2,8 +2,9 @@
 import asyncio
 import dataclasses
 import os
+from io import TextIOWrapper
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Coroutine, Dict, List, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from rich.console import Console
@@ -17,7 +18,7 @@ from ._resolver import Resolver
 from ._sandbox_shell import connect_to_sandbox
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
-from ._utils.name_utils import check_object_name
+from ._utils.name_utils import check_object_name, is_valid_tag
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import (
@@ -37,7 +38,7 @@ else:
     _App = TypeVar("_App")
 
 
-async def _heartbeat(client, app_id):
+async def _heartbeat(client: _Client, app_id: str) -> None:
     request = api_pb2.AppHeartbeatRequest(app_id=app_id)
     # TODO(erikbern): we should capture exceptions here
     # * if request fails: destroy the client
@@ -59,7 +60,7 @@ async def _init_local_app_new(
     description: str,
     app_state: int,
     environment_name: str = "",
-    interactive=False,
+    interactive: bool = False,
 ) -> RunningApp:
     app_req = api_pb2.AppCreateRequest(
         description=description,
@@ -77,7 +78,7 @@ async def _init_local_app_new(
 async def _init_local_app_from_name(
     client: _Client,
     name: str,
-    namespace,
+    namespace: Any,
     environment_name: str = "",
 ) -> RunningApp:
     # Look up any existing deployment
@@ -105,7 +106,7 @@ async def _create_all_objects(
     new_app_state: int,
     environment_name: str,
     output_mgr: Optional[OutputManager] = None,
-):  # api_pb2.AppState.V
+) -> None:
     """Create objects that have been defined but not created on the server."""
     if not client.authenticated:
         raise ExecutionError("Objects cannot be created with an unauthenticated client")
@@ -170,9 +171,9 @@ async def _create_all_objects(
 async def _disconnect(
     client: _Client,
     app_id: str,
-    reason: "Optional[api_pb2.AppDisconnectReason.ValueType]" = None,
+    reason: "api_pb2.AppDisconnectReason.ValueType",
     exc_str: Optional[str] = None,
-):
+) -> None:
     """Tell the server the client has disconnected for this app. Terminates all running tasks
     for ephemeral apps."""
 
@@ -189,13 +190,13 @@ async def _disconnect(
 async def _run_app(
     app: _App,
     client: Optional[_Client] = None,
-    stdout=None,
+    stdout: Optional[TextIOWrapper] = None,
     show_progress: bool = True,
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
-    shell=False,
-    interactive=False,
+    shell: bool = False,
+    interactive: bool = False,
 ) -> AsyncGenerator[_App, None]:
     """mdmd:hidden"""
     if environment_name is None:
@@ -366,13 +367,13 @@ class DeployResult:
 
 async def _deploy_app(
     app: _App,
-    name: str = None,
-    namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-    client=None,
-    stdout=None,
-    show_progress=True,
+    name: Optional[str] = None,
+    namespace: Any = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+    client: Optional[_Client] = None,
+    stdout: Optional[TextIOWrapper] = None,
+    show_progress: bool = True,
     environment_name: Optional[str] = None,
-    public: bool = False,
+    tag: Optional[str] = None,
 ) -> DeployResult:
     """Deploy an app and export its objects persistently.
 
@@ -413,6 +414,13 @@ async def _deploy_app(
     else:
         check_object_name(name, "App")
 
+    if tag is not None and not is_valid_tag(tag):
+        raise InvalidError(
+            f"Tag {tag} is invalid."
+            "\n\nTags may only contain alphanumeric characters, dashes, periods, and underscores, "
+            "and must be 50 characters or less"
+        )
+
     if client is None:
         client = await _Client.from_env()
 
@@ -445,11 +453,10 @@ async def _deploy_app(
             deploy_req = api_pb2.AppDeployRequest(
                 app_id=running_app.app_id,
                 name=name,
+                tag=tag,
                 namespace=namespace,
                 object_entity="ap",
-                visibility=(
-                    api_pb2.APP_DEPLOY_VISIBILITY_PUBLIC if public else api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE
-                ),
+                visibility=api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE,
             )
             try:
                 deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)
@@ -470,7 +477,7 @@ async def _deploy_app(
     return DeployResult(app_id=running_app.app_id)
 
 
-async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str = "", **kwargs):
+async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str = "", **kwargs: Any) -> None:
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -515,7 +522,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
         await connect_to_sandbox(sb)
 
 
-def _run_stub(*args, **kwargs):
+def _run_stub(*args: Any, **kwargs: Any) -> AsyncGenerator[_App, None]:
     """mdmd:hidden
     `run_stub` has been renamed to `run_app` and is deprecated. Please update your code.
     """
@@ -525,7 +532,7 @@ def _run_stub(*args, **kwargs):
     return _run_app(*args, **kwargs)
 
 
-def _deploy_stub(*args, **kwargs):
+def _deploy_stub(*args: Any, **kwargs: Any) -> Coroutine[Any, Any, DeployResult]:
     """`deploy_stub` has been renamed to `deploy_app` and is deprecated. Please update your code."""
     deprecation_warning((2024, 5, 1), str(_deploy_stub.__doc__))
     return _deploy_app(*args, **kwargs)

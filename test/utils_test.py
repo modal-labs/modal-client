@@ -10,7 +10,9 @@ from modal._utils.name_utils import (
     is_valid_environment_name,
     is_valid_object_name,
     is_valid_subdomain_label,
+    is_valid_tag,
 )
+from modal._utils.package_utils import parse_major_minor_version
 from modal.exception import DeprecationError, InvalidError
 
 
@@ -42,6 +44,13 @@ def test_environment_name():
     assert not is_valid_environment_name(":env")
     assert not is_valid_environment_name("/env")
     assert not is_valid_environment_name("")
+
+
+def test_tag():
+    assert is_valid_tag("v1.0.0")
+    assert is_valid_tag("a38298githash39920bk")
+    assert not is_valid_tag("v1 .0.0-alpha")
+    assert not is_valid_tag("$$$build")
 
 
 @pytest.mark.asyncio
@@ -106,3 +115,13 @@ async def test_file_segment_payloads_concurrency():
     p2 = BytesIOSegmentPayload(data2, len(data.getvalue()) // 2, len(data.getvalue()) // 2, chunk_size=100 * 1024)
     await asyncio.gather(p2.write(out2), p1.write(out1))  # type: ignore
     assert out1.value + out2.value == data.getvalue()
+
+
+def test_parse_major_minor_version():
+    assert parse_major_minor_version("3.8") == (3, 8)
+    assert parse_major_minor_version("3.9.1") == (3, 9)
+    assert parse_major_minor_version("3.10.1rc0") == (3, 10)
+    with pytest.raises(ValueError, match="at least an 'X.Y' format"):
+        parse_major_minor_version("123")
+    with pytest.raises(ValueError, match="at least an 'X.Y' format with integral"):
+        parse_major_minor_version("x.y")

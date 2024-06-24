@@ -49,7 +49,7 @@ enum AppState {
   APP_STATE_DETACHED_DISCONNECTED = 8;
 
   // App is derived from another workspace. Acts as a static, immutable group of functions.
-  APP_STATE_DERIVED = 9;
+  APP_STATE_DERIVED = 9 [deprecated=true];
 }
 
 enum AppStopSource {
@@ -77,9 +77,7 @@ enum CheckpointStatus {
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
-  CLIENT_TYPE_WORKER = 2 [deprecated=true];
   CLIENT_TYPE_CONTAINER = 3;
-  CLIENT_TYPE_SERVER = 4 [deprecated=true];
   CLIENT_TYPE_WEB_SERVER = 5;
 }
 
@@ -91,6 +89,7 @@ enum CloudProvider {
   CLOUD_PROVIDER_OCI = 4;
   CLOUD_PROVIDER_LAMBDA_LABS = 5;
   CLOUD_PROVIDER_FLUIDSTACK = 6;  // experimental
+  CLOUD_PROVIDER_LATITUDE = 7;  // experimental
 }
 
 enum DNSRecordType {
@@ -214,8 +213,6 @@ message AppClientDisconnectRequest {
 message AppCreateRequest {
   string client_id = 1 [ (modal.options.audit_target_attr) = true ];
   string description = 2;    // Human readable label for the app
-  bool detach = 3 [deprecated=true]; // replaced by app_state in 0.55.3904
-  bool initializing = 4 [deprecated=true]; // replaced by app_state in 0.55.3904
   string environment_name = 5;
   AppState app_state = 6;
 }
@@ -231,6 +228,7 @@ message AppDeployRequest {
   string name = 3;
   string object_entity = 4;
   AppDeployVisibility visibility = 5;
+  string tag = 6;
 }
 
 message AppDeployResponse {
@@ -880,7 +878,7 @@ message Function {
 
   uint32 concurrency_limit = 19;
 
-  bool keep_warm = 20;
+  reserved 20; // old fields
 
   uint32 timeout_secs = 21;
 
@@ -941,8 +939,8 @@ message Function {
 
   bool is_class = 53;  // if "Function" is actually a class grouping multiple methods
 
-  string use_function_id = 54;  // for "class functions" - use this function id instead for invocations - the *referenced* function should have is_class=True
-  string use_method_name = 55;  // for "class functions" - this method name needs to be included in the FunctionInput
+  string use_function_id = 54;  // for class methods use this function id instead for invocations - the *referenced* function should have is_class=True
+  string use_method_name = 55;  // for class methods - this method name needs to be included in the FunctionInput
 }
 
 message FunctionBindParamsRequest {
@@ -1010,8 +1008,7 @@ message FunctionCreateRequest {
 
 message FunctionCreateResponse {
   string function_id = 1;
-  string web_url = 2;  // Deprecated - needed until 0.51 is the minimum version
-  WebUrlInfo web_url_info = 3;  // Deprecated - needed until 0.51 is the minimum version
+  string __deprecated_web_url = 2  [ deprecated = true];  // Used up until 0.62.212
   Function function = 4;
   FunctionHandleMetadata handle_metadata = 5;
 }
@@ -1055,6 +1052,9 @@ message FunctionGetOutputsItem {
   string input_id = 3;
   int32 gen_index = 4;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 5; // for result.data_oneof
+  string task_id = 6;
+  double input_started_at = 7;
+  double output_created_at = 8;
 }
 
 message FunctionGetOutputsRequest {
@@ -1069,6 +1069,7 @@ message FunctionGetOutputsResponse {
   repeated int32 idxs = 3;
   repeated FunctionGetOutputsItem outputs = 4;
   string last_entry_id = 5;
+  int32 num_unfinished_inputs = 6;
 }
 
 message FunctionGetRequest {
@@ -1104,6 +1105,7 @@ message FunctionHandleMetadata {
   bool is_method = 39;
   string use_function_id = 40; // used for methods
   string use_method_name = 41; // used for methods
+  string definition_id = 42;
 }
 
 message FunctionInput {
@@ -1151,8 +1153,8 @@ message FunctionPrecreateRequest {
   string existing_function_id = 3;
   Function.FunctionType function_type = 4;
   WebhookConfig webhook_config = 5;
-  string use_function_id = 6;  // for "class functions" - use this function id instead for invocations - the *referenced* function should have is_class=True
-  string use_method_name = 7;  // for "class functions" - this method name needs to be included in the FunctionInput
+  string use_function_id = 6;  // for class methods - use this function id instead for invocations - the *referenced* function should have is_class=True
+  string use_method_name = 7;  // for class methods - this method name needs to be included in the FunctionInput
 }
 
 message FunctionPrecreateResponse {
@@ -2088,6 +2090,7 @@ message WebhookConfig {
   repeated CustomDomainConfig custom_domains = 6;
   uint32 web_server_port = 7;
   float web_server_startup_timeout = 8;
+  bool web_endpoint_docs = 9;
 }
 
 message WorkspaceNameLookupResponse {

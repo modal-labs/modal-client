@@ -1,6 +1,10 @@
 name: CI/CD
 
-on: push
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 
 env:
   TERM: linux
@@ -53,6 +57,7 @@ jobs:
         run: pytest
 
       - name: Run docstring tests
+        if: github.event.pull_request.head.repo.fork != 'true'
         env:
           MODAL_ENVIRONMENT: client-doc-tests
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}

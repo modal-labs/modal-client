@@ -5,7 +5,7 @@ from io import BytesIO
 from unittest import mock
 
 import modal
-from modal.exception import DeprecationError, InvalidError, NotFoundError
+from modal.exception import InvalidError, NotFoundError
 
 
 def dummy():
@@ -149,5 +149,5 @@ def test_nfs_lazy_hydration_from_name(set_env_client):
 
 @pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
 def test_invalid_name(servicer, client, name):
-    with pytest.raises(DeprecationError, match="Invalid NetworkFileSystem name"):
+    with pytest.raises(InvalidError, match="Invalid NetworkFileSystem name"):
         modal.NetworkFileSystem.lookup(name)

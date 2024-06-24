@@ -10,6 +10,70 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.0 (2024-06-24)
+
+* Changes how containers are associated with methods of `@app.cls()`-decorated Modal "classes".
+* `keep_warm` for classes is now an attribute of the `@app.cls()` decorator rather than individual methods.
+
+Previously each `@method` and web endpoint of a class would get its own set of isolated containers and never run in the same container as other sibling methods. 
+Starting in this version, all `@methods` and web endpoints will be part of the same container pool. Notably, this means all methods will scale up/down together, and options like `keep_warm` and `concurrency_limit` will affect the total number of containers for all methods in the class combined, rather than individually.
+
+
+
+### 0.62.236 (2024-06-21)
+
+- Added support for mounting Volume or CloudBucketMount storage in `Image.run_function`. Note that this is *typically* not necessary, as data downloaded during the Image build can be stored directly in the Image filesystem.
+
+
+
+### v0.62.230 (2024-06-18)
+
+- It is now an error to create or lookup Modal objects (`Volume`, `Dict`, `Secret`, etc.) with an invalid name. Object names must be shorter than 64 characters and may contain only alphanumeric characters, dashes, periods, and underscores. The name check had inadvertently been removed for a brief time following an internal refactor and then reintroduced as a warning. It is once more a hard error. Please get in touch if this is blocking access to your data.
+
+
+### 0.62.224 (2024-06-17)
+
+- The `modal app list` command now reports apps created by `modal app run` or `modal app serve` as being in an "ephemeral" state rather than a "running" state to reduce confusion with deployed apps that are actively processing inputs.
+
+
+
+### 0.62.223 (2024-06-14)
+
+- All modal CLI commands now accept `-e` as a short-form of `--env`
+
+
+
+### 0.62.220 (2024-06-12)
+
+- Added support for entrypoint and shell for custom containers: `Image.debian_slim().entrypoint([])` can be used interchangeably with `.dockerfile_commands('ENTRYPOINT []')`, and `.shell(["/bin/bash", "-c"])` can be used interchangeably with `.dockerfile_commands('SHELL ["/bin/bash", "-c"]')`
+
+
+
+### 0.62.219 (2024-06-12)
+
+- Fix an issue with `@web_server` decorator not working on image builder version 2023.12
+
+
+
+### 0.62.208 (2024-06-08)
+
+- `@web_server` endpoints can now return HTTP headers of up to 64 KiB in length. Previously, they were limited to 8 KiB due to an implementation detail.
+
+
+
+### 0.62.201 (2024-06-04)
+
+- `modal deploy` now accepts a `--tag` optional parameter that allows you to specify a custom tag for the deployed version, making it easier to identify and manage different deployments of your app.
+
+
+
+### 0.62.199 (2024-06-04)
+
+- `web_endpoint`s now have the option to include interactive SwaggerUI/redoc docs by setting `docs=True`
+- `web_endpoint`s no longer include an OpenAPI JSON spec route by default
+
+
+
 ### 0.62.197 (2024-05-31)
 
 Adds Source to PyPI metadata

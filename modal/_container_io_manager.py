@@ -222,7 +222,10 @@ class _ContainerIOManager:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)
-        fun = self.deserialize(response.function_serialized)
+        if response.function_serialized:
+            fun = self.deserialize(response.function_serialized)
+        else:
+            fun = None
 
         if response.class_serialized:
             cls = self.deserialize(response.class_serialized)
@@ -387,7 +390,7 @@ class _ContainerIOManager:
                     self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[Tuple[str, str, Any, Any]]:
+    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[Tuple[str, str, str, Any, Any]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
@@ -398,7 +401,7 @@ class _ContainerIOManager:
         async for input_id, function_call_id, input_pb in self._generate_inputs():
             args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
             self.current_input_id, self.current_input_started_at = (input_id, time.time())
-            yield input_id, function_call_id, args, kwargs
+            yield input_id, function_call_id, input_pb.method_name, args, kwargs
             self.current_input_id, self.current_input_started_at = (None, None)
 
         # collect all active input slots, meaning all inputs have wrapped up.
@@ -556,6 +559,11 @@ class _ContainerIOManager:
         # State data is serialized with key-value pairs, example: {"task_id": "tk-000"}
         with restored_path.open("r") as file:
             restored_state = json.load(file)
+
+        # Start a debugger if the worker tells us to
+        if int(restored_state.get("snapshot_debug", 0)):
+            logger.debug("Entering snapshot debugger")
+            breakpoint()
 
         # Local ContainerIOManager state.
         for key in ["task_id", "function_id"]:

@@ -160,7 +160,7 @@ class _Queue(_Object, type_prefix="qu"):
         queue.put(123)
         ```
         """
-        check_object_name(label, "Queue", warn=True)
+        check_object_name(label, "Queue")
 
         async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.QueueGetOrCreateRequest(
@@ -175,9 +175,7 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(
-        label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None
-    ):
+    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
         """Deprecated! Use `Queue.from_name(name, create_if_missing=True)`."""
         deprecation_error((2024, 3, 1), _Queue.persisted.__doc__)
 
