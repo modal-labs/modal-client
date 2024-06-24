@@ -5,7 +5,7 @@ import os
 from collections import deque
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncIterator, Callable, List, Literal, Optional, Set, Type
+from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Set, Type
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
@@ -73,22 +73,27 @@ def is_async(function):
 class FunctionInfo:
     """Class that helps us extract a bunch of information about a function."""
 
-    raw_f: Callable[..., Any]
+    raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
     cls: Optional[Type[Any]]
     definition_type: "api_pb2.Function.DefinitionType.ValueType"
     module_name: Optional[str]
 
     _type: FunctionInfoType
-    _signature: Optional[inspect.Signature]
     _file: Optional[str]
     _base_dir: str
     _remote_dir: Optional[PurePosixPath] = None
 
+    def is_service_class(self):
+        if self.raw_f is None:
+            assert self.cls
+            return True
+        return False
+
     # TODO: we should have a bunch of unit tests for this
     def __init__(
         self,
-        f: Callable[..., Any],
+        f: Optional[Callable[..., Any]],
         serialized=False,
         name_override: Optional[str] = None,
         cls: Optional[Type] = None,
@@ -98,8 +103,11 @@ class FunctionInfo:
 
         if name_override is not None:
             self.function_name = name_override
+        elif f is None and cls:
+            # "service function" for running all methods of a class
+            self.function_name = f"{cls.__name__}.*"
         elif f.__qualname__ != f.__name__ and not serialized:
-            # Class function.
+            # single method of a class - should be only @build-methods at this point
             if len(f.__qualname__.split(".")) > 2:
                 raise InvalidError(
                     f"Cannot wrap `{f.__qualname__}`:"
@@ -109,8 +117,6 @@ class FunctionInfo:
             self.function_name = f"{cls.__name__}.{f.__name__}"
         else:
             self.function_name = f.__qualname__
-
-        self._signature = inspect.signature(f)
 
         # If it's a cls, the @method could be defined in a base class in a different file.
         if cls is not None:
@@ -164,7 +170,8 @@ class FunctionInfo:
         if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
-            if not is_global_object(f.__qualname__):
+            qualname = f.__qualname__ if f else cls.__qualname__
+            if not is_global_object(qualname):
                 raise LocalFunctionError(
                     "Modal can only import functions defined in global scope unless they are `serialized=True`"
                 )
@@ -177,11 +184,15 @@ class FunctionInfo:
         #       otherwise the serialized function won't have access to variables/side effect
         #        defined after it in the same file
         assert self.is_serialized()
-        serialized_bytes = serialize(self.raw_f)
-        logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
-        return serialized_bytes
+        if self.raw_f:
+            serialized_bytes = serialize(self.raw_f)
+            logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
+            return serialized_bytes
+        else:
+            logger.debug(f"Serializing function for class service function {self.cls.__qualname__} as empty")
+            return b""
 
-    def get_globals(self):
+    def get_globals(self) -> Dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals
 
         func = self.raw_f
@@ -234,7 +245,8 @@ class FunctionInfo:
         return self.function_name
 
     def is_nullary(self):
-        for param in self._signature.parameters.values():
+        signature = inspect.signature(self.raw_f)
+        for param in signature.parameters.values():
             if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                 # variadic parameters are nullary
                 continue
@@ -403,12 +415,16 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
         )
 
 
-async def _create_input(args, kwargs, client, idx: Optional[int] = None) -> api_pb2.FunctionPutInputsItem:
+async def _create_input(
+    args, kwargs, client, *, idx: Optional[int] = None, method_name: Optional[str] = None
+) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
     """
     if idx is None:
         idx = 0
+    if method_name is None:
+        method_name = ""  # proto compatible
 
     args_serialized = serialize((args, kwargs))
 
@@ -416,11 +432,19 @@ async def _create_input(args, kwargs, client, idx: Optional[int] = None) -> api_
         args_blob_id = await blob_upload(args_serialized, client.stub)
 
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE),
+            input=api_pb2.FunctionInput(
+                args_blob_id=args_blob_id,
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                method_name=method_name,
+            ),
             idx=idx,
         )
     else:
         return api_pb2.FunctionPutInputsItem(
-            input=api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE),
+            input=api_pb2.FunctionInput(
+                args=args_serialized,
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                method_name=method_name,
+            ),
             idx=idx,
         )

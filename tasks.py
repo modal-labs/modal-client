@@ -104,7 +104,6 @@ def type_check(ctx):
         "modal/_utils/rand_pb_testing.py",
         "modal/_utils/shell_utils.py",
     ]
-
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
 

@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import inspect
+import textwrap
 import time
 import warnings
 from dataclasses import dataclass
@@ -90,10 +91,14 @@ from .volume import _Volume
 
 if TYPE_CHECKING:
     import modal.app
+    import modal.cls
+    import modal.partial_function
 
 
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
+
+    stub: api_grpc.ModalClientStub
 
     def __init__(self, stub: api_grpc.ModalClientStub, function_call_id: str, client: _Client):
         self.stub = stub
@@ -101,9 +106,10 @@ class _Invocation:
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(function_id: str, args, kwargs, client: _Client) -> "_Invocation":
+    async def create(function: "_Function", args, kwargs, *, client: _Client) -> "_Invocation":
         assert client.stub
-        item = await _create_input(args, kwargs, client)
+        function_id = function._invocation_function_id()
+        item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
 
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
@@ -230,7 +236,7 @@ class FunctionStats:
 
 def _parse_retries(
     retries: Optional[Union[int, Retries]],
-    raw_f: Optional[Callable] = None,
+    object_name: str,
 ) -> Optional[api_pb2.FunctionRetryPolicy]:
     if isinstance(retries, int):
         return Retries(
@@ -243,9 +249,8 @@ def _parse_retries(
     elif retries is None:
         return None
     else:
-        err_object = f"Function {raw_f}" if raw_f else "Function"
         raise InvalidError(
-            f"{err_object} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
+            f"{object_name} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
         )
 
 
@@ -281,8 +286,8 @@ class _Function(_Object, type_prefix="fu"):
     # TODO: more type annotations
     _info: Optional[FunctionInfo]
     _all_mounts: Collection[_Mount]
-    _app: "modal.app._App"
-    _obj: Any
+    _app: Optional["modal.app._App"] = None
+    _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
     _web_url: Optional[str]
     _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
     _function_name: Optional[str]
@@ -291,7 +296,164 @@ class _Function(_Object, type_prefix="fu"):
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
-    _parent: "_Function"
+    _can_use_base_function: bool = False  # whether we need to call FunctionBindParams
+    _is_generator: Optional[bool] = None
+
+    # when this is the method of a class/object function, invocation of this function
+    # should be using another function id and supply the method name in the FunctionInput:
+    _use_function_id: str  # The function to invoke
+    _use_method_name: str = ""
+
+    # TODO (elias): remove _parent. In case of instance functions, and methods bound on those,
+    #  this references the parent class-function and is used to infer the client for lazy-loaded methods
+    _parent: Optional["_Function"] = None
+
+    def _bind_method(
+        self,
+        user_cls,
+        method_name: str,
+        partial_function: "modal.partial_function._PartialFunction",
+    ):
+        """mdmd:hidden
+
+        Creates a function placeholder function that binds a specific method name to
+        this function for use when invoking the function.
+
+        Should only be used on "class service functions". For "instance service functions",
+        we don't create an actual backend function, and instead do client-side "fake-hydration"
+        only, see _bind_instance_method.
+
+        """
+        class_service_function = self
+        assert class_service_function._info  # has to be a local function to be able to "bind" it
+        assert not class_service_function._is_method  # should not be used on an already bound method placeholder
+        assert not class_service_function._obj  # should only be used on base function / class service function
+        full_name = f"{user_cls.__name__}.{method_name}"
+
+        if partial_function.is_generator:
+            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        else:
+            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
+
+        async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            function_definition = api_pb2.Function(
+                function_name=full_name,
+                webhook_config=partial_function.webhook_config,
+                function_type=function_type,
+                is_method=True,
+                use_function_id=class_service_function.object_id,
+                use_method_name=method_name,
+            )
+            assert resolver.app_id
+            request = api_pb2.FunctionCreateRequest(
+                app_id=resolver.app_id,
+                function=function_definition,
+                #  method_bound_function.object_id usually gets set by preload
+                existing_function_id=existing_object_id or method_bound_function.object_id or "",
+            )
+            assert resolver.client.stub is not None  # client should be connected when load is called
+            with FunctionCreationStatus(resolver, full_name) as function_creation_status:
+                response = await resolver.client.stub.FunctionCreate(request)
+                method_bound_function._hydrate(
+                    response.function_id,
+                    resolver.client,
+                    response.handle_metadata,
+                )
+                function_creation_status.set_response(response)
+
+        async def _preload(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            if class_service_function._use_method_name:
+                raise ExecutionError(f"Can't bind method to already bound {class_service_function}")
+            assert resolver.app_id
+            req = api_pb2.FunctionPrecreateRequest(
+                app_id=resolver.app_id,
+                function_name=full_name,
+                function_type=function_type,
+                webhook_config=partial_function.webhook_config,
+                use_function_id=class_service_function.object_id,
+                use_method_name=method_name,
+                existing_function_id=existing_object_id or "",
+            )
+            assert resolver.client.stub  # client should be connected at this point
+            response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
+            method_bound_function._hydrate(response.function_id, resolver.client, response.handle_metadata)
+
+        def _deps():
+            return [class_service_function]
+
+        rep = f"Method({full_name})"
+
+        fun = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
+        fun._tag = full_name
+        fun._raw_f = partial_function.raw_f
+        fun._info = FunctionInfo(
+            partial_function.raw_f, cls=user_cls, serialized=class_service_function.info.is_serialized()
+        )  # needed for .local()
+        fun._use_method_name = method_name
+        fun._app = class_service_function._app
+        fun._is_generator = partial_function.is_generator
+        fun._all_mounts = class_service_function._all_mounts
+        fun._spec = class_service_function._spec
+        fun._is_method = True
+        # TODO: set more attributes?
+
+        return fun
+
+    def _bind_instance_method(self, class_bound_method: "_Function"):
+        """mdmd:hidden
+
+        Binds an "instance service function" to a specific method.
+        This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
+        it does it forward invocations to the underlying instance_service_function with the specified method,
+        and we don't support web_config for parameterized methods at the moment.
+        """
+        instance_service_function = self
+        assert instance_service_function._obj
+        method_name = class_bound_method._use_method_name
+        full_function_name = f"{class_bound_method._function_name}[parameterized]"
+
+        def hydrate_from_instance_function(obj):
+            obj._hydrate_from_other(instance_service_function)
+            obj._obj = instance_service_function._obj
+            obj._web_url = class_bound_method._web_url  # TODO: this shouldn't be set when actual parameters are used
+            obj._function_name = full_function_name
+            obj._is_generator = class_bound_method._is_generator
+            obj._use_method_name = method_name
+            obj._use_function_id = instance_service_function.object_id
+
+        async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            # there is currently no actual loading logic executed to create each method on
+            # the *parameterized* instance of a class - it uses the parameter-bound service-function
+            # for the instance. This load method just makes sure to set all attributes after the
+            # `instance_service_function` has been loaded (it's in the `_deps`)
+            hydrate_from_instance_function(fun)
+
+        def _deps():
+            return [instance_service_function]
+
+        rep = f"Method({full_function_name})"
+
+        fun = _Function._from_loader(
+            _load,
+            rep,
+            deps=_deps,
+            hydrate_lazily=True,
+        )
+        if instance_service_function._can_use_base_function and instance_service_function.is_hydrated:
+            # Eager hydration (skip load) if both the instance service function is already loaded
+            # This should only happen when default arguments are used to the constructor, since
+            # that will trigger similar eager hydration of the instance service function.
+            # In other cases, the instance service function will have to be lazy-loaded, as a dependency
+            # of this "fake" Function.
+            hydrate_from_instance_function(fun)
+
+        fun._info = class_bound_method._info
+        fun._obj = instance_service_function._obj
+        fun._is_method = True
+        fun._parent = instance_service_function._parent
+        fun._app = class_bound_method._app
+        fun._all_mounts = class_bound_method._all_mounts  # TODO: only used for mount-watching/modal serve
+        return fun
 
     @staticmethod
     def from_args(
@@ -334,13 +496,18 @@ class _Function(_Object, type_prefix="fu"):
         """mdmd:hidden"""
         tag = info.get_tag()
 
-        raw_f = info.raw_f
-        assert callable(raw_f)
-        if schedule is not None:
-            if not info.is_nullary():
+        if info.raw_f:
+            raw_f = info.raw_f
+            assert callable(raw_f)
+            if schedule is not None and not info.is_nullary():
                 raise InvalidError(
                     f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
                 )
+        else:
+            # must be a "class service function"
+            assert info.cls
+            assert not webhook_config
+            assert not schedule
 
         if secret is not None:
             deprecation_error(
@@ -381,7 +548,9 @@ class _Function(_Object, type_prefix="fu"):
             # TODO: maybe the entire constructor should be exited early if not local?
             all_mounts = []
 
-        retry_policy = _parse_retries(retries, raw_f)
+        retry_policy = _parse_retries(
+            retries, f"Function {info.get_tag()}" if info.raw_f else f"Class {info.get_tag()}"
+        )
 
         gpu_config = parse_gpu_config(gpu)
 
@@ -502,8 +671,20 @@ class _Function(_Object, type_prefix="fu"):
                     deps.append(cloud_bucket_mount.secret)
 
             # Add implicit dependencies from the function's code
-            objs: list[Object] = get_referred_objects(info.raw_f)
-            _objs: list[_Object] = synchronizer._translate_in(objs)  # type: ignore
+            if info.raw_f:
+                # TODO(elias): Remove this branch since we shouldn't need closure vars inspection anymore?
+                objs: list[Object] = get_referred_objects(info.raw_f)
+                _objs: list[_Object] = synchronizer._translate_in(objs)  # type: ignore
+            else:
+                _objs = []
+
+            if info.cls:
+                from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
+
+                for method_callable in _find_callables_for_cls(info.cls, _PartialFunctionFlags.all()).values():
+                    method_objs: list[Object] = get_referred_objects(method_callable)
+                    _objs += synchronizer._translate_in(method_objs)  # type: ignore
+
             deps += _objs
             return deps
 
@@ -545,7 +726,6 @@ class _Function(_Object, type_prefix="fu"):
                     # otherwise we can't capture a surrounding class for lifetime methods etc.
                     function_serialized = info.serialized_function()
                     class_serialized = serialize(info.cls) if info.cls is not None else None
-
                     # Ensure that large data in global variables does not blow up the gRPC payload,
                     # which has maximum size 100 MiB. We set the limit lower for performance reasons.
                     if len(function_serialized) > 16 << 20:  # 16 MiB
@@ -632,6 +812,7 @@ class _Function(_Object, type_prefix="fu"):
                     _experimental_boost=_experimental_boost,
                     _experimental_scheduler=_experimental_scheduler,
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
+                    is_class=info.is_service_class(),
                 )
                 request = api_pb2.FunctionCreateRequest(
                     app_id=resolver.app_id,
@@ -649,9 +830,8 @@ class _Function(_Object, type_prefix="fu"):
                     if exc.status == Status.FAILED_PRECONDITION:
                         raise InvalidError(exc.message)
                     if exc.message and "Received :status = '413'" in exc.message:
-                        raise InvalidError(f"Function {raw_f} is too large to deploy.")
+                        raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
-
                 function_creation_status.set_response(response)
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
@@ -659,14 +839,14 @@ class _Function(_Object, type_prefix="fu"):
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
 
-        obj._raw_f = raw_f
+        obj._raw_f = info.raw_f
         obj._info = info
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
         obj._app = app  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
-        obj._is_method = bool(info.cls)
+        obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
 
         # Used to check whether we should rebuild an image using run_function
@@ -681,22 +861,27 @@ class _Function(_Object, type_prefix="fu"):
 
         return obj
 
-    def from_parametrized(
+    def _bind_parameters(
         self,
-        obj,
+        obj: "modal.cls._Obj",
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args: Sized,
         kwargs: Dict[str, Any],
     ) -> "_Function":
-        """mdmd:hidden"""
+        """mdmd:hidden
+
+        Binds a class-function to a specific instance of (init params, options) or a new workspace
+        """
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            if self._parent is None:
+                raise ExecutionError("Can't find the parent class' service function")
             try:
-                identity = f"base {self._parent.info.function_name} function"
+                identity = f"{self._parent.info.function_name} class service function"
             except Exception:
                 # Can't always look up the function name that way, so fall back to generic message
-                identity = "base function for parameterized class"
+                identity = "class service function for a parameterized class"
             if not self._parent.is_hydrated:
                 if self._parent.app._running_app is None:
                     reason = ", because the App it is defined on is not running."
@@ -708,6 +893,7 @@ class _Function(_Object, type_prefix="fu"):
             assert self._parent._client.stub
             serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
+            assert self._parent is not None
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=self._parent._object_id,
                 serialized_params=serialized_params,
@@ -718,22 +904,26 @@ class _Function(_Object, type_prefix="fu"):
             response = await retry_transient_errors(self._parent._client.stub.FunctionBindParams, req)
             self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
 
-        fun = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
-        if len(args) + len(kwargs) == 0 and not from_other_workspace and options is None and self.is_hydrated:
+        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+
+        # In some cases, reuse the base function, i.e. not create new clones of each method or the "service function"
+        fun._can_use_base_function = len(args) + len(kwargs) == 0 and not from_other_workspace and options is None
+        if fun._can_use_base_function and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
+            # if the instance didn't use explicit constructor arguments
             fun._hydrate_from_other(self)
+
         fun._is_remote_cls_method = True  # TODO(erikbern): deprecated
         fun._info = self._info
         fun._obj = obj
-        fun._is_generator = self._is_generator
-        fun._is_method = True
+        fun._is_generator = self._is_generator  # TODO(elias): remove - this doesn't apply to "service functions"
+        fun._is_method = False
         fun._parent = self
-
         return fun
 
     @live_method
     async def keep_warm(self, warm_pool_size: int) -> None:
-        """Set the warm pool size for the function (including parametrized functions).
+        """Set the warm pool size for the function.
 
         Please exercise care when using this advanced feature!
         Setting and forgetting a warm pool on functions can lead to increased costs.
@@ -745,10 +935,19 @@ class _Function(_Object, type_prefix="fu"):
 
         # Usage on a parametrized function.
         Model = modal.Cls.lookup("my-app", "Model")
-        Model("fine-tuned-model").inference.keep_warm(2)
+        Model("fine-tuned-model").keep_warm(2)
         ```
         """
-
+        if self._is_method:
+            raise InvalidError(
+                textwrap.dedent(
+                    """
+                The `.keep_warm()` method can no longer be used on Modal class methods.
+                For classes, all methods now share the same set of containers.
+                Use class_instance.keep_warm(...) instead for classes.
+            """
+                )
+            )
         assert self._client and self._client.stub
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(
             function_id=self._object_id, warm_pool_size_override=warm_pool_size
@@ -821,13 +1020,16 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def app(self) -> "modal.app._App":
         """mdmd:hidden"""
+        if self._app is None:
+            raise ExecutionError("The app has not been assigned on the function at this point")
+
         return self._app
 
     @property
     def stub(self) -> "modal.app._App":
         """mdmd:hidden"""
         # Deprecated soon, only for backwards compatibility
-        return self._app
+        return self.app
 
     @property
     def info(self) -> FunctionInfo:
@@ -858,6 +1060,8 @@ class _Function(_Object, type_prefix="fu"):
         )
         self._function_name = None
         self._info = None
+        self._all_mounts = []  # used for file watching
+        self._use_function_id = ""
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
@@ -866,6 +1070,11 @@ class _Function(_Object, type_prefix="fu"):
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
         self._is_method = metadata.is_method
+        self._use_function_id = metadata.use_function_id
+        self._use_method_name = metadata.use_method_name
+
+    def _invocation_function_id(self) -> str:
+        return self._use_function_id or self.object_id
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -878,6 +1087,8 @@ class _Function(_Object, type_prefix="fu"):
                 else api_pb2.Function.FUNCTION_TYPE_FUNCTION
             ),
             web_url=self._web_url or "",
+            use_method_name=self._use_method_name,
+            use_function_id=self._use_function_id,
         )
 
     def _set_mute_cancellation(self, value: bool = True):
@@ -929,7 +1140,7 @@ class _Function(_Object, type_prefix="fu"):
         )
 
         async for item in _map_invocation(
-            self.object_id,
+            self,  # type: ignore
             input_queue,
             self._client,
             order_outputs,
@@ -939,7 +1150,7 @@ class _Function(_Object, type_prefix="fu"):
             yield item
 
     async def _call_function(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
+        invocation = await _Invocation.create(self, args, kwargs, client=self._client)
         try:
             return await invocation.run_function()
         except asyncio.CancelledError:
@@ -948,19 +1159,19 @@ class _Function(_Object, type_prefix="fu"):
                 raise
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
-        return await _Invocation.create(self.object_id, args, kwargs, self._client)
+        return await _Invocation.create(self, args, kwargs, client=self._client)
 
     @warn_if_generator_is_not_consumed()
     @live_method_gen
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(self.object_id, args, kwargs, self._client)
+        invocation = await _Invocation.create(self, args, kwargs, client=self._client)
         async for res in invocation.run_generator():
             yield res
 
     @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
-        return await _Invocation.create(self.object_id, args, kwargs, self._client)
+        return await _Invocation.create(self, args, kwargs, client=self._client)
 
     @synchronizer.no_io_translation
     @live_method
@@ -1013,10 +1224,12 @@ class _Function(_Object, type_prefix="fu"):
     def _get_is_remote_cls_method(self):
         return self._is_remote_cls_method
 
-    def _get_info(self):
+    def _get_info(self) -> FunctionInfo:
+        if not self._info:
+            raise ExecutionError("Can't get info for a function that isn't locally defined")
         return self._info
 
-    def _get_obj(self):
+    def _get_obj(self) -> Optional[Any]:
         if not self._is_method:
             return None
         elif not self._obj:
@@ -1036,7 +1249,7 @@ class _Function(_Object, type_prefix="fu"):
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
         info = self._get_info()
-        if not info:
+        if not info or not info.raw_f:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
                 "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
@@ -1051,6 +1264,7 @@ class _Function(_Object, type_prefix="fu"):
         else:
             # This is a method on a class, so bind the self to the function
             local_obj = obj.get_local_obj()
+
             fun = info.raw_f.__get__(local_obj)
 
             if is_async(info.raw_f):
@@ -1085,10 +1299,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
-        if not self._info:
-            raise AttributeError("_info has not been set on this FunctionHandle and not available in this context")
-
-        return self._info.raw_f
+        return self._raw_f
 
     @live_method
     async def get_current_stats(self) -> FunctionStats:

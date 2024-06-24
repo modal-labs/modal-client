@@ -2,7 +2,7 @@
 import pytest
 from typing import List
 
-from modal import Queue
+from modal import Queue, method, web_endpoint
 from modal._utils.function_utils import FunctionInfo, get_referred_objects, method_has_params
 from modal.exception import InvalidError
 from modal.object import Object
@@ -99,3 +99,16 @@ def test_nonglobal_function():
 
     with pytest.raises(InvalidError, match=r"Cannot wrap `test_nonglobal_function.<locals>.f"):
         FunctionInfo(f)
+
+
+class Foo:
+    def __init__(self):
+        pass
+
+    @method()
+    def bar(self):
+        return "hello"
+
+    @web_endpoint()
+    def web(self):
+        pass
