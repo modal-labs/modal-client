@@ -49,7 +49,6 @@ from ._utils.function_utils import (
     _create_input,
     _process_result,
     _stream_function_call_data,
-    get_referred_objects,
     is_async,
 )
 from ._utils.grpc_utils import retry_transient_errors
@@ -71,7 +70,7 @@ from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
+from .object import _get_environment_name, _Object, live_method, live_method_gen
 from .parallel_map import (
     _for_each_async,
     _for_each_sync,
@@ -670,22 +669,6 @@ class _Function(_Object, type_prefix="fu"):
                 if cloud_bucket_mount.secret:
                     deps.append(cloud_bucket_mount.secret)
 
-            # Add implicit dependencies from the function's code
-            if info.raw_f:
-                # TODO(elias): Remove this branch since we shouldn't need closure vars inspection anymore?
-                objs: list[Object] = get_referred_objects(info.raw_f)
-                _objs: list[_Object] = synchronizer._translate_in(objs)  # type: ignore
-            else:
-                _objs = []
-
-            if info.cls:
-                from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
-
-                for method_callable in _find_callables_for_cls(info.cls, _PartialFunctionFlags.all()).values():
-                    method_objs: list[Object] = get_referred_objects(method_callable)
-                    _objs += synchronizer._translate_in(method_objs)  # type: ignore
-
-            deps += _objs
             return deps
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
