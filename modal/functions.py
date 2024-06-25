@@ -552,6 +552,17 @@ class _Function(_Object, type_prefix="fu"):
             retries, f"Function {info.get_tag()}" if info.raw_f else f"Class {info.get_tag()}"
         )
 
+        if webhook_config is not None and retry_policy is not None:
+            raise InvalidError(
+                "Web endpoints do not support retries.",
+            )
+
+        if is_generator and retry_policy is not None:
+            deprecation_warning(
+                (2024, 6, 25),
+                "Retries for generator functions are deprecated and will soon be removed.",
+            )
+
         gpu_config = parse_gpu_config(gpu)
 
         if proxy:
