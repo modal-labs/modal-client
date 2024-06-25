@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-import _instrumentation  # noqa
+import modal_instrumentation  # noqa
 import asyncio
 import base64
 import concurrent.futures
@@ -386,7 +386,8 @@ def call_function(
 
                 # Send up to this many outputs at a time.
                 generator_queue: asyncio.Queue[Any] = container_io_manager._queue_create(1024)
-                generator_output_task: concurrent.futures.Future = container_io_manager.generator_output_task(  # type: ignore
+                generator_output_task: concurrent.futures.Future = container_io_manager.generator_output_task(
+                    # type: ignore
                     function_call_id,
                     finalized_function.data_format,
                     generator_queue,
