@@ -250,7 +250,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         allow_background_volume_commits: Optional[bool] = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
-        _experimental_scheduler: bool = False,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
@@ -313,7 +312,6 @@ class _Sandbox(_Object, type_prefix="sb"):
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
                 pty_info=pty_info,
-                _experimental_scheduler=_experimental_scheduler,
                 scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
             )
 
