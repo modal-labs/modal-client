@@ -18,7 +18,7 @@ class ImportInterceptor(importlib.abc.Loader):
     def __init__(self, tracing_socket):
         self.loading = set()
         self.tracing_socket = tracing_socket
-        self.events = queue.Queue(maxsize=1024)
+        self.events = queue.Queue(maxsize=16 * 1024)
         sender = threading.Thread(target=self._send, daemon=True)
         sender.start()
 
@@ -55,7 +55,7 @@ class ImportInterceptor(importlib.abc.Loader):
                 continue
             try:
                 self.tracing_socket.send(msg)
-                self.tracing_socket.send(b'\n')
+                self.tracing_socket.send(b"\n")
             except OSError as e:
                 logging.debug(f"failed to send event: {e}")
 
