@@ -62,7 +62,7 @@ class ImportInterceptor(importlib.abc.Loader):
 def instrument_imports():
     if hasattr(sys, "frozen"):
         raise Exception("unable to patch meta_path: sys is frozen")
-    socket_filename = os.environ.get("MODAL_IMPORT_TRACING_SOCKET")
+    socket_filename = os.environ.get("MODAL_TELEMETRY_SOCKET")
     if socket_filename:
         import socket
 
@@ -72,7 +72,7 @@ def instrument_imports():
 
 
 def auto_instrument_imports():
-    if os.environ.get("MODAL_IMPORT_TRACING_SOCKET"):
+    if os.environ.get("MODAL_TELEMETRY_SOCKET"):
         try:
             instrument_imports()
         except BaseException as e:
