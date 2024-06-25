@@ -226,14 +226,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     def get_class_metadata(self, object_id: str) -> api_pb2.ClassHandleMetadata:
-        class_function_id = self.classes[object_id]["*"]
-        class_handle_metadata = api_pb2.ClassHandleMetadata(
-            class_function_id=self.classes[object_id]["*"],
-            class_function_metadata=self.get_function_metadata(class_function_id),
-        )
+        class_handle_metadata = api_pb2.ClassHandleMetadata()
         for f_name, f_id in self.classes[object_id].items():
-            if f_name == "*":
-                continue
             function_handle_metadata = self.get_function_metadata(f_id)
             class_handle_metadata.methods.append(
                 api_pb2.ClassMethod(
@@ -414,7 +408,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ClassCreateRequest = await stream.recv_message()
         assert request.app_id
         methods: dict[str, str] = {method.function_name: method.function_id for method in request.methods}
-        methods["*"] = request.class_function_id
         class_id = "cs-" + str(len(self.classes))
         self.classes[class_id] = methods
         await stream.send_message(

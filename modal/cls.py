@@ -16,7 +16,7 @@ from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import InvalidError, NotFoundError
+from .exception import InvalidError, NotFoundError, VersionError
 from .functions import (
     _parse_retries,
 )
@@ -203,19 +203,6 @@ class _Cls(_Object, type_prefix="cs"):
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
 
-        if metadata.class_function_id:
-            # "class service function" themselves don't have hydration metadata, but we
-            # still send in a valid FunctionHandleMetadata object in hydration, since
-            # there is a run-time type check of that _Function._hydrate_metadata
-            if self._class_service_function:
-                self._class_service_function._hydrate(
-                    metadata.class_function_id, self._client, metadata.class_function_metadata
-                )
-            else:
-                self._class_service_function = _Function._new_hydrated(
-                    metadata.class_function_id, self._client, metadata.class_function_metadata
-                )
-
         for method in metadata.methods:
             if method.function_name in self._method_functions:
                 # This happens when the class is loaded locally
@@ -229,8 +216,7 @@ class _Cls(_Object, type_prefix="cs"):
                 )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
-        class_function_id = self._class_service_function.object_id
-        class_handle_metadata = api_pb2.ClassHandleMetadata(class_function_id=class_function_id)
+        class_handle_metadata = api_pb2.ClassHandleMetadata()
         for f_name, f in self._method_functions.items():
             class_handle_metadata.methods.append(
                 api_pb2.ClassMethod(
@@ -264,11 +250,7 @@ class _Cls(_Object, type_prefix="cs"):
             return [class_service_function] + list(functions.values())
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
-            req = api_pb2.ClassCreateRequest(
-                app_id=resolver.app_id,
-                existing_class_id=existing_object_id,
-                class_function_id=class_service_function.object_id,
-            )
+            req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
             for f_name, f in self._method_functions.items():
                 req.methods.append(
                     api_pb2.ClassMethod(
@@ -305,11 +287,12 @@ class _Cls(_Object, type_prefix="cs"):
         """
 
         async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
+            _environment_name = _get_environment_name(environment_name, resolver)
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
                 object_tag=tag,
                 namespace=namespace,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=_environment_name,
                 lookup_published=workspace is not None,
                 workspace_name=workspace,
             )
@@ -322,6 +305,19 @@ class _Cls(_Object, type_prefix="cs"):
                     raise InvalidError(exc.message)
                 else:
                     raise
+
+            class_function_tag = f"{tag}.*"  # special name of the base service function for the class
+
+            try:
+                class_service_function = await _Function.lookup(
+                    app_name, class_function_tag, environment_name=_environment_name, client=resolver.client
+                )
+                obj._class_service_function = class_service_function
+            except modal.exception.NotFoundError:
+                raise VersionError(
+                    f"Could not class service function {class_function_tag} - this is likely "
+                    f"the result of using a modal>=v0.63.0 to lookup a Cls of an older version"
+                )
 
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
