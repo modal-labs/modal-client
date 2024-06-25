@@ -13,13 +13,11 @@ from modal._container_io_manager import ContainerIOManager
 from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
-from .supports.skip import skip_windows_unix_socket
-
 
 def my_f_1(x):
     pass
 
-@skip_windows_unix_socket
+
 @pytest.mark.asyncio
 async def test_container_function_lazily_imported(container_client):
     tag_to_object_id: Dict[str, str] = {
@@ -42,7 +40,6 @@ async def test_container_function_lazily_imported(container_client):
     assert await my_f_container.remote.aio(42) == 1764  # type: ignore
 
 
-@skip_windows_unix_socket
 @pytest.mark.asyncio
 async def test_container_snapshot_restore(container_client, tmpdir, servicer):
     # Get a reference to a Client instance in memory
@@ -61,13 +58,13 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
         encoding="utf-8",
     )
     with mock.patch.dict(
-        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.remote_addr}
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
     ):
         io_manager.memory_snapshot()
         # In-memory Client instance should have update credentials, not old credentials
         assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
 
-@skip_windows_unix_socket
+
 @pytest.mark.asyncio
 async def test_container_debug_snapshot(container_client, tmpdir, servicer):
     # Get an IO manager, where restore takes place
@@ -83,18 +80,15 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
     test_breakpoint = mock.Mock()
     with mock.patch("sys.breakpointhook", test_breakpoint):
         with mock.patch.dict(
-            os.environ, {
-                "MODAL_RESTORE_STATE_PATH": str(restore_path),
-                "MODAL_SERVER_URL": servicer.remote_addr
-                }):
+            os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.remote_addr}
+        ):
             io_manager.memory_snapshot()
             test_breakpoint.assert_called_once()
 
 
-@skip_windows_unix_socket
-def test_interact(container_client, unix_servicer):
+def test_interact(container_client, servicer):
     # Initialize container singleton
     ContainerIOManager(api_pb2.ContainerArguments(), container_client)
-    with unix_servicer.intercept() as ctx:
+    with servicer.intercept() as ctx:
         ctx.add_response("FunctionStartPtyShell", Empty())
         interact()

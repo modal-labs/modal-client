@@ -27,7 +27,7 @@ def notebook_runner(servicer):
 
         parameter_cell = nb["cells"][0]
         assert "parameters" in parameter_cell["metadata"]["tags"]  # like in papermill
-        parameter_cell["source"] = f'server_addr = "{servicer.remote_addr}"'
+        parameter_cell["source"] = f'server_addr = "{servicer.client_addr}"'
 
         client = NotebookClient(nb)
 

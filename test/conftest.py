@@ -7,6 +7,7 @@ import dataclasses
 import hashlib
 import inspect
 import os
+import platform
 import pytest
 import shutil
 import sys
@@ -1422,72 +1423,78 @@ async def blob_server():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def servicer_factory(blob_server):
-    @contextlib.asynccontextmanager
-    async def create_server(host=None, port=None, path=None):
-        blob_host, blobs = blob_server
-        servicer = MockClientServicer(blob_host, blobs)  # type: ignore
-        server = None
-
-        async def _start_servicer():
-            nonlocal server
-            server = grpclib.server.Server([servicer])
-            await server.start(host=host, port=port, path=path)
-
-        async def _stop_servicer():
-            servicer.container_heartbeat_abort.set()
-            server.close()
-            # This is the proper way to close down the asyncio server,
-            # but it causes our tests to hang on 3.12+ because client connections
-            # for clients created through _Client.from_env don't get closed until
-            # asyncio event loop shutdown. Commenting out but perhaps revisit if we
-            # refactor the way that _Client cleanup happens.
-            # await server.wait_closed()
-
-        start_servicer = synchronize_api(_start_servicer)
-        stop_servicer = synchronize_api(_stop_servicer)
-
-        await start_servicer.aio()
-        try:
-            yield servicer
-        finally:
-            await stop_servicer.aio()
-
-    yield create_server
-
-
-@pytest_asyncio.fixture(scope="function")
-async def servicer(servicer_factory):
-    port = find_free_port()
-    async with servicer_factory(host="0.0.0.0", port=port) as servicer:
-        servicer.remote_addr = f"http://127.0.0.1:{port}"
-        yield servicer
-
-
-@pytest_asyncio.fixture(scope="function")
-async def unix_servicer(servicer_factory):
+def temporary_sock_path():
     with tempfile.TemporaryDirectory() as tmpdirname:
-        path = os.path.join(tmpdirname, "servicer.sock")
-        async with servicer_factory(path=path) as servicer:
-            servicer.remote_addr = f"unix://{path}"
-            yield servicer
+        yield os.path.join(tmpdirname, "servicer.sock")
+
+
+@contextlib.asynccontextmanager
+async def run_server(servicer, host=None, port=None, path=None):
+    server = None
+
+    async def _start_servicer():
+        nonlocal server
+        server = grpclib.server.Server([servicer])
+        await server.start(host=host, port=port, path=path)
+
+    async def _stop_servicer():
+        servicer.container_heartbeat_abort.set()
+        server.close()
+        # This is the proper way to close down the asyncio server,
+        # but it causes our tests to hang on 3.12+ because client connections
+        # for clients created through _Client.from_env don't get closed until
+        # asyncio event loop shutdown. Commenting out but perhaps revisit if we
+        # refactor the way that _Client cleanup happens.
+        # await server.wait_closed()
+
+    start_servicer = synchronize_api(_start_servicer)
+    stop_servicer = synchronize_api(_stop_servicer)
+
+    await start_servicer.aio()
+    try:
+        yield
+    finally:
+        await stop_servicer.aio()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def servicer(blob_server, temporary_sock_path):
+    port = find_free_port()
+
+    blob_host, blobs = blob_server
+    servicer = MockClientServicer(blob_host, blobs)  # type: ignore
+
+    if platform.system() != "Windows":
+        async with run_server(servicer, host="0.0.0.0", port=port):
+            async with run_server(servicer, path=temporary_sock_path):
+                servicer.client_addr = f"http://127.0.0.1:{port}"
+                servicer.container_addr = f"unix://{temporary_sock_path}"
+                yield servicer
+    else:
+        # Use a regular TCP socket for the container connection
+        container_port = find_free_port()
+        async with run_server(servicer, host="0.0.0.0", port=port):
+            async with run_server(servicer, host="0.0.0.0", port=container_port):
+                servicer.client_addr = f"http://127.0.0.1:{port}"
+                servicer.container_addr = f"http://127.0.0.1:{container_port}"
+                yield servicer
 
 
 @pytest_asyncio.fixture(scope="function")
 async def client(servicer):
-    with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         yield client
 
 
 @pytest_asyncio.fixture(scope="function")
-async def container_client(unix_servicer):
-    async with Client(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+async def container_client(servicer):
+    async with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
 
 
 @pytest_asyncio.fixture(scope="function")
 async def server_url_env(servicer, monkeypatch):
-    monkeypatch.setenv("MODAL_SERVER_URL", servicer.remote_addr)
+    monkeypatch.setenv("MODAL_SERVER_URL", servicer.client_addr)
     yield
 
 
