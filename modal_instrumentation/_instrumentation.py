@@ -54,8 +54,7 @@ class ImportInterceptor(importlib.abc.Loader):
                 logging.debug(f"failed to serialize event: {e}")
                 continue
             try:
-                self.tracing_socket.send(msg)
-                self.tracing_socket.send(b"\n")
+                self.tracing_socket.send(msg + b"\n")
             except OSError as e:
                 logging.debug(f"failed to send event: {e}")
 
