@@ -25,12 +25,12 @@ def _cli(args, server_url, extra_env={}, check=True) -> Tuple[int, str, str]:
 
 
 def test_run_e2e(servicer):
-    _, _, err = _cli(["-m", "test.supports.script"], servicer.remote_addr)
+    _, _, err = _cli(["-m", "test.supports.script"], servicer.client_addr)
     assert err == ""
 
 
 def test_run_progress_info(servicer):
-    returncode, stdout, stderr = _cli(["-m", "test.supports.progress_info"], servicer.remote_addr)
+    returncode, stdout, stderr = _cli(["-m", "test.supports.progress_info"], servicer.client_addr)
     assert returncode == 0
     assert stderr == ""
     lines = stdout.splitlines()
@@ -39,15 +39,15 @@ def test_run_progress_info(servicer):
 
 
 def test_run_profiler(servicer):
-    _cli(["-m", "cProfile", "-m", "test.supports.script"], servicer.remote_addr)
+    _cli(["-m", "cProfile", "-m", "test.supports.script"], servicer.client_addr)
 
 
 def test_run_unconsumed_map(servicer):
-    _, _, err = _cli(["-m", "test.supports.unconsumed_map"], servicer.remote_addr)
+    _, _, err = _cli(["-m", "test.supports.unconsumed_map"], servicer.client_addr)
     assert "map" in err
     assert "for-loop" in err
 
-    _, _, err = _cli(["-m", "test.supports.consumed_map"], servicer.remote_addr)
+    _, _, err = _cli(["-m", "test.supports.consumed_map"], servicer.client_addr)
     assert "map" not in err
     assert "for-loop" not in err
 
@@ -55,7 +55,7 @@ def test_run_unconsumed_map(servicer):
 def test_auth_failure_last_line(servicer):
     returncode, out, err = _cli(
         ["-m", "test.supports.script"],
-        servicer.remote_addr,
+        servicer.client_addr,
         extra_env={"MODAL_TOKEN_ID": "bad", "MODAL_TOKEN_SECRET": "bad"},
         check=False,
     )
