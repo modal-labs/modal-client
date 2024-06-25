@@ -17,20 +17,21 @@ jobs:
     timeout-minutes: 20
 
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         os: ["ubuntu-20.04"]
-        proto-version: ["latest"]
+        proto-version: ["4.25"]
         include:
-          - os: "macos-12" # x86-64
+          - os: "macos-13" # x86-64
             python-version: "3.10"
-            proto-version: "latest"
+            proto-version: "4.25"
           - os: "macos-14" # ARM64 (M1)
             python-version: "3.10"
-            proto-version: "latest"
+            proto-version: "4.25"
           - os: "windows-latest"
             python-version: "3.10"
-            proto-version: "latest"
+            proto-version: "4.25"
           - os: "ubuntu-20.04"
             python-version: "3.8"
             proto-version: "3.19"
@@ -43,15 +44,12 @@ jobs:
         with:
           version: ${{ matrix.python-version }}
 
-      - if: matrix.proto-version != 'latest'
-        name: Install protobuf
-        run: pip install protobuf==${{ matrix.proto-version }}
+      - name: Install protobuf
+        run: uv pip install protobuf==${{ matrix.proto-version }}
 
       - name: Build protobuf
+        shell: bash
         run: inv protoc
-
-      - name: Build client package (installs all dependencies)
-        run: pip install -e .
 
       - name: Run client tests
         run: pytest -v
@@ -117,9 +115,6 @@ jobs:
       - name: Build protobuf
         run: inv protoc
 
-      - name: Build client package (installs all dependencies)
-        run: pip install -e .
-
       - name: Set the Modal environment
         run: modal config set-environment main
 
@@ -153,8 +148,6 @@ jobs:
           ref: main
 
       - uses: ./.github/actions/setup-cached-python
-        with:
-          version: "3.10"
 
       - name: Bump the version number
         run: inv update-build-number
@@ -176,9 +169,6 @@ jobs:
 
       - name: Build protobuf
         run: inv protoc
-
-      - name: Install all dependencies
-        run: pip install -e .
 
       - name: Build type stubs
         run: inv type-stubs
