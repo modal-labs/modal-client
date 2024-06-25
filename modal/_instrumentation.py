@@ -38,7 +38,10 @@ class ImportInterceptor(importlib.abc.Loader):
             self.emit({"timestamp": time.time(), "event": MODULE_LOAD_END, "name": fullname, "latency": latency})
 
     def emit(self, event):
-        self.events.put(event)
+        try:
+            self.events.put(event, timeout=0)
+        except queue.Full:
+            logger.debug("failed to emit event: queue full")
 
     def _send(self):
         while True:
