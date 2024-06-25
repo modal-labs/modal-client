@@ -14,12 +14,12 @@ class ImportTraceConsumer:
     socket_filename: Path
     server: socket.socket
     connections: set[socket.socket]
-    messages: queue.Queue
+    events: queue.Queue
     tmp: tempfile.TemporaryDirectory
 
     def __init__(self):
         self.stopped = False
-        self.messages = queue.Queue()
+        self.events = queue.Queue()
 
     def __enter__(self):
         self.start()
@@ -70,7 +70,7 @@ class ImportTraceConsumer:
                     buffer = buffer[newline_ix + 1 :]
                     message = message.decode("utf-8").strip()
                     message = json.loads(message)
-                    self.messages.put(message)
+                    self.events.put(message)
         finally:
             self.connections.remove(conn)
 
@@ -94,7 +94,7 @@ def test_import_tracing(monkeypatch):
         ]
 
         for expected_message in expected_messages:
-            m = consumer.messages.get(timeout=30)
+            m = consumer.events.get(timeout=30)
             assert m == m | expected_message
             assert m["timestamp"] >= 0
             if m["event"] == "module_load_end":
@@ -111,7 +111,7 @@ if __name__ == "__main__":
 
         while True:
             try:
-                m = consumer.messages.get_nowait()
+                m = consumer.events.get_nowait()
                 print(m)
             except queue.Empty:
                 break
