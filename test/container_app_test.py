@@ -80,7 +80,7 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
     test_breakpoint = mock.Mock()
     with mock.patch("sys.breakpointhook", test_breakpoint):
         with mock.patch.dict(
-            os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.remote_addr}
+            os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
         ):
             io_manager.memory_snapshot()
             test_breakpoint.assert_called_once()
