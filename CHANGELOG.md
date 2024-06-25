@@ -25,6 +25,8 @@ Previously each `@method` and web endpoint of a class would get its own set of i
 Starting in this version, all `@methods` and web endpoints will be part of the same container pool. Notably, this means all methods will scale up/down together, and options like `keep_warm` and `concurrency_limit` will affect the total number of containers for all methods in the class combined, rather than individually.
 
 
+## 0.62
+
 
 ### 0.62.236 (2024-06-21)
 
@@ -77,12 +79,6 @@ Starting in this version, all `@methods` and web endpoints will be part of the s
 
 - `web_endpoint`s now have the option to include interactive SwaggerUI/redoc docs by setting `docs=True`
 - `web_endpoint`s no longer include an OpenAPI JSON spec route by default
-
-
-
-### 0.62.197 (2024-05-31)
-
-Adds Source to PyPI metadata
 
 
 
