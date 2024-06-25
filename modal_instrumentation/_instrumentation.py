@@ -1,12 +1,14 @@
+# Copyright Modal Labs 2024
+
 import importlib
+import importlib.abc
 import json
+import logging
 import os
 import queue
 import sys
 import threading
 import time
-
-from modal.config import logger
 
 MODULE_LOAD_START = "module_load_start"
 MODULE_LOAD_END = "module_load_end"
@@ -39,9 +41,9 @@ class ImportInterceptor(importlib.abc.Loader):
 
     def emit(self, event):
         try:
-            self.events.put(event, timeout=0)
+            self.events.put_nowait(event)
         except queue.Full:
-            logger.debug("failed to emit event: queue full")
+            logging.debug("failed to emit event: queue full")
 
     def _send(self):
         while True:
@@ -49,12 +51,13 @@ class ImportInterceptor(importlib.abc.Loader):
             try:
                 msg = json.dumps(event).encode("utf-8")
             except BaseException as e:
-                logger.debug(f"failed to serialize event: {e}")
+                logging.debug(f"failed to serialize event: {e}")
                 continue
             try:
                 self.tracing_socket.send(msg)
+                self.tracing_socket.send(b'\n')
             except OSError as e:
-                logger.debug(f"failed to send event: {e}")
+                logging.debug(f"failed to send event: {e}")
 
 
 def instrument_imports():
@@ -74,7 +77,7 @@ def auto_instrument_imports():
         try:
             instrument_imports()
         except BaseException as e:
-            print(f"failed to instrument imports: {e}", file=sys.stderr)
+            logging.warning(f"failed to instrument imports: {e}")
 
 
 auto_instrument_imports()
