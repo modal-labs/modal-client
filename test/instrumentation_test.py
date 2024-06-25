@@ -1,3 +1,4 @@
+import json
 import logging
 import queue
 import socket
@@ -59,7 +60,7 @@ class ImportTraceConsumer:
                 except OSError as e:
                     logging.debug(f"connection {conn} got exception, exiting: {e}")
                     return
-                message = message.decode("utf-8")
+                message = json.loads(message.decode("utf-8"))
                 logging.debug("recv: {message}")
                 self.messages.put(message)
         finally:
@@ -76,14 +77,17 @@ def test_import_tracing(monkeypatch):
         from .supports import module_2  # noqa
 
         expected_messages = [
-            "loading module test.supports",
-            "loaded module test.supports: latency=",
-            "loading module test.supports.module_1",
-            "loaded module test.supports.module_1: latency=",
-            "loading module test.supports.module_2",
-            "loaded module test.supports.module_2: latency=",
+            {"event": "module_load_start", "name": "test.supports"},
+            {"event": "module_load_end", "name": "test.supports"},
+            {"event": "module_load_start", "name": "test.supports.module_1"},
+            {"event": "module_load_end", "name": "test.supports.module_1"},
+            {"event": "module_load_start", "name": "test.supports.module_2"},
+            {"event": "module_load_end", "name": "test.supports.module_2"},
         ]
 
         for expected_message in expected_messages:
             m = consumer.messages.get(timeout=30)
-            assert m.startswith(expected_message)
+            assert m == m | expected_message
+            assert m["timestamp"] >= 0
+            if m["event"] == "module_load_end":
+                assert m["latency"] >= 0
