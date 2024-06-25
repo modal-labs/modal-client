@@ -7,6 +7,7 @@ import queue
 import socket
 import tempfile
 import threading
+import uuid
 from pathlib import Path
 
 
@@ -97,6 +98,7 @@ def test_import_tracing(monkeypatch):
             m = consumer.events.get(timeout=30)
             assert m == m | expected_message
             assert m["timestamp"] >= 0
+            assert uuid.UUID(m["span_id"])
             if m["event"] == "module_load_end":
                 assert m["latency"] >= 0
 

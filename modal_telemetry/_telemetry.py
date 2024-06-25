@@ -9,6 +9,7 @@ import queue
 import sys
 import threading
 import time
+import uuid
 
 MODULE_LOAD_START = "module_load_start"
 MODULE_LOAD_END = "module_load_end"
@@ -29,7 +30,8 @@ class ImportInterceptor(importlib.abc.Loader):
 
     def load_module(self, fullname):
         t0 = time.monotonic()
-        self.emit({"timestamp": time.time(), "event": MODULE_LOAD_START, "name": fullname})
+        span_id = str(uuid.uuid4())
+        self.emit({"span_id": span_id, "timestamp": time.time(), "event": MODULE_LOAD_START, "name": fullname})
         self.loading.add(fullname)
         try:
             module = importlib.import_module(fullname)
@@ -37,7 +39,15 @@ class ImportInterceptor(importlib.abc.Loader):
         finally:
             self.loading.remove(fullname)
             latency = time.monotonic() - t0
-            self.emit({"timestamp": time.time(), "event": MODULE_LOAD_END, "name": fullname, "latency": latency})
+            self.emit(
+                {
+                    "span_id": span_id,
+                    "timestamp": time.time(),
+                    "event": MODULE_LOAD_END,
+                    "name": fullname,
+                    "latency": latency,
+                }
+            )
 
     def emit(self, event):
         try:
