@@ -1,5 +1,8 @@
+# Copyright Modal Labs 2024
+
 import json
 import logging
+import os
 import queue
 import socket
 import tempfile
@@ -54,15 +57,20 @@ class ImportTraceConsumer:
 
     def _recv(self, conn):
         try:
+            buffer = bytearray()
             while not self.stopped:
                 try:
-                    message = conn.recv(1024)
+                    data = conn.recv(1024)
                 except OSError as e:
                     logging.debug(f"connection {conn} got exception, exiting: {e}")
                     return
-                message = json.loads(message.decode("utf-8"))
-                logging.debug("recv: {message}")
-                self.messages.put(message)
+                buffer.extend(data)
+                while (newline_ix := buffer.find(b"\n")) != -1:
+                    message = buffer[0:newline_ix]
+                    buffer = buffer[newline_ix + 1 :]
+                    message = message.decode("utf-8").strip()
+                    message = json.loads(message)
+                    self.messages.put(message)
         finally:
             self.connections.remove(conn)
 
@@ -71,7 +79,7 @@ def test_import_tracing(monkeypatch):
     with ImportTraceConsumer() as consumer:
         monkeypatch.setenv("MODAL_IMPORT_TRACING_SOCKET", consumer.socket_filename.absolute().as_posix())
 
-        import modal._instrumentation  # noqa
+        from modal_instrumentation import _instrumentation  # noqa
 
         from .supports import module_1  # noqa
         from .supports import module_2  # noqa
@@ -91,3 +99,19 @@ def test_import_tracing(monkeypatch):
             assert m["timestamp"] >= 0
             if m["event"] == "module_load_end":
                 assert m["latency"] >= 0
+
+
+if __name__ == "__main__":
+    with ImportTraceConsumer() as consumer:
+        os.environ["MODAL_IMPORT_TRACING_SOCKET"] = consumer.socket_filename.absolute().as_posix()
+
+        from modal_instrumentation import _instrumentation  # noqa
+
+        import modal  # noqa
+
+        while True:
+            try:
+                m = consumer.messages.get_nowait()
+                print(m)
+            except queue.Empty:
+                break
