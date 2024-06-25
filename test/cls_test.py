@@ -83,15 +83,15 @@ def test_call_class_sync(client, servicer):
     function_creates_requests: typing.List[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
     assert len(function_creates_requests) == 2
     (class_create,) = ctx.get_requests("ClassCreate")
-    assert class_create.class_function_id
     function_creates = {fc.function.function_name: fc for fc in function_creates_requests}
     assert function_creates.keys() == {"Foo.*", "Foo.bar"}
     foobar_def = function_creates["Foo.bar"].function
+    service_function_id = servicer.app_objects["ap-1"]["Foo.*"]
     assert foobar_def.is_method
     assert foobar_def.use_method_name == "bar"
-    assert foobar_def.use_function_id == class_create.class_function_id
+    assert foobar_def.use_function_id == service_function_id
     (function_map_request,) = ctx.get_requests("FunctionMap")
-    assert function_map_request.function_id == class_create.class_function_id
+    assert function_map_request.function_id == service_function_id
 
 
 # Reusing the app runs into an issue with stale function handles.
