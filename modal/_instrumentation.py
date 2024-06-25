@@ -1,15 +1,24 @@
 import importlib
-import os  # noqa: I001
+import json
+import os
+import queue
 import sys
+import threading
 import time
 
 from modal.config import logger
+
+MODULE_LOAD_START = "module_load_start"
+MODULE_LOAD_END = "module_load_end"
 
 
 class ImportInterceptor(importlib.abc.Loader):
     def __init__(self, tracing_socket):
         self.loading = set()
         self.tracing_socket = tracing_socket
+        self.events = queue.Queue(maxsize=1024)
+        sender = threading.Thread(target=self._send, daemon=True)
+        sender.start()
 
     def find_module(self, fullname, path=None):
         if fullname in self.loading:
@@ -18,7 +27,7 @@ class ImportInterceptor(importlib.abc.Loader):
 
     def load_module(self, fullname):
         t0 = time.monotonic()
-        self.emit(f"loading module {fullname}\n")
+        self.emit({"timestamp": time.time(), "event": MODULE_LOAD_START, "name": fullname})
         self.loading.add(fullname)
         try:
             module = importlib.import_module(fullname)
@@ -26,29 +35,35 @@ class ImportInterceptor(importlib.abc.Loader):
         finally:
             self.loading.remove(fullname)
             latency = time.monotonic() - t0
-            self.emit(f"loaded module {fullname}: {latency=}\n")
+            self.emit({"timestamp": time.time(), "event": MODULE_LOAD_END, "name": fullname, "latency": latency})
 
-    def emit(self, message):
-        # TODO(dano): send a separate thread to avoid blocking
-        # TODO(dano): send structured json
-        if self.tracing_socket:
+    def emit(self, event):
+        self.events.put(event)
+
+    def _send(self):
+        while True:
+            event = self.events.get()
             try:
-                self.tracing_socket.send(message.encode("utf-8"))
+                msg = json.dumps(event).encode("utf-8")
             except BaseException as e:
-                logger.debug(f"failed to send import trace: {e}")
+                logger.debug(f"failed to serialize event: {e}")
+                continue
+            try:
+                self.tracing_socket.send(msg)
+            except OSError as e:
+                logger.debug(f"failed to send event: {e}")
 
 
 def instrument_imports():
     if hasattr(sys, "frozen"):
         raise Exception("unable to patch meta_path: sys is frozen")
     socket_filename = os.environ.get("MODAL_IMPORT_TRACING_SOCKET")
-    tracing_socket = None
     if socket_filename:
         import socket
 
         tracing_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         tracing_socket.connect(socket_filename)
-    sys.meta_path = [ImportInterceptor(tracing_socket)] + sys.meta_path
+        sys.meta_path = [ImportInterceptor(tracing_socket)] + sys.meta_path
 
 
 def auto_instrument_imports():
