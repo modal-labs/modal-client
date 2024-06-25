@@ -50,9 +50,9 @@ class VolumeFile:
 
 
 # TODO: Isolate all test config from the host
-@pytest.fixture(scope="session", autouse=True)
-def set_env():
-    os.environ["MODAL_ENVIRONMENT"] = "main"
+@pytest.fixture(scope="function", autouse=True)
+def set_env(monkeypatch):
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "main")
 
 
 @patch_mock_servicer
@@ -508,7 +508,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
         else:
-            raise GRPCError(Status.NOT_FOUND, "Dict not found")
+            raise GRPCError(Status.NOT_FOUND, f"Dict {k} not found")
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
 
     async def DictHeartbeat(self, stream):
@@ -868,7 +868,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         k = (request.deployment_name, request.namespace)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_mounts:
-                raise GRPCError(Status.NOT_FOUND, "Mount not found")
+                raise GRPCError(Status.NOT_FOUND, f"Mount {k} not found")
             mount_id = self.deployed_mounts[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             self.n_mounts += 1
@@ -931,7 +931,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
         else:
-            raise GRPCError(Status.NOT_FOUND, "Queue not found")
+            raise GRPCError(Status.NOT_FOUND, f"Queue {k} not found")
         await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
 
     async def QueueDelete(self, stream):
@@ -1085,13 +1085,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.secrets[secret_id] = request.env_dict
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_secrets:
-                raise GRPCError(Status.ALREADY_EXISTS, "Already exists")
+                raise GRPCError(Status.ALREADY_EXISTS, f"Secret {k} already exists")
             secret_id = None
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_OVERWRITE_IF_EXISTS:
             secret_id = None
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_secrets:
-                raise GRPCError(Status.NOT_FOUND, "No such secret")
+                raise GRPCError(Status.NOT_FOUND, f"Secret {k} not found")
             secret_id = self.deployed_secrets[k]
         else:
             raise Exception("unsupported creation type")
@@ -1120,7 +1120,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         k = (request.deployment_name, request.namespace, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_nfss:
-                raise GRPCError(Status.NOT_FOUND, "NFS not found")
+                raise GRPCError(Status.NOT_FOUND, f"NFS {k} not found")
             nfs_id = self.deployed_nfss[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             nfs_id = f"sv-{len(self.nfs_files)}"
@@ -1133,7 +1133,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             nfs_id = self.deployed_nfss[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_nfss:
-                raise GRPCError(Status.ALREADY_EXISTS, "NFS already exists")
+                raise GRPCError(Status.ALREADY_EXISTS, f"NFS {k} already exists")
             nfs_id = f"sv-{len(self.nfs_files)}"
             self.nfs_files[nfs_id] = {}
             self.deployed_nfss[k] = nfs_id
@@ -1228,7 +1228,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         k = (request.deployment_name, request.namespace, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_volumes:
-                raise GRPCError(Status.NOT_FOUND, "Volume not found")
+                raise GRPCError(Status.NOT_FOUND, f"Volume {k} not found")
             volume_id = self.deployed_volumes[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             volume_id = f"vo-{len(self.volume_files)}"
@@ -1241,7 +1241,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             volume_id = self.deployed_volumes[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_volumes:
-                raise GRPCError(Status.ALREADY_EXISTS, "Volume already exists")
+                raise GRPCError(Status.ALREADY_EXISTS, f"Volume {k} already exists")
             volume_id = f"vo-{len(self.volume_files)}"
             self.volume_files[volume_id] = {}
             self.deployed_volumes[k] = volume_id
