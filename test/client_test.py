@@ -11,7 +11,7 @@ from modal import Client
 from modal.exception import AuthError, ConnectionError, DeprecationError, InvalidError, VersionError
 from modal_proto import api_pb2
 
-from .supports.skip import skip_windows_unix_socket
+from .supports.skip import skip_windows, skip_windows_unix_socket
 
 TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
 
@@ -52,6 +52,7 @@ async def test_client_dns_failure():
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
+@skip_windows("Windows test crashes on connection failure")
 async def test_client_connection_failure():
     with pytest.raises(ConnectionError) as excinfo:
         async with Client("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None):
