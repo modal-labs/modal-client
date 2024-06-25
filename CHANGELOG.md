@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.2 (2024-06-25)
+
+* Fixes issue with `Cls.lookup` not working after upgrading to v0.63.0
+
+
+
 ### 0.63.0 (2024-06-24)
 
 * Changes how containers are associated with methods of `@app.cls()`-decorated Modal "classes".
