@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import _instrumentation  # noqa
 import asyncio
 import base64
 import concurrent.futures
