@@ -517,7 +517,6 @@ class _App:
         # Parameters below here are experimental. Use with caution!
         _allow_background_volume_commits: Optional[bool] = None,
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
-        _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -611,7 +610,6 @@ class _App:
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
-                _experimental_scheduler=_experimental_scheduler,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -661,7 +659,6 @@ class _App:
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
-        _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -723,7 +720,6 @@ class _App:
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
-                _experimental_scheduler=_experimental_scheduler,
                 # class service function, so the following attributes which relate to
                 # the callable itself are invalid and set to defaults:
                 webhook_config=None,
@@ -768,7 +764,6 @@ class _App:
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
         _allow_background_volume_commits: Optional[bool] = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
-        _experimental_scheduler: bool = False,  # Experimental flag for more fine-grained scheduling (alpha).
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -814,7 +809,6 @@ class _App:
             volumes=volumes,
             allow_background_volume_commits=_allow_background_volume_commits,
             pty_info=pty_info,
-            _experimental_scheduler=_experimental_scheduler,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
         )
         await resolver.load(obj)

@@ -933,7 +933,7 @@ message Function {
 
   // If set, tasks will be scheduled using the new scheduler, which also knows
   // to look at fine-grained placement constraints.
-  bool _experimental_scheduler = 49;
+  reserved 49; // _experimental_scheduler
   optional SchedulerPlacement scheduler_placement = 50;
   reserved 52; // _experimental_scheduler_placement
 
@@ -1615,7 +1615,7 @@ message Sandbox {
 
   // If set, tasks will be scheduled using the new scheduler, which also knows
   // to look at fine-grained placement constraints.
-  bool _experimental_scheduler = 16;
+  reserved 16; // _experimental_scheduler
   optional SchedulerPlacement scheduler_placement = 17;
 }
 
