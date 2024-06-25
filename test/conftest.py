@@ -228,8 +228,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     def get_class_metadata(self, object_id: str) -> api_pb2.ClassHandleMetadata:
         class_handle_metadata = api_pb2.ClassHandleMetadata()
         for f_name, f_id in self.classes[object_id].items():
-            if f_name == "*":
-                continue
             function_handle_metadata = self.get_function_metadata(f_id)
             class_handle_metadata.methods.append(
                 api_pb2.ClassMethod(
