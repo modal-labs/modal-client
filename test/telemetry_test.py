@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 
 
-class ImportTraceConsumer:
+class TelemetryConsumer:
     socket_filename: Path
     server: socket.socket
     connections: set[socket.socket]
@@ -30,7 +30,7 @@ class ImportTraceConsumer:
 
     def start(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.socket_filename = Path(self.tmp.name) / "import_tracing.sock"
+        self.socket_filename = Path(self.tmp.name) / "telemetry.sock"
         self.connections = set()
         self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.server.bind(self.socket_filename.as_posix())
@@ -76,10 +76,10 @@ class ImportTraceConsumer:
 
 
 def test_import_tracing(monkeypatch):
-    with ImportTraceConsumer() as consumer:
-        monkeypatch.setenv("MODAL_IMPORT_TRACING_SOCKET", consumer.socket_filename.absolute().as_posix())
+    with TelemetryConsumer() as consumer:
+        monkeypatch.setenv("MODAL_TELEMETRY_SOCKET", consumer.socket_filename.absolute().as_posix())
 
-        from modal_instrumentation import _instrumentation  # noqa
+        from modal_telemetry import _telemetry  # noqa
 
         from .supports import module_1  # noqa
         from .supports import module_2  # noqa
@@ -102,10 +102,10 @@ def test_import_tracing(monkeypatch):
 
 
 if __name__ == "__main__":
-    with ImportTraceConsumer() as consumer:
-        os.environ["MODAL_IMPORT_TRACING_SOCKET"] = consumer.socket_filename.absolute().as_posix()
+    with TelemetryConsumer() as consumer:
+        os.environ["MODAL_TELEMETRY_SOCKET"] = consumer.socket_filename.absolute().as_posix()
 
-        from modal_instrumentation import _instrumentation  # noqa
+        from modal_telemetry import _telemetry  # noqa
 
         import modal  # noqa
 
