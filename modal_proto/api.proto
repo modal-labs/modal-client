@@ -510,7 +510,7 @@ message ClassCreateRequest {
   string app_id = 1  [ (modal.options.audit_target_attr) = true ];
   string existing_class_id = 2;
   repeated ClassMethod methods = 3;
-  string class_function_id = 4;
+  reserved 4; // removed class_function_id
 }
 
 message ClassCreateResponse {
