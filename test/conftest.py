@@ -63,6 +63,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     fc_data_in: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
     fc_data_out: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
 
+    # Set when the server runs
+    client_addr: str
+    container_addr: str
+
     def __init__(self, blob_host, blobs):
         self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
