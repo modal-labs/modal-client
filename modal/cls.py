@@ -16,7 +16,7 @@ from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import InvalidError, NotFoundError
+from .exception import InvalidError, NotFoundError, VersionError
 from .functions import (
     _parse_retries,
 )
@@ -307,11 +307,19 @@ class _Cls(_Object, type_prefix="cs"):
                     raise
 
             class_function_tag = f"{tag}.*"  # special name of the base service function for the class
-            class_service_function = await _Function.lookup(
-                app_name, class_function_tag, environment_name=_environment_name, client=resolver.client
-            )
+
+            try:
+                class_service_function = await _Function.lookup(
+                    app_name, class_function_tag, environment_name=_environment_name, client=resolver.client
+                )
+                obj._class_service_function = class_service_function
+            except modal.exception.NotFoundError:
+                raise VersionError(
+                    f"Could not class service function {class_function_tag} - this is likely "
+                    f"the result of using a modal>=v0.63.0 to lookup a Cls of an older version"
+                )
+
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
-            obj._class_service_function = class_service_function
 
         rep = f"Ref({app_name})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True)
