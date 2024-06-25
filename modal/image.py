@@ -1387,6 +1387,8 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """Default image, based on the official `python` Docker images."""
+        if isinstance(python_version, float):
+            raise TypeError("The `python_version` argument should be a string, not a float.")
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             requirements_path = _get_modal_requirements_path(version, python_version)
