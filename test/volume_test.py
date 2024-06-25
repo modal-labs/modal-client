@@ -78,12 +78,12 @@ async def test_volume_get(servicer, client, tmp_path):
     vol = await modal.Volume.lookup.aio("my-vol", client=client)  # type: ignore
 
     file_contents = b"hello world"
-    file_path = b"foo.txt"
-    local_file_path = tmp_path / file_path.decode("utf-8")
+    file_path = "foo.txt"
+    local_file_path = tmp_path / file_path
     local_file_path.write_bytes(file_contents)
 
     async with vol.batch_upload() as batch:
-        batch.put_file(local_file_path, file_path.decode("utf-8"))
+        batch.put_file(local_file_path, file_path)
 
     data = b""
     for chunk in vol.read_file(file_path):
