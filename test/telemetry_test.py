@@ -7,6 +7,7 @@ import queue
 import socket
 import tempfile
 import threading
+import typing
 import uuid
 from pathlib import Path
 from struct import unpack
@@ -17,7 +18,7 @@ from modal_telemetry._telemetry import MESSAGE_LEN_FORMAT, MESSAGE_LEN_LEN
 class TelemetryConsumer:
     socket_filename: Path
     server: socket.socket
-    connections: set[socket.socket]
+    connections: typing.Set[socket.socket]
     events: queue.Queue
     tmp: tempfile.TemporaryDirectory
 
