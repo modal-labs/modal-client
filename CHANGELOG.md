@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.10 (2024-06-26)
+
+- Adds warning about future deprecation of `retries` for generators. Retries are being deprecated as they can lead to nondetermistic generator behavior.
+
+
+
 ### 0.63.9 (2024-06-26)
 
 - Fixed a bug in `Volume.copy_files()` where some source paths may be ignored if passed as `bytes`.
