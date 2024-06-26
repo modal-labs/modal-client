@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from struct import unpack
 
-from modal._telemetry import MESSAGE_LEN_FORMAT, MESSAGE_LEN_LEN
+from modal._telemetry import MESSAGE_HEADER_FORMAT, MESSAGE_HEADER_LEN
 
 
 class TelemetryConsumer:
@@ -71,13 +71,13 @@ class TelemetryConsumer:
                     return
                 buffer.extend(data)
                 while True:
-                    if len(buffer) <= MESSAGE_LEN_LEN:
+                    if len(buffer) <= MESSAGE_HEADER_LEN:
                         break
-                    message_len = unpack(MESSAGE_LEN_FORMAT, buffer[0:MESSAGE_LEN_LEN])[0]
-                    if len(buffer) < message_len + MESSAGE_LEN_LEN:
+                    message_len = unpack(MESSAGE_HEADER_FORMAT, buffer[0:MESSAGE_HEADER_LEN])[0]
+                    if len(buffer) < message_len + MESSAGE_HEADER_LEN:
                         break
-                    message_bytes = buffer[MESSAGE_LEN_LEN : MESSAGE_LEN_LEN + message_len]
-                    buffer = buffer[MESSAGE_LEN_LEN + message_len :]
+                    message_bytes = buffer[MESSAGE_HEADER_LEN : MESSAGE_HEADER_LEN + message_len]
+                    buffer = buffer[MESSAGE_HEADER_LEN + message_len :]
                     message = message_bytes.decode("utf-8").strip()
                     message = json.loads(message)
                     self.events.put(message)
