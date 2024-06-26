@@ -16,7 +16,7 @@ def instrument_imports():
 
         tracing_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         tracing_socket.connect(socket_filename)
-        sys.meta_path = [ImportInterceptor(tracing_socket)] + sys.meta_path
+        sys.meta_path = [ImportInterceptor(tracing_socket)] + sys.meta_path  # type: ignore
 
 
 def auto_instrument_imports():
