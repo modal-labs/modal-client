@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from struct import unpack
 
-from modal_telemetry._telemetry import MESSAGE_LEN_FORMAT, MESSAGE_LEN_LEN
+from modal._telemetry import MESSAGE_LEN_FORMAT, MESSAGE_LEN_LEN
 
 
 class TelemetryConsumer:
@@ -89,7 +89,7 @@ def test_import_tracing(monkeypatch):
     with TelemetryConsumer() as consumer:
         monkeypatch.setenv("MODAL_TELEMETRY_SOCKET", consumer.socket_filename.absolute().as_posix())
 
-        from modal_telemetry import _instrument  # noqa
+        from modal import _instrument  # noqa
 
         from .supports import module_1  # noqa
         from .supports import module_2  # noqa
@@ -114,8 +114,8 @@ def test_import_tracing(monkeypatch):
 
 
 def generate_modal_import_telemetry():
-    from modal_telemetry import _instrument  # noqa
-    import modal  # noqa
+    from modal import _instrument  # noqa
+    import kubernetes  # noqa
 
 
 def main():
