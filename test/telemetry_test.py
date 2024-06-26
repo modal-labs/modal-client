@@ -94,21 +94,22 @@ def test_import_tracing(monkeypatch):
         from .supports import module_2  # noqa
 
         expected_messages = [
-            {"event": "module_load_start", "name": "test.supports"},
-            {"event": "module_load_end", "name": "test.supports"},
-            {"event": "module_load_start", "name": "test.supports.module_1"},
-            {"event": "module_load_end", "name": "test.supports.module_1"},
-            {"event": "module_load_start", "name": "test.supports.module_2"},
-            {"event": "module_load_end", "name": "test.supports.module_2"},
+            {"event": "module_load_start", "attributes": {"name": "test.supports"}},
+            {"event": "module_load_end", "attributes": {"name": "test.supports"}},
+            {"event": "module_load_start", "attributes": {"name": "test.supports.module_1"}},
+            {"event": "module_load_end", "attributes": {"name": "test.supports.module_1"}},
+            {"event": "module_load_start", "attributes": {"name": "test.supports.module_2"}},
+            {"event": "module_load_end", "attributes": {"name": "test.supports.module_2"}},
         ]
 
         for expected_message in expected_messages:
             m = consumer.events.get(timeout=30)
-            assert m == m | expected_message
+            assert m["event"] == expected_message["event"]
+            assert m["attributes"] == m["attributes"] | expected_message["attributes"]
             assert m["timestamp"] >= 0
             assert uuid.UUID(m["span_id"])
             if m["event"] == "module_load_end":
-                assert m["latency"] >= 0
+                assert m["attributes"]["latency"] >= 0
 
 
 def generate_modal_import_telemetry():

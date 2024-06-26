@@ -33,7 +33,9 @@ class ImportInterceptor(importlib.abc.Loader):
     def load_module(self, fullname):
         t0 = time.monotonic()
         span_id = str(uuid.uuid4())
-        self.emit({"span_id": span_id, "timestamp": time.time(), "event": MODULE_LOAD_START, "name": fullname})
+        self.emit(
+            {"span_id": span_id, "timestamp": time.time(), "event": MODULE_LOAD_START, "attributes": {"name": fullname}}
+        )
         self.loading.add(fullname)
         try:
             module = importlib.import_module(fullname)
@@ -46,8 +48,10 @@ class ImportInterceptor(importlib.abc.Loader):
                     "span_id": span_id,
                     "timestamp": time.time(),
                     "event": MODULE_LOAD_END,
-                    "name": fullname,
-                    "latency": latency,
+                    "attributes": {
+                        "name": fullname,
+                        "latency": latency,
+                    },
                 }
             )
 
