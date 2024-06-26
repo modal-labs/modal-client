@@ -4,15 +4,17 @@ import importlib
 import importlib.abc
 import json
 import logging
-import os
 import queue
-import sys
 import threading
 import time
 import uuid
+from struct import pack
 
 MODULE_LOAD_START = "module_load_start"
 MODULE_LOAD_END = "module_load_end"
+
+MESSAGE_LEN_FORMAT = "<I"
+MESSAGE_LEN_LEN = 4
 
 
 class ImportInterceptor(importlib.abc.Loader):
@@ -64,29 +66,7 @@ class ImportInterceptor(importlib.abc.Loader):
                 logging.debug(f"failed to serialize event: {e}")
                 continue
             try:
-                self.tracing_socket.send(msg + b"\n")
+                encoded_len = pack(MESSAGE_LEN_FORMAT, len(msg))
+                self.tracing_socket.send(encoded_len + msg)
             except OSError as e:
                 logging.debug(f"failed to send event: {e}")
-
-
-def instrument_imports():
-    if hasattr(sys, "frozen"):
-        raise Exception("unable to patch meta_path: sys is frozen")
-    socket_filename = os.environ.get("MODAL_TELEMETRY_SOCKET")
-    if socket_filename:
-        import socket
-
-        tracing_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        tracing_socket.connect(socket_filename)
-        sys.meta_path = [ImportInterceptor(tracing_socket)] + sys.meta_path
-
-
-def auto_instrument_imports():
-    if os.environ.get("MODAL_TELEMETRY_SOCKET"):
-        try:
-            instrument_imports()
-        except BaseException as e:
-            logging.warning(f"failed to instrument imports: {e}")
-
-
-auto_instrument_imports()
