@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from modal_telemetry import _telemetry  # noqa
+from modal_telemetry import _instrument  # noqa
 import asyncio
 import base64
 import concurrent.futures
