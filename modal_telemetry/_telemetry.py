@@ -5,8 +5,10 @@ import importlib.abc
 import json
 import logging
 import queue
+import socket
 import threading
 import time
+import typing
 import uuid
 from struct import pack
 
@@ -18,7 +20,11 @@ MESSAGE_LEN_LEN = 4
 
 
 class ImportInterceptor(importlib.abc.Loader):
-    def __init__(self, tracing_socket):
+    loading: typing.Set[str]
+    tracing_socket: socket.socket
+    events: queue.Queue[typing.Mapping[str, typing.Any]]
+
+    def __init__(self, tracing_socket: socket.socket):
         self.loading = set()
         self.tracing_socket = tracing_socket
         self.events = queue.Queue(maxsize=16 * 1024)
