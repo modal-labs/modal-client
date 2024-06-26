@@ -24,7 +24,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 Previously each `@method` and web endpoint of a class would get its own set of isolated containers and never run in the same container as other sibling methods. 
 Starting in this version, all `@methods` and web endpoints will be part of the same container pool. Notably, this means all methods will scale up/down together, and options like `keep_warm` and `concurrency_limit` will affect the total number of containers for all methods in the class combined, rather than individually.
 
-**Version incompatibility warning:** Older clients (<0.63) can't use classes deployed by new clients (>=0.63) and vice versa. Apps or standalone clients using `Cls.lookup(...)` to invoke Modal classes need to be upgraded to version `>=0.63` at the same time as the deployed app that's being called into.       
+**Version incompatibility warning:** Older clients (below 0.63) can't use classes deployed by new clients (0.63 and above), and vice versa. Apps or standalone clients using `Cls.lookup(...)` to invoke Modal classes need to be upgraded to version `0.63` at the same time as the deployed app that's being called into.
 
 
 
