@@ -12,7 +12,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.63.2 (2024-06-25)
 
-* Fixes issue with `Cls.lookup` not working (at all) after upgrading to v0.63.0. **Note**: this doesn't fix the cross-version from 0.63.0. 
+* Fixes issue with `Cls.lookup` not working (at all) after upgrading to v0.63.0. **Note**: this doesn't fix the cross-version lookup incompatibility introduced in 0.63.0.
 
 
 
