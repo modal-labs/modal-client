@@ -1,6 +1,4 @@
 # Copyright Modal Labs 2022
-from modal_telemetry import _instrument  # noqa
-
 import sys
 
 if sys.version_info[:2] < (3, 8):
@@ -11,6 +9,7 @@ if sys.version_info[:2] >= (3, 13):
 from modal_version import __version__
 
 try:
+    from modal_telemetry import _instrument  # noqa
     from ._tunnel import Tunnel, forward
     from .app import App, Stub
     from .client import Client
