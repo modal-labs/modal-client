@@ -10,6 +10,13 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.9 (2024-06-26)
+
+- Fixed a bug in `Volume.copy_files()` where some source paths may be ignored if passed as `bytes`.
+- `Volume.read_file`, `Volume.read_file_into_fileobj`, `Volume.remove_file`, and `Volume.copy_files` can no longer take both string or bytes for their paths. They now only accept `str`.
+
+
+
 ### 0.63.2 (2024-06-25)
 
 * Fixes issue with `Cls.lookup` not working (at all) after upgrading to v0.63.0. **Note**: this doesn't fix the cross-version lookup incompatibility introduced in 0.63.0.
