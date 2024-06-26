@@ -9,6 +9,9 @@ import tempfile
 import threading
 import uuid
 from pathlib import Path
+from struct import unpack
+
+from modal_telemetry._telemetry import MESSAGE_LEN_FORMAT, MESSAGE_LEN_LEN
 
 
 class TelemetryConsumer:
@@ -66,9 +69,14 @@ class TelemetryConsumer:
                     logging.debug(f"connection {conn} got exception, exiting: {e}")
                     return
                 buffer.extend(data)
-                while (newline_ix := buffer.find(b"\n")) != -1:
-                    message = buffer[0:newline_ix]
-                    buffer = buffer[newline_ix + 1 :]
+                while True:
+                    if len(buffer) <= MESSAGE_LEN_LEN:
+                        break
+                    message_len = unpack(MESSAGE_LEN_FORMAT, buffer[0:MESSAGE_LEN_LEN])[0]
+                    if len(buffer) < message_len + MESSAGE_LEN_LEN:
+                        break
+                    message = buffer[MESSAGE_LEN_LEN : MESSAGE_LEN_LEN + message_len]
+                    buffer = buffer[MESSAGE_LEN_LEN + message_len :]
                     message = message.decode("utf-8").strip()
                     message = json.loads(message)
                     self.events.put(message)
@@ -80,7 +88,7 @@ def test_import_tracing(monkeypatch):
     with TelemetryConsumer() as consumer:
         monkeypatch.setenv("MODAL_TELEMETRY_SOCKET", consumer.socket_filename.absolute().as_posix())
 
-        from modal_telemetry import _telemetry  # noqa
+        from modal_telemetry import _instrument  # noqa
 
         from .supports import module_1  # noqa
         from .supports import module_2  # noqa
@@ -104,7 +112,7 @@ def test_import_tracing(monkeypatch):
 
 
 def generate_modal_import_telemetry():
-    from modal_telemetry import _telemetry  # noqa
+    from modal_telemetry import _instrument  # noqa
     import modal  # noqa
 
 
