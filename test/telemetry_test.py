@@ -103,17 +103,27 @@ def test_import_tracing(monkeypatch):
                 assert m["latency"] >= 0
 
 
+def generate_modal_import_telemetry():
+    from modal_telemetry import _telemetry  # noqa
+    import modal  # noqa
+
+
+def main():
+    if "MODAL_TELEMETRY_SOCKET" in os.environ:
+        generate_modal_import_telemetry()
+    else:
+        with TelemetryConsumer() as consumer:
+            os.environ["MODAL_TELEMETRY_SOCKET"] = consumer.socket_filename.absolute().as_posix()
+
+            generate_modal_import_telemetry()
+
+            while True:
+                try:
+                    m = consumer.events.get_nowait()
+                    print(m)
+                except queue.Empty:
+                    break
+
+
 if __name__ == "__main__":
-    with TelemetryConsumer() as consumer:
-        os.environ["MODAL_TELEMETRY_SOCKET"] = consumer.socket_filename.absolute().as_posix()
-
-        from modal_telemetry import _telemetry  # noqa
-
-        import modal  # noqa
-
-        while True:
-            try:
-                m = consumer.events.get_nowait()
-                print(m)
-            except queue.Empty:
-                break
+    main()
