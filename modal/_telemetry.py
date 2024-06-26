@@ -22,7 +22,7 @@ MESSAGE_LEN_LEN = 4
 class ImportInterceptor(importlib.abc.Loader):
     loading: typing.Set[str]
     tracing_socket: socket.socket
-    events: queue.Queue[typing.Mapping[str, typing.Any]]
+    events: queue.Queue
 
     def __init__(self, tracing_socket: socket.socket):
         self.loading = set()
