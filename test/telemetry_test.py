@@ -76,9 +76,9 @@ class TelemetryConsumer:
                     message_len = unpack(MESSAGE_LEN_FORMAT, buffer[0:MESSAGE_LEN_LEN])[0]
                     if len(buffer) < message_len + MESSAGE_LEN_LEN:
                         break
-                    message = buffer[MESSAGE_LEN_LEN : MESSAGE_LEN_LEN + message_len]
+                    message_bytes = buffer[MESSAGE_LEN_LEN : MESSAGE_LEN_LEN + message_len]
                     buffer = buffer[MESSAGE_LEN_LEN + message_len :]
-                    message = message.decode("utf-8").strip()
+                    message = message_bytes.decode("utf-8").strip()
                     message = json.loads(message)
                     self.events.put(message)
         finally:
