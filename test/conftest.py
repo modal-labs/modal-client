@@ -1287,9 +1287,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeGetFile(self, stream):
         req = await stream.recv_message()
-        if req.path.decode("utf-8") not in self.volume_files[req.volume_id]:
+        if req.path not in self.volume_files[req.volume_id]:
             raise GRPCError(Status.NOT_FOUND, "File not found")
-        vol_file = self.volume_files[req.volume_id][req.path.decode("utf-8")]
+        vol_file = self.volume_files[req.volume_id][req.path]
         if vol_file.data_blob_id:
             await stream.send_message(api_pb2.VolumeGetFileResponse(data_blob_id=vol_file.data_blob_id))
         else:
@@ -1305,9 +1305,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeRemoveFile(self, stream):
         req = await stream.recv_message()
-        if req.path.decode("utf-8") not in self.volume_files[req.volume_id]:
+        if req.path not in self.volume_files[req.volume_id]:
             raise GRPCError(Status.INVALID_ARGUMENT, "File not found")
-        del self.volume_files[req.volume_id][req.path.decode("utf-8")]
+        del self.volume_files[req.volume_id][req.path]
         await stream.send_message(Empty())
 
     async def VolumeListFiles(self, stream):
@@ -1352,13 +1352,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def VolumeCopyFiles(self, stream):
         req = await stream.recv_message()
         for src_path in req.src_paths:
-            if src_path.decode("utf-8") not in self.volume_files[req.volume_id]:
+            if src_path not in self.volume_files[req.volume_id]:
                 raise GRPCError(Status.NOT_FOUND, f"Source file not found: {src_path}")
-            src_file = self.volume_files[req.volume_id][src_path.decode("utf-8")]
+            src_file = self.volume_files[req.volume_id][src_path]
             if len(req.src_paths) > 1:
                 # check to make sure dst is a directory
                 if (
-                    req.dst_path.decode("utf-8").endswith(("/", "\\"))
+                    req.dst_path.endswith(("/", "\\"))
                     or not os.path.splitext(os.path.basename(req.dst_path))[1]
                 ):
                     dst_path = os.path.join(req.dst_path, os.path.basename(src_path))
@@ -1366,7 +1366,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     raise GRPCError(Status.INVALID_ARGUMENT, f"{dst_path} is not a directory.")
             else:
                 dst_path = req.dst_path
-            self.volume_files[req.volume_id][dst_path.decode("utf-8")] = src_file
+            self.volume_files[req.volume_id][dst_path] = src_file
         await stream.send_message(Empty())
 
 

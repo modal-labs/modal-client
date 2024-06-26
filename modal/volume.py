@@ -376,7 +376,7 @@ class _Volume(_Object, type_prefix="vo"):
         return [entry async for entry in self.iterdir(path, recursive=recursive)]
 
     @live_method_gen
-    async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
+    async def read_file(self, path: str) -> AsyncIterator[bytes]:
         """
         Read a file from the modal.Volume.
 
@@ -390,8 +390,6 @@ class _Volume(_Object, type_prefix="vo"):
         print(len(data))  # == 1024 * 1024
         ```
         """
-        if isinstance(path, str):
-            path = path.encode("utf-8")
         req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
         try:
             response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
@@ -406,14 +404,12 @@ class _Volume(_Object, type_prefix="vo"):
                 yield data
 
     @live_method
-    async def read_file_into_fileobj(self, path: Union[str, bytes], fileobj: IO[bytes]) -> int:
+    async def read_file_into_fileobj(self, path: str, fileobj: IO[bytes]) -> int:
         """mdmd:hidden
 
         Read volume file into file-like IO object.
         In the future, this will replace the current generator implementation of the `read_file` method.
         """
-        if isinstance(path, str):
-            path = path.encode("utf-8")
 
         chunk_size_bytes = 8 * 1024 * 1024
         start = 0
@@ -456,15 +452,13 @@ class _Volume(_Object, type_prefix="vo"):
         return written
 
     @live_method
-    async def remove_file(self, path: Union[str, bytes], recursive: bool = False) -> None:
+    async def remove_file(self, path: str, recursive: bool = False) -> None:
         """Remove a file or directory from a volume."""
-        if isinstance(path, str):
-            path = path.encode("utf-8")
         req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
         await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
 
     @live_method
-    async def copy_files(self, src_paths: Sequence[Union[str, bytes]], dst_path: Union[str, bytes]) -> None:
+    async def copy_files(self, src_paths: Sequence[str], dst_path: str) -> None:
         """
         Copy files within the volume from src_paths to dst_path.
         The semantics of the copy operation follow those of the UNIX cp command.
@@ -488,10 +482,6 @@ class _Volume(_Object, type_prefix="vo"):
         like `os.rename()` and then `commit()` the volume. The `copy_files()` method is useful when you don't have
         the volume mounted as a filesystem, e.g. when running a script on your local computer.
         """
-        src_paths = [path.encode("utf-8") for path in src_paths if isinstance(path, str)]
-        if isinstance(dst_path, str):
-            dst_path = dst_path.encode("utf-8")
-
         request = api_pb2.VolumeCopyFilesRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
         await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
 
