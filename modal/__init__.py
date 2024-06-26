@@ -1,4 +1,6 @@
 # Copyright Modal Labs 2022
+from modal_telemetry import _instrument  # noqa
+
 import sys
 
 if sys.version_info[:2] < (3, 8):
