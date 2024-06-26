@@ -2,10 +2,9 @@
 import asyncio
 import inspect
 import os
-from collections import deque
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Set, Type
+from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Type
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
@@ -18,7 +17,6 @@ from .._traceback import append_modal_tb
 from ..config import config, logger
 from ..exception import ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
-from ..object import Object
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
 
@@ -253,42 +251,6 @@ class FunctionInfo:
             if param.default is param.empty:
                 return False
         return True
-
-
-def get_referred_objects(f: Callable) -> List[Object]:
-    """Takes a function and returns any Modal Objects in global scope that it refers to.
-
-    TODO: this does not yet support Object contained by another object,
-    e.g. a list of Objects in global scope.
-    """
-    from ..cls import Cls
-    from ..functions import Function
-
-    ret: List[Object] = []
-    obj_queue: deque[Callable] = deque([f])
-    objs_seen: Set[int] = set([id(f)])
-    while obj_queue:
-        obj = obj_queue.popleft()
-        if isinstance(obj, (Function, Cls)):
-            # These are always attached to stubs, so we shouldn't do anything
-            pass
-        elif isinstance(obj, Object):
-            ret.append(obj)
-        elif inspect.isfunction(obj):
-            try:
-                closure_vars = inspect.getclosurevars(obj)
-            except ValueError:
-                logger.debug(
-                    f"Could not inspect closure vars of {f} - "
-                    "referenced global Modal objects may or may not work in that function"
-                )
-                continue
-
-            for dep_obj in closure_vars.globals.values():
-                if id(dep_obj) not in objs_seen:
-                    objs_seen.add(id(dep_obj))
-                    obj_queue.append(dep_obj)
-    return ret
 
 
 def method_has_params(f: Callable) -> bool:

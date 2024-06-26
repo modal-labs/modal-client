@@ -7,8 +7,6 @@ from typing import List
 
 from modal import (
     App,
-    Image,
-    Volume,
     asgi_app,
     build,
     current_function_call_id,
@@ -357,20 +355,6 @@ def cube(x):
 def function_calling_method(x, y, z):
     obj = ParamCls(x, y)
     return obj.f.remote(z)
-
-
-image = Image.debian_slim().pip_install("xyz")
-other_image = Image.debian_slim().pip_install("abc")
-volume = Volume.from_name("vol", create_if_missing=True)
-other_volume = Volume.from_name("other-vol", create_if_missing=True)
-
-
-@app.function(image=image, volumes={"/tmp/xyz": volume})
-def check_dep_hydration(x):
-    assert image.is_hydrated
-    assert other_image.is_hydrated
-    assert volume.is_hydrated
-    assert other_volume.is_hydrated
 
 
 @app.cls()

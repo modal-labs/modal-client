@@ -22,7 +22,7 @@ from grpclib import Status
 from grpclib.exceptions import GRPCError
 
 import modal
-from modal import Client, is_local
+from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
 from modal._serialization import (
     deserialize,
@@ -1131,18 +1131,6 @@ def test_volume_commit_on_exit_doesnt_fail_container(servicer):
 
 
 @skip_github_non_linux
-def test_function_dep_hydration(servicer):
-    deploy_app_externally(servicer, "test.supports.functions", "app")
-    ret = _run_container(
-        servicer,
-        "test.supports.functions",
-        "check_dep_hydration",
-        deps=["im-1", "vo-0", "im-1", "im-2", "vo-0", "vo-1"],
-    )
-    assert _unwrap_scalar(ret) is None
-
-
-@skip_github_non_linux
 def test_build_decorator_cls(servicer):
     ret = _run_container(
         servicer,
@@ -1618,3 +1606,15 @@ def test_class_as_service_serialized(servicer):
     assert res_1.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert deserialize(res_0.data, result.client) == "s_enter_a_x"
     assert deserialize(res_1.data, result.client) == "s_enter_b_y"
+
+
+@skip_github_non_linux
+def test_function_lazy_resolution(servicer, set_env_client):
+    # Deploy some global objects
+    Volume.from_name("my-vol", create_if_missing=True).resolve()
+    Queue.from_name("my-queue", create_if_missing=True).resolve()
+
+    # Run container
+    deploy_app_externally(servicer, "test.supports.lazy_hydration", "app", capture_output=False)
+    ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-1", "vo-0"])
+    assert _unwrap_scalar(ret) is None

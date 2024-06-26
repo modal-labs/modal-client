@@ -665,25 +665,6 @@ def test_deps_explicit(client, servicer):
     assert dep_object_ids == set([image.object_id, nfs_1.object_id, nfs_2.object_id])
 
 
-nfs = NetworkFileSystem.from_name("my-persisted-nfs", create_if_missing=True)
-
-
-def dummy_closurevars():
-    nfs.listdir("/")
-
-
-def test_deps_closurevars(client, servicer):
-    app = App()
-
-    image = Image.debian_slim()
-    modal_f = app.function(image=image)(dummy_closurevars)
-
-    with app.run(client=client):
-        f = servicer.app_functions[modal_f.object_id]
-
-    assert set(d.object_id for d in f.object_dependencies) == set([nfs.object_id, image.object_id])
-
-
 def assert_is_wrapped_dict(some_arg):
     assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
     return some_arg
