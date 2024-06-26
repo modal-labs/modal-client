@@ -9,7 +9,6 @@ if sys.version_info[:2] >= (3, 13):
 from modal_version import __version__
 
 try:
-    from modal_telemetry import _instrument  # noqa
     from ._tunnel import Tunnel, forward
     from .app import App, Stub
     from .client import Client
@@ -31,6 +30,7 @@ try:
     from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
     from .volume import Volume
+    from modal_telemetry import _instrument  # noqa
 except Exception:
     print()
     print("#" * 80)
