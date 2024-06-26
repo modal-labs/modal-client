@@ -15,8 +15,8 @@ from struct import pack
 MODULE_LOAD_START = "module_load_start"
 MODULE_LOAD_END = "module_load_end"
 
-MESSAGE_LEN_FORMAT = "<I"
-MESSAGE_LEN_LEN = 4
+MESSAGE_HEADER_FORMAT = "<I"
+MESSAGE_HEADER_LEN = 4
 
 
 class ImportInterceptor(importlib.abc.Loader):
@@ -76,7 +76,7 @@ class ImportInterceptor(importlib.abc.Loader):
                 logging.debug(f"failed to serialize event: {e}")
                 continue
             try:
-                encoded_len = pack(MESSAGE_LEN_FORMAT, len(msg))
+                encoded_len = pack(MESSAGE_HEADER_FORMAT, len(msg))
                 self.tracing_socket.send(encoded_len + msg)
             except OSError as e:
                 logging.debug(f"failed to send event: {e}")
