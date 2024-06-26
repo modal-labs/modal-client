@@ -5,7 +5,7 @@ import os
 import socket
 import sys
 
-from modal_telemetry._telemetry import ImportInterceptor
+from ._telemetry import ImportInterceptor
 
 
 def instrument_imports(socket_filename: str):
