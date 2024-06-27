@@ -6,6 +6,7 @@ import os
 import pytest
 import queue
 import socket
+import sys
 import tempfile
 import threading
 import time
@@ -19,6 +20,7 @@ from modal._telemetry import (
     MESSAGE_HEADER_LEN,
     ImportInterceptor,
     instrument_imports,
+    supported_platform,
     supported_python_version,
 )
 
@@ -95,7 +97,9 @@ class TelemetryConsumer:
 
 def test_import_tracing(monkeypatch):
     if not supported_python_version():
-        pytest.skip()
+        pytest.skip(f"unsupported python version: {sys.version}")
+    if not supported_platform():
+        pytest.skip(f"unsupported platform: {sys.platform}")
 
     with TelemetryConsumer() as consumer, ImportInterceptor.connect(consumer.socket_filename.absolute().as_posix()):
         from .telemetry import tracing_module_1  # noqa
