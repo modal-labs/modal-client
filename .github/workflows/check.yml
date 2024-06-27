@@ -6,6 +6,11 @@ on:
       - main
   pull_request:
 
+# Cancel previous runs of the same PR but do not cancel previous runs on main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   link:
     name: Ruff linting
