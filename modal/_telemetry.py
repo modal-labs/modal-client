@@ -95,7 +95,15 @@ def _instrument_imports(socket_filename: str):
 def instrument_imports():
     socket_filename = os.environ.get("MODAL_TELEMETRY_SOCKET")
     if socket_filename:
+        if not supported_python_version():
+            logging.debug("unsupported python version, not instrumenting imports")
+            return
         try:
             _instrument_imports(socket_filename)
         except BaseException as e:
             logging.warning(f"failed to instrument imports: {e}")
+
+
+def supported_python_version():
+    # TODO(dano): support python 3.12
+    return sys.version_info[0] == 3 and sys.version_info[1] <= 11
