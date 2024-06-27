@@ -5,7 +5,6 @@ import logging
 import os
 import queue
 import socket
-import sys
 import tempfile
 import threading
 import typing
@@ -13,7 +12,7 @@ import uuid
 from pathlib import Path
 from struct import unpack
 
-from modal._telemetry import MESSAGE_HEADER_FORMAT, MESSAGE_HEADER_LEN
+from modal._telemetry import MESSAGE_HEADER_FORMAT, MESSAGE_HEADER_LEN, instrument_imports
 
 
 class TelemetryConsumer:
@@ -87,13 +86,10 @@ class TelemetryConsumer:
 
 
 def test_import_tracing(monkeypatch):
-    # Delete the `modal._instrument` module in case it has already been imported by other test runs
-    sys.modules.pop("modal._instrument", None)
-
     with TelemetryConsumer() as consumer:
         monkeypatch.setenv("MODAL_TELEMETRY_SOCKET", consumer.socket_filename.absolute().as_posix())
 
-        from modal import _instrument  # noqa
+        instrument_imports()
 
         from .telemetry import tracing_module_1  # noqa
 
