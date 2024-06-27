@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-from . import _instrument  # noqa
 import asyncio
 import base64
 import concurrent.futures
@@ -31,6 +30,7 @@ from ._asgi import (
 from ._container_io_manager import ContainerIOManager, UserException, _ContainerIOManager
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize
+from ._telemetry import instrument_imports
 from ._utils.async_utils import TaskContext, synchronizer
 from ._utils.function_utils import (
     LocalFunctionError,
@@ -52,6 +52,8 @@ from .partial_function import (
     _PartialFunctionFlags,
 )
 from .running_app import RunningApp
+
+instrument_imports()
 
 if TYPE_CHECKING:
     import modal._container_io_manager
