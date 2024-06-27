@@ -97,10 +97,7 @@ def test_import_tracing(monkeypatch):
     if not supported_python_version():
         pytest.skip()
 
-    with (
-        TelemetryConsumer() as consumer,
-        ImportInterceptor.connect(consumer.socket_filename.absolute().as_posix()),
-    ):
+    with TelemetryConsumer() as consumer, ImportInterceptor.connect(consumer.socket_filename.absolute().as_posix()):
         from .telemetry import tracing_module_1  # noqa
 
         expected_messages: list[typing.Dict[str, typing.Any]] = [
