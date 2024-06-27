@@ -359,7 +359,7 @@ class _Cls(_Object, type_prefix="cs"):
         Model2().generate.remote(42)
         ```
         """
-        retry_policy = _parse_retries(retries)
+        retry_policy = _parse_retries(retries, self.__name__)
         if gpu or cpu or memory:
             resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=None)
         else:
