@@ -38,7 +38,7 @@ async def _volume_download(
                 await q.put((None, entry))
             else:
                 start_path = os.path.dirname(remote_path).split("*")[0]
-                rel_path = os.path.relpath(entry.path, start_path.lstrip("/"))
+                rel_path = Path(entry.path).relative_to(start_path.lstrip("/"))
                 output_path = local_destination / rel_path
                 if output_path.exists():
                     if overwrite:
