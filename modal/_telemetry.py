@@ -23,7 +23,7 @@ MESSAGE_HEADER_LEN = 4
 
 
 class ImportInterceptor(importlib.abc.Loader):
-    __slots__ = ("loading", "tracing_socket", "events")
+    __slots__ = ("loading", "tracing_socket", "events", "events_put_nowait", "loading_add", "loading_remove")
 
     loading: typing.Set[str]
     tracing_socket: socket.socket
@@ -31,8 +31,11 @@ class ImportInterceptor(importlib.abc.Loader):
 
     def __init__(self, tracing_socket: socket.socket):
         self.loading = set()
+        self.loading_add = self.loading.add
+        self.loading_remove = self.loading.remove
         self.tracing_socket = tracing_socket
-        self.events = queue.Queue(maxsize=16 * 1024)
+        self.events = queue.Queue(16 * 1024)
+        self.events_put_nowait = self.events.put_nowait()
         sender = threading.Thread(target=self._send, daemon=True)
         sender.start()
 
@@ -47,12 +50,12 @@ class ImportInterceptor(importlib.abc.Loader):
         self.emit(
             {"span_id": span_id, "timestamp": time_time(), "event": MODULE_LOAD_START, "attributes": {"name": fullname}}
         )
-        self.loading.add(fullname)
+        self.loading_add(fullname)
         try:
             module = import_module(fullname)
             return module
         finally:
-            self.loading.remove(fullname)
+            self.loading_remove(fullname)
             latency = time_monotonic() - t0
             self.emit(
                 {
@@ -68,7 +71,7 @@ class ImportInterceptor(importlib.abc.Loader):
 
     def emit(self, event):
         try:
-            self.events.put_nowait(event)
+            self.events_put_nowait(event)
         except queue.Full:
             logging.debug("failed to emit event: queue full")
 
