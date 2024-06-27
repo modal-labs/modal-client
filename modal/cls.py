@@ -119,7 +119,7 @@ class _Obj:
         """
         if not self._uses_common_service_function():
             raise VersionError(
-                "`Class instance `.keep_warm(...)` can't be used on classes deployed using client version <v0.63"
+                "Class instance `.keep_warm(...)` can't be used on classes deployed using client version <v0.63"
             )
         await self._instance_service_function.keep_warm(warm_pool_size)
 
