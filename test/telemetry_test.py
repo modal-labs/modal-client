@@ -113,7 +113,7 @@ def test_import_tracing(monkeypatch):
 
 
 def generate_modal_import_telemetry():
-    from modal import _instrument  # noqa
+    instrument_imports()
     import kubernetes  # noqa
 
 
