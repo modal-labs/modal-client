@@ -96,7 +96,7 @@ def test_call_class_sync(client, servicer):
 
 def test_class_with_options(client, servicer):
     with app.run(client=client):
-        foo = Foo.with_options(cpu=48, retries=5)()
+        foo = Foo.with_options(cpu=48, retries=5)()  # type: ignore
         res = foo.bar.remote(2)
         assert res == 4
         assert len(servicer.function_options) == 1
