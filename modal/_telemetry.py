@@ -14,6 +14,8 @@ import typing
 import uuid
 from struct import pack
 
+from typing_extensions import Self
+
 MODULE_LOAD_START = "module_load_start"
 MODULE_LOAD_END = "module_load_end"
 
@@ -25,6 +27,12 @@ class ImportInterceptor(importlib.abc.Loader):
     loading: typing.Set[str]
     tracing_socket: socket.socket
     events: queue.Queue
+
+    @classmethod
+    def connect(cls, socket_filename: str) -> Self:
+        tracing_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        tracing_socket.connect(socket_filename)
+        return cls(tracing_socket)
 
     def __init__(self, tracing_socket: socket.socket):
         self.loading = set()
@@ -83,13 +91,25 @@ class ImportInterceptor(importlib.abc.Loader):
             except OSError as e:
                 logging.debug(f"failed to send event: {e}")
 
+    def install(self):
+        sys.meta_path = [self] + sys.meta_path  # type: ignore
 
-def _instrument_imports(socket_filename: str):
+    def remove(self):
+        sys.meta_path.remove(self)  # type: ignore
+
+    def __enter__(self):
+        self.install()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.remove()
+
+
+def _instrument_imports(socket_filename: str) -> ImportInterceptor:
     if hasattr(sys, "frozen"):
         raise Exception("unable to patch meta_path: sys is frozen")
-    tracing_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    tracing_socket.connect(socket_filename)
-    sys.meta_path = [ImportInterceptor(tracing_socket)] + sys.meta_path  # type: ignore
+    interceptor = ImportInterceptor.connect(socket_filename)
+    interceptor.install()
+    return interceptor
 
 
 def instrument_imports():
@@ -97,7 +117,6 @@ def instrument_imports():
     if socket_filename:
         if not supported_python_version():
             logging.debug("unsupported python version, not instrumenting imports")
-            return
         try:
             _instrument_imports(socket_filename)
         except BaseException as e:

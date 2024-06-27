@@ -14,7 +14,13 @@ import uuid
 from pathlib import Path
 from struct import unpack
 
-from modal._telemetry import MESSAGE_HEADER_FORMAT, MESSAGE_HEADER_LEN, instrument_imports, supported_python_version
+from modal._telemetry import (
+    MESSAGE_HEADER_FORMAT,
+    MESSAGE_HEADER_LEN,
+    ImportInterceptor,
+    instrument_imports,
+    supported_python_version,
+)
 
 
 class TelemetryConsumer:
@@ -91,11 +97,10 @@ def test_import_tracing(monkeypatch):
     if not supported_python_version():
         pytest.skip()
 
-    with TelemetryConsumer() as consumer:
-        monkeypatch.setenv("MODAL_TELEMETRY_SOCKET", consumer.socket_filename.absolute().as_posix())
-
-        instrument_imports()
-
+    with (
+        TelemetryConsumer() as consumer,
+        ImportInterceptor.connect(consumer.socket_filename.absolute().as_posix()),
+    ):
         from .telemetry import tracing_module_1  # noqa
 
         expected_messages: list[typing.Dict[str, typing.Any]] = [
