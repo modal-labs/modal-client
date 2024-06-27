@@ -936,7 +936,7 @@ class _Function(_Object, type_prefix="fu"):
                     """
                 The `.keep_warm()` method can not be used on Modal class *methods* deployed using Modal >v0.63.
 
-                Use class_instance.keep_warm(...) instead.
+                Call `.keep_warm()` on the class *instance* instead.
             """
                 )
             )
