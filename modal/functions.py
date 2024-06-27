@@ -405,6 +405,8 @@ class _Function(_Object, type_prefix="fu"):
         """
         # TODO(elias): refactor to not use `_from_loader()` as a crutch for lazy-loading the
         #   underlying instance_service_function. It's currently used in order to take advantage
+        #   of resolver logic and get "chained" resolution of lazy loads, even though this thin
+        #   object itself doesn't need any "loading"
         instance_service_function = self
         assert instance_service_function._obj
         method_name = class_bound_method._use_method_name
