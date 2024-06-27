@@ -12,6 +12,10 @@ from modal.exception import ModuleNotMountable
 from modal.mount import Mount
 
 
+from modal._telemetry import instrument_imports
+os.environ["MODAL_TELEMETRY_SOCKET"] = "foobar"
+instrument_imports()
+
 @pytest.mark.asyncio
 async def test_get_files(servicer, client, tmpdir):
     small_content = b"# not much here"
