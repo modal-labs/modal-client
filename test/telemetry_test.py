@@ -91,16 +91,15 @@ def test_import_tracing(monkeypatch):
 
         from modal import _instrument  # noqa
 
-        from .supports import module_1  # noqa
-        from .supports import module_2  # noqa
+        from .supports import tracing_module_1  # noqa
 
         expected_messages = [
             {"event": "module_load_start", "attributes": {"name": "test.supports"}},
             {"event": "module_load_end", "attributes": {"name": "test.supports"}},
-            {"event": "module_load_start", "attributes": {"name": "test.supports.module_1"}},
-            {"event": "module_load_end", "attributes": {"name": "test.supports.module_1"}},
-            {"event": "module_load_start", "attributes": {"name": "test.supports.module_2"}},
-            {"event": "module_load_end", "attributes": {"name": "test.supports.module_2"}},
+            {"event": "module_load_start", "attributes": {"name": "test.supports.tracing_module_1"}},
+            {"event": "module_load_start", "attributes": {"name": "test.supports.tracing_module_2"}},
+            {"event": "module_load_end", "attributes": {"name": "test.supports.tracing_module_2"}},
+            {"event": "module_load_end", "attributes": {"name": "test.supports.tracing_module_1"}},
         ]
 
         for expected_message in expected_messages:
