@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import pytest
 import queue
 import socket
 import tempfile
@@ -13,7 +14,7 @@ import uuid
 from pathlib import Path
 from struct import unpack
 
-from modal._telemetry import MESSAGE_HEADER_FORMAT, MESSAGE_HEADER_LEN, instrument_imports
+from modal._telemetry import MESSAGE_HEADER_FORMAT, MESSAGE_HEADER_LEN, instrument_imports, supported_python_version
 
 
 class TelemetryConsumer:
@@ -87,6 +88,9 @@ class TelemetryConsumer:
 
 
 def test_import_tracing(monkeypatch):
+    if not supported_python_version():
+        pytest.skip()
+
     with TelemetryConsumer() as consumer:
         monkeypatch.setenv("MODAL_TELEMETRY_SOCKET", consumer.socket_filename.absolute().as_posix())
 
