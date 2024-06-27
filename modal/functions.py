@@ -288,7 +288,6 @@ class _Function(_Object, type_prefix="fu"):
     _app: Optional["modal.app._App"] = None
     _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
     _web_url: Optional[str]
-    _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
     _function_name: Optional[str]
     _is_method: bool
     _spec: _FunctionSpec
@@ -394,8 +393,6 @@ class _Function(_Object, type_prefix="fu"):
         fun._all_mounts = class_service_function._all_mounts
         fun._spec = class_service_function._spec
         fun._is_method = True
-        # TODO: set more attributes?
-
         return fun
 
     def _bind_instance_method(self, class_bound_method: "_Function"):
@@ -406,28 +403,37 @@ class _Function(_Object, type_prefix="fu"):
         it does it forward invocations to the underlying instance_service_function with the specified method,
         and we don't support web_config for parameterized methods at the moment.
         """
+        # TODO(elias): refactor to not use `_from_loader()` as a crutch for lazy-loading the
+        #   underlying instance_service_function. It's currently used in order to take advantage
         instance_service_function = self
         assert instance_service_function._obj
         method_name = class_bound_method._use_method_name
         full_function_name = f"{class_bound_method._function_name}[parameterized]"
 
-        def hydrate_from_instance_function(obj):
-            obj._hydrate_from_other(instance_service_function)
-            obj._obj = instance_service_function._obj
-            obj._web_url = class_bound_method._web_url  # TODO: this shouldn't be set when actual parameters are used
-            obj._function_name = full_function_name
-            obj._is_generator = class_bound_method._is_generator
-            obj._use_method_name = method_name
-            obj._use_function_id = instance_service_function.object_id
+        def hydrate_from_instance_service_function(method_placeholder_fun):
+            method_placeholder_fun._hydrate_from_other(instance_service_function)
+            method_placeholder_fun._obj = instance_service_function._obj
+            method_placeholder_fun._web_url = (
+                class_bound_method._web_url
+            )  # TODO: this shouldn't be set when actual parameters are used
+            method_placeholder_fun._function_name = full_function_name
+            method_placeholder_fun._is_generator = class_bound_method._is_generator
+            method_placeholder_fun._use_method_name = method_name
+            method_placeholder_fun._use_function_id = instance_service_function.object_id
+            method_placeholder_fun._is_method = True
 
         async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
             # there is currently no actual loading logic executed to create each method on
             # the *parameterized* instance of a class - it uses the parameter-bound service-function
             # for the instance. This load method just makes sure to set all attributes after the
             # `instance_service_function` has been loaded (it's in the `_deps`)
-            hydrate_from_instance_function(fun)
+            hydrate_from_instance_service_function(fun)
 
         def _deps():
+            if instance_service_function.is_hydrated:
+                # without this check, the common instance_service_function will be reloaded by all methods
+                # TODO(elias): Investigate if we can fix this multi-loader in the resolver - feels like a bug?
+                return []
             return [instance_service_function]
 
         rep = f"Method({full_function_name})"
@@ -438,13 +444,9 @@ class _Function(_Object, type_prefix="fu"):
             deps=_deps,
             hydrate_lazily=True,
         )
-        if instance_service_function._can_use_base_function and instance_service_function.is_hydrated:
-            # Eager hydration (skip load) if both the instance service function is already loaded
-            # This should only happen when default arguments are used to the constructor, since
-            # that will trigger similar eager hydration of the instance service function.
-            # In other cases, the instance service function will have to be lazy-loaded, as a dependency
-            # of this "fake" Function.
-            hydrate_from_instance_function(fun)
+        if instance_service_function.is_hydrated:
+            # Eager hydration (skip load) if the instance service function is already loaded
+            hydrate_from_instance_service_function(fun)
 
         fun._info = class_bound_method._info
         fun._obj = instance_service_function._obj
@@ -795,7 +797,7 @@ class _Function(_Object, type_prefix="fu"):
                     allow_concurrent_inputs=allow_concurrent_inputs or 0,
                     worker_id=config.get("worker_id"),
                     is_auto_snapshot=is_auto_snapshot,
-                    is_method=bool(info.cls),
+                    is_method=bool(info.cls) and not info.is_service_class(),
                     checkpointing_enabled=enable_memory_snapshot,
                     is_checkpointing_function=False,
                     object_dependencies=object_dependencies,
@@ -893,6 +895,7 @@ class _Function(_Object, type_prefix="fu"):
                 environment_name=environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
+
             response = await retry_transient_errors(self._parent._client.stub.FunctionBindParams, req)
             self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
 
@@ -905,11 +908,8 @@ class _Function(_Object, type_prefix="fu"):
             # if the instance didn't use explicit constructor arguments
             fun._hydrate_from_other(self)
 
-        fun._is_remote_cls_method = True  # TODO(erikbern): deprecated
         fun._info = self._info
         fun._obj = obj
-        fun._is_generator = self._is_generator  # TODO(elias): remove - this doesn't apply to "service functions"
-        fun._is_method = False
         fun._parent = self
         return fun
 
@@ -934,9 +934,9 @@ class _Function(_Object, type_prefix="fu"):
             raise InvalidError(
                 textwrap.dedent(
                     """
-                The `.keep_warm()` method can no longer be used on Modal class methods.
-                For classes, all methods now share the same set of containers.
-                Use class_instance.keep_warm(...) instead for classes.
+                The `.keep_warm()` method can not be used on Modal class *methods* deployed using Modal >v0.63.
+
+                Use class_instance.keep_warm(...) instead.
             """
                 )
             )
@@ -1081,6 +1081,7 @@ class _Function(_Object, type_prefix="fu"):
             web_url=self._web_url or "",
             use_method_name=self._use_method_name,
             use_function_id=self._use_function_id,
+            is_method=self._is_method,
         )
 
     def _set_mute_cancellation(self, value: bool = True):
@@ -1212,9 +1213,6 @@ class _Function(_Object, type_prefix="fu"):
                 pass
         else:
             await self._call_function(args, kwargs)
-
-    def _get_is_remote_cls_method(self):
-        return self._is_remote_cls_method
 
     def _get_info(self) -> FunctionInfo:
         if not self._info:

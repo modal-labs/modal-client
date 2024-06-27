@@ -51,13 +51,18 @@ class _Obj:
     _entered: bool
     _local_obj: Any
     _local_obj_constr: Optional[Callable[[], Any]]
-    _instance_service_function: _Function
+
+    _instance_service_function: Optional[_Function]
+
+    def _uses_common_service_function(self):
+        # Used for backwards compatibility checks with pre v0.63 classes
+        return self._instance_service_function is not None
 
     def __init__(
         self,
         user_cls: type,
         output_mgr: Optional[OutputManager],
-        class_service_function: _Function,
+        class_service_function: Optional[_Function],  # only None for <v0.63 classes
         classbound_methods: Dict[str, _Function],
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
@@ -70,14 +75,23 @@ class _Obj:
             check_valid_cls_constructor_arg(key, kwarg)
 
         self._method_functions = {}
-        # first create the singular object function used by all methods on this parameterization
-        self._instance_service_function = class_service_function._bind_parameters(
-            self, from_other_workspace, options, args, kwargs
-        )
-        for method_name, class_bound_method in classbound_methods.items():
-            method = self._instance_service_function._bind_instance_method(class_bound_method)
-            method._set_output_mgr(output_mgr)
-            self._method_functions[method_name] = method
+        if class_service_function:
+            # >= v0.63 classes
+            # first create the singular object function used by all methods on this parameterization
+            self._instance_service_function = class_service_function._bind_parameters(
+                self, from_other_workspace, options, args, kwargs
+            )
+            for method_name, class_bound_method in classbound_methods.items():
+                method = self._instance_service_function._bind_instance_method(class_bound_method)
+                method._set_output_mgr(output_mgr)
+                self._method_functions[method_name] = method
+        else:
+            # <v0.63 classes - bind each individual method to the new parameters
+            self._instance_service_function = None
+            for method_name, class_bound_method in classbound_methods.items():
+                method = class_bound_method._bind_parameters(self, from_other_workspace, options, args, kwargs)
+                method._set_output_mgr(output_mgr)
+                self._method_functions[method_name] = method
 
         # Used for construction local object lazily
         self._inited = False
@@ -103,6 +117,10 @@ class _Obj:
         Model("fine-tuned-model").keep_warm(2)
         ```
         """
+        if not self._uses_common_service_function():
+            raise VersionError(
+                "`Class instance `.keep_warm(...)` can't be used on classes deployed using client version <v0.63"
+            )
         await self._instance_service_function.keep_warm(warm_pool_size)
 
     def get_obj(self):
@@ -167,7 +185,9 @@ Obj = synchronize_api(_Obj)
 
 class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
-    _class_service_function: _Function  # The _Function serving *all* methods of the class
+    _class_service_function: Optional[
+        _Function
+    ]  # The _Function serving *all* methods of the class, used for version >=v0.63
     _method_functions: Dict[str, _Function]  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
@@ -270,6 +290,11 @@ class _Cls(_Object, type_prefix="cs"):
         cls._from_other_workspace = False
         return cls
 
+    def _uses_common_service_function(self):
+        # Used for backwards compatibility with version < 0.63
+        # where methods had individual top level functions
+        return self._class_service_function is not None
+
     @classmethod
     def from_name(
         cls: Type["_Cls"],
@@ -308,16 +333,17 @@ class _Cls(_Object, type_prefix="cs"):
 
             class_function_tag = f"{tag}.*"  # special name of the base service function for the class
 
+            class_service_function = _Function.from_name(
+                app_name,
+                class_function_tag,
+                environment_name=_environment_name,
+            )
             try:
-                class_service_function = await _Function.lookup(
-                    app_name, class_function_tag, environment_name=_environment_name, client=resolver.client
-                )
-                obj._class_service_function = class_service_function
+                obj._class_service_function = await resolver.load(class_service_function)
             except modal.exception.NotFoundError:
-                raise VersionError(
-                    f"Could not class service function {class_function_tag} - this is likely "
-                    f"the result of using a modal>=v0.63.0 to lookup a Cls of an older version"
-                )
+                # this happens when looking up classes deployed using <v0.63
+                # This try-except block can be removed when min supported version >= 0.63
+                pass
 
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
