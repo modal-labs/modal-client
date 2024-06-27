@@ -3,7 +3,6 @@
 import importlib
 import importlib.abc
 import json
-import logging
 import os
 import queue
 import socket
@@ -15,6 +14,8 @@ import uuid
 from struct import pack
 
 from typing_extensions import Self
+
+from .config import logger
 
 MODULE_LOAD_START = "module_load_start"
 MODULE_LOAD_END = "module_load_end"
@@ -75,7 +76,7 @@ class ImportInterceptor(importlib.abc.Loader):
         try:
             self.events.put_nowait(event)
         except queue.Full:
-            logging.debug("failed to emit event: queue full")
+            logger.debug("failed to emit event: queue full")
 
     def _send(self):
         while True:
@@ -83,13 +84,13 @@ class ImportInterceptor(importlib.abc.Loader):
             try:
                 msg = json.dumps(event).encode("utf-8")
             except BaseException as e:
-                logging.debug(f"failed to serialize event: {e}")
+                logger.debug(f"failed to serialize event: {e}")
                 continue
             try:
                 encoded_len = pack(MESSAGE_HEADER_FORMAT, len(msg))
                 self.tracing_socket.send(encoded_len + msg)
             except OSError as e:
-                logging.debug(f"failed to send event: {e}")
+                logger.debug(f"failed to send event: {e}")
 
     def install(self):
         sys.meta_path = [self] + sys.meta_path  # type: ignore
@@ -116,15 +117,15 @@ def instrument_imports():
     socket_filename = os.environ.get("MODAL_TELEMETRY_SOCKET")
     if socket_filename:
         if not supported_python_version():
-            logging.debug("unsupported python version, not instrumenting imports")
+            logger.debug("unsupported python version, not instrumenting imports")
             return
         if not supported_platform():
-            logging.debug("unsupported platform, not instrumenting imports")
+            logger.debug("unsupported platform, not instrumenting imports")
             return
         try:
             _instrument_imports(socket_filename)
         except BaseException as e:
-            logging.warning(f"failed to instrument imports: {e}")
+            logger.warning(f"failed to instrument imports: {e}")
 
 
 def supported_python_version():
