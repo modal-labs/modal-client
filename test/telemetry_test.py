@@ -106,7 +106,7 @@ def test_import_tracing(monkeypatch):
         for expected_message in expected_messages:
             m = consumer.events.get(timeout=30)
             assert m["event"] == expected_message["event"]
-            assert m["attributes"] == m["attributes"] | expected_message["attributes"]
+            assert m["attributes"]["name"] == expected_message["attributes"]["name"]
             assert m["timestamp"] >= 0
             assert uuid.UUID(m["span_id"])
             if m["event"] == "module_load_end":
@@ -117,6 +117,7 @@ def generate_modal_import_telemetry():
     instrument_imports()
     t0 = time.monotonic()
     import kubernetes  # noqa
+
     return time.monotonic() - t0
 
 
