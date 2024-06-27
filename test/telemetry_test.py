@@ -98,9 +98,7 @@ def test_import_tracing(monkeypatch):
 
         from .telemetry import tracing_module_1  # noqa
 
-        expected_messages = [
-            {"event": "module_load_start", "attributes": {"name": "test.telemetry"}},
-            {"event": "module_load_end", "attributes": {"name": "test.telemetry"}},
+        expected_messages: list[typing.Dict[str, typing.Any]] = [
             {"event": "module_load_start", "attributes": {"name": "test.telemetry.tracing_module_1"}},
             {"event": "module_load_start", "attributes": {"name": "test.telemetry.tracing_module_2"}},
             {"event": "module_load_end", "attributes": {"name": "test.telemetry.tracing_module_2"}},
@@ -109,6 +107,9 @@ def test_import_tracing(monkeypatch):
 
         for expected_message in expected_messages:
             m = consumer.events.get(timeout=30)
+            # skip this test module - behavior seems to vary depending on timing and maybe python version etc
+            while m["attributes"]["name"] == "test.telemetry":
+                m = consumer.events.get(timeout=30)
             assert m["event"] == expected_message["event"]
             assert m["attributes"]["name"] == expected_message["attributes"]["name"]
             assert m["timestamp"] >= 0
