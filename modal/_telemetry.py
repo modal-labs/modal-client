@@ -4,8 +4,10 @@ import importlib
 import importlib.abc
 import json
 import logging
+import os
 import queue
 import socket
+import sys
 import threading
 import time
 import typing
@@ -80,3 +82,20 @@ class ImportInterceptor(importlib.abc.Loader):
                 self.tracing_socket.send(encoded_len + msg)
             except OSError as e:
                 logging.debug(f"failed to send event: {e}")
+
+
+def _instrument_imports(socket_filename: str):
+    if hasattr(sys, "frozen"):
+        raise Exception("unable to patch meta_path: sys is frozen")
+    tracing_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    tracing_socket.connect(socket_filename)
+    sys.meta_path = [ImportInterceptor(tracing_socket)] + sys.meta_path  # type: ignore
+
+
+def instrument_imports():
+    socket_filename = os.environ.get("MODAL_TELEMETRY_SOCKET")
+    if socket_filename:
+        try:
+            _instrument_imports(socket_filename)
+        except BaseException as e:
+            logging.warning(f"failed to instrument imports: {e}")
