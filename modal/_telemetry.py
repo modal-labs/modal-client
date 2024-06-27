@@ -117,8 +117,10 @@ def instrument_imports():
     if socket_filename:
         if not supported_python_version():
             logging.debug("unsupported python version, not instrumenting imports")
+            return
         if not supported_platform():
             logging.debug("unsupported platform, not instrumenting imports")
+            return
         try:
             _instrument_imports(socket_filename)
         except BaseException as e:
