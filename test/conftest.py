@@ -139,6 +139,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_functions: Dict[str, api_pb2.Function] = {}
         self.bound_functions: Dict[Tuple[str, bytes], str] = {}
         self.function_params: Dict[str, Tuple[Tuple, Dict[str, Any]]] = {}
+        self.function_options: Dict[str, api_pb2.FunctionOptions] = {}
         self.fcidx = 0
 
         self.function_serialized = None
@@ -557,6 +558,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Function
 
     async def FunctionBindParams(self, stream):
+        from modal._serialization import deserialize
+
         request: api_pb2.FunctionBindParamsRequest = await stream.recv_message()
         assert request.function_id
         assert request.serialized_params
@@ -573,9 +576,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         bound_func.CopyFrom(base_function)
         self.app_functions[function_id] = bound_func
         self.bound_functions[(request.function_id, request.serialized_params)] = function_id
-        from modal._serialization import deserialize
-
         self.function_params[function_id] = deserialize(request.serialized_params, None)
+        self.function_options[function_id] = request.function_options
 
         await stream.send_message(
             api_pb2.FunctionBindParamsResponse(
@@ -1357,10 +1359,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             src_file = self.volume_files[req.volume_id][src_path]
             if len(req.src_paths) > 1:
                 # check to make sure dst is a directory
-                if (
-                    req.dst_path.endswith(("/", "\\"))
-                    or not os.path.splitext(os.path.basename(req.dst_path))[1]
-                ):
+                if req.dst_path.endswith(("/", "\\")) or not os.path.splitext(os.path.basename(req.dst_path))[1]:
                     dst_path = os.path.join(req.dst_path, os.path.basename(src_path))
                 else:
                     raise GRPCError(Status.INVALID_ARGUMENT, f"{dst_path} is not a directory.")
