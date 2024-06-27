@@ -7,6 +7,7 @@ import queue
 import socket
 import tempfile
 import threading
+import time
 import typing
 import uuid
 from pathlib import Path
@@ -114,17 +115,19 @@ def test_import_tracing(monkeypatch):
 
 def generate_modal_import_telemetry():
     instrument_imports()
+    t0 = time.monotonic()
     import kubernetes  # noqa
+    return time.monotonic() - t0
 
 
 def main():
     if "MODAL_TELEMETRY_SOCKET" in os.environ:
-        generate_modal_import_telemetry()
+        latency = generate_modal_import_telemetry()
     else:
         with TelemetryConsumer() as consumer:
             os.environ["MODAL_TELEMETRY_SOCKET"] = consumer.socket_filename.absolute().as_posix()
 
-            generate_modal_import_telemetry()
+            latency = generate_modal_import_telemetry()
 
             while True:
                 try:
@@ -132,6 +135,8 @@ def main():
                     print(m)
                 except queue.Empty:
                     break
+
+    print(f"import kubernetes took {latency:.02}s")
 
 
 if __name__ == "__main__":
