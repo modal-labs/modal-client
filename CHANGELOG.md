@@ -10,6 +10,14 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.14 (2024-06-28)
+
+* Adds `Cls.lookup()` backwards compatibility with classes created by clients prior to `v0.63`.
+
+**Important**: When updating (to >=v0.63) an app with a Modal `class` that's accessed using `Cls.lookup()` - make sure to update the client of the app/service **using** `Cls.lookup()` first, and **then** update the app containing the class being looked up.
+
+
+
 ### 0.63.12 (2024-06-27)
 
 - Fixed a bug introduced in 0.63.0 that broke `modal.Cls.with_options`
