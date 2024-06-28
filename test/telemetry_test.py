@@ -121,6 +121,7 @@ def test_import_tracing(monkeypatch):
                 assert m["attributes"]["latency"] >= 0
 
 
+# For manual testing
 def generate_import_telemetry(telemetry_socket):
     instrument_imports(telemetry_socket)
     t0 = time.monotonic()
@@ -129,6 +130,7 @@ def generate_import_telemetry(telemetry_socket):
     return time.monotonic() - t0
 
 
+# For manual testing
 def main():
     telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
     if telemetry_socket:
