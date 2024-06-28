@@ -3,7 +3,6 @@
 import importlib
 import importlib.abc
 import json
-import os
 import queue
 import socket
 import sys
@@ -105,27 +104,22 @@ class ImportInterceptor(importlib.abc.Loader):
         self.remove()
 
 
-def _instrument_imports(socket_filename: str) -> ImportInterceptor:
-    if hasattr(sys, "frozen"):
-        raise Exception("unable to patch meta_path: sys is frozen")
+def _instrument_imports(socket_filename: str):
+    if not supported_python_version():
+        logger.debug("unsupported python version, not instrumenting imports")
+        return
+    if not supported_platform():
+        logger.debug("unsupported platform, not instrumenting imports")
+        return
     interceptor = ImportInterceptor.connect(socket_filename)
     interceptor.install()
-    return interceptor
 
 
-def instrument_imports():
-    socket_filename = os.environ.get("MODAL_TELEMETRY_SOCKET")
-    if socket_filename:
-        if not supported_python_version():
-            logger.debug("unsupported python version, not instrumenting imports")
-            return
-        if not supported_platform():
-            logger.debug("unsupported platform, not instrumenting imports")
-            return
-        try:
-            _instrument_imports(socket_filename)
-        except BaseException as e:
-            logger.warning(f"failed to instrument imports: {e}")
+def instrument_imports(socket_filename: str):
+    try:
+        _instrument_imports(socket_filename)
+    except BaseException as e:
+        logger.warning(f"failed to instrument imports: {e}")
 
 
 def supported_python_version():

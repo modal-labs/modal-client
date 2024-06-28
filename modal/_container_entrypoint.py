@@ -4,6 +4,7 @@ import base64
 import concurrent.futures
 import importlib
 import inspect
+import os
 import queue
 import signal
 import sys
@@ -53,11 +54,13 @@ from .partial_function import (
 )
 from .running_app import RunningApp
 
-instrument_imports()
-
 if TYPE_CHECKING:
     import modal._container_io_manager
     import modal.object
+
+telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
+if telemetry_socket:
+    instrument_imports(telemetry_socket)
 
 
 def construct_webhook_callable(
