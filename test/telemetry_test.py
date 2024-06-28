@@ -134,7 +134,7 @@ def generate_import_telemetry(telemetry_socket):
 def main():
     telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
     if telemetry_socket:
-        generate_import_telemetry(telemetry_socket)
+        latency = generate_import_telemetry(telemetry_socket)
     else:
         with TelemetryConsumer() as consumer:
             latency = generate_import_telemetry(consumer.socket_filename.absolute().as_posix())
