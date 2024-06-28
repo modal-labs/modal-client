@@ -168,11 +168,11 @@ class _Obj:
     @synchronizer.nowrap
     async def aenter(self):
         if not self.entered:
-            local_obj = self._get_user_cls_instance()
-            if hasattr(local_obj, "__aenter__"):
-                await local_obj.__aenter__()
-            elif hasattr(local_obj, "__enter__"):
-                local_obj.__enter__()
+            user_cls_instance = self._get_user_cls_instance()
+            if hasattr(user_cls_instance, "__aenter__"):
+                await user_cls_instance.__aenter__()
+            elif hasattr(user_cls_instance, "__enter__"):
+                user_cls_instance.__enter__()
         self.entered = True
 
     def __getattr__(self, k):
