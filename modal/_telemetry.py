@@ -12,8 +12,6 @@ import typing
 import uuid
 from struct import pack
 
-from typing_extensions import Self
-
 from .config import logger
 
 MODULE_LOAD_START = "module_load_start"
@@ -29,7 +27,7 @@ class ImportInterceptor(importlib.abc.Loader):
     events: queue.Queue
 
     @classmethod
-    def connect(cls, socket_filename: str) -> Self:
+    def connect(cls, socket_filename: str) -> "ImportInterceptor":
         tracing_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         tracing_socket.connect(socket_filename)
         return cls(tracing_socket)
