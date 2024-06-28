@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2024
 
-import importlib
 import importlib.abc
 import json
 import queue
@@ -10,6 +9,7 @@ import threading
 import time
 import typing
 import uuid
+from importlib.util import find_spec, module_from_spec
 from struct import pack
 
 from .config import logger
@@ -21,8 +21,29 @@ MESSAGE_HEADER_FORMAT = "<I"
 MESSAGE_HEADER_LEN = 4
 
 
-class ImportInterceptor(importlib.abc.Loader):
-    loading: typing.Set[str]
+class InterceptedModuleLoader(importlib.abc.Loader):
+    def __init__(self, name, loader, interceptor):
+        self.name = name
+        self.loader = loader
+        self.interceptor = interceptor
+
+    def exec_module(self, module):
+        if self.loader is None:
+            return
+        try:
+            self.loader.exec_module(module)
+        finally:
+            self.interceptor.load_end(self.name)
+
+    def create_module(self, spec):
+        spec.loader = self.loader
+        module = module_from_spec(spec)
+        spec.loader = self
+        return module
+
+
+class ImportInterceptor(importlib.abc.MetaPathFinder):
+    loading: typing.Dict[str, typing.Tuple[str, float]]
     tracing_socket: socket.socket
     events: queue.Queue
 
@@ -33,41 +54,47 @@ class ImportInterceptor(importlib.abc.Loader):
         return cls(tracing_socket)
 
     def __init__(self, tracing_socket: socket.socket):
-        self.loading = set()
+        self.loading = {}
         self.tracing_socket = tracing_socket
         self.events = queue.Queue(maxsize=16 * 1024)
         sender = threading.Thread(target=self._send, daemon=True)
         sender.start()
 
-    def find_module(self, fullname, path=None):
+    def find_spec(self, fullname, path, target=None):
         if fullname in self.loading:
             return None
-        return self
+        self.load_start(fullname)
+        spec = find_spec(fullname)
+        if spec is None:
+            self.load_end(fullname)
+            return None
+        spec.loader = InterceptedModuleLoader(fullname, spec.loader, self)
+        return spec
 
-    def load_module(self, fullname):
+    def load_start(self, name):
         t0 = time.monotonic()
         span_id = str(uuid.uuid4())
         self.emit(
-            {"span_id": span_id, "timestamp": time.time(), "event": MODULE_LOAD_START, "attributes": {"name": fullname}}
+            {"span_id": span_id, "timestamp": time.time(), "event": MODULE_LOAD_START, "attributes": {"name": name}}
         )
-        self.loading.add(fullname)
-        try:
-            module = importlib.import_module(fullname)
-            return module
-        finally:
-            self.loading.remove(fullname)
-            latency = time.monotonic() - t0
-            self.emit(
-                {
-                    "span_id": span_id,
-                    "timestamp": time.time(),
-                    "event": MODULE_LOAD_END,
-                    "attributes": {
-                        "name": fullname,
-                        "latency": latency,
-                    },
-                }
-            )
+        self.loading[name] = (span_id, t0)
+
+    def load_end(self, name):
+        span_id, t0 = self.loading.pop(name, None)
+        if t0 is None:
+            return
+        latency = time.monotonic() - t0
+        self.emit(
+            {
+                "span_id": span_id,
+                "timestamp": time.time(),
+                "event": MODULE_LOAD_END,
+                "attributes": {
+                    "name": name,
+                    "latency": latency,
+                },
+            }
+        )
 
     def emit(self, event):
         try:
@@ -103,9 +130,6 @@ class ImportInterceptor(importlib.abc.Loader):
 
 
 def _instrument_imports(socket_filename: str):
-    if not supported_python_version():
-        logger.debug("unsupported python version, not instrumenting imports")
-        return
     if not supported_platform():
         logger.debug("unsupported platform, not instrumenting imports")
         return
@@ -118,11 +142,6 @@ def instrument_imports(socket_filename: str):
         _instrument_imports(socket_filename)
     except BaseException as e:
         logger.warning(f"failed to instrument imports: {e}")
-
-
-def supported_python_version():
-    # TODO(dano): support python 3.12
-    return sys.version_info[0] == 3 and sys.version_info[1] <= 11
 
 
 def supported_platform():

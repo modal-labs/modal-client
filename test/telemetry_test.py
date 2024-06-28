@@ -21,7 +21,6 @@ from modal._telemetry import (
     ImportInterceptor,
     instrument_imports,
     supported_platform,
-    supported_python_version,
 )
 
 
@@ -96,8 +95,6 @@ class TelemetryConsumer:
 
 
 def test_import_tracing(monkeypatch):
-    if not supported_python_version():
-        pytest.skip(f"unsupported python version: {sys.version}")
     if not supported_platform():
         pytest.skip(f"unsupported platform: {sys.platform}")
 
