@@ -31,7 +31,6 @@ from ._asgi import (
 from ._container_io_manager import ContainerIOManager, UserException, _ContainerIOManager
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize
-from ._telemetry import instrument_imports
 from ._utils.async_utils import TaskContext, synchronizer
 from ._utils.function_utils import (
     LocalFunctionError,
@@ -60,6 +59,8 @@ if TYPE_CHECKING:
 
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
 if telemetry_socket:
+    from ._telemetry import instrument_imports
+
     instrument_imports(telemetry_socket)
 
 
