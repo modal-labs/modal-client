@@ -49,8 +49,8 @@ class _Obj:
     _functions: Dict[str, _Function]
     _inited: bool
     _entered: bool
-    _local_user_cls_instance: Optional[Any]
-    _local_user_cls_instance_constr: Optional[Callable[[], Any]]
+    _user_cls_instance: Optional[Any]
+    _user_cls_instance_constr: Optional[Callable[[], Any]]
 
     _instance_service_function: Optional[_Function]
 
@@ -97,10 +97,11 @@ class _Obj:
         self._inited = False
         self._entered = False
         self._local_user_cls_instance = None
+
         if user_cls:
-            self._local_user_cls_instance_constr = lambda: user_cls(*args, **kwargs)
+            self._user_cls_instance_constr = lambda: user_cls(*args, **kwargs)
         else:
-            self._local_user_cls_instance_constr = None
+            self._user_cls_instance_constr = None
 
     async def keep_warm(self, warm_pool_size: int) -> None:
         """Set the warm pool size for the class containers
@@ -124,12 +125,14 @@ class _Obj:
         await self._instance_service_function.keep_warm(warm_pool_size)
 
     def _get_user_cls_instance(self) -> Any:
-        """Constructs obj without any caching. Used by container entrypoint."""
-        self._local_user_cls_instance = self._local_user_cls_instance_constr()
+        """Constructs user cls instance without any caching and inserts hydrated methods
+
+        Used by container entrypoint."""
+        self._user_cls_instance = self._user_cls_instance_constr()
         setattr(
-            self._local_user_cls_instance, "_modal_functions", self._method_functions
+            self._user_cls_instance, "_modal_functions", self._method_functions
         )  # Needed for PartialFunction.__get__
-        return self._local_user_cls_instance
+        return self._user_cls_instance
 
     def _get_local_user_cls_instance(self):
         """Construct local object lazily. Used for .local() calls."""
@@ -137,18 +140,18 @@ class _Obj:
             self._get_user_cls_instance()  # Instantiate object
             self._inited = True
 
-        return self._local_user_cls_instance
+        return self._user_cls_instance
 
     def enter(self):
         if not self._entered:
-            if hasattr(self._local_user_cls_instance, "__enter__"):
-                self._local_user_cls_instance.__enter__()
+            if hasattr(self._user_cls_instance, "__enter__"):
+                self._user_cls_instance.__enter__()
 
             for method_flag in (
                 _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
                 _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
             ):
-                for enter_method in _find_callables_for_obj(self._local_user_cls_instance, method_flag).values():
+                for enter_method in _find_callables_for_obj(self._user_cls_instance, method_flag).values():
                     enter_method()
 
         self._entered = True
@@ -175,9 +178,9 @@ class _Obj:
     def __getattr__(self, k):
         if k in self._method_functions:
             return self._method_functions[k]
-        elif self._local_user_cls_instance_constr:
-            obj = self._get_local_user_cls_instance()
-            return getattr(obj, k)
+        elif self._user_cls_instance_constr:
+            user_cls_instance = self._get_local_user_cls_instance()
+            return getattr(user_cls_instance, k)
         else:
             raise AttributeError(k)
 
