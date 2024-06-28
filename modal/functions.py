@@ -1255,7 +1255,7 @@ class _Function(_Object, type_prefix="fu"):
             return fun(*args, **kwargs)
         else:
             # This is a method on a class, so bind the self to the function
-            user_cls_instance = obj._get_local_user_cls_instance()
+            user_cls_instance = obj._get_user_cls_instance()
 
             fun = info.raw_f.__get__(user_cls_instance)
 

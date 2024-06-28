@@ -124,7 +124,7 @@ class _Obj:
             )
         await self._instance_service_function.keep_warm(warm_pool_size)
 
-    def _get_user_cls_instance(self) -> Any:
+    def _create_user_cls_instance(self) -> Any:
         """Constructs user cls instance without any caching and inserts hydrated methods
 
         Used by container entrypoint."""
@@ -134,10 +134,10 @@ class _Obj:
         )  # Needed for PartialFunction.__get__
         return self._user_cls_instance
 
-    def _get_local_user_cls_instance(self):
+    def _get_user_cls_instance(self):
         """Construct local object lazily. Used for .local() calls."""
         if not self._inited:
-            self._get_user_cls_instance()  # Instantiate object
+            self._create_user_cls_instance()  # Instantiate object
             self._inited = True
 
         return self._user_cls_instance
@@ -168,7 +168,7 @@ class _Obj:
     @synchronizer.nowrap
     async def aenter(self):
         if not self.entered:
-            local_obj = self._get_local_user_cls_instance()
+            local_obj = self._get_user_cls_instance()
             if hasattr(local_obj, "__aenter__"):
                 await local_obj.__aenter__()
             elif hasattr(local_obj, "__enter__"):
@@ -179,7 +179,7 @@ class _Obj:
         if k in self._method_functions:
             return self._method_functions[k]
         elif self._user_cls_instance_constr:
-            user_cls_instance = self._get_local_user_cls_instance()
+            user_cls_instance = self._get_user_cls_instance()
             return getattr(user_cls_instance, k)
         else:
             raise AttributeError(k)
