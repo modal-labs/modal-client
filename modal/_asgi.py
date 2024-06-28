@@ -243,9 +243,12 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
     async def listen_for_disconnect() -> NoReturn:
         while True:
             message = await receive()
-            if message["type"] == "http.disconnect":
-                # based on the aiottp code, there should be a connection set after session.request
-                proxy_response.connection.transport.abort()  # type: ignore
+            if (
+                message["type"] == "http.disconnect"
+                and proxy_response.connection is not None
+                and proxy_response.connection.transport is not None
+            ):
+                proxy_response.connection.transport.abort()
 
     async with TaskContext() as tc:
         send_response_task = tc.create_task(send_response())
