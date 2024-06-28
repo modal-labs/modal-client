@@ -642,7 +642,7 @@ def test_lifecycle_enter_sync(servicer):
         inputs=_get_inputs(((), {}), method_name="f_sync"),
         is_class=True,
     )
-    assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync"]
+    assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync", "local"]
 
 
 @skip_github_non_linux
@@ -654,7 +654,7 @@ def test_lifecycle_enter_async(servicer):
         inputs=_get_inputs(((), {}), method_name="f_async"),
         is_class=True,
     )
-    assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async"]
+    assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async", "local"]
 
 
 @skip_github_non_linux
@@ -1334,7 +1334,7 @@ def test_lifecycle_full(servicer):
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
-    assert "[events:enter_sync,enter_async,f_sync,exit_sync,exit_async]" in stdout.decode()
+    assert "[events:enter_sync,enter_async,f_sync,local,exit_sync,exit_async]" in stdout.decode()
 
     # Sync and async container lifecycle methods on an async function.
     container_process = _run_container_process(
@@ -1347,7 +1347,7 @@ def test_lifecycle_full(servicer):
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
-    assert "[events:enter_sync,enter_async,f_async,exit_sync,exit_async]" in stdout.decode()
+    assert "[events:enter_sync,enter_async,f_async,local,exit_sync,exit_async]" in stdout.decode()
 
 
 ## modal.experimental functionality ##
