@@ -124,8 +124,8 @@ def test_import_tracing(monkeypatch):
                 assert m["attributes"]["latency"] >= 0
 
 
-def generate_modal_import_telemetry():
-    instrument_imports()
+def generate_import_telemetry(telemetry_socket):
+    instrument_imports(telemetry_socket)
     t0 = time.monotonic()
     import kubernetes  # noqa
 
@@ -133,13 +133,12 @@ def generate_modal_import_telemetry():
 
 
 def main():
-    if "MODAL_TELEMETRY_SOCKET" in os.environ:
-        latency = generate_modal_import_telemetry()
+    telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
+    if telemetry_socket:
+        generate_import_telemetry(telemetry_socket)
     else:
         with TelemetryConsumer() as consumer:
-            os.environ["MODAL_TELEMETRY_SOCKET"] = consumer.socket_filename.absolute().as_posix()
-
-            latency = generate_modal_import_telemetry()
+            latency = generate_import_telemetry(consumer.socket_filename.absolute().as_posix())
 
             while True:
                 try:
