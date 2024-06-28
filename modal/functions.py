@@ -1221,7 +1221,7 @@ class _Function(_Object, type_prefix="fu"):
             raise ExecutionError("Can't get info for a function that isn't locally defined")
         return self._info
 
-    def _get_obj(self) -> Optional[Any]:
+    def _get_obj(self) -> Optional["modal.cls._Obj"]:
         if not self._is_method:
             return None
         elif not self._obj:
@@ -1248,16 +1248,16 @@ class _Function(_Object, type_prefix="fu"):
             )
             raise ExecutionError(msg)
 
-        obj = self._get_obj()
+        obj: Optional["modal.cls._Obj"] = self._get_obj()
 
         if not obj:
             fun = info.raw_f
             return fun(*args, **kwargs)
         else:
             # This is a method on a class, so bind the self to the function
-            local_obj = obj.get_local_obj()
+            user_cls_instance = obj._get_local_user_cls_instance()
 
-            fun = info.raw_f.__get__(local_obj)
+            fun = info.raw_f.__get__(user_cls_instance)
 
             if is_async(info.raw_f):
                 # We want to run __aenter__ and fun in the same coroutine
