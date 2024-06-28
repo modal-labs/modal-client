@@ -18,6 +18,7 @@ from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .exception import InvalidError, NotFoundError, VersionError
 from .functions import (
+    _Function,
     _parse_retries,
 )
 from .gpu import GPU_T
@@ -26,7 +27,6 @@ from .partial_function import (
     _find_callables_for_cls,
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
-    _Function,
     _PartialFunction,
     _PartialFunctionFlags,
 )
@@ -385,7 +385,7 @@ class _Cls(_Object, type_prefix="cs"):
         Model2().generate.remote(42)
         ```
         """
-        retry_policy = _parse_retries(retries)
+        retry_policy = _parse_retries(retries, f"Class {self.__name__}" if self._user_cls else "")
         if gpu or cpu or memory:
             resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=None)
         else:

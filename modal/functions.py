@@ -235,7 +235,7 @@ class FunctionStats:
 
 def _parse_retries(
     retries: Optional[Union[int, Retries]],
-    object_name: str,
+    source: str = "",
 ) -> Optional[api_pb2.FunctionRetryPolicy]:
     if isinstance(retries, int):
         return Retries(
@@ -248,9 +248,9 @@ def _parse_retries(
     elif retries is None:
         return None
     else:
-        raise InvalidError(
-            f"{object_name} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
-        )
+        extra = f" on {source}" if source else ""
+        msg = f"Retries parameter must be an integer or instance of modal.Retries. Found: {type(retries)}{extra}."
+        raise InvalidError(msg)
 
 
 @dataclass
@@ -551,7 +551,7 @@ class _Function(_Object, type_prefix="fu"):
             all_mounts = []
 
         retry_policy = _parse_retries(
-            retries, f"Function {info.get_tag()}" if info.raw_f else f"Class {info.get_tag()}"
+            retries, f"Function '{info.get_tag()}'" if info.raw_f else f"Class '{info.get_tag()}'"
         )
 
         if webhook_config is not None and retry_policy is not None:

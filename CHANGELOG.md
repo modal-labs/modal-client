@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.12 (2024-06-27)
+
+- Fixed a bug introduced in 0.63.0 that broke `modal.Cls.with_options`
+
+
+
 ### 0.63.10 (2024-06-26)
 
 - Adds warning about future deprecation of `retries` for generators. Retries are being deprecated as they can lead to nondetermistic generator behavior.

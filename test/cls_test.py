@@ -94,6 +94,17 @@ def test_call_class_sync(client, servicer):
     assert function_map_request.function_id == service_function_id
 
 
+def test_class_with_options(client, servicer):
+    with app.run(client=client):
+        foo = Foo.with_options(cpu=48, retries=5)()  # type: ignore
+        res = foo.bar.remote(2)
+        assert res == 4
+        assert len(servicer.function_options) == 1
+        options: api_pb2.FunctionOptions = list(servicer.function_options.values())[0]
+        assert options.resources.milli_cpu == 48_000
+        assert options.retry_policy.retries == 5
+
+
 # Reusing the app runs into an issue with stale function handles.
 # TODO (akshat): have all the client tests use separate apps, and throw
 # an exception if the user tries to reuse an app.
