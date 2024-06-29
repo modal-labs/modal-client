@@ -581,7 +581,7 @@ def import_class_service(
     else:
         args, kwargs = (), {}
 
-    user_cls_instance = get_user_class_instance(cls, args, kwargs, _client)
+    user_cls_instance = get_user_class_instance(cls, args, kwargs)
 
     return ImportedClass(
         user_cls_instance,
@@ -591,9 +591,7 @@ def import_class_service(
     )
 
 
-def get_user_class_instance(
-    cls: typing.Union[type, Cls], args: Tuple, kwargs: Dict[str, Any], _client: _Client
-) -> typing.Any:
+def get_user_class_instance(cls: typing.Union[type, Cls], args: Tuple, kwargs: Dict[str, Any]) -> typing.Any:
     """Returns instance of the underlying class to be used as the `self`
 
     The input `cls` can either be the raw Python class the user has declared ("user class"),
