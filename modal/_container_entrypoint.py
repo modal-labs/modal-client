@@ -130,11 +130,11 @@ class Service(metaclass=ABCMeta):
 
 @dataclass
 class ImportedFunction(Service):
-    user_cls_instance: Any
     app: Optional[_App]
     code_deps: Optional[List["modal.object._Object"]]
-
     _user_defined_callable: Callable[..., Any]
+
+    user_cls_instance = None
 
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
@@ -472,10 +472,7 @@ def call_function(
 
 def import_single_function_service(
     function_def: api_pb2.Function,
-    ser_cls,
     ser_fun,
-    ser_params: Optional[bytes],
-    client: Client,
 ) -> Service:
     """Imports a function dynamically, and locates the app.
 
@@ -506,7 +503,7 @@ def import_single_function_service(
 
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
-        cls, user_defined_callable = ser_cls, ser_fun
+        user_defined_callable = ser_fun
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
@@ -518,45 +515,22 @@ def import_single_function_service(
         parts = qual_name.split(".")
         if len(parts) == 1:
             # This is a function
-            cls = None
             f = getattr(module, qual_name)
             if isinstance(f, Function):
+                # decorated in global scope
                 function = synchronizer._translate_in(f)
                 user_defined_callable = function.get_raw_f()
                 active_app = function._app
             else:
+                # decorated in some local scope, so we have the real callable already
                 user_defined_callable = f
-        elif len(parts) == 2:
-            # This is a method on a class - legacy "method"
-            # TODO: Remove this branch when legacy non-class-pooled methods have been removed
-            assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
-            cls_name, fun_name = parts
-            cls = getattr(module, cls_name)
-            if isinstance(cls, Cls):
-                # The cls decorator is in global scope
-                _cls = synchronizer._translate_in(cls)
-                user_defined_callable = _cls._callables[fun_name]
-                function = _cls._method_functions.get(fun_name)
-                active_app = _cls._app
-            else:
-                # This is a raw class
-                user_defined_callable = getattr(cls, fun_name)
         else:
             raise InvalidError(f"Invalid function qualname {qual_name}")
-
-    # Instantiate the class if it's defined
-    if cls:
-        user_cls_instance = get_user_class_instance(cls, ser_params, client)
-        # Bind the function to the instance as self (using the descriptor protocol!)
-        user_defined_callable = user_defined_callable.__get__(user_cls_instance)
-    else:
-        user_cls_instance = None
 
     if function:
         code_deps = function.deps(only_explicit_mounts=True)
 
     return ImportedFunction(
-        user_cls_instance,
         active_app,
         code_deps,
         user_defined_callable,
@@ -714,10 +688,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             else:
                 service = import_single_function_service(
                     container_args.function_def,
-                    ser_cls,
                     ser_fun,
-                    container_args.serialized_params,
-                    client,
                 )
 
             # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
