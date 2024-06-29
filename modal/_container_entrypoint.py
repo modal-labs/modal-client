@@ -635,7 +635,7 @@ def get_user_class_instance(cls: typing.Union[type, Cls], ser_params: bytes, cli
     if isinstance(cls, Cls):
         # globally @app.cls-decorated class
         modal_obj: Obj = cls(*args, **kwargs)
-        user_cls_instance = modal_obj.get_obj()
+        user_cls_instance = modal_obj._get_user_cls_instance()
     else:
         # undecorated class (non-global decoration or serialized)
         user_cls_instance = cls(*args, **kwargs)
