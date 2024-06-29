@@ -50,8 +50,7 @@ class _Obj:
     _inited: bool
     _entered: bool
     _user_cls_instance: Optional[Any]
-    _user_cls_instance_constr: Optional[Callable[[], Any]]
-
+    _construction_args: Tuple[Tuple, Dict[str, Any]]
     _instance_service_function: Optional[_Function]
 
     def _uses_common_service_function(self):
@@ -60,7 +59,7 @@ class _Obj:
 
     def __init__(
         self,
-        user_cls: type,
+        user_cls: Optional[type],
         output_mgr: Optional[OutputManager],
         class_service_function: Optional[_Function],  # only None for <v0.63 classes
         classbound_methods: Dict[str, _Function],
@@ -97,11 +96,21 @@ class _Obj:
         self._inited = False
         self._entered = False
         self._local_user_cls_instance = None
+        self._user_cls = user_cls
+        self._construction_args = (args, kwargs)
 
-        if user_cls:
-            self._user_cls_instance_constr = lambda: user_cls(*args, **kwargs)
+    def _user_cls_instance_constr(self):
+        if self._user_cls.__init__ != object.__init__:  # custom constructor in user cls or base class
+            user_cls_instance = self._user_cls(*self._construction_args[0], **self._construction_args[1])
         else:
-            self._user_cls_instance_constr = None
+            user_cls_instance = self._user_cls()
+            attributes = {}
+            # set attributes
+            for param_name, _param_type in self._user_cls.__annotations__.items():
+
+
+        user_cls_instance._modal_functions = self._method_functions  # Needed for PartialFunction.__get__
+        return user_cls_instance
 
     async def keep_warm(self, warm_pool_size: int) -> None:
         """Set the warm pool size for the class containers
@@ -124,20 +133,10 @@ class _Obj:
             )
         await self._instance_service_function.keep_warm(warm_pool_size)
 
-    def _create_user_cls_instance(self) -> Any:
-        """Constructs user cls instance without any caching and inserts hydrated methods
-
-        Used by container entrypoint."""
-        self._user_cls_instance = self._user_cls_instance_constr()
-        setattr(
-            self._user_cls_instance, "_modal_functions", self._method_functions
-        )  # Needed for PartialFunction.__get__
-        return self._user_cls_instance
-
     def _get_user_cls_instance(self):
         """Construct local object lazily. Used for .local() calls."""
         if not self._inited:
-            self._create_user_cls_instance()  # Instantiate object
+            self._user_cls_instance_constr()  # Instantiate object
             self._inited = True
 
         return self._user_cls_instance

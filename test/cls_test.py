@@ -780,3 +780,17 @@ def test_cross_process_userclass_serde(supports_dir):
     method_without_descriptor_protocol = revived_cls.__dict__["method"]
     assert isinstance(method_without_descriptor_protocol, modal.partial_function.PartialFunction)
     assert revived_cls().method() == "a"  # this should be bound to the object
+
+
+@app.cls()
+class UsingAnnotationParameters:
+    a: int
+
+    @method()
+    def value(self):
+        return self.a
+
+
+def test_implicit_constructor():
+    c = UsingAnnotationParameters(10)
+    assert c.value.local() == 10
