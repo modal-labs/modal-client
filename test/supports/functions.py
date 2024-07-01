@@ -433,3 +433,9 @@ def sandbox_f(x):
 @app.function()
 def is_local_f(x):
     return is_local()
+
+
+@app.function()
+def raise_large_unicode_exception():
+    byte_str = (b"k" * 120_000_000) + b"\x99"
+    byte_str.decode("utf-8")

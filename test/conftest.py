@@ -1369,8 +1369,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
 
-@pytest_asyncio.fixture
-async def blob_server():
+@pytest.fixture
+def blob_server():
     blobs = {}
     blob_parts: Dict[str, Dict[int, bytes]] = defaultdict(dict)
 
@@ -1414,8 +1414,30 @@ async def blob_server():
     app.add_routes([aiohttp.web.get("/download", download)])
     app.add_routes([aiohttp.web.post("/complete_multipart", complete_multipart)])
 
-    async with run_temporary_http_server(app) as host:
-        yield host, blobs
+    started = threading.Event()
+    stop_server = threading.Event()
+
+    host = None
+
+    def run_server_other_thread():
+        loop = asyncio.new_event_loop()
+
+        async def async_main():
+            nonlocal host
+            async with run_temporary_http_server(app) as _host:
+                host = _host
+                started.set()
+                await loop.run_in_executor(None, stop_server.wait)
+
+        loop.run_until_complete(async_main())
+
+    # run server on separate thread to not lock up the server event loop in case of blocking calls in tests
+    thread = threading.Thread(target=run_server_other_thread)
+    thread.start()
+    started.wait()
+    yield host, blobs
+    stop_server.set()
+    thread.join()
 
 
 @pytest_asyncio.fixture(scope="function")
