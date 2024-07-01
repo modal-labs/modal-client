@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+
 import pytest
 import random
 
@@ -65,3 +66,10 @@ async def test_blob_multipart(servicer, blob_server, client, monkeypatch, tmp_pa
     data_filepath.write_bytes(data)
     blob_id = await blob_upload_file.aio(data_filepath.open("rb"), client.stub)
     assert await blob_download.aio(blob_id, client.stub) == data
+
+
+def test_sync(blob_server, client):
+    # asyncio.get_running_loop()
+    # await _blob_upload(b"fadskfhalsdkjf", client.stub)
+
+    blob_upload(b"adsfadsf", client.stub)
