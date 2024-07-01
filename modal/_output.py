@@ -539,8 +539,6 @@ class FunctionCreationStatus:
             # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
             if url_info.truncated:
                 suffix = " [grey70](label truncated)[/grey70]"
-            elif url_info.has_unique_hash:
-                suffix = " [grey70](label includes conflict-avoidance hash)[/grey70]"
             elif url_info.label_stolen:
                 suffix = " [grey70](label stolen)[/grey70]"
             else:
