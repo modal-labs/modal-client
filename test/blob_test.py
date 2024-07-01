@@ -69,7 +69,5 @@ async def test_blob_multipart(servicer, blob_server, client, monkeypatch, tmp_pa
 
 
 def test_sync(blob_server, client):
-    # asyncio.get_running_loop()
-    # await _blob_upload(b"fadskfhalsdkjf", client.stub)
-
+    # just tests that tests running blocking calls that upload to blob storage don't deadlock
     blob_upload(b"adsfadsf", client.stub)
