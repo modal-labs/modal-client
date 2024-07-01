@@ -259,13 +259,19 @@ class LifecycleCls:
         await asyncio.sleep(self.async_exit_duration)
 
     @method()
+    def local(self):
+        self.events.append("local")
+
+    @method()
     def f_sync(self):
         self.events.append("f_sync")
+        self.local.local()
         return self.events
 
     @method()
     async def f_async(self):
         self.events.append("f_async")
+        self.local.local()
         return self.events
 
     @method()
