@@ -24,7 +24,6 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
-from modal._container_io_manager import MAX_OBJECT_SIZE_BYTES
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -32,6 +31,7 @@ from modal._serialization import (
     serialize_data_format,
 )
 from modal._utils import async_utils
+from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from modal.app import _App
 from modal.exception import InvalidError
 from modal.partial_function import enter, method
