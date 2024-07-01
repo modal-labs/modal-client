@@ -13,7 +13,7 @@ import time
 import typing
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from google.protobuf.message import Message
 from synchronicity import Interface
@@ -541,7 +541,7 @@ def import_class_service(
     function_def: api_pb2.Function,
     ser_cls,
     ser_params: Optional[bytes],
-    client: Client,
+    _client: _Client,
 ) -> Service:
     """
     This imports a full class to be able to execute any @method or webhook decorated methods.
@@ -582,9 +582,13 @@ def import_class_service(
         # Undecorated user class - find all methods
         method_partials = _find_partial_methods_for_user_cls(cls, _PartialFunctionFlags.all())
 
-    # Instantiate the class if it's defined
-    assert cls  # must be a class
-    user_cls_instance = get_user_class_instance(cls, ser_params, client)
+    # Instantiate the class
+    if ser_params:
+        args, kwargs = deserialize(ser_params, _client)
+    else:
+        args, kwargs = (), {}
+
+    user_cls_instance = get_user_class_instance(cls, args, kwargs)
 
     return ImportedClass(
         user_cls_instance,
@@ -594,21 +598,17 @@ def import_class_service(
     )
 
 
-def get_user_class_instance(cls: typing.Union[type, Cls], ser_params: bytes, client: Client) -> typing.Any:
+def get_user_class_instance(cls: typing.Union[type, Cls], args: Tuple, kwargs: Dict[str, Any]) -> typing.Any:
     """Returns instance of the underlying class to be used as the `self`
 
     The input `cls` can either be the raw Python class the user has declared ("user class"),
     or an @app.cls-decorated version of it which is a modal.Cls-instance wrapping the user class.
     """
-
-    if ser_params:
-        _client: _Client = synchronizer._translate_in(client)
-        args, kwargs = deserialize(ser_params, _client)
-    else:
-        args, kwargs = (), {}
     if isinstance(cls, Cls):
         # globally @app.cls-decorated class
         modal_obj: Obj = cls(*args, **kwargs)
+        modal_obj.entered = True  # ugly but prevents .local() from triggering additional enter-logic
+        # TODO: unify lifecycle logic between .local() and container_entrypoint
         user_cls_instance = modal_obj._get_user_cls_instance()
     else:
         # undecorated class (non-global decoration or serialized)
@@ -669,6 +669,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     service: Service
     is_auto_snapshot: bool = container_args.function_def.is_auto_snapshot
 
+    _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
+
     with container_io_manager.heartbeats(), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
@@ -683,7 +685,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     container_args.function_def,
                     ser_cls,
                     container_args.serialized_params,
-                    client,
+                    _client,
                 )
             else:
                 service = import_single_function_service(
@@ -718,7 +720,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # 1. Enable lazy hydration for all objects
         # 2. Fully deprecate .new() objects
         if service.code_deps is not None:  # this is not set for serialized or non-global scope functions
-            _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
             dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
             if len(service.code_deps) != len(dep_object_ids):
                 raise ExecutionError(
