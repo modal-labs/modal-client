@@ -514,13 +514,20 @@ class _ContainerIOManager:
             # serializing the exception, which may have some issues (there
             # was an earlier note about it that it might not be possible
             # to unpickle it in some cases). Let's watch out for issues.
+
+            repr_exc = repr(exc)
+            if len(repr_exc) >= MAX_OBJECT_SIZE_BYTES:
+                trimmed_bytes = len(repr_exc) - MAX_OBJECT_SIZE_BYTES - 1000
+                repr_exc = repr_exc[: MAX_OBJECT_SIZE_BYTES - 1000]
+                repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
+
             await self._push_output(
                 input_id,
                 started_at=started_at,
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                 data=self.serialize_exception(exc),
-                exception=repr(exc),
+                exception=repr_exc,  # repr too big
                 traceback=traceback.format_exc(),
                 serialized_tb=serialized_tb,
                 tb_line_cache=tb_line_cache,
@@ -563,7 +570,6 @@ class _ContainerIOManager:
         # Start a debugger if the worker tells us to
         if int(restored_state.get("snapshot_debug", 0)):
             logger.debug("Entering snapshot debugger")
-            breakpoint()
 
         # Local ContainerIOManager state.
         for key in ["task_id", "function_id"]:

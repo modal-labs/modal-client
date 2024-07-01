@@ -24,6 +24,7 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
+from modal._container_io_manager import MAX_OBJECT_SIZE_BYTES
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -1421,6 +1422,23 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
     assert loop_iteration_failures > 5
     assert "error=Exception('oops')" in caplog.text
     assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_container_doesnt_send_large_exceptions(servicer):
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "raise_large_unicode_exception",
+        inputs=_get_inputs(((), {})),
+    )
+
+    assert len(ret.items) == 1
+    assert len(ret.items[0].SerializeToString()) < MAX_OBJECT_SIZE_BYTES * 1.5
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "UnicodeDecodeError" in ret.items[0].result.exception
+    assert servicer.task_result is None  # should not cause a failure result
 
 
 @skip_github_non_linux
