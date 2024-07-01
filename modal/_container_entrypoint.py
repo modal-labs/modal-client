@@ -475,7 +475,7 @@ def import_single_function_service(
     ser_cls,
     ser_fun,
     ser_params: Optional[bytes],
-    client: Client,
+    _client: Client,
 ) -> Service:
     """Imports a function dynamically, and locates the app.
 
@@ -546,7 +546,14 @@ def import_single_function_service(
 
     # Instantiate the class if it's defined
     if cls:
-        user_cls_instance = get_user_class_instance(cls, ser_params, client)
+        # This code is only used for @build methods on classes
+        # TODO: refactor to have those use class service imports instead (!)
+        # Instantiate the class
+        if ser_params:
+            args, kwargs = deserialize(ser_params, _client)
+        else:
+            args, kwargs = (), {}
+        user_cls_instance = get_user_class_instance(cls, args, kwargs)
         # Bind the function to the instance as self (using the descriptor protocol!)
         user_defined_callable = user_defined_callable.__get__(user_cls_instance)
     else:
