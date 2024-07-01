@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.20 (2024-07-01)
+
+* Fixes bug where self.method.local() re-triggers lifecycle methods in classes
+
+
+
 ### 0.63.14 (2024-06-28)
 
 * Adds `Cls.lookup()` backwards compatibility with classes created by clients prior to `v0.63`.
