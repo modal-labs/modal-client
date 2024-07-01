@@ -787,10 +787,33 @@ class UsingAnnotationParameters:
     a: int
 
     @method()
-    def value(self):
+    def get_value(self):
         return self.a
+
+
+@app.cls()
+class UsingCustomConstructor:
+    # might want to deprecate this soon
+
+    def __init__(self, a):
+        print("running constructor")
+        self._a = a
+
+    @method()
+    def get_value(self):
+        return self._a
 
 
 def test_implicit_constructor():
     c = UsingAnnotationParameters(10)
-    assert c.value.local() == 10
+    assert c.a == 10
+    assert c.get_value.local() == 10
+
+    d = UsingCustomConstructor(10)
+
+    # with pytest.raises(AttributeError):
+    #     # constructors could run any code and are triggered lazily
+    #     d._a  # noqa
+    assert d._a == 10
+
+    assert d.get_value.local() == 10

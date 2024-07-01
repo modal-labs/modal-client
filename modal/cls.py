@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import inspect
 import os
 import typing
 from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Type, TypeVar, Union
@@ -47,9 +48,8 @@ class _Obj:
     All this class does is to return `Function` objects."""
 
     _functions: Dict[str, _Function]
-    _inited: bool
     _entered: bool
-    _user_cls_instance: Optional[Any]
+    _user_cls_instance: Optional[Any] = None
     _construction_args: Tuple[Tuple, Dict[str, Any]]
     _instance_service_function: Optional[_Function]
 
@@ -93,21 +93,32 @@ class _Obj:
                 self._method_functions[method_name] = method
 
         # Used for construction local object lazily
-        self._inited = False
         self._entered = False
         self._local_user_cls_instance = None
         self._user_cls = user_cls
-        self._construction_args = (args, kwargs)
+        self._construction_args = (args, kwargs)  # use later for lazy instantiation of the class
 
     def _user_cls_instance_constr(self):
-        if self._user_cls.__init__ != object.__init__:  # custom constructor in user cls or base class
+        if self._user_cls.__init__ != object.__init__:
+            # user has custom constructor
+            # TODO: deprecate custom constructors
+
             user_cls_instance = self._user_cls(*self._construction_args[0], **self._construction_args[1])
         else:
-            user_cls_instance = self._user_cls()
-            attributes = {}
-            # set attributes
-            for param_name, _param_type in self._user_cls.__annotations__.items():
-
+            # implicit constructor using class type annotations, like dataclasses
+            # in order to support both positional and keyword arguments, we construct a Signature to bind
+            # the user's arguments to names:
+            # TODO: let users designate annotations as non-init/non-parameters, similar to dataclasses
+            sig = inspect.Signature(
+                [
+                    inspect.Parameter(name=name, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD)
+                    for name in self._user_cls.__annotations__.keys()
+                ]
+            )
+            bound_vars = sig.bind(*self._construction_args[0], **self._construction_args[1])
+            all_as_keyword_args = bound_vars.arguments
+            user_cls_instance = self._user_cls.__new__(self._user_cls)  # new instance without running __init__
+            user_cls_instance.__dict__.update(all_as_keyword_args)  # set attributes based on parameter names
 
         user_cls_instance._modal_functions = self._method_functions  # Needed for PartialFunction.__get__
         return user_cls_instance
@@ -135,9 +146,8 @@ class _Obj:
 
     def _get_user_cls_instance(self):
         """Construct local object lazily. Used for .local() calls."""
-        if not self._inited:
-            self._user_cls_instance_constr()  # Instantiate object
-            self._inited = True
+        if not self._user_cls_instance:
+            self._user_cls_instance = self._user_cls_instance_constr()  # Instantiate object
 
         return self._user_cls_instance
 
@@ -176,8 +186,16 @@ class _Obj:
 
     def __getattr__(self, k):
         if k in self._method_functions:
+            # if we know the user is accessing a method, we don't have to create an instance
+            # yet, since the user might just call `.remote()` on it which doesn't require
+            # a local instance (in case __init__ does stuff that can't locally)
             return self._method_functions[k]
         elif self._user_cls_instance_constr:
+            # if it's *not* a method
+            # TODO: To get lazy loading (from_name) of classes to work, we need to avoid
+            #  this path, otherwise local initialization will happen regardless if user
+            #  only runs .remote(), since we don't know methods for the class until we
+            #  load it
             user_cls_instance = self._get_user_cls_instance()
             return getattr(user_cls_instance, k)
         else:
