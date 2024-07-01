@@ -1369,8 +1369,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
 
-@pytest_asyncio.fixture
-async def blob_server():
+@pytest.fixture
+def blob_server():
     blobs = {}
     blob_parts: Dict[str, Dict[int, bytes]] = defaultdict(dict)
 
