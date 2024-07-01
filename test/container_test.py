@@ -1427,6 +1427,7 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 def test_container_doesnt_send_large_exceptions(servicer):
+    # Tests that large exception messages (>2mb are trimmed)
     ret = _run_container(
         servicer,
         "test.supports.functions",

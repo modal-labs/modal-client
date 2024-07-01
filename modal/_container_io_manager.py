@@ -517,6 +517,9 @@ class _ContainerIOManager:
 
             repr_exc = repr(exc)
             if len(repr_exc) >= MAX_OBJECT_SIZE_BYTES:
+                # We prevent large exception messages to avoid
+                # unhandled exceptions causing inf loops
+                # and just send backa trimmed version
                 trimmed_bytes = len(repr_exc) - MAX_OBJECT_SIZE_BYTES - 1000
                 repr_exc = repr_exc[: MAX_OBJECT_SIZE_BYTES - 1000]
                 repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
