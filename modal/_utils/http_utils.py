@@ -9,8 +9,10 @@ from aiohttp import ClientSession, ClientTimeout, TCPConnector
 from aiohttp.web import Application
 from aiohttp.web_runner import AppRunner, SockSite
 
+from .async_utils import on_shutdown
 
-def http_client_with_tls(timeout: Optional[float]) -> ClientSession:
+
+def _http_client_with_tls(timeout: Optional[float]) -> ClientSession:
     """Create a new HTTP client session with standard, bundled TLS certificates.
 
     This is necessary to prevent client issues on some system where Python does
@@ -23,6 +25,23 @@ def http_client_with_tls(timeout: Optional[float]) -> ClientSession:
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     connector = TCPConnector(ssl=ssl_context)
     return ClientSession(connector=connector, timeout=ClientTimeout(total=timeout))
+
+
+class ClientSessionRegistry:
+    _client_session: ClientSession = None
+
+    @staticmethod
+    def get_session():
+        if ClientSessionRegistry._client_session is None:
+            ClientSessionRegistry._client_session = _http_client_with_tls(timeout=None)
+            on_shutdown(ClientSessionRegistry.close_session())
+        return ClientSessionRegistry._client_session
+
+    @staticmethod
+    async def close_session():
+        if ClientSessionRegistry._client_session:
+            await ClientSessionRegistry._client_session.close()
+            ClientSessionRegistry._client_session = None
 
 
 @contextlib.asynccontextmanager
