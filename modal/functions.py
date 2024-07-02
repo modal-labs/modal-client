@@ -290,7 +290,7 @@ class _Function(_Object, type_prefix="fu"):
     _web_url: Optional[str]
     _function_name: Optional[str]
     _is_method: bool
-    _spec: _FunctionSpec = None
+    _spec: Optional[_FunctionSpec] = None
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
