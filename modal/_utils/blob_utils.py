@@ -341,20 +341,20 @@ class FileUploadSpec:
 def _get_file_upload_spec(
     source: Callable[[], BinaryIO], source_description: Any, mount_filename: PurePosixPath, mode: int
 ) -> FileUploadSpec:
-    with source() as fp:
-        # Current position is ignored - we always upload from position 0
-        fp.seek(0, os.SEEK_END)
-        size = fp.tell()
-        fp.seek(0)
+    fp = source()
+    # Current position is ignored - we always upload from position 0
+    fp.seek(0, os.SEEK_END)
+    size = fp.tell()
+    fp.seek(0)
 
-        if size >= LARGE_FILE_LIMIT:
-            use_blob = True
-            content = None
-            sha256_hex = get_sha256_hex(fp)
-        else:
-            use_blob = False
-            content = fp.read()
-            sha256_hex = get_sha256_hex(content)
+    if size >= LARGE_FILE_LIMIT:
+        use_blob = True
+        content = None
+        sha256_hex = get_sha256_hex(fp)
+    else:
+        use_blob = False
+        content = fp.read()
+        sha256_hex = get_sha256_hex(content)
 
     return FileUploadSpec(
         source=source,
