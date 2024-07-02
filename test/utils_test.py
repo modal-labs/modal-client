@@ -42,7 +42,9 @@ def test_environment_name():
     assert not is_valid_object_name("a" * 65)
     assert not is_valid_environment_name("--help")
     assert not is_valid_environment_name(":env")
+    assert not is_valid_environment_name("env:env")
     assert not is_valid_environment_name("/env")
+    assert not is_valid_environment_name("env/env")
     assert not is_valid_environment_name("")
 
 
