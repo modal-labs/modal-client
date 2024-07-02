@@ -190,6 +190,25 @@ class FunctionInfo:
             logger.debug(f"Serializing function for class service function {self.cls.__qualname__} as empty")
             return b""
 
+    def get_cls_vars(self) -> Dict[str, Any]:
+        if self.cls is not None:
+            cls_vars = {
+                attr: getattr(self.cls, attr)
+                for attr in dir(self.cls)
+                if not callable(getattr(self.cls, attr)) and not attr.startswith("__")
+            }
+            return cls_vars
+        return {}
+
+    def get_attrs(self) -> Dict[str, Any]:
+        from .._vendor.cloudpickle import _extract_code_attr
+
+        func = self.raw_f
+        cls_vars = self.get_cls_vars()
+        f_attrs_ref = _extract_code_attr(func.__code__)
+        f_attrs = {k: cls_vars[k] for k in cls_vars if k in f_attrs_ref}
+        return f_attrs
+
     def get_globals(self) -> Dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals
 

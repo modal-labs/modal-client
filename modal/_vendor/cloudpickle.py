@@ -323,6 +323,9 @@ def _extract_code_globals(co):
 
     return out_names
 
+def _extract_code_attr(co):
+    out_names = {name: None for name in _walk_attr_ops(co)}
+    return out_names
 
 def _find_imported_submodules(code, top_level_dependencies):
     """Find currently imported submodules used by a function.
@@ -374,6 +377,9 @@ STORE_GLOBAL = opcode.opmap["STORE_GLOBAL"]
 DELETE_GLOBAL = opcode.opmap["DELETE_GLOBAL"]
 LOAD_GLOBAL = opcode.opmap["LOAD_GLOBAL"]
 GLOBAL_OPS = (STORE_GLOBAL, DELETE_GLOBAL, LOAD_GLOBAL)
+LOAD_ATTR = opcode.opmap["LOAD_ATTR"]
+STORE_ATTR = opcode.opmap["STORE_ATTR"]
+ATTR_OPS = (LOAD_ATTR, STORE_ATTR)
 HAVE_ARGUMENT = dis.HAVE_ARGUMENT
 EXTENDED_ARG = dis.EXTENDED_ARG
 
@@ -400,6 +406,12 @@ def _walk_global_ops(code):
         if op in GLOBAL_OPS:
             yield instr.argval
 
+def _walk_attr_ops(code):
+    """Yield referenced name for static-referencing instructions in code"""
+    for instr in dis.get_instructions(code):
+        op = instr.opcode
+        if op in ATTR_OPS:
+            yield instr.argval
 
 def _extract_class_dict(cls):
     """Retrieve a copy of the dict of a class without the inherited method."""
