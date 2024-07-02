@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import AsyncIterator, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, AsyncIterator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -28,6 +28,10 @@ from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 
 _default_image: _Image = _Image.debian_slim()
+
+
+if TYPE_CHECKING:
+    import modal.app
 
 
 class _LogsReader:
@@ -250,8 +254,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
-        allow_background_volume_commits: Optional[bool] = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
+        _allow_background_volume_commits: Optional[bool] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
@@ -291,7 +295,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 api_pb2.VolumeMount(
                     mount_path=path,
                     volume_id=volume.object_id,
-                    allow_background_commits=allow_background_volume_commits,
+                    allow_background_commits=_allow_background_volume_commits,
                 )
                 for path, volume in validated_volumes
             ]
@@ -329,6 +333,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     @staticmethod
     async def create(
         *entrypoint_args: str,
+        app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
+        environment_name: Optional[str] = None,  # Optionally override the default environment
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
@@ -346,14 +352,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         volumes: Dict[
             Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
-        _allow_background_volume_commits: Optional[bool] = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
+        _allow_background_volume_commits: Optional[bool] = None,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
     ) -> "_Sandbox":
-        # TODO(erikbern): add an app: Optional[_App] = None
         if client is None:
             client = await _Client.from_env()
 
@@ -373,12 +378,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             network_file_systems=network_file_systems,
             block_network=block_network,
             volumes=volumes,
-            allow_background_volume_commits=_allow_background_volume_commits,
             pty_info=pty_info,
+            _allow_background_volume_commits=_allow_background_volume_commits,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
         )
-
-        resolver = Resolver(client)
+        app_id: Optional[str] = app.app_id if app else None
+        resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
         await resolver.load(obj)
         return obj
 
