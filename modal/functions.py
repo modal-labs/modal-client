@@ -456,7 +456,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._parent = instance_service_function._parent
         fun._app = class_bound_method._app
         fun._all_mounts = class_bound_method._all_mounts  # TODO: only used for mount-watching/modal serve
-        fun._spec = instance_service_function._parent._spec
+        fun._spec = class_bound_method._spec
         return fun
 
     @staticmethod
@@ -1035,6 +1035,7 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def spec(self) -> _FunctionSpec:
         """mdmd:hidden"""
+        assert self._spec
         return self._spec
 
     def get_build_def(self) -> str:
