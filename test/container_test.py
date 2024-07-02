@@ -1637,3 +1637,19 @@ def test_function_lazy_resolution(servicer, set_env_client):
     deploy_app_externally(servicer, "test.supports.lazy_hydration", "app", capture_output=False)
     ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-1", "vo-0"])
     assert _unwrap_scalar(ret) is None
+
+
+@skip_github_non_linux
+def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env_client):
+    _run_container(
+        servicer,
+        "test.supports.volume_local",
+        "volume_func_outer",
+        inputs=_get_inputs(((), {})),
+    )
+
+    warnings = len(recwarn)
+    for w in range(warnings):
+        warning = str(recwarn.pop().message)
+        assert "and will not have access to the mounted Volume or NetworkFileSystem data" not in warning
+    assert len(recwarn) == 0
