@@ -290,7 +290,7 @@ class _Function(_Object, type_prefix="fu"):
     _web_url: Optional[str]
     _function_name: Optional[str]
     _is_method: bool
-    _spec: _FunctionSpec
+    _spec: _FunctionSpec = None
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
@@ -456,6 +456,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._parent = instance_service_function._parent
         fun._app = class_bound_method._app
         fun._all_mounts = class_bound_method._all_mounts  # TODO: only used for mount-watching/modal serve
+        fun._spec = instance_service_function._parent._spec
         return fun
 
     @staticmethod
