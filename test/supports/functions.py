@@ -7,6 +7,7 @@ from typing import List
 
 from modal import (
     App,
+    Volume,
     asgi_app,
     build,
     current_function_call_id,
@@ -439,3 +440,13 @@ def is_local_f(x):
 def raise_large_unicode_exception():
     byte_str = (b"k" * 120_000_000) + b"\x99"
     byte_str.decode("utf-8")
+
+
+@app.function(volumes={"/foo": Volume.from_name("xyz")})
+def volume_func():
+    pass
+
+
+@app.function()
+def volume_func_outer():
+    volume_func.local()

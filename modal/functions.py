@@ -1241,6 +1241,8 @@ class _Function(_Object, type_prefix="fu"):
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
         info = self._get_info()
+        if is_local() and self.spec.volumes or self.spec.network_file_systems:
+            warnings.warn("Cannot mount volumes or file systems locally")
         if not info or not info.raw_f:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
