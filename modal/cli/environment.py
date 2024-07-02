@@ -3,6 +3,7 @@ from typing import Optional
 
 import typer
 from click import UsageError
+from grpclib import GRPCError, Status
 from typing_extensions import Annotated
 
 from modal import environments
@@ -48,11 +49,16 @@ ENVIRONMENT_CREATE_HELP = """Create a new environment in the current workspace""
 
 @environment_cli.command(name="create", help=ENVIRONMENT_CREATE_HELP)
 def create(name: Annotated[str, typer.Argument(help="Name of the new environment. Must be unique. Case sensitive")]):
-    environments.create_environment(name)
+    try:
+        environments.create_environment(name)
+    except GRPCError as exc:
+        if exc.status in Status.INVALID_ARGUMENT:
+            raise UsageError(exc.message)
+        raise
     typer.echo(f"Environment created: {name}")
 
 
-ENVIRONMENT_DELETE_HELP = """Delete an environment in the current workspace
+ENVIRONMENT_DELETE_HELP = """Delete an environment itn the current workspace
 
 Deletes all apps in the selected environment and deletes the environment irrevocably.
 """
@@ -91,5 +97,11 @@ def update(
     if set_name is None and set_web_suffix is None:
         raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix)")
 
-    environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
+    try:
+        environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
+    except GRPCError as exc:
+        if exc.status in Status.INVALID_ARGUMENT:
+            raise UsageError(exc.message)
+        raise
+
     typer.echo("Environment updated")

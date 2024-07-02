@@ -21,7 +21,7 @@ def is_valid_object_name(name: str) -> bool:
 
 def is_valid_environment_name(name: str) -> bool:
     # first char is alnum, the rest allows other chars
-    return len(name) <= 64 and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-_.\/:]+$", name) is not None
+    return len(name) <= 64 and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-_.]+$", name) is not None
 
 
 def is_valid_tag(tag: str) -> bool:
