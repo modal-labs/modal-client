@@ -1639,6 +1639,7 @@ def test_function_lazy_resolution(servicer, set_env_client):
     assert _unwrap_scalar(ret) is None
 
 
+@skip_github_non_linux
 def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env_client):
     _run_container(
         servicer,
