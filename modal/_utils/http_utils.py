@@ -28,7 +28,7 @@ def _http_client_with_tls(timeout: Optional[float]) -> ClientSession:
 
 
 class ClientSessionRegistry:
-    _client_session: ClientSession | None = None
+    _client_session: Optional[ClientSession]
 
     @staticmethod
     def get_session():
