@@ -1639,25 +1639,10 @@ def test_function_lazy_resolution(servicer, set_env_client):
     assert _unwrap_scalar(ret) is None
 
 
-app = modal.App()
-vol = modal.Volume.from_name("xyz")
-
-
-@app.function(volumes={"/foo": vol})
-def dummy():
-    pass
-
-
-def test_warn_on_local_volume_mount(client, servicer):
-    assert modal.is_local() == True
-    with pytest.warns(match="local"):
-        dummy.local()
-
-
-def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn):
+def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env_client):
     _run_container(
         servicer,
-        "test.supports.functions",
+        "test.supports.volume_local",
         "volume_func_outer",
         inputs=_get_inputs(((), {})),
     )
