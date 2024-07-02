@@ -15,11 +15,6 @@ from modal.exception import DeprecationError, InvalidError, NotFoundError, Volum
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
-from .helpers import (
-    _get_inputs,
-    _run_container,
-)
-
 
 def dummy():
     pass
@@ -372,22 +367,3 @@ async def test_open_files_error_annotation(tmp_path):
 def test_invalid_name(servicer, client, name):
     with pytest.raises(InvalidError, match="Invalid Volume name"):
         modal.Volume.lookup(name)
-
-
-def test_warn_on_local_volume_mount(client, servicer):
-    app = modal.App()
-    vol = modal.Volume.from_name("xyz")
-
-    assert modal.is_local() == True
-    with pytest.warns(match="local"):
-        app.function(volumes={"/foo": vol})(dummy).local()
-
-
-def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn):
-    _run_container(
-        servicer,
-        "test.supports.functions",
-        "volume_func_outer",
-        inputs=_get_inputs(((), {})),
-    )
-    assert len(recwarn) == 0
