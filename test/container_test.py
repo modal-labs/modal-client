@@ -1136,11 +1136,11 @@ def test_build_decorator_cls(servicer):
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "BuildCls.*",
-        inputs=_get_inputs(((), {}), method_name="build1"),
+        # note: builder functions are still run as standalone functions from their class service function
+        "BuildCls.build1",
+        inputs=_get_inputs(((), {})),
         is_builder_function=True,
         is_auto_snapshot=True,
-        is_class=True,
     )
     assert _unwrap_scalar(ret) == 101
     # TODO: this is GENERIC_STATUS_FAILURE when `@exit` fails,
@@ -1154,11 +1154,11 @@ def test_multiple_build_decorator_cls(servicer):
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "BuildCls.*",
-        inputs=_get_inputs(((), {}), method_name="build2"),
+        # note: builder functions are still run as standalone functions from their class service function
+        "BuildCls.build2",
+        inputs=_get_inputs(((), {})),
         is_builder_function=True,
         is_auto_snapshot=True,
-        is_class=True,
     )
     assert _unwrap_scalar(ret) == 1001
     assert ret.task_result is None
