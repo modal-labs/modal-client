@@ -384,7 +384,7 @@ def test_warn_on_local_volume_mount(client, servicer):
 
 
 def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn):
-    ret = _run_container(
+    _run_container(
         servicer,
         "test.supports.functions",
         "volume_func_outer",
