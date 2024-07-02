@@ -189,3 +189,10 @@ async def test_sandbox_async_for(client, servicer):
         # test reading after receiving EOF
         assert sb.stdout.read() == ""
         assert sb.stderr.read() == ""
+
+
+@skip_non_linux
+def test_appless_sandbox(client, servicer):
+    sb = Sandbox.create("bash", "-c", "echo bye >&2 && echo hi", timeout=600, client=client)
+    assert sb.stdout.read() == "hi\n"
+    assert sb.stderr.read() == "bye\n"
