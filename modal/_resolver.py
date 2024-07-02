@@ -10,7 +10,7 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext
 from .client import _Client
-from .exception import ExecutionError, NotFoundError
+from .exception import NotFoundError
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -72,9 +72,7 @@ class Resolver:
         self._deduplication_cache = {}
 
     @property
-    def app_id(self) -> str:
-        if self._app_id is None:
-            raise ExecutionError("Resolver has no app")
+    def app_id(self) -> Optional[str]:
         return self._app_id
 
     @property
