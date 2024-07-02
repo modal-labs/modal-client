@@ -825,6 +825,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ImageGetOrCreate(self, stream):
         request: api_pb2.ImageGetOrCreateRequest = await stream.recv_message()
+        for k in self.images:
+            if request.image == self.images[k]:
+                await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=k))
+                return
         idx = len(self.images) + 1
         image_id = f"im-{idx}"
 
