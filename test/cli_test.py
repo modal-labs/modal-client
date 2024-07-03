@@ -18,6 +18,7 @@ import click.testing
 import toml
 
 from modal.cli.entry_point import entrypoint_cli
+from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
@@ -848,3 +849,74 @@ def test_queue_peek_len_clear(servicer, server_url_env, set_env_client):
     _run(["queue", "clear", name, "--all", "--yes"])
     assert _run(["queue", "len", name, "--total"]).stdout == "0\n"
     assert _run(["queue", "peek", name, "--partition", "alt"]).stdout == ""
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["environment", "create", ".main"],
+        ["environment", "create", "_main"],
+        ["environment", "create", "'-main'"],
+        ["environment", "create", "main/main"],
+        ["environment", "create", "main:main"],
+    ],
+)
+def test_create_environment_name_invalid(servicer, set_env_client, command):
+    assert isinstance(
+        _run(
+            command,
+            1,
+        ).exception,
+        InvalidError,
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["environment", "create", "main"],
+        ["environment", "create", "main_-123."],
+    ],
+)
+def test_create_environment_name_valid(servicer, set_env_client, command):
+    assert (
+        "Environment created"
+        in _run(
+            command,
+            0,
+        ).stdout
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["environment", "update", "main", "--set-name", "main/main"],
+        ["environment", "update", "main", "--set-name", "'-main'"],
+    ],
+)
+def test_update_environment_name_invalid(servicer, set_env_client, command):
+    assert isinstance(
+        _run(
+            command,
+            1,
+        ).exception,
+        InvalidError,
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["environment", "update", "main", "--set-name", "main_-123."],
+        ["environment", "update", "main:main", "--set-name", "main2"],
+    ],
+)
+def test_update_environment_name_valid(servicer, set_env_client, command):
+    assert (
+        "Environment updated"
+        in _run(
+            command,
+            0,
+        ).stdout
+    )

@@ -56,7 +56,7 @@ def create(name: Annotated[str, typer.Argument(help="Name of the new environment
     try:
         environments.create_environment(name)
     except GRPCError as exc:
-        if exc.status in Status.INVALID_ARGUMENT:
+        if exc.status == Status.INVALID_ARGUMENT:
             raise InvalidError(exc.message)
         raise
     typer.echo(f"Environment created: {name}")
@@ -106,7 +106,7 @@ def update(
     try:
         environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
     except GRPCError as exc:
-        if exc.status in Status.INVALID_ARGUMENT:
+        if exc.status == Status.INVALID_ARGUMENT:
             raise InvalidError(exc.message)
         raise
 
