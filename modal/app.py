@@ -683,7 +683,7 @@ class _App:
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
-            info = FunctionInfo(None, serialized=serialized, cls=user_cls)
+            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
             if region:

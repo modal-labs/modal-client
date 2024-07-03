@@ -780,3 +780,40 @@ def test_cross_process_userclass_serde(supports_dir):
     method_without_descriptor_protocol = revived_cls.__dict__["method"]
     assert isinstance(method_without_descriptor_protocol, modal.partial_function.PartialFunction)
     assert revived_cls().method() == "a"  # this should be bound to the object
+
+
+def test_cls_strict_parameters_added_to_definition(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+
+    strict_param_cls_app = App("strict-param-app")
+
+    @strict_param_cls_app.cls(serialized=True)
+    class StrictParamCls:
+        def __init__(self, x: str, y: int):
+            pass
+
+    deploy_app(strict_param_cls_app, "my-cls-app", client=client)
+
+    definition: api_pb2.Function
+    (definition,) = servicer.app_functions.values()
+    assert definition.function_name == "StrictParamCls.*"
+    assert definition.class_parameters == [
+        api_pb2.FunctionParameter(name="x", type=api_pb2.FunctionParameter.STRING),
+        api_pb2.FunctionParameter(name="y", type=api_pb2.FunctionParameter.INT),
+    ]
+
+
+def test_cls_strict_parameters_invalid_type(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+
+    strict_param_cls_app = App("strict-param-app")
+
+    @strict_param_cls_app.cls(serialized=True)
+    class StrictParamCls:
+        def __init__(self, x: float):
+            pass
+
+    with pytest.raises(InvalidError, match="Class parameters"):
+        deploy_app(strict_param_cls_app, "my-cls-app", client=client)

@@ -385,7 +385,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._tag = full_name
         fun._raw_f = partial_function.raw_f
         fun._info = FunctionInfo(
-            partial_function.raw_f, cls=user_cls, serialized=class_service_function.info.is_serialized()
+            partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
         )  # needed for .local()
         fun._use_method_name = method_name
         fun._app = class_service_function._app
@@ -507,7 +507,7 @@ class _Function(_Object, type_prefix="fu"):
                 )
         else:
             # must be a "class service function"
-            assert info.cls
+            assert info.user_cls
             assert not webhook_config
             assert not schedule
 
@@ -586,13 +586,13 @@ class _Function(_Object, type_prefix="fu"):
             scheduler_placement=scheduler_placement,
         )
 
-        if info.cls and not is_auto_snapshot:
+        if info.user_cls and not is_auto_snapshot:
             # Needed to avoid circular imports
             from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
 
-            build_functions = list(_find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD).values())
+            build_functions = list(_find_callables_for_cls(info.user_cls, _PartialFunctionFlags.BUILD).values())
             for build_function in build_functions:
-                snapshot_info = FunctionInfo(build_function, cls=info.cls)
+                snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)
                 snapshot_function = _Function.from_args(
                     snapshot_info,
                     app=None,
@@ -722,7 +722,7 @@ class _Function(_Object, type_prefix="fu"):
                     # serialize at _load time, not function decoration time
                     # otherwise we can't capture a surrounding class for lifetime methods etc.
                     function_serialized = info.serialized_function()
-                    class_serialized = serialize(info.cls) if info.cls is not None else None
+                    class_serialized = serialize(info.user_cls) if info.user_cls is not None else None
                     # Ensure that large data in global variables does not blow up the gRPC payload,
                     # which has maximum size 100 MiB. We set the limit lower for performance reasons.
                     if len(function_serialized) > 16 << 20:  # 16 MiB
@@ -799,7 +799,7 @@ class _Function(_Object, type_prefix="fu"):
                     allow_concurrent_inputs=allow_concurrent_inputs or 0,
                     worker_id=config.get("worker_id"),
                     is_auto_snapshot=is_auto_snapshot,
-                    is_method=bool(info.cls) and not info.is_service_class(),
+                    is_method=bool(info.user_cls) and not info.is_service_class(),
                     checkpointing_enabled=enable_memory_snapshot,
                     is_checkpointing_function=False,
                     object_dependencies=object_dependencies,
@@ -809,6 +809,7 @@ class _Function(_Object, type_prefix="fu"):
                     _experimental_boost=_experimental_boost,
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
+                    class_parameters=info.class_parameters(),
                 )
                 request = api_pb2.FunctionCreateRequest(
                     app_id=resolver.app_id,
