@@ -851,72 +851,45 @@ def test_queue_peek_len_clear(servicer, server_url_env, set_env_client):
     assert _run(["queue", "peek", name, "--partition", "alt"]).stdout == ""
 
 
-@pytest.mark.parametrize(
-    "command",
-    [
-        ["environment", "create", ".main"],
-        ["environment", "create", "_main"],
-        ["environment", "create", "'-main'"],
-        ["environment", "create", "main/main"],
-        ["environment", "create", "main:main"],
-    ],
-)
-def test_create_environment_name_invalid(servicer, set_env_client, command):
+@pytest.mark.parametrize("name", [".main", "_main", "'-main'", "main/main", "main:main"])
+def test_create_environment_name_invalid(servicer, set_env_client, name):
     assert isinstance(
         _run(
-            command,
+            ["environment", "create", name],
             1,
         ).exception,
         InvalidError,
     )
 
 
-@pytest.mark.parametrize(
-    "command",
-    [
-        ["environment", "create", "main"],
-        ["environment", "create", "main_-123."],
-    ],
-)
-def test_create_environment_name_valid(servicer, set_env_client, command):
+@pytest.mark.parametrize("name", ["main", "main_-123."])
+def test_create_environment_name_valid(servicer, set_env_client, name):
     assert (
         "Environment created"
         in _run(
-            command,
+            ["environment", "create", name],
             0,
         ).stdout
     )
 
 
-@pytest.mark.parametrize(
-    "command",
-    [
-        ["environment", "update", "main", "--set-name", "main/main"],
-        ["environment", "update", "main", "--set-name", "'-main'"],
-    ],
-)
-def test_update_environment_name_invalid(servicer, set_env_client, command):
+@pytest.mark.parametrize(("name", "set_name"), (("main", "main/main"), ("main", "'-main'")))
+def test_update_environment_name_invalid(servicer, set_env_client, name, set_name):
     assert isinstance(
         _run(
-            command,
+            ["environment", "update", name, "--set-name", set_name],
             1,
         ).exception,
         InvalidError,
     )
 
 
-@pytest.mark.parametrize(
-    "command",
-    [
-        ["environment", "update", "main", "--set-name", "main_-123."],
-        ["environment", "update", "main:main", "--set-name", "main2"],
-    ],
-)
-def test_update_environment_name_valid(servicer, set_env_client, command):
+@pytest.mark.parametrize(("name", "set_name"), (("main", "main_-123."), ("main:main", "main2")))
+def test_update_environment_name_valid(servicer, set_env_client, name, set_name):
     assert (
         "Environment updated"
         in _run(
-            command,
+            ["environment", "update", name, "--set-name", set_name],
             0,
         ).stdout
     )
