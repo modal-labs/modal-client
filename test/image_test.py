@@ -765,16 +765,16 @@ class FooInstance:
 
 def test_image_cls_var_rebuild(client, servicer):
     rebuild_app = App()
-    image_id = []
+    image_ids = []
     rebuild_app.cls(image=Image.debian_slim())(FooInstance)
     with rebuild_app.run(client=client):
-        image_id = list(servicer.images)
+        image_ids = list(servicer.images)
     FooInstance.used_by_build_method = "rebuild"
     rebuild_app.cls(image=Image.debian_slim())(FooInstance)
     with rebuild_app.run(client=client):
         image_ids_rebuild = list(servicer.images)
     # Ensure that a new image was created
-    assert image_id != image_ids_rebuild[-1]
+    assert image_ids[-1] != image_ids_rebuild[-1]
     FooInstance.used_by_build_method = "normal"
     rebuild_app.cls(image=Image.debian_slim())(FooInstance)
     with rebuild_app.run(client=client):
