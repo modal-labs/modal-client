@@ -323,6 +323,7 @@ def _extract_code_globals(co):
 
     return out_names
 
+
 def _find_imported_submodules(code, top_level_dependencies):
     """Find currently imported submodules used by a function.
 
@@ -398,6 +399,7 @@ def _walk_global_ops(code):
         op = instr.opcode
         if op in GLOBAL_OPS:
             yield instr.argval
+
 
 def _extract_class_dict(cls):
     """Retrieve a copy of the dict of a class without the inherited method."""
