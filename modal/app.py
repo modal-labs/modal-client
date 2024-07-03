@@ -13,7 +13,6 @@ from modal_proto import api_pb2
 
 from ._ipython import is_notebook
 from ._output import OutputManager
-from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo
 from ._utils.mount_utils import validate_volumes
@@ -775,11 +774,7 @@ class _App:
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
-        if self._running_app:
-            app_id = self._running_app.app_id
-            environment_name = self._running_app.environment_name
-            client = self._client
-        else:
+        if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
         if _allow_background_volume_commits is False:
@@ -790,10 +785,10 @@ class _App:
         elif _allow_background_volume_commits is None:
             _allow_background_volume_commits = True
 
-        # TODO(erikbern): pulling a lot of app internals here, let's clean up shortly
-        resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
-        obj = _Sandbox._new(
-            entrypoint_args,
+        return await _Sandbox.create(
+            *entrypoint_args,
+            app=self,
+            environment_name=self._running_app.environment_name,
             image=image or _default_image,
             mounts=mounts,
             secrets=secrets,
@@ -807,12 +802,11 @@ class _App:
             network_file_systems=network_file_systems,
             block_network=block_network,
             volumes=volumes,
-            allow_background_volume_commits=_allow_background_volume_commits,
             pty_info=pty_info,
+            _allow_background_volume_commits=_allow_background_volume_commits,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
+            client=self._client,
         )
-        await resolver.load(obj)
-        return obj
 
     def include(self, /, other_app: "_App"):
         """Include another app's objects in this one.

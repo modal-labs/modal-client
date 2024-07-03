@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import AsyncIterator, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, AsyncIterator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -26,6 +26,12 @@ from .network_file_system import _NetworkFileSystem, network_file_system_mount_p
 from .object import _Object
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
+
+_default_image: _Image = _Image.debian_slim()
+
+
+if TYPE_CHECKING:
+    import modal.app
 
 
 class _LogsReader:
@@ -248,8 +254,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
-        allow_background_volume_commits: Optional[bool] = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
+        _allow_background_volume_commits: Optional[bool] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
@@ -289,7 +295,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 api_pb2.VolumeMount(
                     mount_path=path,
                     volume_id=volume.object_id,
-                    allow_background_commits=allow_background_volume_commits,
+                    allow_background_commits=_allow_background_volume_commits,
                 )
                 for path, volume in validated_volumes
             ]
@@ -315,6 +321,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
             )
 
+            # Note - `resolver.app_id` will be `None` for app-less sandboxes
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
             create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
 
@@ -322,6 +329,63 @@ class _Sandbox(_Object, type_prefix="sb"):
             self._hydrate(sandbox_id, resolver.client, None)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
+
+    @staticmethod
+    async def create(
+        *entrypoint_args: str,
+        app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
+        environment_name: Optional[str] = None,  # Optionally override the default environment
+        image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
+        mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
+        secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
+        workdir: Optional[str] = None,  # Working directory of the sandbox.
+        gpu: GPU_T = None,
+        cloud: Optional[str] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in MiB, a memory request which is the minimum memory required.
+        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        block_network: bool = False,  # Whether to block network access
+        volumes: Dict[
+            Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
+        ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        _allow_background_volume_commits: Optional[bool] = None,
+        _experimental_scheduler_placement: Optional[
+            SchedulerPlacement
+        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        client: Optional[_Client] = None,
+    ) -> "_Sandbox":
+        if client is None:
+            client = await _Client.from_env()
+
+        # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
+        obj = _Sandbox._new(
+            entrypoint_args,
+            image=image or _default_image,
+            mounts=mounts,
+            secrets=secrets,
+            timeout=timeout,
+            workdir=workdir,
+            gpu=gpu,
+            cloud=cloud,
+            region=region,
+            cpu=cpu,
+            memory=memory,
+            network_file_systems=network_file_systems,
+            block_network=block_network,
+            volumes=volumes,
+            pty_info=pty_info,
+            _allow_background_volume_commits=_allow_background_volume_commits,
+            _experimental_scheduler_placement=_experimental_scheduler_placement,
+        )
+        app_id: Optional[str] = app.app_id if app else None
+        resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
+        await resolver.load(obj)
+        return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
         self._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, self._client)
