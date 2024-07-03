@@ -189,3 +189,23 @@ async def test_sandbox_async_for(client, servicer):
         # test reading after receiving EOF
         assert sb.stdout.read() == ""
         assert sb.stderr.read() == ""
+
+
+@skip_non_linux
+def test_appless_sandbox(client, servicer):
+    # Appless dependencies
+    image = Image.debian_slim().pip_install("xyz")
+    secret = Secret.from_dict({"FOO": "bar"})
+    mount = Mount.from_local_file(__file__, "/xyz")
+
+    # Create sandbox
+    sb = Sandbox.create(
+        "bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount], client=client
+    )
+    assert sb.stdout.read() == "hi\n"
+    assert sb.stderr.read() == "bye\n"
+
+    # Make sure ids got assigned
+    assert image.object_id == "im-2"
+    assert secret.object_id == "st-0"
+    assert mount.object_id == "mo-1"

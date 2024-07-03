@@ -887,6 +887,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
             self.n_mounts += 1
             mount_id = f"mo-{self.n_mounts}"
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            self.n_mounts += 1
+            mount_id = f"mo-{self.n_mounts}"
 
         else:
             raise Exception("unsupported creation type")
@@ -1091,6 +1094,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
+            secret_id = "st-" + str(len(self.secrets))
+            self.secrets[secret_id] = request.env_dict
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:

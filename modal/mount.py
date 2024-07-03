@@ -499,12 +499,19 @@ class _Mount(_Object, type_prefix="mo"):
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
                 files=files,
             )
-        else:
+        elif resolver.app_id is not None:
             req = api_pb2.MountGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 files=files,
                 app_id=resolver.app_id,
             )
+        else:
+            req = api_pb2.MountGetOrCreateRequest(
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+                files=files,
+                environment_name=resolver.environment_name,
+            )
+
         resp = await retry_transient_errors(resolver.client.stub.MountGetOrCreate, req, base_delay=1)
         status_row.finish(f"Created mount {message_label}")
 
