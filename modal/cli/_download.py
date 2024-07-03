@@ -37,7 +37,13 @@ async def _volume_download(
             if is_pipe:
                 await q.put((None, entry))
             else:
-                output_path = local_destination / entry.path
+                start_path = os.path.dirname(remote_path).split("*")[0]
+                rel_path = Path(entry.path).relative_to(start_path.lstrip("/"))
+                output_path = local_destination / rel_path
+                if os.path.isdir(local_destination):
+                    output_path = local_destination / rel_path
+                else:
+                    output_path = local_destination
                 if output_path.exists():
                     if overwrite:
                         if output_path.is_file():
