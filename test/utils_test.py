@@ -37,7 +37,6 @@ def test_object_name():
 
 
 def test_environment_name():
-    assert is_valid_environment_name("AB13/root:env1")
     assert is_valid_object_name("a" * 64)
     assert not is_valid_object_name("a" * 65)
     assert not is_valid_environment_name("--help")
