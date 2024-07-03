@@ -5,7 +5,7 @@ import hashlib
 import io
 import os
 import platform
-from contextlib import contextmanager
+from contextlib import _GeneratorContextManager, contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Union
 from urllib.parse import urlparse
@@ -327,7 +327,7 @@ async def blob_iter(blob_id, stub) -> AsyncIterator[bytes]:
 
 @dataclasses.dataclass
 class FileUploadSpec:
-    source: Callable[[], BinaryIO]
+    source: Callable[[], Union[_GeneratorContextManager, BinaryIO]]
     source_description: Any
     mount_filename: str
 
@@ -339,7 +339,10 @@ class FileUploadSpec:
 
 
 def _get_file_upload_spec(
-    source: Callable[[], BinaryIO], source_description: Any, mount_filename: PurePosixPath, mode: int
+    source: Callable[[], Union[_GeneratorContextManager, BinaryIO]],
+    source_description: Any,
+    mount_filename: PurePosixPath,
+    mode: int,
 ) -> FileUploadSpec:
     with source() as fp:
         # Current position is ignored - we always upload from position 0
@@ -383,10 +386,11 @@ def get_file_upload_spec_from_path(
 
 
 def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPath, mode: int) -> FileUploadSpec:
+    @contextmanager
     def source():
         # We ignore position in stream and always upload from position 0
         fp.seek(0)
-        return fp
+        yield fp
 
     return _get_file_upload_spec(
         source,

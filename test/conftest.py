@@ -555,6 +555,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for k, v in self.dicts[request.dict_id].items():
             await stream.send_message(api_pb2.DictEntry(key=k, value=v))
 
+    ### Environment
+
+    async def EnvironmentCreate(self, stream):
+        await stream.send_message(Empty())
+
+    async def EnvironmentUpdate(self, stream):
+        await stream.send_message(api_pb2.EnvironmentListItem())
+
     ### Function
 
     async def FunctionBindParams(self, stream):

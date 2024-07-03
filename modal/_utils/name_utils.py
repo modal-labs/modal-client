@@ -21,7 +21,7 @@ def is_valid_object_name(name: str) -> bool:
 
 def is_valid_environment_name(name: str) -> bool:
     # first char is alnum, the rest allows other chars
-    return len(name) <= 64 and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-_.\/:]+$", name) is not None
+    return len(name) <= 64 and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-_.]+$", name) is not None
 
 
 def is_valid_tag(tag: str) -> bool:
@@ -39,6 +39,22 @@ def check_object_name(name: str, object_type: str, warn: bool = False) -> None:
     if warn:
         message += "\n\nThis will become an error in the future. Please rename your object to preserve access to it."
     if not is_valid_object_name(name):
+        if warn:
+            deprecation_warning((2024, 4, 30), message, show_source=False)
+        else:
+            raise InvalidError(message)
+
+
+def check_environment_name(name: str, warn: bool = False) -> None:
+    message = (
+        f"Invalid environment name: '{name}'."
+        "\n\nEnvironment names can only start with alphanumeric characters,"
+        " may contain only alphanumeric characters, dashes, periods, and underscores,"
+        " and must be shorter than 64 characters."
+    )
+    if warn:
+        message += "\n\nThis will become an error in the future. Please rename your object to preserve access to it."
+    if not is_valid_environment_name(name):
         if warn:
             deprecation_warning((2024, 4, 30), message, show_source=False)
         else:
