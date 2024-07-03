@@ -290,7 +290,7 @@ class _Function(_Object, type_prefix="fu"):
     _web_url: Optional[str]
     _function_name: Optional[str]
     _is_method: bool
-    _spec: _FunctionSpec
+    _spec: Optional[_FunctionSpec] = None
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
@@ -456,6 +456,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._parent = instance_service_function._parent
         fun._app = class_bound_method._app
         fun._all_mounts = class_bound_method._all_mounts  # TODO: only used for mount-watching/modal serve
+        fun._spec = class_bound_method._spec
         return fun
 
     @staticmethod
@@ -1035,6 +1036,7 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def spec(self) -> _FunctionSpec:
         """mdmd:hidden"""
+        assert self._spec
         return self._spec
 
     def get_build_def(self) -> str:
@@ -1242,6 +1244,12 @@ class _Function(_Object, type_prefix="fu"):
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
         info = self._get_info()
+
+        if is_local() and self.spec.volumes or self.spec.network_file_systems:
+            warnings.warn(
+                f"The {info.function_name} function is executing locally "
+                + "and will not have access to the mounted Volume or NetworkFileSystem data"
+            )
         if not info or not info.raw_f:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
