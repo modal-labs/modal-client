@@ -18,6 +18,7 @@ import click.testing
 import toml
 
 from modal.cli.entry_point import entrypoint_cli
+from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
@@ -526,22 +527,22 @@ def test_volume_cli(set_env_client):
 def test_volume_get(servicer, set_env_client):
     vol_name = "my-test-vol"
     _run(["volume", "create", vol_name])
-    file_path = b"test.txt"
+    file_path = "test.txt"
     file_contents = b"foo bar baz"
     with tempfile.TemporaryDirectory() as tmpdir:
         upload_path = os.path.join(tmpdir, "upload.txt")
         with open(upload_path, "wb") as f:
             f.write(file_contents)
             f.flush()
-        _run(["volume", "put", vol_name, upload_path, file_path.decode()])
+        _run(["volume", "put", vol_name, upload_path, file_path])
 
-        _run(["volume", "get", vol_name, file_path.decode(), tmpdir])
-        with open(os.path.join(tmpdir, file_path.decode()), "rb") as f:
+        _run(["volume", "get", vol_name, file_path, tmpdir])
+        with open(os.path.join(tmpdir, file_path), "rb") as f:
             assert f.read() == file_contents
 
     with tempfile.TemporaryDirectory() as tmpdir2:
         _run(["volume", "get", vol_name, "/", tmpdir2])
-        with open(os.path.join(tmpdir2, file_path.decode()), "rb") as f:
+        with open(os.path.join(tmpdir2, file_path), "rb") as f:
             assert f.read() == file_contents
 
 
@@ -578,21 +579,21 @@ def test_volume_put_force(servicer, set_env_client):
 def test_volume_rm(servicer, set_env_client):
     vol_name = "my-test-vol"
     _run(["volume", "create", vol_name])
-    file_path = b"test.txt"
+    file_path = "test.txt"
     file_contents = b"foo bar baz"
     with tempfile.TemporaryDirectory() as tmpdir:
         upload_path = os.path.join(tmpdir, "upload.txt")
         with open(upload_path, "wb") as f:
             f.write(file_contents)
             f.flush()
-        _run(["volume", "put", vol_name, upload_path, file_path.decode()])
+        _run(["volume", "put", vol_name, upload_path, file_path])
 
-        _run(["volume", "get", vol_name, file_path.decode(), tmpdir])
-        with open(os.path.join(tmpdir, file_path.decode()), "rb") as f:
+        _run(["volume", "get", vol_name, file_path, tmpdir])
+        with open(os.path.join(tmpdir, file_path), "rb") as f:
             assert f.read() == file_contents
 
-        _run(["volume", "rm", vol_name, file_path.decode()])
-        _run(["volume", "get", vol_name, file_path.decode()], expected_exit_code=1, expected_stderr=None)
+        _run(["volume", "rm", vol_name, file_path])
+        _run(["volume", "get", vol_name, file_path], expected_exit_code=1, expected_stderr=None)
 
 
 def test_volume_ls(servicer, set_env_client):
@@ -848,3 +849,51 @@ def test_queue_peek_len_clear(servicer, server_url_env, set_env_client):
     _run(["queue", "clear", name, "--all", "--yes"])
     assert _run(["queue", "len", name, "--total"]).stdout == "0\n"
     assert _run(["queue", "peek", name, "--partition", "alt"]).stdout == ""
+
+
+@pytest.mark.parametrize("name", [".main", "_main", "'-main'", "main/main", "main:main"])
+def test_create_environment_name_invalid(servicer, set_env_client, name):
+    assert isinstance(
+        _run(
+            ["environment", "create", name],
+            1,
+        ).exception,
+        InvalidError,
+    )
+
+
+@pytest.mark.parametrize("name", ["main", "main_-123."])
+def test_create_environment_name_valid(servicer, set_env_client, name):
+    assert (
+        "Environment created"
+        in _run(
+            ["environment", "create", name],
+            0,
+        ).stdout
+    )
+
+
+@pytest.mark.parametrize(("name", "set_name"), (("main", "main/main"), ("main", "'-main'")))
+def test_update_environment_name_invalid(servicer, set_env_client, name, set_name):
+    assert isinstance(
+        _run(
+            ["environment", "update", name, "--set-name", set_name],
+            1,
+        ).exception,
+        InvalidError,
+    )
+
+
+@pytest.mark.parametrize(("name", "set_name"), (("main", "main_-123."), ("main:main", "main2")))
+def test_update_environment_name_valid(servicer, set_env_client, name, set_name):
+    assert (
+        "Environment updated"
+        in _run(
+            ["environment", "update", name, "--set-name", set_name],
+            0,
+        ).stdout
+    )
+
+
+def test_call_update_environment_suffix(servicer, set_env_client):
+    _run(["environment", "update", "main", "--set-web-suffix", "_"])

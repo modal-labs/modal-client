@@ -665,25 +665,6 @@ def test_deps_explicit(client, servicer):
     assert dep_object_ids == set([image.object_id, nfs_1.object_id, nfs_2.object_id])
 
 
-nfs = NetworkFileSystem.from_name("my-persisted-nfs", create_if_missing=True)
-
-
-def dummy_closurevars():
-    nfs.listdir("/")
-
-
-def test_deps_closurevars(client, servicer):
-    app = App()
-
-    image = Image.debian_slim()
-    modal_f = app.function(image=image)(dummy_closurevars)
-
-    with app.run(client=client):
-        f = servicer.app_functions[modal_f.object_id]
-
-    assert set(d.object_id for d in f.object_dependencies) == set([nfs.object_id, image.object_id])
-
-
 def assert_is_wrapped_dict(some_arg):
     assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
     return some_arg
@@ -800,3 +781,12 @@ async def test_non_aio_map_in_async_caller_error(client):
         # but we support it for backwards compatibility for now:
         res = [r async for r in dummy_function.map([1, 2, 4])]
         assert res == [1, 4, 16]
+
+
+def test_warn_on_local_volume_mount(client, servicer):
+    vol = modal.Volume.from_name("my-vol")
+    dummy_function = app.function(volumes={"/foo": vol})(dummy)
+
+    assert modal.is_local()
+    with pytest.warns(match="local"):
+        dummy_function.local()

@@ -67,7 +67,7 @@ class _PartialFunction:
             else:
                 # special edge case: referencing a method of an instance of an
                 # unwrapped class (not using app.cls()) with @methods
-                # not sure what would be useful here, but lets return a bound version of the underlying function,
+                # not sure what would be useful here, but let's return a bound version of the underlying function,
                 # since the class is just a vanilla class at this point
                 # This wouldn't let the user access `.remote()` and `.local()` etc. on the function
                 return self.raw_f.__get__(obj, objtype)

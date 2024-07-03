@@ -10,6 +10,45 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.22 (2024-07-01)
+
+* Fixes error when running `@modal.build` methods, introduced in v0.63.19
+
+
+
+### 0.63.20 (2024-07-01)
+
+* Fixes bug where self.method.local() re-triggers lifecycle methods in classes
+
+
+
+### 0.63.14 (2024-06-28)
+
+* Adds `Cls.lookup()` backwards compatibility with classes created by clients prior to `v0.63`.
+
+**Important**: When updating (to >=v0.63) an app with a Modal `class` that's accessed using `Cls.lookup()` - make sure to update the client of the app/service **using** `Cls.lookup()` first, and **then** update the app containing the class being looked up.
+
+
+
+### 0.63.12 (2024-06-27)
+
+- Fixed a bug introduced in 0.63.0 that broke `modal.Cls.with_options`
+
+
+
+### 0.63.10 (2024-06-26)
+
+- Adds warning about future deprecation of `retries` for generators. Retries are being deprecated as they can lead to nondetermistic generator behavior.
+
+
+
+### 0.63.9 (2024-06-26)
+
+- Fixed a bug in `Volume.copy_files()` where some source paths may be ignored if passed as `bytes`.
+- `Volume.read_file`, `Volume.read_file_into_fileobj`, `Volume.remove_file`, and `Volume.copy_files` can no longer take both string or bytes for their paths. They now only accept `str`.
+
+
+
 ### 0.63.2 (2024-06-25)
 
 * Fixes issue with `Cls.lookup` not working (at all) after upgrading to v0.63.0. **Note**: this doesn't fix the cross-version lookup incompatibility introduced in 0.63.0.

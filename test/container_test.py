@@ -22,7 +22,7 @@ from grpclib import Status
 from grpclib.exceptions import GRPCError
 
 import modal
-from modal import Client, is_local
+from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
 from modal._serialization import (
     deserialize,
@@ -31,6 +31,7 @@ from modal._serialization import (
     serialize_data_format,
 )
 from modal._utils import async_utils
+from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from modal.app import _App
 from modal.exception import InvalidError
 from modal.partial_function import enter, method
@@ -642,7 +643,7 @@ def test_lifecycle_enter_sync(servicer):
         inputs=_get_inputs(((), {}), method_name="f_sync"),
         is_class=True,
     )
-    assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync"]
+    assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync", "local"]
 
 
 @skip_github_non_linux
@@ -654,7 +655,7 @@ def test_lifecycle_enter_async(servicer):
         inputs=_get_inputs(((), {}), method_name="f_async"),
         is_class=True,
     )
-    assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async"]
+    assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async", "local"]
 
 
 @skip_github_non_linux
@@ -1131,27 +1132,15 @@ def test_volume_commit_on_exit_doesnt_fail_container(servicer):
 
 
 @skip_github_non_linux
-def test_function_dep_hydration(servicer):
-    deploy_app_externally(servicer, "test.supports.functions", "app")
-    ret = _run_container(
-        servicer,
-        "test.supports.functions",
-        "check_dep_hydration",
-        deps=["im-1", "vo-0", "im-1", "im-2", "vo-0", "vo-1"],
-    )
-    assert _unwrap_scalar(ret) is None
-
-
-@skip_github_non_linux
 def test_build_decorator_cls(servicer):
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "BuildCls.*",
-        inputs=_get_inputs(((), {}), method_name="build1"),
+        # note: builder functions are still run as standalone functions from their class service function
+        "BuildCls.build1",
+        inputs=_get_inputs(((), {})),
         is_builder_function=True,
         is_auto_snapshot=True,
-        is_class=True,
     )
     assert _unwrap_scalar(ret) == 101
     # TODO: this is GENERIC_STATUS_FAILURE when `@exit` fails,
@@ -1165,11 +1154,11 @@ def test_multiple_build_decorator_cls(servicer):
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "BuildCls.*",
-        inputs=_get_inputs(((), {}), method_name="build2"),
+        # note: builder functions are still run as standalone functions from their class service function
+        "BuildCls.build2",
+        inputs=_get_inputs(((), {})),
         is_builder_function=True,
         is_auto_snapshot=True,
-        is_class=True,
     )
     assert _unwrap_scalar(ret) == 1001
     assert ret.task_result is None
@@ -1346,7 +1335,7 @@ def test_lifecycle_full(servicer):
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
-    assert "[events:enter_sync,enter_async,f_sync,exit_sync,exit_async]" in stdout.decode()
+    assert "[events:enter_sync,enter_async,f_sync,local,exit_sync,exit_async]" in stdout.decode()
 
     # Sync and async container lifecycle methods on an async function.
     container_process = _run_container_process(
@@ -1359,7 +1348,7 @@ def test_lifecycle_full(servicer):
     )
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
-    assert "[events:enter_sync,enter_async,f_async,exit_sync,exit_async]" in stdout.decode()
+    assert "[events:enter_sync,enter_async,f_async,local,exit_sync,exit_async]" in stdout.decode()
 
 
 ## modal.experimental functionality ##
@@ -1433,6 +1422,24 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
     assert loop_iteration_failures > 5
     assert "error=Exception('oops')" in caplog.text
     assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_container_doesnt_send_large_exceptions(servicer):
+    # Tests that large exception messages (>2mb are trimmed)
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "raise_large_unicode_exception",
+        inputs=_get_inputs(((), {})),
+    )
+
+    assert len(ret.items) == 1
+    assert len(ret.items[0].SerializeToString()) < MAX_OBJECT_SIZE_BYTES * 1.5
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "UnicodeDecodeError" in ret.items[0].result.exception
+    assert servicer.task_result is None  # should not cause a failure result
 
 
 @skip_github_non_linux
@@ -1618,3 +1625,31 @@ def test_class_as_service_serialized(servicer):
     assert res_1.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert deserialize(res_0.data, result.client) == "s_enter_a_x"
     assert deserialize(res_1.data, result.client) == "s_enter_b_y"
+
+
+@skip_github_non_linux
+def test_function_lazy_resolution(servicer, set_env_client):
+    # Deploy some global objects
+    Volume.from_name("my-vol", create_if_missing=True).resolve()
+    Queue.from_name("my-queue", create_if_missing=True).resolve()
+
+    # Run container
+    deploy_app_externally(servicer, "test.supports.lazy_hydration", "app", capture_output=False)
+    ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-1", "vo-0"])
+    assert _unwrap_scalar(ret) is None
+
+
+@skip_github_non_linux
+def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env_client):
+    _run_container(
+        servicer,
+        "test.supports.volume_local",
+        "volume_func_outer",
+        inputs=_get_inputs(((), {})),
+    )
+
+    warnings = len(recwarn)
+    for w in range(warnings):
+        warning = str(recwarn.pop().message)
+        assert "and will not have access to the mounted Volume or NetworkFileSystem data" not in warning
+    assert len(recwarn) == 0

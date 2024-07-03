@@ -18,6 +18,7 @@ from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .exception import InvalidError, NotFoundError, VersionError
 from .functions import (
+    _Function,
     _parse_retries,
 )
 from .gpu import GPU_T
@@ -26,7 +27,6 @@ from .partial_function import (
     _find_callables_for_cls,
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
-    _Function,
     _PartialFunction,
     _PartialFunctionFlags,
 )
@@ -49,15 +49,20 @@ class _Obj:
     _functions: Dict[str, _Function]
     _inited: bool
     _entered: bool
-    _local_obj: Any
-    _local_obj_constr: Optional[Callable[[], Any]]
-    _instance_service_function: _Function
+    _user_cls_instance: Optional[Any]
+    _user_cls_instance_constr: Optional[Callable[[], Any]]
+
+    _instance_service_function: Optional[_Function]
+
+    def _uses_common_service_function(self):
+        # Used for backwards compatibility checks with pre v0.63 classes
+        return self._instance_service_function is not None
 
     def __init__(
         self,
         user_cls: type,
         output_mgr: Optional[OutputManager],
-        class_service_function: _Function,
+        class_service_function: Optional[_Function],  # only None for <v0.63 classes
         classbound_methods: Dict[str, _Function],
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
@@ -70,23 +75,33 @@ class _Obj:
             check_valid_cls_constructor_arg(key, kwarg)
 
         self._method_functions = {}
-        # first create the singular object function used by all methods on this parameterization
-        self._instance_service_function = class_service_function._bind_parameters(
-            self, from_other_workspace, options, args, kwargs
-        )
-        for method_name, class_bound_method in classbound_methods.items():
-            method = self._instance_service_function._bind_instance_method(class_bound_method)
-            method._set_output_mgr(output_mgr)
-            self._method_functions[method_name] = method
+        if class_service_function:
+            # >= v0.63 classes
+            # first create the singular object function used by all methods on this parameterization
+            self._instance_service_function = class_service_function._bind_parameters(
+                self, from_other_workspace, options, args, kwargs
+            )
+            for method_name, class_bound_method in classbound_methods.items():
+                method = self._instance_service_function._bind_instance_method(class_bound_method)
+                method._set_output_mgr(output_mgr)
+                self._method_functions[method_name] = method
+        else:
+            # <v0.63 classes - bind each individual method to the new parameters
+            self._instance_service_function = None
+            for method_name, class_bound_method in classbound_methods.items():
+                method = class_bound_method._bind_parameters(self, from_other_workspace, options, args, kwargs)
+                method._set_output_mgr(output_mgr)
+                self._method_functions[method_name] = method
 
         # Used for construction local object lazily
         self._inited = False
         self._entered = False
-        self._local_obj = None
+        self._local_user_cls_instance = None
+
         if user_cls:
-            self._local_obj_constr = lambda: user_cls(*args, **kwargs)
+            self._user_cls_instance_constr = lambda: user_cls(*args, **kwargs)
         else:
-            self._local_obj_constr = None
+            self._user_cls_instance_constr = None
 
     async def keep_warm(self, warm_pool_size: int) -> None:
         """Set the warm pool size for the class containers
@@ -103,32 +118,40 @@ class _Obj:
         Model("fine-tuned-model").keep_warm(2)
         ```
         """
+        if not self._uses_common_service_function():
+            raise VersionError(
+                "Class instance `.keep_warm(...)` can't be used on classes deployed using client version <v0.63"
+            )
         await self._instance_service_function.keep_warm(warm_pool_size)
 
-    def get_obj(self):
-        """Constructs obj without any caching. Used by container entrypoint."""
-        self._local_obj = self._local_obj_constr()
-        setattr(self._local_obj, "_modal_functions", self._method_functions)  # Needed for PartialFunction.__get__
-        return self._local_obj
+    def _create_user_cls_instance(self) -> Any:
+        """Constructs user cls instance without any caching and inserts hydrated methods
 
-    def get_local_obj(self):
+        Used by container entrypoint."""
+        self._user_cls_instance = self._user_cls_instance_constr()
+        setattr(
+            self._user_cls_instance, "_modal_functions", self._method_functions
+        )  # Needed for PartialFunction.__get__
+        return self._user_cls_instance
+
+    def _get_user_cls_instance(self):
         """Construct local object lazily. Used for .local() calls."""
         if not self._inited:
-            self.get_obj()  # Instantiate object
+            self._create_user_cls_instance()  # Instantiate object
             self._inited = True
 
-        return self._local_obj
+        return self._user_cls_instance
 
     def enter(self):
         if not self._entered:
-            if hasattr(self._local_obj, "__enter__"):
-                self._local_obj.__enter__()
+            if hasattr(self._user_cls_instance, "__enter__"):
+                self._user_cls_instance.__enter__()
 
             for method_flag in (
                 _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
                 _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
             ):
-                for enter_method in _find_callables_for_obj(self._local_obj, method_flag).values():
+                for enter_method in _find_callables_for_obj(self._user_cls_instance, method_flag).values():
                     enter_method()
 
         self._entered = True
@@ -145,19 +168,19 @@ class _Obj:
     @synchronizer.nowrap
     async def aenter(self):
         if not self.entered:
-            local_obj = self.get_local_obj()
-            if hasattr(local_obj, "__aenter__"):
-                await local_obj.__aenter__()
-            elif hasattr(local_obj, "__enter__"):
-                local_obj.__enter__()
+            user_cls_instance = self._get_user_cls_instance()
+            if hasattr(user_cls_instance, "__aenter__"):
+                await user_cls_instance.__aenter__()
+            elif hasattr(user_cls_instance, "__enter__"):
+                user_cls_instance.__enter__()
         self.entered = True
 
     def __getattr__(self, k):
         if k in self._method_functions:
             return self._method_functions[k]
-        elif self._local_obj_constr:
-            obj = self.get_local_obj()
-            return getattr(obj, k)
+        elif self._user_cls_instance_constr:
+            user_cls_instance = self._get_user_cls_instance()
+            return getattr(user_cls_instance, k)
         else:
             raise AttributeError(k)
 
@@ -167,7 +190,9 @@ Obj = synchronize_api(_Obj)
 
 class _Cls(_Object, type_prefix="cs"):
     _user_cls: Optional[type]
-    _class_service_function: _Function  # The _Function serving *all* methods of the class
+    _class_service_function: Optional[
+        _Function
+    ]  # The _Function serving *all* methods of the class, used for version >=v0.63
     _method_functions: Dict[str, _Function]  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable]
@@ -270,6 +295,11 @@ class _Cls(_Object, type_prefix="cs"):
         cls._from_other_workspace = False
         return cls
 
+    def _uses_common_service_function(self):
+        # Used for backwards compatibility with version < 0.63
+        # where methods had individual top level functions
+        return self._class_service_function is not None
+
     @classmethod
     def from_name(
         cls: Type["_Cls"],
@@ -308,16 +338,17 @@ class _Cls(_Object, type_prefix="cs"):
 
             class_function_tag = f"{tag}.*"  # special name of the base service function for the class
 
+            class_service_function = _Function.from_name(
+                app_name,
+                class_function_tag,
+                environment_name=_environment_name,
+            )
             try:
-                class_service_function = await _Function.lookup(
-                    app_name, class_function_tag, environment_name=_environment_name, client=resolver.client
-                )
-                obj._class_service_function = class_service_function
+                obj._class_service_function = await resolver.load(class_service_function)
             except modal.exception.NotFoundError:
-                raise VersionError(
-                    f"Could not class service function {class_function_tag} - this is likely "
-                    f"the result of using a modal>=v0.63.0 to lookup a Cls of an older version"
-                )
+                # this happens when looking up classes deployed using <v0.63
+                # This try-except block can be removed when min supported version >= 0.63
+                pass
 
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
@@ -359,7 +390,7 @@ class _Cls(_Object, type_prefix="cs"):
         Model2().generate.remote(42)
         ```
         """
-        retry_policy = _parse_retries(retries)
+        retry_policy = _parse_retries(retries, f"Class {self.__name__}" if self._user_cls else "")
         if gpu or cpu or memory:
             resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=None)
         else:

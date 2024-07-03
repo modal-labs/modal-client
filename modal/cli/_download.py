@@ -39,7 +39,6 @@ async def _volume_download(
             else:
                 start_path = os.path.dirname(remote_path).split("*")[0]
                 rel_path = Path(entry.path).relative_to(start_path.lstrip("/"))
-                output_path = local_destination / rel_path
                 if os.path.isdir(local_destination):
                     output_path = local_destination / rel_path
                 else:
