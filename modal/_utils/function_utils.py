@@ -216,11 +216,6 @@ class FunctionInfo:
                 f_attr_ops.add(instr.argval)
             elif instr.opcode == STORE_ATTR:
                 f_attr_ops.add(instr.argval)
-                logger.warning(
-                    "\n\nWarning: %s set in @build. You must set class variables in "
-                    + "@enter to be propagated to runtime containers\n",
-                    instr.argval,
-                )
 
         cls_vars = self.get_cls_vars()
         f_attrs = {k: cls_vars[k] for k in cls_vars if k in f_attr_ops}
