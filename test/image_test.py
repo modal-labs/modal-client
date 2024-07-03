@@ -765,7 +765,7 @@ class FooInstance:
 
 def test_image_cls_var_rebuild(client, servicer):
     rebuild_app = App()
-    image_id = -1
+    image_id = []
     rebuild_app.cls(image=Image.debian_slim())(FooInstance)
     with rebuild_app.run(client=client):
         image_id = list(servicer.images)
