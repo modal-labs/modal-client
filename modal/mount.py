@@ -509,6 +509,7 @@ class _Mount(_Object, type_prefix="mo"):
             req = api_pb2.MountGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
                 files=files,
+                environment_name=resolver.environment_name,
             )
 
         resp = await retry_transient_errors(resolver.client.stub.MountGetOrCreate, req, base_delay=1)

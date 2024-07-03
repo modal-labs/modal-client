@@ -62,6 +62,7 @@ class _Secret(_Object, type_prefix="st"):
                 object_creation_type=object_creation_type,
                 env_dict=env_dict_filtered,
                 app_id=resolver.app_id,
+                environment_name=resolver.environment_name,
             )
             try:
                 resp = await resolver.client.stub.SecretGetOrCreate(req)
