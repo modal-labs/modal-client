@@ -28,20 +28,22 @@ def _http_client_with_tls(timeout: Optional[float]) -> ClientSession:
 
 
 class ClientSessionRegistry:
-    _client_session: Optional[ClientSession]
+    _client_session: ClientSession
+    _client_session_active: bool = False
 
     @staticmethod
     def get_session():
-        if ClientSessionRegistry._client_session is None:
+        if not ClientSessionRegistry._client_session_active:
             ClientSessionRegistry._client_session = _http_client_with_tls(timeout=None)
+            ClientSessionRegistry._client_session_active = True
             on_shutdown(ClientSessionRegistry.close_session())
         return ClientSessionRegistry._client_session
 
     @staticmethod
     async def close_session():
-        if ClientSessionRegistry._client_session:
+        if ClientSessionRegistry._client_session_active:
             await ClientSessionRegistry._client_session.close()
-            ClientSessionRegistry._client_session = None
+            ClientSessionRegistry._client_session_active = False
 
 
 @contextlib.asynccontextmanager
