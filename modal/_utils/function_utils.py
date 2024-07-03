@@ -207,11 +207,20 @@ class FunctionInfo:
 
         LOAD_ATTR = opcode.opmap["LOAD_ATTR"]
         STORE_ATTR = opcode.opmap["STORE_ATTR"]
-        ATTR_OPS = (LOAD_ATTR, STORE_ATTR)
 
         func = self.raw_f
         code = func.__code__
-        f_attr_ops = {instr.argval for instr in dis.get_instructions(code) if instr.opcode in ATTR_OPS}
+        f_attr_ops = set()
+        for instr in dis.get_instructions(code):
+            if instr.opcode == LOAD_ATTR:
+                f_attr_ops.add(instr.argval)
+            elif instr.opcode == STORE_ATTR:
+                f_attr_ops.add(instr.argval)
+                logger.warning(
+                    "\n\nWarning: %s set in @build. You must set class variables in "
+                    + "@enter to be propagated to runtime containers\n",
+                    instr.argval,
+                )
 
         cls_vars = self.get_cls_vars()
         f_attrs = {k: cls_vars[k] for k in cls_vars if k in f_attr_ops}
