@@ -1,6 +1,4 @@
-# Copyright Modal Labs 2022
-from __future__ import annotations
-
+# Copyright Modal Labs 2024
 from modal import App, Volume
 
 app2 = App()
