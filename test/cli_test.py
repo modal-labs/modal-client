@@ -893,3 +893,7 @@ def test_update_environment_name_valid(servicer, set_env_client, name, set_name)
             0,
         ).stdout
     )
+
+
+def test_call_update_environment_suffix(servicer, set_env_client):
+    _run(["environment", "update", "main", "--set-web-suffix", "_"])
