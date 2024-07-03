@@ -781,3 +781,12 @@ async def test_non_aio_map_in_async_caller_error(client):
         # but we support it for backwards compatibility for now:
         res = [r async for r in dummy_function.map([1, 2, 4])]
         assert res == [1, 4, 16]
+
+
+def test_warn_on_local_volume_mount(client, servicer):
+    vol = modal.Volume.from_name("my-vol")
+    dummy_function = app.function(volumes={"/foo": vol})(dummy)
+
+    assert modal.is_local()
+    with pytest.warns(match="local"):
+        dummy_function.local()
