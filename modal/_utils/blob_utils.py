@@ -5,7 +5,7 @@ import hashlib
 import io
 import os
 import platform
-from contextlib import _GeneratorContextManager, contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Union
 from urllib.parse import urlparse
@@ -327,7 +327,7 @@ async def blob_iter(blob_id, stub) -> AsyncIterator[bytes]:
 
 @dataclasses.dataclass
 class FileUploadSpec:
-    source: Callable[[], Union[_GeneratorContextManager, BinaryIO]]
+    source: Callable[[], Union[AbstractContextManager, BinaryIO]]
     source_description: Any
     mount_filename: str
 
@@ -339,7 +339,7 @@ class FileUploadSpec:
 
 
 def _get_file_upload_spec(
-    source: Callable[[], Union[_GeneratorContextManager, BinaryIO]],
+    source: Callable[[], Union[AbstractContextManager, BinaryIO]],
     source_description: Any,
     mount_filename: PurePosixPath,
     mode: int,
