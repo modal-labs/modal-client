@@ -101,7 +101,8 @@ def update(
     if set_name is None and set_web_suffix is None:
         raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix)")
 
-    check_environment_name(set_name)
+    if set_name:
+        check_environment_name(set_name)
 
     try:
         environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
