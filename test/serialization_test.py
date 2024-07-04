@@ -62,9 +62,17 @@ def test_deserialization_error(client):
 
 @pytest.mark.parametrize(
     ["pydict", "params"],
-    [({"foo": "bar"}, [api_pb2.FunctionParameter(name="foo", type=api_pb2.FunctionParameter.PARAM_TYPE_STRING)])],
+    [
+        (
+            {"foo": "bar", "i": 5},
+            [
+                api_pb2.FunctionParameter(name="foo", type=api_pb2.FunctionParameter.PARAM_TYPE_STRING),
+                api_pb2.FunctionParameter(name="i", type=api_pb2.FunctionParameter.PARAM_TYPE_INT),
+            ],
+        )
+    ],
 )
-def test_deserialize_cbor_params_success(pydict, params):
-    serialized_params = serialize_cbor_params(pydict)
+def test_cbor_serde_params_success(pydict, params):
+    serialized_params = serialize_cbor_params(pydict, params)
     reconstructed = deserialize_cbor_params(serialized_params, params)
     assert reconstructed == pydict
