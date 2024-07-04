@@ -198,7 +198,7 @@ class FunctionInfo:
         f_globals = {k: func.__globals__[k] for k in f_globals_ref if k in func.__globals__}
         return f_globals
 
-    def class_parameter_format(self) -> api_pb2.Function.ParameterSerializationFormat.ValueType:
+    def class_parameter_format(self) -> "api_pb2.Function.ParameterSerializationFormat.ValueType":
         if not self.user_cls:
             return api_pb2.Function.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED
 

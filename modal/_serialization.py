@@ -9,7 +9,7 @@ try:
     # and get a speedup from the c extension
     import cbor2
 except ImportError:
-    import modal._vendor.cbor2 as cbor2  # vendored python-only cbor2
+    import modal._vendor.cbor2 as cbor2  # type: ignore
 
 from synchronicity.synchronizer import Interface
 
