@@ -844,16 +844,6 @@ message FileEntry {
 }
 
 
-message FunctionParameter {
-  string name = 1;
-  enum ParameterType {
-    PARAM_TYPE_UNSPECIFIED = 0;
-    PARAM_TYPE_STRING = 1;
-    PARAM_TYPE_INT = 2;
-  }
-  ParameterType type = 2;
-}
-
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -1164,6 +1154,16 @@ message FunctionOptions {
   optional uint32 allow_concurrent_inputs = 10;
   bool replace_volume_mounts = 11;
   bool replace_secret_ids = 12;
+}
+
+message FunctionParameter {
+  string name = 1;
+  enum ParameterType {
+    PARAM_TYPE_UNSPECIFIED = 0;
+    PARAM_TYPE_STRING = 1;
+    PARAM_TYPE_INT = 2;
+  }
+  ParameterType type = 2;
 }
 
 message FunctionPrecreateRequest {
