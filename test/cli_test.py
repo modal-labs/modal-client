@@ -18,6 +18,7 @@ import click.testing
 import toml
 
 from modal.cli.entry_point import entrypoint_cli
+from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
@@ -848,3 +849,51 @@ def test_queue_peek_len_clear(servicer, server_url_env, set_env_client):
     _run(["queue", "clear", name, "--all", "--yes"])
     assert _run(["queue", "len", name, "--total"]).stdout == "0\n"
     assert _run(["queue", "peek", name, "--partition", "alt"]).stdout == ""
+
+
+@pytest.mark.parametrize("name", [".main", "_main", "'-main'", "main/main", "main:main"])
+def test_create_environment_name_invalid(servicer, set_env_client, name):
+    assert isinstance(
+        _run(
+            ["environment", "create", name],
+            1,
+        ).exception,
+        InvalidError,
+    )
+
+
+@pytest.mark.parametrize("name", ["main", "main_-123."])
+def test_create_environment_name_valid(servicer, set_env_client, name):
+    assert (
+        "Environment created"
+        in _run(
+            ["environment", "create", name],
+            0,
+        ).stdout
+    )
+
+
+@pytest.mark.parametrize(("name", "set_name"), (("main", "main/main"), ("main", "'-main'")))
+def test_update_environment_name_invalid(servicer, set_env_client, name, set_name):
+    assert isinstance(
+        _run(
+            ["environment", "update", name, "--set-name", set_name],
+            1,
+        ).exception,
+        InvalidError,
+    )
+
+
+@pytest.mark.parametrize(("name", "set_name"), (("main", "main_-123."), ("main:main", "main2")))
+def test_update_environment_name_valid(servicer, set_env_client, name, set_name):
+    assert (
+        "Environment updated"
+        in _run(
+            ["environment", "update", name, "--set-name", set_name],
+            0,
+        ).stdout
+    )
+
+
+def test_call_update_environment_suffix(servicer, set_env_client):
+    _run(["environment", "update", "main", "--set-web-suffix", "_"])

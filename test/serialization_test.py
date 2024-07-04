@@ -3,7 +3,14 @@ import pytest
 import random
 
 from modal import Queue
-from modal._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
+from modal._serialization import (
+    deserialize,
+    deserialize_cbor_params,
+    deserialize_data_format,
+    serialize,
+    serialize_cbor_params,
+    serialize_data_format,
+)
 from modal._utils.rand_pb_testing import rand_pb
 from modal.exception import DeserializationError
 from modal_proto import api_pb2
@@ -51,3 +58,31 @@ def test_deserialization_error(client):
     )
     with pytest.raises(DeserializationError, match="'undeserializable_module' .+ local environment"):
         deserialize(obj, client)
+
+
+@pytest.mark.parametrize(
+    ["pydict", "params"],
+    [
+        (
+            {"foo": "bar", "i": 5},
+            [
+                api_pb2.FunctionParameter(name="foo", type=api_pb2.FunctionParameter.PARAM_TYPE_STRING),
+                api_pb2.FunctionParameter(name="i", type=api_pb2.FunctionParameter.PARAM_TYPE_INT),
+            ],
+        )
+    ],
+)
+def test_cbor_serde_params_success(pydict, params):
+    serialized_params = serialize_cbor_params(pydict, params)
+    reconstructed = deserialize_cbor_params(serialized_params, params)
+    assert reconstructed == pydict
+
+
+def test_cbor_serde_failure_incomplete_params():
+    from modal._vendor import cbor2
+
+    encoded_params = cbor2.dumps({"a": "b"})
+    with pytest.raises(ValueError):
+        deserialize_cbor_params(
+            encoded_params, [api_pb2.FunctionParameter(name="x", type=api_pb2.FunctionParameter.PARAM_TYPE_STRING)]
+        )

@@ -693,6 +693,7 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
+            assert resolver.app_id
             req = api_pb2.FunctionPrecreateRequest(
                 app_id=resolver.app_id,
                 function_name=info.function_name,
@@ -812,6 +813,7 @@ class _Function(_Object, type_prefix="fu"):
                     is_class=info.is_service_class(),
                     class_parameters=info.class_parameters(),
                 )
+                assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
                     app_id=resolver.app_id,
                     function=function_definition,

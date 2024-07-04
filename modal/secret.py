@@ -53,10 +53,16 @@ class _Secret(_Object, type_prefix="st"):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+            if resolver.app_id is not None:
+                object_creation_type = api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+            else:
+                object_creation_type = api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL
+
             req = api_pb2.SecretGetOrCreateRequest(
-                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
+                object_creation_type=object_creation_type,
                 env_dict=env_dict_filtered,
                 app_id=resolver.app_id,
+                environment_name=resolver.environment_name,
             )
             try:
                 resp = await resolver.client.stub.SecretGetOrCreate(req)

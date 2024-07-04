@@ -1,7 +1,15 @@
 # Copyright Modal Labs 2022
 import io
 import pickle
+import typing
 from typing import Any
+
+try:
+    # once we add cbor2 to the base image dependencies, we can import it
+    # and get a speedup from the c extension
+    import cbor2
+except ImportError:
+    import modal._vendor.cbor2 as cbor2  # vendored python-only cbor2
 
 from synchronicity.synchronizer import Interface
 
@@ -383,3 +391,26 @@ def check_valid_cls_constructor_arg(key, obj):
         raise ValueError(
             f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(obj)}."
         )
+
+
+def serialize_cbor_params(params: typing.Dict[str, Any], parameters: typing.List[api_pb2.FunctionParameter]) -> bytes:
+    # TODO: use function_def to verify param types + pre-encode special values that aren't supported by cbor2?
+    return cbor2.dumps(params)
+
+
+def deserialize_cbor_params(serialized_params: bytes, parameters: typing.List[api_pb2.FunctionParameter]):
+    cbor_decoded_map = cbor2.loads(serialized_params)
+    constructor_argument_names = set(cbor_decoded_map.keys())
+    declared_parameter_names = {param.name for param in parameters}
+    if constructor_argument_names != declared_parameter_names:
+        raise ValueError(
+            f"Constructor arguments {constructor_argument_names} don't"
+            " match declared parameters {declared_parameter_names}"
+        )
+
+    # TODO: should we verify that types match function_def.class_parameters?
+    # TODO(elias): based on function_def.class_parameters declared types, we could add support for
+    #  non-cbor2-supported types here by decoding cbor bytes values into other object types.
+    #  Could have `PARAM_TYPE_PYTHON_PICKLE` or
+    #  something to have a Python-only parameter type with big flexibility
+    return cbor_decoded_map
