@@ -405,7 +405,7 @@ def deserialize_cbor_params(serialized_params: bytes, parameters: typing.List[ap
     if constructor_argument_names != declared_parameter_names:
         raise ValueError(
             f"Constructor arguments {constructor_argument_names} don't"
-            " match declared parameters {declared_parameter_names}"
+            f" match declared parameters {declared_parameter_names}"
         )
 
     # TODO: should we verify that types match function_def.class_parameters?
