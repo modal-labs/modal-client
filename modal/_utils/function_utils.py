@@ -215,11 +215,11 @@ class FunctionInfo:
         signature = inspect.signature(self.user_cls)
         for param in signature.parameters.values():
             if param.annotation == str:
-                param_type = api_pb2.FunctionParameter.ParameterType.STRING
+                param_type = api_pb2.FunctionParameter.ParameterType.PARAM_TYPE_STRING
             elif param.annotation == int:
-                param_type = api_pb2.FunctionParameter.ParameterType.INT
+                param_type = api_pb2.FunctionParameter.ParameterType.PARAM_TYPE_INT
             else:
-                raise InvalidError("Class parameters needs to be explicitly annotated as str or int")
+                raise InvalidError("Strict class parameters need to be explicitly annotated as str or int")
             modal_parameters.append(api_pb2.FunctionParameter(name=param.name, type=param_type))
         return modal_parameters
 

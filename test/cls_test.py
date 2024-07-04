@@ -799,12 +799,27 @@ def test_cls_strict_parameters_added_to_definition(client, servicer, monkeypatch
     (definition,) = servicer.app_functions.values()
     assert definition.function_name == "StrictParamCls.*"
     assert definition.class_parameters == [
-        api_pb2.FunctionParameter(name="x", type=api_pb2.FunctionParameter.STRING),
-        api_pb2.FunctionParameter(name="y", type=api_pb2.FunctionParameter.INT),
+        api_pb2.FunctionParameter(name="x", type=api_pb2.FunctionParameter.PARAM_TYPE_STRING),
+        api_pb2.FunctionParameter(name="y", type=api_pb2.FunctionParameter.PARAM_TYPE_INT),
     ]
 
 
-def test_cls_strict_parameters_invalid_type(client, servicer, monkeypatch):
+def test_cls_strict_parameters_unsupported_type(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+
+    strict_param_cls_app = App("strict-param-app")
+
+    @strict_param_cls_app.cls(serialized=True)
+    class StrictParamCls:
+        def __init__(self, x: float):
+            pass
+
+    with pytest.raises(InvalidError, match="Class parameters"):
+        deploy_app(strict_param_cls_app, "my-cls-app", client=client)
+
+
+def test_cls_strict_parameters_without_type(client, servicer, monkeypatch):
     monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
     monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
 
