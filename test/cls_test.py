@@ -815,7 +815,7 @@ def test_cls_strict_parameters_unsupported_type(client, servicer, monkeypatch):
         def __init__(self, x: float):
             pass
 
-    with pytest.raises(InvalidError, match="Class parameters"):
+    with pytest.raises(InvalidError, match="class parameters"):
         deploy_app(strict_param_cls_app, "my-cls-app", client=client)
 
 
@@ -827,8 +827,8 @@ def test_cls_strict_parameters_without_type(client, servicer, monkeypatch):
 
     @strict_param_cls_app.cls(serialized=True)
     class StrictParamCls:
-        def __init__(self, x: float):
+        def __init__(self, x):
             pass
 
-    with pytest.raises(InvalidError, match="Class parameters"):
+    with pytest.raises(InvalidError, match="class parameters"):
         deploy_app(strict_param_cls_app, "my-cls-app", client=client)
