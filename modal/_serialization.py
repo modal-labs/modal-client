@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2022
 import io
 import pickle
+import typing
 from typing import Any
 
+import cbor2
 from synchronicity.synchronizer import Interface
 
 from modal._utils.async_utils import synchronizer
@@ -12,6 +14,9 @@ from ._vendor import cloudpickle
 from .config import logger
 from .exception import DeserializationError, ExecutionError, InvalidError
 from .object import Object, _Object
+
+if typing.TYPE_CHECKING:
+    import modal.client
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
 
@@ -383,3 +388,42 @@ def check_valid_cls_constructor_arg(key, obj):
         raise ValueError(
             f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(obj)}."
         )
+
+
+def serialize_cbor_params(params: typing.Dict[str, Any], parameters: typing.List[api_pb2.FunctionParameter]) -> bytes:
+    # TODO: use function_def to verify param types + pre-encode special values that aren't supported by cbor2?
+    return cbor2.dumps(params)
+
+
+def deserialize_cbor_params(serialized_params: bytes, parameters: typing.List[api_pb2.FunctionParameter]):
+    cbor_decoded_map = cbor2.loads(serialized_params)
+    constructor_argument_names = set(cbor_decoded_map.keys())
+    declared_parameter_names = {param.name for param in parameters}
+    if constructor_argument_names != declared_parameter_names:
+        raise ValueError(
+            f"Constructor arguments {constructor_argument_names} don't"
+            " match declared parameters {declared_parameter_names}"
+        )
+
+    # TODO: should we verify that types match function_def.class_parameters?
+    # TODO(elias): based on function_def.class_parameters declared types, we could add support for
+    #  non-cbor2-supported types here by decoding cbor bytes values into other object types.
+    #  Could have `PARAM_TYPE_PYTHON_PICKLE` or
+    #  something to have a Python-only parameter type with big flexibility
+    return cbor_decoded_map
+
+
+def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function, _client: "modal.client._Client"):
+    if function_def.class_parameter_format in (
+        api_pb2.Function.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
+        api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PICKLE,
+    ):
+        # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
+        param_args, param_kwargs = deserialize(serialized_params, _client)
+    elif function_def.class_paramater_format == api_pb2.Function.PARAM_SERIALIZATION_FORMAT_CBOR2_MAP:
+        param_args = ()
+        param_kwargs = deserialize_cbor_params(serialized_params, function_def.class_parameters)
+    else:
+        raise ExecutionError(f"Unknown class parameter serialization format: {function_def.class_parameter_format}")
+
+    return param_args, param_kwargs
