@@ -21,9 +21,6 @@ from .config import logger
 from .exception import DeserializationError, ExecutionError, InvalidError
 from .object import Object, _Object
 
-if typing.TYPE_CHECKING:
-    import modal.client
-
 PICKLE_PROTOCOL = 4  # Support older Python versions.
 
 
@@ -417,19 +414,3 @@ def deserialize_cbor_params(serialized_params: bytes, parameters: typing.List[ap
     #  Could have `PARAM_TYPE_PYTHON_PICKLE` or
     #  something to have a Python-only parameter type with big flexibility
     return cbor_decoded_map
-
-
-def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function, _client: "modal.client._Client"):
-    if function_def.class_parameter_format in (
-        api_pb2.Function.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
-        api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PICKLE,
-    ):
-        # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
-        param_args, param_kwargs = deserialize(serialized_params, _client)
-    elif function_def.class_paramater_format == api_pb2.Function.PARAM_SERIALIZATION_FORMAT_CBOR2_MAP:
-        param_args = ()
-        param_kwargs = deserialize_cbor_params(serialized_params, function_def.class_parameters)
-    else:
-        raise ExecutionError(f"Unknown class parameter serialization format: {function_def.class_parameter_format}")
-
-    return param_args, param_kwargs
