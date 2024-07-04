@@ -156,11 +156,29 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, 
     return ret
 
 
+def _validate_packages(packages: List[str]) -> bool:
+    """Validates that a list of packages does not contain any command-line options."""
+    return not any(pkg.startswith("-") for pkg in packages)
+
+
+def _warn_invalid_packages(old_command: str) -> None:
+    deprecation_warning(
+        (2024, 7, 3),
+        "Passing flags to `pip` via the `packages` argument of `pip_install` is deprecated."
+        + " Please pass flags via the `extra_options` argument instead."
+        + "\nNote that this will require a rebuild of the image."
+        + " To avoid rebuilding, use the exact same `pip install` command via `run_commands`, i.e.:"
+        + f'\n`image.run_commands("{old_command}")`',
+        show_source=False,
+    )
+
+
 def _make_pip_install_args(
     find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
     index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
     extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
     pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+    extra_options: str = "",  # Additional options to pass to pip install
 ) -> str:
     flags = [
         ("--find-links", find_links),  # TODO(erikbern): allow multiple?
@@ -171,6 +189,11 @@ def _make_pip_install_args(
     args = " ".join(f"{flag} {shlex.quote(value)}" for flag, value in flags if value is not None)
     if pre:
         args += " --pre"
+
+    if extra_options:
+        if args:
+            args += " "
+        args += f"{extra_options}"
 
     return args
 
@@ -517,6 +540,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        extra_options: str = "",  # Additional options to pass to pip install
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -535,8 +559,10 @@ class _Image(_Object, type_prefix="im"):
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
-            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
             commands = ["FROM base", f"RUN python -m pip install {package_args} {extra_args}"]
+            if not _validate_packages(pkgs):
+                _warn_invalid_packages(commands[-1].split("RUN ")[-1])
             if version > "2023.12":  # Back-compat for legacy trailing space with empty extra_args
                 commands = [cmd.strip() for cmd in commands]
             return DockerfileSpec(commands=commands, context_files={})
@@ -558,6 +584,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        extra_options: str = "",  # Additional options to pass to pip install
         gpu: GPU_T = None,
         secrets: Sequence[_Secret] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
@@ -633,7 +660,7 @@ class _Image(_Object, type_prefix="im"):
                     f"(echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
                 )
 
-            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
             commands.extend(["RUN apt-get update && apt-get install -y git"])
             commands.extend([f'RUN python3 -m pip install "{url}" {extra_args}' for url in install_urls])
             if version > "2023.12":  # Back-compat for legacy trailing space with empty extra_args
@@ -658,6 +685,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        extra_options: str = "",  # Additional options to pass to pip install
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -670,7 +698,7 @@ class _Image(_Object, type_prefix="im"):
 
             null_find_links_arg = " " if version == "2023.12" else ""
             find_links_arg = f" -f {find_links}" if find_links else null_find_links_arg
-            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
 
             commands = [
                 "FROM base",
@@ -698,6 +726,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        extra_options: str = "",  # Additional options to pass to pip install
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -734,7 +763,7 @@ class _Image(_Object, type_prefix="im"):
                     if dep_group_name in optionals:
                         dependencies.extend(optionals[dep_group_name])
 
-            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
             package_args = " ".join(shlex.quote(pkg) for pkg in sorted(dependencies))
             commands = ["FROM base", f"RUN python -m pip install {package_args} {extra_args}"]
             if version > "2023.12":  # Back-compat for legacy trailing space
