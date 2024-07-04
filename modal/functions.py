@@ -811,6 +811,7 @@ class _Function(_Object, type_prefix="fu"):
                     _experimental_boost=_experimental_boost,
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
+                    class_parameter_format=info.class_parameter_format(),
                     class_parameters=info.class_parameters(),
                 )
                 assert resolver.app_id
