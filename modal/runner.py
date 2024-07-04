@@ -240,7 +240,11 @@ async def _run_app(
     )
     async with app._set_local_app(client, running_app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
-        tc.infinite_loop(lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL)
+        # we don't log heartbeat exceptions in detached mode
+        # as losing the local connection will not affect the running app
+        tc.infinite_loop(
+            lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL, log_exception=not detach
+        )
 
         with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
             initialized_msg = (
