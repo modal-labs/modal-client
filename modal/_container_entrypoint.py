@@ -30,7 +30,7 @@ from ._asgi import (
 )
 from ._container_io_manager import ContainerIOManager, UserException, _ContainerIOManager
 from ._proxy_tunnel import proxy_tunnel
-from ._serialization import deserialize
+from ._serialization import deserialize, deserialize_cbor_params
 from ._utils.async_utils import TaskContext, synchronizer
 from ._utils.function_utils import (
     LocalFunctionError,
@@ -682,6 +682,22 @@ def call_lifecycle_functions(
                 event_loop.run(res)
 
 
+def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function, _client: "modal.client._Client"):
+    if function_def.class_parameter_format in (
+        api_pb2.Function.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
+        api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PICKLE,
+    ):
+        # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
+        param_args, param_kwargs = deserialize(serialized_params, _client)
+    elif function_def.class_paramater_format == api_pb2.Function.PARAM_SERIALIZATION_FORMAT_CBOR2_MAP:
+        param_args = ()
+        param_kwargs = deserialize_cbor_params(serialized_params, function_def.class_parameters)
+    else:
+        raise ExecutionError(f"Unknown class parameter serialization format: {function_def.class_parameter_format}")
+
+    return param_args, param_kwargs
+
+
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
@@ -702,7 +718,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
             if container_args.serialized_params:
-                param_args, param_kwargs = deserialize(container_args.serialized_params, _client)
+                param_args, param_kwargs = deserialize_params
             else:
                 param_args, param_kwargs = (), {}
 
