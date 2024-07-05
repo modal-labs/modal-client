@@ -896,7 +896,10 @@ class _Function(_Object, type_prefix="fu"):
                 )
             assert self._parent._client.stub
             if self._parent._class_parameter_format == api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PROTO:
-                assert len(args) == 0  # strict parameters should always be named
+                assert self._parent._class_parameter_schema is not None
+                if args:
+                    # TODO(elias) - We could potentially fix this if we want to...
+                    raise ValueError("Can't use positional arguments with strict parameter classes")
                 serialized_params = serialize_proto_params(kwargs, self._parent._class_parameter_schema)
             else:
                 serialized_params = serialize((args, kwargs))
@@ -1080,7 +1083,7 @@ class _Function(_Object, type_prefix="fu"):
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
         self._class_parameter_format = metadata.class_parameter_format
-        self._class_parameter_schema = metadata.class_parameter_schema
+        self._class_parameter_schema = list(metadata.class_parameter_schema)
 
     def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id

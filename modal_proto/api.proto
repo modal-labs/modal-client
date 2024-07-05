@@ -1122,7 +1122,7 @@ message FunctionHandleMetadata {
   string use_method_name = 41; // used for methods
   string definition_id = 42;
   Function.ParameterSerializationFormat class_parameter_format = 43;
-  FunctionParameterSet class_parameter_schema = 44;
+  repeated FunctionParameter class_parameter_schema = 44;
 }
 
 message FunctionInput {
