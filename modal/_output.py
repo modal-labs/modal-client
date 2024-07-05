@@ -43,70 +43,6 @@ else:
     default_spinner = "dots"
 
 
-class ProgressHandler:
-    live: Live
-    _spinner: Spinner
-    _overall_progress: Progress
-    _download_progress: Progress
-    _overall_progress_task_id: TaskID
-    _total_tasks: int
-    _completed_tasks: int
-
-    def __init__(self, console):
-        self._spinner = step_progress("Uploading file(s) to volume...")
-
-        self._overall_progress = Progress(
-            TextColumn("[bold white]Uploading files", justify="right"),
-            TimeElapsedColumn(),
-            BarColumn(bar_width=None),
-            TextColumn("[bold white]{task.description}"),
-            transient=True,
-            console=console,
-        )
-        self._download_progress = Progress(
-            TextColumn("[bold white]{task.fields[path]}", justify="right"),
-            BarColumn(bar_width=None),
-            "[progress.percentage]{task.percentage:>3.1f}%",
-            "•",
-            DownloadColumn(),
-            "•",
-            TransferSpeedColumn(),
-            "•",
-            TimeRemainingColumn(),
-            transient=True,
-            console=console,
-        )
-
-        self.live = Live(Group(self._spinner, self._overall_progress, self._download_progress))
-
-        self._overall_progress_task_id = self._overall_progress.add_task("upload files", start=True)
-        self._total_tasks = 0
-        self._completed_tasks = 0
-
-    def add_task(self, path, total):
-        task_id = self._download_progress.add_task("upload", path=path, start=True, total=total)
-        self._total_tasks += 1
-        self._overall_progress.update(self._overall_progress_task_id, total=self._total_tasks)
-        return task_id
-
-    def update(self, task_id: TaskID, advance: int = None, reset: bool = False, complete: bool = False):
-        if reset:
-            self._download_progress.reset(task_id)
-        elif advance:
-            self._download_progress.update(task_id, advance=advance)
-        elif complete:
-            self._completed_tasks += 1
-            self._download_progress.remove_task(task_id)
-            self._overall_progress.update(
-                self._overall_progress_task_id,
-                advance=1,
-                description=f"({self._completed_tasks} out of {self._total_tasks} files uploaded)",
-            )
-            if self._completed_tasks == self._total_tasks:
-                self._overall_progress.remove_task(self._overall_progress_task_id)
-                self._spinner.update(text="Post processing...")
-
-
 class FunctionQueuingColumn(ProgressColumn):
     """Renders time elapsed, including task.completed as additional elapsed time."""
 
@@ -440,6 +376,72 @@ class OutputManager:
     def hide_status_spinner(self):
         if self._status_spinner_live:
             self._status_spinner_live.stop()
+
+
+class ProgressHandler:
+    live: Live
+    _spinner: Spinner
+    _overall_progress: Progress
+    _download_progress: Progress
+    _overall_progress_task_id: TaskID
+    _total_tasks: int
+    _completed_tasks: int
+
+    def __init__(self, console):
+        self._spinner = step_progress("Uploading file(s) to volume...")
+
+        self._overall_progress = Progress(
+            TextColumn("[bold white]Uploading files", justify="right"),
+            TimeElapsedColumn(),
+            BarColumn(bar_width=None),
+            TextColumn("[bold white]{task.description}"),
+            transient=True,
+            console=console,
+        )
+        self._download_progress = Progress(
+            TextColumn("[bold white]{task.fields[path]}", justify="right"),
+            BarColumn(bar_width=None),
+            "[progress.percentage]{task.percentage:>3.1f}%",
+            "•",
+            DownloadColumn(),
+            "•",
+            TransferSpeedColumn(),
+            "•",
+            TimeRemainingColumn(),
+            transient=True,
+            console=console,
+        )
+
+        self.live = Live(
+            Group(self._spinner, self._overall_progress, self._download_progress), transient=True, refresh_per_second=4
+        )
+
+        self._overall_progress_task_id = self._overall_progress.add_task("upload files", start=True)
+        self._total_tasks = 0
+        self._completed_tasks = 0
+
+    def add_task(self, path, total):
+        task_id = self._download_progress.add_task("upload", path=path, start=True, total=total)
+        self._total_tasks += 1
+        self._overall_progress.update(self._overall_progress_task_id, total=self._total_tasks)
+        return task_id
+
+    def update(self, task_id: TaskID, advance: int = None, reset: bool = False, complete: bool = False):
+        if reset:
+            self._download_progress.reset(task_id)
+        elif advance:
+            self._download_progress.update(task_id, advance=advance)
+        elif complete:
+            self._completed_tasks += 1
+            self._download_progress.remove_task(task_id)
+            self._overall_progress.update(
+                self._overall_progress_task_id,
+                advance=1,
+                description=f"({self._completed_tasks} out of {self._total_tasks} files uploaded)",
+            )
+            if self._completed_tasks == self._total_tasks:
+                self._overall_progress.remove_task(self._overall_progress_task_id)
+                self._spinner.update(text="Post processing...")
 
 
 async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: asyncio.Event):

@@ -53,7 +53,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
         segment_start: int,
         segment_length: int,
         chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
-        progress_report_cb: Optional[Callable] = lambda _: None,
+        progress_report_cb: Optional[Callable] = None,
     ):
         # not thread safe constructor!
         super().__init__(bytes_io)
@@ -64,7 +64,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
         self._value.seek(self.initial_seek_pos + segment_start)
         assert self.segment_length <= super().size
         self.chunk_size = chunk_size
-        self.progress_report_cb = progress_report_cb
+        self.progress_report_cb = progress_report_cb or (lambda *_, **__: None)
         self.reset_state()
 
     def reset_state(self):
@@ -77,9 +77,12 @@ class BytesIOSegmentPayload(BytesIOPayload):
     def reset_on_error(self):
         try:
             yield
-        except Exception:
-            self.progress_report_cb(reset=True)
-            raise
+        except Exception as exc:
+            try:
+                self.progress_report_cb(reset=True)
+            except Exception as cb_exc:
+                raise cb_exc from exc
+            raise exc
         finally:
             self.reset_state()
 
