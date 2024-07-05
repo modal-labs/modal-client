@@ -774,6 +774,14 @@ class _App:
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
+        deprecation_warning(
+            (2024, 7, 5),
+            """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create`.
+
+            See https://modal.com/docs/guide/sandbox for more info.
+            """,
+            pending=True,
+        )
         if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
