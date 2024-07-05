@@ -5,11 +5,11 @@ import random
 from modal import Queue
 from modal._serialization import (
     deserialize,
-    deserialize_cbor_params,
     deserialize_data_format,
+    deserialize_proto_params,
     serialize,
-    serialize_cbor_params,
     serialize_data_format,
+    serialize_proto_params,
 )
 from modal._utils.rand_pb_testing import rand_pb
 from modal.exception import DeserializationError
@@ -66,23 +66,25 @@ def test_deserialization_error(client):
         (
             {"foo": "bar", "i": 5},
             [
-                api_pb2.FunctionParameter(name="foo", type=api_pb2.FunctionParameter.PARAM_TYPE_STRING),
-                api_pb2.FunctionParameter(name="i", type=api_pb2.FunctionParameter.PARAM_TYPE_INT),
+                api_pb2.FunctionParameter(name="foo", type=api_pb2.PARAM_TYPE_STRING),
+                api_pb2.FunctionParameter(name="i", type=api_pb2.PARAM_TYPE_INT),
             ],
         )
     ],
 )
-def test_cbor_serde_params_success(pydict, params):
-    serialized_params = serialize_cbor_params(pydict, params)
-    reconstructed = deserialize_cbor_params(serialized_params, params)
+def test_proto_serde_params_success(pydict, params):
+    serialized_params = serialize_proto_params(pydict, params)
+    reconstructed = deserialize_proto_params(serialized_params, params)
     assert reconstructed == pydict
 
 
-def test_cbor_serde_failure_incomplete_params():
-    from modal._vendor import cbor2
+def test_proto_serde_failure_incomplete_params():
+    # construct an incorrect serialization:
+    incomplete_proto_params = api_pb2.FunctionParameterSet(
+        parameters=[api_pb2.FunctionParameterValue(name="a", type=api_pb2.PARAM_TYPE_STRING, string_value="b")]
+    )
+    encoded_params = incomplete_proto_params.SerializeToString(deterministic=True)
+    with pytest.raises(AttributeError):
+        deserialize_proto_params(encoded_params, [api_pb2.FunctionParameter(name="x", type=api_pb2.PARAM_TYPE_STRING)])
 
-    encoded_params = cbor2.dumps({"a": "b"})
-    with pytest.raises(ValueError):
-        deserialize_cbor_params(
-            encoded_params, [api_pb2.FunctionParameter(name="x", type=api_pb2.FunctionParameter.PARAM_TYPE_STRING)]
-        )
+    # TODO: add test for incorrect types

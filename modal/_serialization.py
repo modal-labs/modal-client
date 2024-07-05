@@ -4,13 +4,6 @@ import pickle
 import typing
 from typing import Any
 
-try:
-    # once we add cbor2 to the base image dependencies, we can import it
-    # and get a speedup from the c extension
-    import cbor2
-except ImportError:
-    import modal._vendor.cbor2 as cbor2  # type: ignore
-
 from synchronicity.synchronizer import Interface
 
 from modal._utils.async_utils import synchronizer
@@ -393,24 +386,56 @@ def check_valid_cls_constructor_arg(key, obj):
         )
 
 
-def serialize_cbor_params(params: typing.Dict[str, Any], parameters: typing.List[api_pb2.FunctionParameter]) -> bytes:
-    # TODO: use function_def to verify param types + pre-encode special values that aren't supported by cbor2?
-    return cbor2.dumps(params)
+def serialize_proto_params(
+    python_params: typing.Dict[str, Any], schema: typing.List[api_pb2.FunctionParameter]
+) -> bytes:
+    proto_params: typing.List[api_pb2.FunctionParameterValue] = []
+    for schema_param in schema:
+        python_value = python_params[schema_param.name]
+        if schema_param.type == api_pb2.PARAM_TYPE_STRING:
+            proto_param = api_pb2.FunctionParameterValue(
+                name=schema_param.name, type=api_pb2.PARAM_TYPE_STRING, string_value=python_value
+            )
+        elif schema_param.type == api_pb2.PARAM_TYPE_INT:
+            proto_param = api_pb2.FunctionParameterValue(
+                name=schema_param.name, type=api_pb2.PARAM_TYPE_INT, int_value=python_value
+            )
+        else:
+            raise ValueError(f"Unsupported type: {schema_param.type}")
+        proto_params.append(proto_param)
+
+    proto_bytes = api_pb2.FunctionParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
+    return proto_bytes
 
 
-def deserialize_cbor_params(serialized_params: bytes, parameters: typing.List[api_pb2.FunctionParameter]):
-    cbor_decoded_map = cbor2.loads(serialized_params)
-    constructor_argument_names = set(cbor_decoded_map.keys())
-    declared_parameter_names = {param.name for param in parameters}
-    if constructor_argument_names != declared_parameter_names:
-        raise ValueError(
-            f"Constructor arguments {constructor_argument_names} don't"
-            f" match declared parameters {declared_parameter_names}"
-        )
+def deserialize_proto_params(
+    serialized_params: bytes, schema: typing.List[api_pb2.FunctionParameter]
+) -> typing.Dict[str, Any]:
+    proto_struct = api_pb2.FunctionParameterSet()
+    proto_struct.ParseFromString(serialized_params)
+    value_by_name = {p.name: p for p in proto_struct.parameters}
+    python_params = {}
+    for schema_param in schema:
+        if schema_param.name not in value_by_name:
+            # TODO: handle default values? Could just be a flag on the FunctionParameter schema spec,
+            #  allowing it to not be supplied in the FunctionParameterSet?
+            raise AttributeError(f"Constructor arguments don't match declared parameters (missing {schema_param.name})")
+        param_value = value_by_name[schema_param.name]
+        if schema_param.type != param_value.type:
+            raise ValueError(
+                "Constructor arguments types don't match declared parameters "
+                f"({schema_param.name}: type {schema_param.type} != type {param_value.type})"
+            )
 
-    # TODO: should we verify that types match function_def.class_parameters?
-    # TODO(elias): based on function_def.class_parameters declared types, we could add support for
-    #  non-cbor2-supported types here by decoding cbor bytes values into other object types.
-    #  Could have `PARAM_TYPE_PYTHON_PICKLE` or
-    #  something to have a Python-only parameter type with big flexibility
-    return cbor_decoded_map
+        if schema_param.type == api_pb2.PARAM_TYPE_STRING:
+            python_value = param_value.string_value
+        elif schema_param.type == api_pb2.PARAM_TYPE_INT:
+            python_value = param_value.int_value
+        else:
+            # TODO(elias): based on `parameters` declared types, we could add support for
+            #  custom non proto types encoded as bytes in the proto, e.g. PARAM_TYPE_PYTHON_PICKLE
+            raise NotImplementedError("Only strings and ints are supported parameter value types at the moment")
+
+        python_params[schema_param.name] = python_value
+
+    return python_params
