@@ -345,6 +345,8 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id = build_function.object_id
 
                 globals = build_function._get_info().get_globals()
+                attrs = build_function._get_info().get_cls_var_attrs()
+                globals = {**globals, **attrs}
                 filtered_globals = {}
                 for k, v in globals.items():
                     if isfunction(v):

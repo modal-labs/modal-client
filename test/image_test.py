@@ -762,9 +762,59 @@ class Foo:
         print("bar!", VARIABLE_6)
 
 
+class FooInstance:
+    not_used_by_build_method: str = "normal"
+    used_by_build_method: str = "normal"
+
+    @build()
+    def build_func(self):
+        global VARIABLE_5
+
+        print("global variable", VARIABLE_5)
+        print("static class var", FooInstance.used_by_build_method)
+        FooInstance.used_by_build_method = "normal"
+
+
+def test_image_cls_var_rebuild(client, servicer):
+    rebuild_app = App()
+    image_ids = []
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_ids = list(servicer.images)
+    FooInstance.used_by_build_method = "rebuild"
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_ids_rebuild = list(servicer.images)
+    # Ensure that a new image was created
+    assert image_ids[-1] != image_ids_rebuild[-1]
+    FooInstance.used_by_build_method = "normal"
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_ids = list(servicer.images)
+    # Ensure that no new image was created
+    assert len(image_ids) == len(image_ids_rebuild)
+
+
+def test_image_cls_var_no_rebuild(client, servicer):
+    rebuild_app = App()
+    image_id = -1
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_id = list(servicer.images)[-1]
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_id2 = list(servicer.images)[-1]
+    FooInstance.not_used_by_build_method = "no rebuild"
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_id3 = list(servicer.images)[-1]
+    assert image_id == image_id2
+    assert image_id2 == image_id3
+
+
 def test_image_build_snapshot(client, servicer):
     with cls_app.run(client=client):
-        image_id = list(servicer.images.keys())[-1]
+        image_id = list(servicer.images)[-1]
         layers = get_image_layers(image_id, servicer)
 
         assert "foo!" in layers[0].build_function.definition
