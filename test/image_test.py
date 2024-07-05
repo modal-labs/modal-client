@@ -153,15 +153,27 @@ def test_image_python_packages(builder_version, servicer, client):
         Image.debian_slim()
         .pip_install("sklearn[xyz]")
         .pip_install("numpy", "scipy", extra_index_url="https://xyz", find_links="https://abc?q=123", pre=True)
+        .pip_install("flash-attn", extra_options="--no-build-isolation --no-cache-dir")
+        .pip_install("pandas", pre=True)
     )
     app.function(image=image)(dummy)
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
-        assert any("pip install 'sklearn[xyz]'" in cmd for cmd in layers[1].dockerfile_commands)
+        assert any("pip install 'sklearn[xyz]'" in cmd for cmd in layers[3].dockerfile_commands)
         assert any(
             "pip install numpy scipy --find-links 'https://abc?q=123' --extra-index-url https://xyz --pre" in cmd
-            for cmd in layers[0].dockerfile_commands
+            for cmd in layers[2].dockerfile_commands
         )
+        assert any(
+            "pip install flash-attn --no-build-isolation --no-cache-dir" in cmd for cmd in layers[1].dockerfile_commands
+        )
+        assert any("pip install pandas" + 2 * " " + "--pre" in cmd for cmd in layers[0].dockerfile_commands)
+
+    with pytest.warns(DeprecationError):
+        app = App(image=Image.debian_slim().pip_install("--no-build-isolation", "flash-attn"))
+        app.function()(dummy)
+        with app.run(client=client):
+            pass
 
 
 def test_image_kwargs_validation(builder_version, servicer, client):
