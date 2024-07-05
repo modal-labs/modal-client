@@ -19,6 +19,7 @@ from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_erro
 from ._utils.mount_utils import validate_mount_points, validate_volumes
 from .client import _Client
 from .config import config
+from .exception import deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -361,6 +362,14 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> "_Sandbox":
         if client is None:
             client = await _Client.from_env()
+
+        if _allow_background_volume_commits is False:
+            deprecation_warning(
+                (2024, 5, 13),
+                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+            )
+        elif _allow_background_volume_commits is None:
+            _allow_background_volume_commits = True
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
