@@ -3,7 +3,7 @@ import asyncio
 import os
 import shutil
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, Optional, Tuple, Union
 
 from click import UsageError
@@ -37,9 +37,9 @@ async def _volume_download(
             if is_pipe:
                 await q.put((None, entry))
             else:
-                start_path = os.path.dirname(remote_path).split("*")[0]
-                rel_path = Path(entry.path).relative_to(start_path.lstrip("/"))
-                if os.path.isdir(local_destination):
+                start_path = str(PurePosixPath(remote_path).parent).split("*")[0]
+                rel_path = PurePosixPath(entry.path).relative_to(start_path.lstrip("/"))
+                if local_destination.is_dir():
                     output_path = local_destination / rel_path
                 else:
                     output_path = local_destination
