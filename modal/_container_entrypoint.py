@@ -460,10 +460,10 @@ def call_function(
 
 def import_single_function_service(
     function_def: api_pb2.Function,
-    ser_cls,
+    ser_cls,  # used only for @build functions
     ser_fun,
-    ser_params: Optional[bytes],
-    _client: Client,
+    cls_args,  #  used only for @build functions
+    cls_kwargs,  #  used only for @build functions
 ) -> Service:
     """Imports a function dynamically, and locates the app.
 
@@ -515,9 +515,9 @@ def import_single_function_service(
             else:
                 user_defined_callable = f
         elif len(parts) == 2:
-            # This is a method on a class - legacy "method"
-            # TODO: Remove this branch when legacy non-class-pooled methods have been removed
+            # As of v0.63 - this path should only be triggered by @build class builder methods
             assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
+            assert function_def.is_builder_function
             cls_name, fun_name = parts
             cls = getattr(module, cls_name)
             if isinstance(cls, Cls):
@@ -535,13 +535,7 @@ def import_single_function_service(
     # Instantiate the class if it's defined
     if cls:
         # This code is only used for @build methods on classes
-        # TODO: refactor to have those use class service imports instead (!)
-        # Instantiate the class
-        if ser_params:
-            args, kwargs = deserialize(ser_params, _client)
-        else:
-            args, kwargs = (), {}
-        user_cls_instance = get_user_class_instance(cls, args, kwargs)
+        user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
         # Bind the function to the instance as self (using the descriptor protocol!)
         user_defined_callable = user_defined_callable.__get__(user_cls_instance)
     else:
@@ -561,8 +555,8 @@ def import_single_function_service(
 def import_class_service(
     function_def: api_pb2.Function,
     ser_cls,
-    ser_params: Optional[bytes],
-    _client: _Client,
+    cls_args,
+    cls_kwargs,
 ) -> Service:
     """
     This imports a full class to be able to execute any @method or webhook decorated methods.
@@ -603,13 +597,7 @@ def import_class_service(
         # Undecorated user class - find all methods
         method_partials = _find_partial_methods_for_user_cls(cls, _PartialFunctionFlags.all())
 
-    # Instantiate the class
-    if ser_params:
-        args, kwargs = deserialize(ser_params, _client)
-    else:
-        args, kwargs = (), {}
-
-    user_cls_instance = get_user_class_instance(cls, args, kwargs)
+    user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
 
     return ImportedClass(
         user_cls_instance,
@@ -701,20 +689,25 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
+            if container_args.serialized_params:
+                param_args, param_kwargs = deserialize(container_args.serialized_params, _client)
+            else:
+                param_args, param_kwargs = (), {}
+
             if container_args.function_def.is_class:
                 service = import_class_service(
                     container_args.function_def,
                     ser_cls,
-                    container_args.serialized_params,
-                    _client,
+                    param_args,
+                    param_kwargs,
                 )
             else:
                 service = import_single_function_service(
                     container_args.function_def,
                     ser_cls,
                     ser_fun,
-                    container_args.serialized_params,
-                    client,
+                    param_args,
+                    param_kwargs,
                 )
 
             # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
