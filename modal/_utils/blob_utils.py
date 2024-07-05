@@ -337,12 +337,17 @@ def _get_file_upload_spec(
     source_description: Any,
     mount_filename: PurePosixPath,
     mode: int,
+    size_limit_bytes: int | None = None,
 ) -> FileUploadSpec:
     with source() as fp:
         # Current position is ignored - we always upload from position 0
         fp.seek(0, os.SEEK_END)
         size = fp.tell()
         fp.seek(0)
+
+        if size_limit_bytes is not None and size > size_limit_bytes:
+            # bail if limit configured before time-intensize sha digest compute
+            raise ValueError(f"file size {size}b exceeds {size_limit_bytes=}")
 
         if size >= LARGE_FILE_LIMIT:
             use_blob = True
