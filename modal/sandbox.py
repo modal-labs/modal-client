@@ -48,7 +48,7 @@ class _LogsReader:
     sandbox = Sandbox.create(
         "bash",
         "-c",
-        "while true; do echo foo; sleep 1; done"
+        "for i in $(seq 1 10); do echo foo; sleep 0.1; done"
     )
     for message in sandbox.stdout:
         print(f"Message: {message}")
