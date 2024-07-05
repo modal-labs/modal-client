@@ -426,7 +426,7 @@ def deserialize_proto_params(
                 "Constructor arguments types don't match declared parameters "
                 f"({schema_param.name}: type {schema_param.type} != type {param_value.type})"
             )
-
+        python_value: Any
         if schema_param.type == api_pb2.PARAM_TYPE_STRING:
             python_value = param_value.string_value
         elif schema_param.type == api_pb2.PARAM_TYPE_INT:

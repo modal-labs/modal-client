@@ -125,6 +125,12 @@ enum FunctionCallType {
   FUNCTION_CALL_TYPE_MAP = 2;
 }
 
+enum FunctionParameterType {
+  PARAM_TYPE_UNSPECIFIED = 0;
+  PARAM_TYPE_STRING = 1;
+  PARAM_TYPE_INT = 2;
+}
+
 enum GPUType {
   GPU_TYPE_UNSPECIFIED = 0;
   GPU_TYPE_T4 = 1;
@@ -1156,28 +1162,23 @@ message FunctionOptions {
   bool replace_secret_ids = 12;
 }
 
-enum ParameterType {
-  PARAM_TYPE_UNSPECIFIED = 0;
-  PARAM_TYPE_STRING = 1;
-  PARAM_TYPE_INT = 2;
-}
 
 message FunctionParameter {
   string name = 1;
-  ParameterType type = 2;
-}
-
-message FunctionParameterValue {
-  string name = 1;
-  ParameterType type = 2;
-  oneof value_oneof {
-    string string_value = 3;
-    int64 int_value = 4;
-  }
+  FunctionParameterType type = 2;
 }
 
 message FunctionParameterSet {
   repeated FunctionParameterValue parameters = 1;
+}
+
+message FunctionParameterValue {
+  string name = 1;
+  FunctionParameterType type = 2;
+  oneof value_oneof {
+    string string_value = 3;
+    int64 int_value = 4;
+  }
 }
 
 message FunctionPrecreateRequest {
