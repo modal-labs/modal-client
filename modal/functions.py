@@ -1102,6 +1102,8 @@ class _Function(_Object, type_prefix="fu"):
             use_method_name=self._use_method_name,
             use_function_id=self._use_function_id,
             is_method=self._is_method,
+            class_parameter_format=self._class_parameter_format,
+            class_parameter_schema=self._class_parameter_schema,
         )
 
     def _set_mute_cancellation(self, value: bool = True):
