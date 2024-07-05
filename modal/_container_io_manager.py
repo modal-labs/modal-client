@@ -8,7 +8,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple, Union
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -44,11 +44,11 @@ class Sentinel:
 @dataclass
 class LocalInput:
     # TODO(cathy) support batching
-    input_id: str | List[str]
-    function_call_id: str | List[str]
+    input_id: Union[str, List[str]]
+    function_call_id: Union[str, List[str]]
     method_name: str
-    args: Any | List[Any]
-    kwargs: Any | List[Any]
+    args: Union[Any, List[Any]]
+    kwargs: Union[Any, List[Any]]
     batched: bool = False
 
 
