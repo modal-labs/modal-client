@@ -31,6 +31,7 @@ from .exception import (
 from .execution_context import is_local
 from .object import _Object
 from .running_app import RunningApp
+from .sandbox import _Sandbox
 
 if TYPE_CHECKING:
     from .app import _App
@@ -507,7 +508,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
         loading_status.start()
 
         sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
-        sb = await _app.spawn_sandbox(*sandbox_cmds, pty_info=get_pty_info(shell=True), **kwargs)
+        sb = await _Sandbox.create(*sandbox_cmds, pty_info=get_pty_info(shell=True), app=_app, **kwargs)
         for _ in range(40):
             await asyncio.sleep(0.5)
             resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))

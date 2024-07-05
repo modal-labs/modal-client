@@ -362,9 +362,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
     ) -> "_Sandbox":
-        if client is None:
-            client = await _Client.from_env()
-
         if _allow_background_volume_commits is False:
             deprecation_warning(
                 (2024, 5, 13),
@@ -393,6 +390,11 @@ class _Sandbox(_Object, type_prefix="sb"):
             _allow_background_volume_commits=_allow_background_volume_commits,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
         )
+        if client is None:
+            if app:
+                client = app._client
+            else:
+                client = await _Client.from_env()
         app_id: Optional[str] = app.app_id if app else None
         resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
         await resolver.load(obj)
