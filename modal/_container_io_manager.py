@@ -6,6 +6,7 @@ import os
 import signal
 import time
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple
 
@@ -38,6 +39,17 @@ class UserException(Exception):
 
 class Sentinel:
     """Used to get type-stubs to work with this object."""
+
+
+@dataclass
+class LocalInput:
+    # TODO(cathy) support batching
+    input_id: str | List[str]
+    function_call_id: str | List[str]
+    method_name: str
+    args: Any | List[Any]
+    kwargs: Any | List[Any]
+    batched: bool = False
 
 
 class _ContainerIOManager:
@@ -401,7 +413,7 @@ class _ContainerIOManager:
         async for input_id, function_call_id, input_pb in self._generate_inputs():
             args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
             self.current_input_id, self.current_input_started_at = (input_id, time.time())
-            yield input_id, function_call_id, input_pb.method_name, args, kwargs
+            yield LocalInput(input_id, function_call_id, input_pb.method_name, args, kwargs)
             self.current_input_id, self.current_input_started_at = (None, None)
 
         # collect all active input slots, meaning all inputs have wrapped up.

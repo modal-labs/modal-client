@@ -28,7 +28,7 @@ from ._asgi import (
     webhook_asgi_app,
     wsgi_app_wrapper,
 )
-from ._container_io_manager import ContainerIOManager, UserException, _ContainerIOManager
+from ._container_io_manager import ContainerIOManager, LocalInput, UserException, _ContainerIOManager
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize
 from ._utils.async_utils import TaskContext, synchronizer
@@ -329,15 +329,13 @@ def call_function(
     finalized_functions: Dict[str, FinalizedFunction],
     input_concurrency: int,
 ):
-    async def run_input_async(
-        finalized_function: FinalizedFunction, input_id: str, function_call_id: str, args: Any, kwargs: Any
-    ) -> None:
+    async def run_input_async(finalized_function: FinalizedFunction, local_input: LocalInput) -> None:
         started_at = time.time()
-        reset_context = _set_current_context_ids(input_id, function_call_id)
-        async with container_io_manager.handle_input_exception.aio(input_id, started_at):
-            logger.debug(f"Starting input {input_id} (async)")
-            res = finalized_function.callable(*args, **kwargs)
-            logger.debug(f"Finished input {input_id} (async)")
+        reset_context = _set_current_context_ids(local_input.input_id, local_input.function_call_id)
+        async with container_io_manager.handle_input_exception.aio(local_input.input_id, started_at):
+            logger.debug(f"Starting input {local_input.input_id} (async)")
+            res = finalized_function.callable(*local_input.args, **local_input.kwargs)
+            logger.debug(f"Finished input {local_input.input_id} (async)")
 
             # TODO(erikbern): any exception below shouldn't be considered a user exception
             if finalized_function.is_generator:
@@ -348,7 +346,7 @@ def call_function(
                 generator_queue: asyncio.Queue[Any] = await container_io_manager._queue_create.aio(1024)
                 generator_output_task = asyncio.create_task(
                     container_io_manager.generator_output_task.aio(
-                        function_call_id,
+                        local_input.function_call_id,
                         finalized_function.data_format,
                         generator_queue,
                     )
@@ -363,7 +361,7 @@ def call_function(
                 await generator_output_task  # Wait to finish sending generator outputs.
                 message = api_pb2.GeneratorDone(items_total=item_count)
                 await container_io_manager.push_output.aio(
-                    input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
+                    local_input.input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
                 )
             else:
                 if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
@@ -372,18 +370,18 @@ def call_function(
                         " You might need to use @app.function(..., is_generator=True)."
                     )
                 value = await res
-                await container_io_manager.push_output.aio(input_id, started_at, value, finalized_function.data_format)
+                await container_io_manager.push_output.aio(
+                    local_input.input_id, started_at, value, finalized_function.data_format
+                )
         reset_context()
 
-    def run_input_sync(
-        finalized_function: FinalizedFunction, input_id: str, function_call_id: str, args: Any, kwargs: Any
-    ) -> None:
+    def run_input_sync(finalized_function: FinalizedFunction, local_input: LocalInput) -> None:
         started_at = time.time()
-        reset_context = _set_current_context_ids(input_id, function_call_id)
-        with container_io_manager.handle_input_exception(input_id, started_at):
-            logger.debug(f"Starting input {input_id} (sync)")
-            res = finalized_function.callable(*args, **kwargs)
-            logger.debug(f"Finished input {input_id} (sync)")
+        reset_context = _set_current_context_ids(local_input.input_id, local_input.function_call_id)
+        with container_io_manager.handle_input_exception(local_input.input_id, started_at):
+            logger.debug(f"Starting input {local_input.input_id} (sync)")
+            res = finalized_function.callable(*local_input.args, **local_input.kwargs)
+            logger.debug(f"Finished input {local_input.input_id} (sync)")
 
             # TODO(erikbern): any exception below shouldn't be considered a user exception
             if finalized_function.is_generator:
@@ -393,7 +391,7 @@ def call_function(
                 # Send up to this many outputs at a time.
                 generator_queue: asyncio.Queue[Any] = container_io_manager._queue_create(1024)
                 generator_output_task: concurrent.futures.Future = container_io_manager.generator_output_task(  # type: ignore
-                    function_call_id,
+                    local_input.function_call_id,
                     finalized_function.data_format,
                     generator_queue,
                     _future=True,  # type: ignore  # Synchronicity magic to return a future.
@@ -407,14 +405,16 @@ def call_function(
                 container_io_manager._queue_put(generator_queue, _ContainerIOManager._GENERATOR_STOP_SENTINEL)
                 generator_output_task.result()  # Wait to finish sending generator outputs.
                 message = api_pb2.GeneratorDone(items_total=item_count)
-                container_io_manager.push_output(input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
+                container_io_manager.push_output(
+                    local_input.input_id, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
+                )
             else:
                 if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                     raise InvalidError(
                         f"Sync (non-generator) function return value of type {type(res)}."
                         " You might need to use @app.function(..., is_generator=True)."
                     )
-                container_io_manager.push_output(input_id, started_at, res, finalized_function.data_format)
+                container_io_manager.push_output(local_input.input_id, started_at, res, finalized_function.data_format)
         reset_context()
 
     if input_concurrency > 1:
@@ -425,36 +425,24 @@ def call_function(
                 # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
                 # for them to resolve gracefully:
                 async with TaskContext(0.01) as task_context:
-                    async for (
-                        input_id,
-                        function_call_id,
-                        method_name,
-                        args,
-                        kwargs,
-                    ) in container_io_manager.run_inputs_outputs.aio(input_concurrency):
-                        finalized_function = finalized_functions[method_name]
+                    async for local_input in container_io_manager.run_inputs_outputs.aio(input_concurrency):
+                        finalized_function = finalized_functions[local_input.method_name]
                         # Note that run_inputs_outputs will not return until the concurrency semaphore has
                         # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
                         # This prevents leaving the task_context before outputs have been created
                         # TODO: refactor to make this a bit more easy to follow?
                         if finalized_function.is_async:
-                            task_context.create_task(
-                                run_input_async(finalized_function, input_id, function_call_id, args, kwargs)
-                            )
+                            task_context.create_task(run_input_async(finalized_function, local_input))
                         else:
                             # run sync input in thread
-                            thread_pool.submit(
-                                run_input_sync, finalized_function, input_id, function_call_id, args, kwargs
-                            )
+                            thread_pool.submit(run_input_sync, finalized_function, local_input)
 
             user_code_event_loop.run(run_concurrent_inputs())
     else:
-        for input_id, function_call_id, method_name, args, kwargs in container_io_manager.run_inputs_outputs(
-            input_concurrency
-        ):
-            finalized_function = finalized_functions[method_name]
+        for local_input in container_io_manager.run_inputs_outputs(input_concurrency):
+            finalized_function = finalized_functions[local_input.method_name]
             if finalized_function.is_async:
-                user_code_event_loop.run(run_input_async(finalized_function, input_id, function_call_id, args, kwargs))
+                user_code_event_loop.run(run_input_async(finalized_function, local_input))
             else:
                 # Set up a custom signal handler for `SIGUSR1`, which gets translated to an InputCancellation
                 # during function execution. This is sent to cancel inputs from the user
@@ -465,7 +453,7 @@ def call_function(
                 # run this sync code in the main thread, blocking the "userland" event loop
                 # this lets us cancel it using a signal handler that raises an exception
                 try:
-                    run_input_sync(finalized_function, input_id, function_call_id, args, kwargs)
+                    run_input_sync(finalized_function, local_input)
                 finally:
                     signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
 
