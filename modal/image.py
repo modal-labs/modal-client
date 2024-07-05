@@ -178,7 +178,7 @@ def _make_pip_install_args(
     index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
     extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
     pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
-    extra_options: str = "",  # Additional options to pass to pip install
+    extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
 ) -> str:
     flags = [
         ("--find-links", find_links),  # TODO(erikbern): allow multiple?
@@ -188,7 +188,7 @@ def _make_pip_install_args(
 
     args = " ".join(f"{flag} {shlex.quote(value)}" for flag, value in flags if value is not None)
     if pre:
-        args += " --pre"
+        args += " --pre"  # TODO: remove extra whitespace in future image builder version
 
     if extra_options:
         if args:
@@ -540,18 +540,36 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
-        extra_options: str = "",  # Additional options to pass to pip install
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of Python packages using pip.
 
-        **Example**
+        **Examples**
 
+        Simple installation:
         ```python
         image = modal.Image.debian_slim().pip_install("click", "httpx~=0.23.3")
         ```
+
+        More complex installation:
+        ```python
+        image = (
+            modal.Image.from_registry(
+                "nvidia/cuda:12.2.0-devel-ubuntu22.04", add_python="3.11"
+            )
+            .pip_install(
+                "ninja",
+                "packaging",
+                "wheel",
+                "transformers==4.40.2",
+            )
+            .pip_install(
+                "flash-attn==2.5.8", extra_options="--no-build-isolation"
+            )
+        )
         """
         pkgs = _flatten_str_args("pip_install", "packages", packages)
         if not pkgs:
@@ -584,7 +602,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
-        extra_options: str = "",  # Additional options to pass to pip install
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         gpu: GPU_T = None,
         secrets: Sequence[_Secret] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
@@ -685,7 +703,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
-        extra_options: str = "",  # Additional options to pass to pip install
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -726,7 +744,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
-        extra_options: str = "",  # Additional options to pass to pip install
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
