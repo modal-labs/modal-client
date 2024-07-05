@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2024
-from modal import App, SchedulerPlacement
+from modal import App, Sandbox, SchedulerPlacement
 from modal_proto import api_pb2
 
 from .sandbox_test import skip_non_linux
@@ -55,17 +55,17 @@ def test_fn_scheduler_placement(servicer, client):
 
 @skip_non_linux
 def test_sandbox_scheduler_placement(client, servicer):
-    with app.run(client=client):
-        _ = app.spawn_sandbox(
-            "bash",
-            "-c",
-            "echo bye >&2 && sleep 1 && echo hi && exit 42",
-            timeout=600,
-            region="us-east-1",
-        )
+    Sandbox.create(
+        "bash",
+        "-c",
+        "echo bye >&2 && sleep 1 && echo hi && exit 42",
+        timeout=600,
+        region="us-east-1",
+        client=client,
+    )
 
-        assert len(servicer.sandbox_defs) == 1
-        sb_def = servicer.sandbox_defs[0]
-        assert sb_def.scheduler_placement == api_pb2.SchedulerPlacement(
-            regions=["us-east-1"],
-        )
+    assert len(servicer.sandbox_defs) == 1
+    sb_def = servicer.sandbox_defs[0]
+    assert sb_def.scheduler_placement == api_pb2.SchedulerPlacement(
+        regions=["us-east-1"],
+    )
