@@ -47,8 +47,8 @@ class LocalInput:
     input_id: Union[str, List[str]]
     function_call_id: Union[str, List[str]]
     method_name: str
-    args: Union[Any, List[Any]]
-    kwargs: Union[Any, List[Any]]
+    args: Any
+    kwargs: Any
     batched: bool = False
 
 
@@ -289,7 +289,7 @@ class _ContainerIOManager:
         req = api_pb2.FunctionCallPutDataRequest(function_call_id=function_call_id, data_chunks=data_chunks)
         await retry_transient_errors(self._client.stub.FunctionCallPutDataOut, req)
 
-    async def generator_output_task(self, function_call_id: str, data_format: int, message_rx: asyncio.Queue) -> None:
+    async def generator_output_task(self, function_call_id, data_format: int, message_rx: asyncio.Queue) -> None:
         """Task that feeds generator outputs into a function call's `data_out` stream."""
         index = 1
         received_sentinel = False
@@ -402,7 +402,7 @@ class _ContainerIOManager:
                     self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[Tuple[str, str, str, Any, Any]]:
+    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[LocalInput]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
