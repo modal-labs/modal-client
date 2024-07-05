@@ -3,7 +3,7 @@ import asyncio
 import os
 import shutil
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import AsyncIterator, Optional, Tuple, Union
 
 from click import UsageError
