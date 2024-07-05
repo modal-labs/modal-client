@@ -37,7 +37,7 @@ async def _volume_download(
             if is_pipe:
                 await q.put((None, entry))
             else:
-                start_path = str(PurePosixPath(remote_path).parent).split("*")[0]
+                start_path = Path(remote_path).parent.as_posix().split("*")[0]
                 rel_path = PurePosixPath(entry.path).relative_to(start_path.lstrip("/"))
                 if local_destination.is_dir():
                     output_path = local_destination / rel_path
