@@ -121,7 +121,7 @@ def _container_args(
     max_inputs: Optional[int] = None,
     is_class: bool = False,
     class_parameter_format=api_pb2.Function.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
-    class_parameters=[],
+    class_parameter_schema=[],
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -148,7 +148,7 @@ def _container_args(
         max_inputs=max_inputs,
         is_class=is_class,
         class_parameter_format=class_parameter_format,
-        class_parameters=class_parameters,
+        class_parameter_schema=class_parameter_schema,
     )
 
     return api_pb2.ContainerArguments(
@@ -188,7 +188,7 @@ def _run_container(
     max_inputs: Optional[int] = None,
     is_class: bool = False,
     class_parameter_format=api_pb2.Function.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
-    class_parameters=[],
+    class_parameter_schema=[],
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -207,7 +207,7 @@ def _run_container(
         max_inputs,
         is_class=is_class,
         class_parameter_format=class_parameter_format,
-        class_parameters=class_parameters,
+        class_parameter_schema=class_parameter_schema,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -695,7 +695,7 @@ def test_param_cls_function_strict_params(servicer):
         is_class=True,
         inputs=_get_inputs(method_name="f"),
         class_parameter_format=api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PROTO,
-        class_parameters=[
+        class_parameter_schema=[
             api_pb2.FunctionParameter(name="x", type=api_pb2.PARAM_TYPE_INT),
             api_pb2.FunctionParameter(name="y", type=api_pb2.PARAM_TYPE_STRING),
         ],

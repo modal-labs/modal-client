@@ -35,7 +35,7 @@ from ._output import OutputManager
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
-from ._serialization import serialize
+from ._serialization import serialize, serialize_proto_params
 from ._utils.async_utils import (
     TaskContext,
     synchronize_api,
@@ -305,6 +305,9 @@ class _Function(_Object, type_prefix="fu"):
     # TODO (elias): remove _parent. In case of instance functions, and methods bound on those,
     #  this references the parent class-function and is used to infer the client for lazy-loaded methods
     _parent: Optional["_Function"] = None
+
+    _class_parameter_format: Optional["api_pb2.Function.ParameterSerializationFormat.ValueType"] = None
+    _class_parameter_schema: Optional[Sequence[api_pb2.FunctionParameter]] = None
 
     def _bind_method(
         self,
@@ -812,7 +815,7 @@ class _Function(_Object, type_prefix="fu"):
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
                     class_parameter_format=info.class_parameter_format(),
-                    class_parameters=info.class_parameters(),
+                    class_parameter_schema=info.class_parameter_schema(),
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
@@ -892,7 +895,11 @@ class _Function(_Object, type_prefix="fu"):
                     f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
                 )
             assert self._parent._client.stub
-            serialized_params = serialize((args, kwargs))
+            if self._parent._class_parameter_format == api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PROTO:
+                assert len(args) == 0  # strict parameters should always be named
+                serialized_params = serialize_proto_params(kwargs, self._parent._class_parameter_schema)
+            else:
+                serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
             assert self._parent is not None
             req = api_pb2.FunctionBindParamsRequest(
@@ -1072,6 +1079,8 @@ class _Function(_Object, type_prefix="fu"):
         self._is_method = metadata.is_method
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
+        self._class_parameter_format = metadata.class_parameter_format
+        self._class_parameter_schema = metadata.class_parameter_schema
 
     def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id

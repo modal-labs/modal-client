@@ -207,7 +207,7 @@ class FunctionInfo:
 
         return api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PICKLE
 
-    def class_parameters(self) -> List[api_pb2.FunctionParameter]:
+    def class_parameter_schema(self) -> List[api_pb2.FunctionParameter]:
         if not self.user_cls or not os.environ.get("MODAL_STRICT_PARAMETERS"):
             return []
 

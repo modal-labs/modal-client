@@ -387,7 +387,7 @@ def check_valid_cls_constructor_arg(key, obj):
 
 
 def serialize_proto_params(
-    python_params: typing.Dict[str, Any], schema: typing.List[api_pb2.FunctionParameter]
+    python_params: typing.Dict[str, Any], schema: typing.Sequence[api_pb2.FunctionParameter]
 ) -> bytes:
     proto_params: typing.List[api_pb2.FunctionParameterValue] = []
     for schema_param in schema:
@@ -404,6 +404,31 @@ def serialize_proto_params(
             raise ValueError(f"Unsupported type: {schema_param.type}")
         proto_params.append(proto_param)
 
+    proto_bytes = api_pb2.FunctionParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
+    return proto_bytes
+
+
+def serialize_proto_params_autoschema(
+    python_params: typing.Dict[str, Any],
+):
+    # TODO (elias): don't infer schema using runtime types when encoding parameters
+    #  we could use the schemas as stored (class_parameters) on the definition
+    #  Otherwise a newer client with support for new types could try to call
+    #  older class that doesn't support those types without an error until
+    #  the container starts up.
+    proto_params: typing.List[api_pb2.FunctionParameterValue] = []
+    for param_name, python_value in python_params.items():
+        if isinstance(python_value, str):
+            proto_param = api_pb2.FunctionParameterValue(
+                name=param_name, type=api_pb2.PARAM_TYPE_STRING, string_value=python_value
+            )
+        elif isinstance(python_value, int):
+            proto_param = api_pb2.FunctionParameterValue(
+                name=param_name, type=api_pb2.PARAM_TYPE_INT, int_value=python_value
+            )
+        else:
+            raise ValueError(f"Unsupported param type: {type(python_value)}")
+        proto_params.append(proto_param)
     proto_bytes = api_pb2.FunctionParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
     return proto_bytes
 
