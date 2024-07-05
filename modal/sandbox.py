@@ -43,15 +43,15 @@ class _LogsReader:
     **Usage**
 
     ```python
-    @app.function()
-    async def my_fn():
-        sandbox = app.spawn_sandbox(
-            "bash",
-            "-c",
-            "while true; do echo foo; sleep 1; done"
-        )
-        async for message in sandbox.stdout:
-            print(f"Message: {message}")
+    from modal import Sandbox
+
+    sandbox = Sandbox.create(
+        "bash",
+        "-c",
+        "while true; do echo foo; sleep 1; done"
+    )
+    for message in sandbox.stdout:
+        print(f"Message: {message}")
     ```
     """
 
@@ -74,7 +74,9 @@ class _LogsReader:
         **Usage**
 
         ```python
-        sandbox = app.app.spawn_sandbox("echo", "hello")
+        from modal import Sandbox
+
+        sandbox = Sandbox.create("echo", "hello")
         sandbox.wait()
 
         print(sandbox.stdout.read())
@@ -177,19 +179,19 @@ class _StreamWriter:
         **Usage**
 
         ```python
-        @app.local_entrypoint()
-        def main():
-            sandbox = app.spawn_sandbox(
-                "bash",
-                "-c",
-                "while read line; do echo $line; done",
-            )
-            sandbox.stdin.write(b"foo\\n")
-            sandbox.stdin.write(b"bar\\n")
-            sandbox.stdin.write_eof()
+        from modal import Sandbox
 
-            sandbox.stdin.drain()
-            sandbox.wait()
+        sandbox = Sandbox.create(
+            "bash",
+            "-c",
+            "while read line; do echo $line; done",
+        )
+        sandbox.stdin.write(b"foo\\n")
+        sandbox.stdin.write(b"bar\\n")
+        sandbox.stdin.write_eof()
+
+        sandbox.stdin.drain()
+        sandbox.wait()
         ```
         """
         if self._is_closed:
