@@ -420,28 +420,60 @@ class ProgressHandler:
         self._total_tasks = 0
         self._completed_tasks = 0
 
-    def add_task(self, path, total):
-        task_id = self._download_progress.add_task("upload", path=path, start=True, total=total)
+    def _add_sub_task(self, name, size):
+        task_id = self._download_progress.add_task("upload", path=name, start=True, total=size)
         self._total_tasks += 1
         self._overall_progress.update(self._overall_progress_task_id, total=self._total_tasks)
         return task_id
 
-    def update(self, task_id: TaskID, advance: int = None, reset: bool = False, complete: bool = False):
-        if reset:
-            self._download_progress.reset(task_id)
-        elif advance:
-            self._download_progress.update(task_id, advance=advance)
-        elif complete:
-            self._completed_tasks += 1
-            self._download_progress.remove_task(task_id)
-            self._overall_progress.update(
-                self._overall_progress_task_id,
-                advance=1,
-                description=f"({self._completed_tasks} out of {self._total_tasks} files uploaded)",
-            )
-            if self._completed_tasks == self._total_tasks:
-                self._overall_progress.remove_task(self._overall_progress_task_id)
-                self._spinner.update(text="Post processing...")
+    def _reset_sub_task(self, task_id):
+        self._download_progress.reset(task_id)
+
+    def _complete_sub_task(self, task_id):
+        self._completed_tasks += 1
+        self._download_progress.remove_task(task_id)
+        self._overall_progress.update(
+            self._overall_progress_task_id,
+            advance=1,
+            description=f"({self._completed_tasks} out of {self._total_tasks} files uploaded)",
+        )
+        if self._completed_tasks == self._total_tasks:
+            self._overall_progress.remove_task(self._overall_progress_task_id)
+            self._spinner.update(text="Post processing...")
+
+    def _advance_sub_task(self, task_id, advance):
+        self._download_progress.update(task_id, advance=advance)
+
+    def progress(
+        self,
+        task_id: Optional[TaskID] = None,
+        advance: Optional[float] = None,
+        name: Optional[str] = None,
+        size: Optional[float] = None,
+        reset: Optional[bool] = False,
+        complete: Optional[bool] = False,
+    ):
+        if task_id is not None:
+            if reset:
+                self._reset_sub_task(task_id)
+                return task_id
+            if complete:
+                self._complete_sub_task(task_id)
+                return task_id
+            if advance:
+                self._advance_sub_task(task_id, advance)
+                return task_id
+        if name and size:
+            return self._add_sub_task(name, size)
+        raise NotImplementedError(
+            "Unknown action to take with args: "
+            + f"name={name} "
+            + f"size={size} "
+            + f"task_id={task_id} "
+            + f"advance={advance} "
+            + f"reset={reset} "
+            + f"complete={complete} "
+        )
 
 
 async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: asyncio.Event):

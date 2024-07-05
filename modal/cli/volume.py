@@ -200,7 +200,7 @@ async def put(
         with progress_handler.live:
             try:
                 async with _VolumeUploadContextManager(
-                    vol.object_id, vol._client, progress_handler=progress_handler, force=force
+                    vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
                 ) as batch:
                     batch.put_directory(local_path, remote_path)
             except FileExistsError as exc:
@@ -212,7 +212,7 @@ async def put(
         with progress_handler.live:
             try:
                 async with _VolumeUploadContextManager(
-                    vol.object_id, vol._client, progress_handler=progress_handler, force=force
+                    vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
                 ) as batch:
                     batch.put_file(local_path, remote_path)
 
