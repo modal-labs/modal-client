@@ -197,10 +197,10 @@ async def put(
     progress_handler = ProgressHandler(console=console)
 
     if Path(local_path).is_dir():
-        with progress_handler.progress:
+        with progress_handler.live:
             try:
                 async with _VolumeUploadContextManager(
-                    vol.object_id, vol._client, progress_handler, force=force
+                    vol.object_id, vol._client, progress_handler=progress_handler, force=force
                 ) as batch:
                     batch.put_directory(local_path, remote_path)
             except FileExistsError as exc:
@@ -209,10 +209,10 @@ async def put(
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
     else:
-        with progress_handler.progress:
+        with progress_handler.live:
             try:
                 async with _VolumeUploadContextManager(
-                    vol.object_id, vol._client, progress_handler, force=force
+                    vol.object_id, vol._client, progress_handler=progress_handler, force=force
                 ) as batch:
                     batch.put_file(local_path, remote_path)
 

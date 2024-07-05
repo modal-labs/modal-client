@@ -551,12 +551,12 @@ class _VolumeUploadContextManager:
     _progress_handler: ProgressHandler
     _upload_generators: List[Generator[Callable[[], FileUploadSpec], None, None]]
 
-    def __init__(self, volume_id: str, client: _Client, _progress_handler: ProgressHandler, force: bool = False):
+    def __init__(self, volume_id: str, client: _Client, progress_handler: ProgressHandler, force: bool = False):
         """mdmd:hidden"""
         self._volume_id = volume_id
         self._client = client
         self._upload_generators = []
-        self._progress_handler = _progress_handler
+        self._progress_handler = progress_handler
         self._force = force
 
     async def __aenter__(self):
@@ -648,7 +648,7 @@ class _VolumeUploadContextManager:
 
     async def _upload_file(self, file_spec: FileUploadSpec) -> api_pb2.MountFile:
         remote_filename = file_spec.mount_filename
-        task_id = self._progress_handler.add_task(remote_filename)
+        task_id = self._progress_handler.add_task(remote_filename, total=file_spec.size)
 
         request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
         response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
@@ -667,7 +667,6 @@ class _VolumeUploadContextManager:
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
-                self._progress_handler.update(task_id, total=file_spec.size)
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
@@ -679,7 +678,9 @@ class _VolumeUploadContextManager:
                 raise VolumeUploadTimeoutError(f"Uploading of {file_spec.source_description} timed out")
             elif not file_spec.use_blob:
                 self._progress_handler.update(task_id, advance=file_spec.size)
-
+                self._progress_handler.update(task_id, complete=True)
+        else:
+            self._progress_handler.update(task_id, complete=True)
         return api_pb2.MountFile(
             filename=remote_filename,
             sha256_hex=file_spec.sha256_hex,

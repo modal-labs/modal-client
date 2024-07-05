@@ -107,12 +107,14 @@ class BytesIOSegmentPayload(BytesIOPayload):
         while chunk and self.remaining_bytes() > 0:
             await writer.write(chunk)
             self.num_bytes_written += len(chunk)
-            self.progress_report_cb(len(chunk), self.segment_length)
+            self.progress_report_cb(len(chunk))
             chunk = await safe_read()
         if chunk:
             await writer.write(chunk)
             self.num_bytes_written += len(chunk)
-            self.progress_report_cb(len(chunk), self.segment_length)
+            self.progress_report_cb(len(chunk))
+
+        self.progress_report_cb(complete=True)
 
     def remaining_bytes(self):
         return self.segment_length - self.num_bytes_read

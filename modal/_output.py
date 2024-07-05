@@ -9,7 +9,7 @@ import platform
 import re
 import sys
 from datetime import timedelta
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console, Group, RenderableType
@@ -44,11 +44,26 @@ else:
 
 
 class ProgressHandler:
-    progress: Progress
-    task_ids: List[str]
+    live: Live
+    _spinner: Spinner
+    _overall_progress: Progress
+    _download_progress: Progress
+    _overall_progress_task_id: TaskID
+    _total_tasks: int
+    _completed_tasks: int
 
     def __init__(self, console):
-        self.progress = Progress(
+        self._spinner = step_progress("Uploading file(s) to volume...")
+
+        self._overall_progress = Progress(
+            TextColumn("[bold white]Uploading files", justify="right"),
+            TimeElapsedColumn(),
+            BarColumn(bar_width=None),
+            TextColumn("[bold white]{task.description}"),
+            transient=True,
+            console=console,
+        )
+        self._download_progress = Progress(
             TextColumn("[bold white]{task.fields[path]}", justify="right"),
             BarColumn(bar_width=None),
             "[progress.percentage]{task.percentage:>3.1f}%",
@@ -58,20 +73,38 @@ class ProgressHandler:
             TransferSpeedColumn(),
             "•",
             TimeRemainingColumn(),
-            transient=False,
+            transient=True,
             console=console,
         )
 
-    def add_task(self, path):
-        return self.progress.add_task("upload", path=path, start=True)
+        self.live = Live(Group(self._spinner, self._overall_progress, self._download_progress))
 
-    def update(self, task_id: str, advance: int = None, total: int = None, reset: bool = False):
+        self._overall_progress_task_id = self._overall_progress.add_task("upload files", start=True)
+        self._total_tasks = 0
+        self._completed_tasks = 0
+
+    def add_task(self, path, total):
+        task_id = self._download_progress.add_task("upload", path=path, start=True, total=total)
+        self._total_tasks += 1
+        self._overall_progress.update(self._overall_progress_task_id, total=self._total_tasks)
+        return task_id
+
+    def update(self, task_id: TaskID, advance: int = None, reset: bool = False, complete: bool = False):
         if reset:
-            self.progress.reset(task_id)
-        elif advance or total:
-            self.progress.update(task_id, advance=advance, total=total)
-        else:
-            raise ValueError("Need to pass in advance/total/reset")
+            self._download_progress.reset(task_id)
+        elif advance:
+            self._download_progress.update(task_id, advance=advance)
+        elif complete:
+            self._completed_tasks += 1
+            self._download_progress.remove_task(task_id)
+            self._overall_progress.update(
+                self._overall_progress_task_id,
+                advance=1,
+                description=f"({self._completed_tasks} out of {self._total_tasks} files uploaded)",
+            )
+            if self._completed_tasks == self._total_tasks:
+                self._overall_progress.remove_task(self._overall_progress_task_id)
+                self._spinner.update(text="Post processing...")
 
 
 class FunctionQueuingColumn(ProgressColumn):
