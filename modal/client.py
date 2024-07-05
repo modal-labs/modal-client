@@ -26,8 +26,12 @@ CLIENT_CREATE_ATTEMPT_TIMEOUT: float = 4.0
 CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 
 
-def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], version: str) -> Dict[str, str]:
-    # This implements a simplified version of platform.platform() that's still machine-readable
+def _get_metadata(
+    client_type: int,
+    credentials: Optional[Tuple[str, str]],
+    session_credentials: Optional[Tuple[str, str]],
+    version: str,
+) -> Dict[str, str]:  # This implements a simplified version of platform.platform() that's still machine-readable
     uname: platform.uname_result = platform.uname()
     if uname.system == "Darwin":
         system, release = "macOS", platform.mac_ver()[0]
@@ -56,6 +60,14 @@ def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], vers
             {
                 "x-modal-task-id": task_id,
                 "x-modal-task-secret": task_secret,
+            }
+        )
+    elif session_credentials and client_type == api_pb2.CLIENT_TYPE_CONTAINER:
+        session_id, session_secret = session_credentials
+        metadata.update(
+            {
+                "x-modal-session-id": session_id,
+                "x-modal-session-secret": session_secret,
             }
         )
     return metadata
@@ -95,6 +107,7 @@ class _Client:
         self.server_url = server_url
         self.client_type = client_type
         self._credentials = credentials
+        self._session_credentials = None
         self.version = version
         self._authenticated = False
         self.image_builder_version: Optional[str] = None
@@ -116,13 +129,17 @@ class _Client:
     def credentials(self) -> tuple:
         """mdmd:hidden"""
         if self._credentials is None and self.client_type == api_pb2.CLIENT_TYPE_CONTAINER:
-            logger.debug("restoring credentials for memory snapshotted client instance")
-            self._credentials = (config["task_id"], config["task_secret"])
+            if config["task_id"] and config["task_secret"]:
+                logger.debug("restoring credentials for memory snapshotted client instance")
+                self._credentials = (config["task_id"], config["task_secret"])
+            elif config["session_id"] and config["session_secret"]:
+                logger.debug("using session credentials for new client instance")
+                self._session_credentials = (config["session_id"], config["session_secret"])
         return self._credentials
 
     async def _open(self):
         assert self._stub is None
-        metadata = _get_metadata(self.client_type, self._credentials, self.version)
+        metadata = _get_metadata(self.client_type, self._credentials, self._session_credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 
@@ -136,6 +153,7 @@ class _Client:
 
         if forget_credentials:
             self._credentials = None
+            self._session_credentials = None
 
         # Remove cached client.
         self.set_env_client(None)
