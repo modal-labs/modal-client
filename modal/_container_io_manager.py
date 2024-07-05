@@ -289,7 +289,9 @@ class _ContainerIOManager:
         req = api_pb2.FunctionCallPutDataRequest(function_call_id=function_call_id, data_chunks=data_chunks)
         await retry_transient_errors(self._client.stub.FunctionCallPutDataOut, req)
 
-    async def generator_output_task(self, function_call_id, data_format: int, message_rx: asyncio.Queue) -> None:
+    async def generator_output_task(
+        self, function_call_id: Union[str, List[str]], data_format: int, message_rx: asyncio.Queue
+    ) -> None:
         """Task that feeds generator outputs into a function call's `data_out` stream."""
         index = 1
         received_sentinel = False
