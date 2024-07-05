@@ -2,6 +2,7 @@
 import asyncio
 import concurrent.futures
 import enum
+import functools
 import os
 import platform
 import re
@@ -26,6 +27,7 @@ import aiostream
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
+from modal._output import ProgressHandler
 from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_error, deprecation_warning
 from modal_proto import api_pb2
 
@@ -546,13 +548,15 @@ class _VolumeUploadContextManager:
     _volume_id: str
     _client: _Client
     _force: bool
+    _progress_handler: ProgressHandler
     _upload_generators: List[Generator[Callable[[], FileUploadSpec], None, None]]
 
-    def __init__(self, volume_id: str, client: _Client, force: bool = False):
+    def __init__(self, volume_id: str, client: _Client, _progress_handler: ProgressHandler, force: bool = False):
         """mdmd:hidden"""
         self._volume_id = volume_id
         self._client = client
         self._upload_generators = []
+        self._progress_handler = _progress_handler
         self._force = force
 
     async def __aenter__(self):
@@ -644,6 +648,7 @@ class _VolumeUploadContextManager:
 
     async def _upload_file(self, file_spec: FileUploadSpec) -> api_pb2.MountFile:
         remote_filename = file_spec.mount_filename
+        task_id = self._progress_handler.add_task(remote_filename)
 
         request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
         response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
@@ -653,13 +658,16 @@ class _VolumeUploadContextManager:
             if file_spec.use_blob:
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
                 with file_spec.source() as fp:
-                    blob_id = await blob_upload_file(fp, self._client.stub)
+                    # when uploading blob in chunks we add a callback to report progress
+                    _progress_report_cb = functools.partial(self._progress_handler.update, task_id)
+                    blob_id = await blob_upload_file(fp, self._client.stub, _progress_report_cb)
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
+                self._progress_handler.update(task_id, total=file_spec.size)
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
 
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
@@ -669,6 +677,8 @@ class _VolumeUploadContextManager:
 
             if not response.exists:
                 raise VolumeUploadTimeoutError(f"Uploading of {file_spec.source_description} timed out")
+            elif not file_spec.use_blob:
+                self._progress_handler.update(task_id, advance=file_spec.size)
 
         return api_pb2.MountFile(
             filename=remote_filename,

@@ -9,7 +9,7 @@ import platform
 import re
 import sys
 from datetime import timedelta
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console, Group, RenderableType
@@ -41,6 +41,37 @@ if platform.system() == "Windows":
     default_spinner = "line"
 else:
     default_spinner = "dots"
+
+
+class ProgressHandler:
+    progress: Progress
+    task_ids: List[str]
+
+    def __init__(self, console):
+        self.progress = Progress(
+            TextColumn("[bold white]{task.fields[path]}", justify="right"),
+            BarColumn(bar_width=None),
+            "[progress.percentage]{task.percentage:>3.1f}%",
+            "•",
+            DownloadColumn(),
+            "•",
+            TransferSpeedColumn(),
+            "•",
+            TimeRemainingColumn(),
+            transient=False,
+            console=console,
+        )
+
+    def add_task(self, path):
+        return self.progress.add_task("upload", path=path, start=True)
+
+    def update(self, task_id: str, advance: int = None, total: int = None, reset: bool = False):
+        if reset:
+            self.progress.reset(task_id)
+        elif advance or total:
+            self.progress.update(task_id, advance=advance, total=total)
+        else:
+            raise ValueError("Need to pass in advance/total/reset")
 
 
 class FunctionQueuingColumn(ProgressColumn):
