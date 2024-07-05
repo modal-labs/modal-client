@@ -165,10 +165,10 @@ def _warn_invalid_packages(old_command: str) -> None:
     deprecation_warning(
         (2024, 7, 3),
         "Passing flags to `pip` via the `packages` argument of `pip_install` is deprecated."
-        + " Please pass flags via the `extra_options` argument instead."
-        + "\nNote that this will cause a rebuild of this image layer."
-        + " To avoid rebuilding, you can pass the following to `run_commands` instead:"
-        + f'\n`image.run_commands("{old_command}")`',
+        " Please pass flags via the `extra_options` argument instead."
+        "\nNote that this will cause a rebuild of this image layer."
+        " To avoid rebuilding, you can pass the following to `run_commands` instead:"
+        f'\n`image.run_commands("{old_command}")`',
         show_source=False,
     )
 
