@@ -682,7 +682,11 @@ def test_param_cls_function(servicer):
 
 @skip_github_non_linux
 def test_param_cls_function_strict_params(servicer):
-    serialized_params = modal._serialization.serialize_proto_params({"x": 111, "y": "foo"}, [])
+    schema = [
+        api_pb2.FunctionParameter(name="x", type=api_pb2.PARAM_TYPE_INT),
+        api_pb2.FunctionParameter(name="y", type=api_pb2.PARAM_TYPE_STRING),
+    ]
+    serialized_params = modal._serialization.serialize_proto_params({"x": 111, "y": "foo"}, schema)
     ret = _run_container(
         servicer,
         "test.supports.functions",
