@@ -780,7 +780,6 @@ class _App:
 
             See https://modal.com/docs/guide/sandbox for more info.
             """,
-            pending=True,
         )
         if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
