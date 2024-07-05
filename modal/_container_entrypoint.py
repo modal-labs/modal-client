@@ -689,7 +689,7 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
     ):
         # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
         param_args, param_kwargs = deserialize(serialized_params, _client)
-    elif function_def.class_parameter_format == api_pb2.Function.PARAM_SERIALIZATION_FORMAT_CBOR2_MAP:
+    elif function_def.class_parameter_format == api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PROTO:
         param_args = ()
         param_kwargs = deserialize_proto_params(serialized_params, list(function_def.class_parameters))
     else:

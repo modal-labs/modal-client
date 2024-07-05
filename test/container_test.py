@@ -690,7 +690,7 @@ def test_param_cls_function_strict_params(servicer):
         serialized_params=serialized_params,
         is_class=True,
         inputs=_get_inputs(method_name="f"),
-        class_parameter_format=api_pb2.Function.PARAM_SERIALIZATION_FORMAT_CBOR2_MAP,
+        class_parameter_format=api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PROTO,
         class_parameters=[
             api_pb2.FunctionParameter(name="x", type=api_pb2.PARAM_TYPE_INT),
             api_pb2.FunctionParameter(name="y", type=api_pb2.PARAM_TYPE_STRING),

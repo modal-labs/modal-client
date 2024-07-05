@@ -946,7 +946,7 @@ message Function {
   enum ParameterSerializationFormat {
     PARAM_SERIALIZATION_FORMAT_UNSPECIFIED = 0;
     PARAM_SERIALIZATION_FORMAT_PICKLE = 1; // legacy format - pickle of (args, kwargs) tuple
-    PARAM_SERIALIZATION_FORMAT_CBOR2_MAP = 2; // new format - {"param_name": value, ...} cbor2 bytes. Types of values determined by `class_parameters` schema.
+    PARAM_SERIALIZATION_FORMAT_PROTO = 2; // new format - {"param_name": value, ...} cbor2 bytes. Types of values determined by `class_parameters` schema.
   }
   ParameterSerializationFormat class_parameter_format = 56;
   repeated FunctionParameter class_parameters = 57; // names and types of class parameters w/ new syntax from v0.64

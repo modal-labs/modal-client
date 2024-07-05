@@ -203,7 +203,7 @@ class FunctionInfo:
             return api_pb2.Function.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED
 
         if os.environ.get("MODAL_STRICT_PARAMETERS"):
-            return api_pb2.Function.PARAM_SERIALIZATION_FORMAT_CBOR2_MAP
+            return api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PROTO
 
         return api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PICKLE
 
