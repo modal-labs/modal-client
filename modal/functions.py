@@ -307,7 +307,7 @@ class _Function(_Object, type_prefix="fu"):
     _parent: Optional["_Function"] = None
 
     _class_parameter_format: Optional["api_pb2.Function.ParameterSerializationFormat.ValueType"] = None
-    _class_parameter_schema: Optional[Sequence[api_pb2.FunctionParameter]] = None
+    _class_parameter_schema: Optional[Sequence[api_pb2.ClassParameterSpec]] = None
 
     def _bind_method(
         self,
@@ -898,8 +898,8 @@ class _Function(_Object, type_prefix="fu"):
             if self._parent._class_parameter_format == api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PROTO:
                 assert self._parent._class_parameter_schema is not None
                 if args:
-                    # TODO(elias) - We could potentially fix this if we want to...
-                    raise ValueError("Can't use positional arguments with strict parameter classes")
+                    # TODO(elias) - We could potentially support positional args as well, if we want to?
+                    raise InvalidError("Can't use positional arguments with strict parameter classes")
                 serialized_params = serialize_proto_params(kwargs, self._parent._class_parameter_schema)
             else:
                 serialized_params = serialize((args, kwargs))

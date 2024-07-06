@@ -683,8 +683,8 @@ def test_param_cls_function(servicer):
 @skip_github_non_linux
 def test_param_cls_function_strict_params(servicer):
     schema = [
-        api_pb2.FunctionParameter(name="x", type=api_pb2.PARAM_TYPE_INT),
-        api_pb2.FunctionParameter(name="y", type=api_pb2.PARAM_TYPE_STRING),
+        api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_INT),
+        api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_STRING),
     ]
     serialized_params = modal._serialization.serialize_proto_params({"x": 111, "y": "foo"}, schema)
     ret = _run_container(
@@ -696,8 +696,8 @@ def test_param_cls_function_strict_params(servicer):
         inputs=_get_inputs(method_name="f"),
         class_parameter_format=api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PROTO,
         class_parameter_schema=[
-            api_pb2.FunctionParameter(name="x", type=api_pb2.PARAM_TYPE_INT),
-            api_pb2.FunctionParameter(name="y", type=api_pb2.PARAM_TYPE_STRING),
+            api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_INT),
+            api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_STRING),
         ],
     )
     assert _unwrap_scalar(ret) == "111 foo 42"

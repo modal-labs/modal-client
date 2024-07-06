@@ -202,16 +202,16 @@ class FunctionInfo:
         if not self.user_cls:
             return api_pb2.Function.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED
 
-        if os.environ.get("MODAL_STRICT_PARAMETERS"):
+        if config.get("strict_parameters"):
             return api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PROTO
 
         return api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PICKLE
 
-    def class_parameter_schema(self) -> List[api_pb2.FunctionParameter]:
-        if not self.user_cls or not os.environ.get("MODAL_STRICT_PARAMETERS"):
+    def class_parameter_schema(self) -> List[api_pb2.ClassParameterSpec]:
+        if not self.user_cls or not config.get("strict_parameters"):
             return []
 
-        modal_parameters: List[api_pb2.FunctionParameter] = []
+        modal_parameters: List[api_pb2.ClassParameterSpec] = []
         signature = inspect.signature(self.user_cls)
         for param in signature.parameters.values():
             if param.annotation == str:
@@ -220,7 +220,7 @@ class FunctionInfo:
                 param_type = api_pb2.PARAM_TYPE_INT
             else:
                 raise InvalidError("Strict class parameters need to be explicitly annotated as str or int")
-            modal_parameters.append(api_pb2.FunctionParameter(name=param.name, type=param_type))
+            modal_parameters.append(api_pb2.ClassParameterSpec(name=param.name, type=param_type))
         return modal_parameters
 
     def get_entrypoint_mount(self) -> List[_Mount]:

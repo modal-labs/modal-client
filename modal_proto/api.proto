@@ -125,7 +125,7 @@ enum FunctionCallType {
   FUNCTION_CALL_TYPE_MAP = 2;
 }
 
-enum FunctionParameterType {
+enum ClassParameterType {
   PARAM_TYPE_UNSPECIFIED = 0;
   PARAM_TYPE_STRING = 1;
   PARAM_TYPE_INT = 2;
@@ -955,7 +955,7 @@ message Function {
     PARAM_SERIALIZATION_FORMAT_PROTO = 2; // new format using api.FunctionParameterSet
   }
   ParameterSerializationFormat class_parameter_format = 56;
-  repeated FunctionParameter class_parameter_schema = 57; // names and types of class parameters w/ new syntax from v0.64
+  repeated ClassParameterSpec class_parameter_schema = 57; // names and types of class parameters w/ new syntax from v0.64
 }
 
 message FunctionBindParamsRequest {
@@ -1122,7 +1122,7 @@ message FunctionHandleMetadata {
   string use_method_name = 41; // used for methods
   string definition_id = 42;
   Function.ParameterSerializationFormat class_parameter_format = 43;
-  repeated FunctionParameter class_parameter_schema = 44;
+  repeated ClassParameterSpec class_parameter_schema = 44;
 }
 
 message FunctionInput {
@@ -1165,18 +1165,18 @@ message FunctionOptions {
 }
 
 
-message FunctionParameter {
+message ClassParameterSpec {
   string name = 1;
-  FunctionParameterType type = 2;
+  ClassParameterType type = 2;
 }
 
-message FunctionParameterSet {
-  repeated FunctionParameterValue parameters = 1;
+message ClassParameterSet {
+  repeated ClassParameterValue parameters = 1;
 }
 
-message FunctionParameterValue {
+message ClassParameterValue {
   string name = 1;
-  FunctionParameterType type = 2;
+  ClassParameterType type = 2;
   oneof value_oneof {
     string string_value = 3;
     int64 int_value = 4;

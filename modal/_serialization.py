@@ -387,31 +387,31 @@ def check_valid_cls_constructor_arg(key, obj):
 
 
 def serialize_proto_params(
-    python_params: typing.Dict[str, Any], schema: typing.Sequence[api_pb2.FunctionParameter]
+    python_params: typing.Dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]
 ) -> bytes:
-    proto_params: typing.List[api_pb2.FunctionParameterValue] = []
+    proto_params: typing.List[api_pb2.ClassParameterValue] = []
     for schema_param in schema:
         python_value = python_params[schema_param.name]
         if schema_param.type == api_pb2.PARAM_TYPE_STRING:
-            proto_param = api_pb2.FunctionParameterValue(
+            proto_param = api_pb2.ClassParameterValue(
                 name=schema_param.name, type=api_pb2.PARAM_TYPE_STRING, string_value=python_value
             )
         elif schema_param.type == api_pb2.PARAM_TYPE_INT:
-            proto_param = api_pb2.FunctionParameterValue(
+            proto_param = api_pb2.ClassParameterValue(
                 name=schema_param.name, type=api_pb2.PARAM_TYPE_INT, int_value=python_value
             )
         else:
             raise ValueError(f"Unsupported type: {schema_param.type}")
         proto_params.append(proto_param)
 
-    proto_bytes = api_pb2.FunctionParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
+    proto_bytes = api_pb2.ClassParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
     return proto_bytes
 
 
 def deserialize_proto_params(
-    serialized_params: bytes, schema: typing.List[api_pb2.FunctionParameter]
+    serialized_params: bytes, schema: typing.List[api_pb2.ClassParameterSpec]
 ) -> typing.Dict[str, Any]:
-    proto_struct = api_pb2.FunctionParameterSet()
+    proto_struct = api_pb2.ClassParameterSet()
     proto_struct.ParseFromString(serialized_params)
     value_by_name = {p.name: p for p in proto_struct.parameters}
     python_params = {}

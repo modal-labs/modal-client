@@ -799,8 +799,8 @@ def test_cls_strict_parameters_added_to_definition(client, servicer, monkeypatch
     (definition,) = servicer.app_functions.values()
     assert definition.function_name == "StrictParamCls.*"
     assert list(definition.class_parameter_schema) == [
-        api_pb2.FunctionParameter(name="x", type=api_pb2.PARAM_TYPE_STRING),
-        api_pb2.FunctionParameter(name="y", type=api_pb2.PARAM_TYPE_INT),
+        api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING),
+        api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_INT),
     ]
 
 
