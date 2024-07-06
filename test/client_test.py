@@ -181,7 +181,7 @@ def test_implicit_default_profile_warning(servicer, modal_config):
     token_secret = 'as_xyz'
     """
     with modal_config(config):
-        with pytest.warns(DeprecationError, match="Support for using an implicit 'default' profile is deprecated."):
+        with pytest.raises(DeprecationError, match="Support for using an implicit 'default' profile is deprecated."):
             Client.verify(servicer.client_addr, None)
 
     config = """
