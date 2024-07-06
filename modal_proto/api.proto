@@ -74,6 +74,12 @@ enum CheckpointStatus {
   CHECKPOINT_STATUS_FAILED = 4;
 }
 
+enum ClassParameterType {
+  PARAM_TYPE_UNSPECIFIED = 0;
+  PARAM_TYPE_STRING = 1;
+  PARAM_TYPE_INT = 2;
+}
+
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
@@ -123,12 +129,6 @@ enum FunctionCallType {
   FUNCTION_CALL_TYPE_UNSPECIFIED = 0;
   FUNCTION_CALL_TYPE_UNARY = 1;
   FUNCTION_CALL_TYPE_MAP = 2;
-}
-
-enum ClassParameterType {
-  PARAM_TYPE_UNSPECIFIED = 0;
-  PARAM_TYPE_STRING = 1;
-  PARAM_TYPE_INT = 2;
 }
 
 enum GPUType {
@@ -551,6 +551,24 @@ message ClassMethod {
 
   // Class methods need to hydrate all functions on the class
   FunctionHandleMetadata function_handle_metadata = 3;
+}
+
+message ClassParameterSet {
+  repeated ClassParameterValue parameters = 1;
+}
+
+message ClassParameterSpec {
+  string name = 1;
+  ClassParameterType type = 2;
+}
+
+message ClassParameterValue {
+  string name = 1;
+  ClassParameterType type = 2;
+  oneof value_oneof {
+    string string_value = 3;
+    int64 int_value = 4;
+  }
 }
 
 message ClientCreateRequest {
@@ -1162,25 +1180,6 @@ message FunctionOptions {
   optional uint32 allow_concurrent_inputs = 10;
   bool replace_volume_mounts = 11;
   bool replace_secret_ids = 12;
-}
-
-
-message ClassParameterSpec {
-  string name = 1;
-  ClassParameterType type = 2;
-}
-
-message ClassParameterSet {
-  repeated ClassParameterValue parameters = 1;
-}
-
-message ClassParameterValue {
-  string name = 1;
-  ClassParameterType type = 2;
-  oneof value_oneof {
-    string string_value = 3;
-    int64 int_value = 4;
-  }
 }
 
 message FunctionPrecreateRequest {
