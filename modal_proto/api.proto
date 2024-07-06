@@ -74,12 +74,6 @@ enum CheckpointStatus {
   CHECKPOINT_STATUS_FAILED = 4;
 }
 
-enum ClassParameterType {
-  PARAM_TYPE_UNSPECIFIED = 0;
-  PARAM_TYPE_STRING = 1;
-  PARAM_TYPE_INT = 2;
-}
-
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
@@ -152,6 +146,12 @@ enum ObjectCreationType {
   OBJECT_CREATION_TYPE_CREATE_OVERWRITE_IF_EXISTS = 3;
   OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP = 4;  // deprecate at some point
   OBJECT_CREATION_TYPE_EPHEMERAL = 5;
+}
+
+enum ParameterType {
+  PARAM_TYPE_UNSPECIFIED = 0;
+  PARAM_TYPE_STRING = 1;
+  PARAM_TYPE_INT = 2;
 }
 
 enum ProgressType {
@@ -553,18 +553,28 @@ message ClassMethod {
   FunctionHandleMetadata function_handle_metadata = 3;
 }
 
+message ClassParameterInfo {
+  enum ParameterSerializationFormat {
+    PARAM_SERIALIZATION_FORMAT_UNSPECIFIED = 0;
+    PARAM_SERIALIZATION_FORMAT_PICKLE = 1; // legacy format - pickle of (args, kwargs) tuple
+    PARAM_SERIALIZATION_FORMAT_PROTO = 2; // new format using api.FunctionParameterSet
+  }
+  ParameterSerializationFormat format = 1;
+  repeated ClassParameterSpec schema = 2; // only set for PARAM_SERIALIZATION_FORMAT_PROTO
+}
+
 message ClassParameterSet {
   repeated ClassParameterValue parameters = 1;
 }
 
 message ClassParameterSpec {
   string name = 1;
-  ClassParameterType type = 2;
+  ParameterType type = 2;
 }
 
 message ClassParameterValue {
   string name = 1;
-  ClassParameterType type = 2;
+  ParameterType type = 2;
   oneof value_oneof {
     string string_value = 3;
     int64 int_value = 4;
@@ -967,13 +977,7 @@ message Function {
   string use_function_id = 54;  // for class methods use this function id instead for invocations - the *referenced* function should have is_class=True
   string use_method_name = 55;  // for class methods - this method name needs to be included in the FunctionInput
 
-  enum ParameterSerializationFormat {
-    PARAM_SERIALIZATION_FORMAT_UNSPECIFIED = 0;
-    PARAM_SERIALIZATION_FORMAT_PICKLE = 1; // legacy format - pickle of (args, kwargs) tuple
-    PARAM_SERIALIZATION_FORMAT_PROTO = 2; // new format using api.FunctionParameterSet
-  }
-  ParameterSerializationFormat class_parameter_format = 56;
-  repeated ClassParameterSpec class_parameter_schema = 57; // names and types of class parameters w/ new syntax from v0.64
+  ClassParameterInfo class_parameter_info = 56;
 }
 
 message FunctionBindParamsRequest {
@@ -1139,8 +1143,7 @@ message FunctionHandleMetadata {
   string use_function_id = 40; // used for methods
   string use_method_name = 41; // used for methods
   string definition_id = 42;
-  Function.ParameterSerializationFormat class_parameter_format = 43;
-  repeated ClassParameterSpec class_parameter_schema = 44;
+  ClassParameterInfo class_parameter_info = 43;
 }
 
 message FunctionInput {

@@ -306,8 +306,7 @@ class _Function(_Object, type_prefix="fu"):
     #  this references the parent class-function and is used to infer the client for lazy-loaded methods
     _parent: Optional["_Function"] = None
 
-    _class_parameter_format: Optional["api_pb2.Function.ParameterSerializationFormat.ValueType"] = None
-    _class_parameter_schema: Optional[Sequence[api_pb2.ClassParameterSpec]] = None
+    _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
 
     def _bind_method(
         self,
@@ -814,8 +813,7 @@ class _Function(_Object, type_prefix="fu"):
                     _experimental_boost=_experimental_boost,
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
-                    class_parameter_format=info.class_parameter_format(),
-                    class_parameter_schema=info.class_parameter_schema(),
+                    class_parameter_info=info.class_parameter_info(),
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
@@ -895,12 +893,15 @@ class _Function(_Object, type_prefix="fu"):
                     f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
                 )
             assert self._parent._client.stub
-            if self._parent._class_parameter_format == api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PROTO:
-                assert self._parent._class_parameter_schema is not None
+            if (
+                self._parent._class_parameter_info
+                and self._parent._class_parameter_info.format
+                == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
+            ):
                 if args:
                     # TODO(elias) - We could potentially support positional args as well, if we want to?
                     raise InvalidError("Can't use positional arguments with strict parameter classes")
-                serialized_params = serialize_proto_params(kwargs, self._parent._class_parameter_schema)
+                serialized_params = serialize_proto_params(kwargs, self._parent._class_parameter_info.schema)
             else:
                 serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
@@ -1082,8 +1083,7 @@ class _Function(_Object, type_prefix="fu"):
         self._is_method = metadata.is_method
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
-        self._class_parameter_format = metadata.class_parameter_format
-        self._class_parameter_schema = list(metadata.class_parameter_schema)
+        self._class_parameter_info = metadata.class_parameter_info
 
     def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id
@@ -1102,9 +1102,7 @@ class _Function(_Object, type_prefix="fu"):
             use_method_name=self._use_method_name,
             use_function_id=self._use_function_id,
             is_method=self._is_method,
-            class_parameter_format=self._class_parameter_format
-            or api_pb2.Function.ParameterSerializationFormat.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
-            class_parameter_schema=self._class_parameter_schema,
+            class_parameter_info=self._class_parameter_info,
         )
 
     def _set_mute_cancellation(self, value: bool = True):

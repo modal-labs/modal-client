@@ -683,17 +683,19 @@ def call_lifecycle_functions(
 
 
 def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function, _client: "modal.client._Client"):
-    if function_def.class_parameter_format in (
-        api_pb2.Function.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
-        api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PICKLE,
+    if function_def.class_parameter_info.format in (
+        api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
+        api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE,
     ):
         # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
         param_args, param_kwargs = deserialize(serialized_params, _client)
-    elif function_def.class_parameter_format == api_pb2.Function.PARAM_SERIALIZATION_FORMAT_PROTO:
+    elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
         param_args = ()
-        param_kwargs = deserialize_proto_params(serialized_params, list(function_def.class_parameter_schema))
+        param_kwargs = deserialize_proto_params(serialized_params, list(function_def.class_parameter_info.schema))
     else:
-        raise ExecutionError(f"Unknown class parameter serialization format: {function_def.class_parameter_format}")
+        raise ExecutionError(
+            f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"
+        )
 
     return param_args, param_kwargs
 
