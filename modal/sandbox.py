@@ -19,6 +19,7 @@ from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_erro
 from ._utils.mount_utils import validate_mount_points, validate_volumes
 from .client import _Client
 from .config import config
+from .exception import deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -42,15 +43,15 @@ class _LogsReader:
     **Usage**
 
     ```python
-    @app.function()
-    async def my_fn():
-        sandbox = app.spawn_sandbox(
-            "bash",
-            "-c",
-            "while true; do echo foo; sleep 1; done"
-        )
-        async for message in sandbox.stdout:
-            print(f"Message: {message}")
+    from modal import Sandbox
+
+    sandbox = Sandbox.create(
+        "bash",
+        "-c",
+        "for i in $(seq 1 10); do echo foo; sleep 0.1; done"
+    )
+    for message in sandbox.stdout:
+        print(f"Message: {message}")
     ```
     """
 
@@ -73,7 +74,9 @@ class _LogsReader:
         **Usage**
 
         ```python
-        sandbox = app.app.spawn_sandbox("echo", "hello")
+        from modal import Sandbox
+
+        sandbox = Sandbox.create("echo", "hello")
         sandbox.wait()
 
         print(sandbox.stdout.read())
@@ -176,19 +179,19 @@ class _StreamWriter:
         **Usage**
 
         ```python
-        @app.local_entrypoint()
-        def main():
-            sandbox = app.spawn_sandbox(
-                "bash",
-                "-c",
-                "while read line; do echo $line; done",
-            )
-            sandbox.stdin.write(b"foo\\n")
-            sandbox.stdin.write(b"bar\\n")
-            sandbox.stdin.write_eof()
+        from modal import Sandbox
 
-            sandbox.stdin.drain()
-            sandbox.wait()
+        sandbox = Sandbox.create(
+            "bash",
+            "-c",
+            "while read line; do echo $line; done",
+        )
+        sandbox.stdin.write(b"foo\\n")
+        sandbox.stdin.write(b"bar\\n")
+        sandbox.stdin.write_eof()
+
+        sandbox.stdin.drain()
+        sandbox.wait()
         ```
         """
         if self._is_closed:
@@ -359,8 +362,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
     ) -> "_Sandbox":
-        if client is None:
-            client = await _Client.from_env()
+        if _allow_background_volume_commits is False:
+            deprecation_warning(
+                (2024, 5, 13),
+                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+            )
+        elif _allow_background_volume_commits is None:
+            _allow_background_volume_commits = True
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -382,6 +390,11 @@ class _Sandbox(_Object, type_prefix="sb"):
             _allow_background_volume_commits=_allow_background_volume_commits,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
         )
+        if client is None:
+            if app:
+                client = app._client
+            else:
+                client = await _Client.from_env()
         app_id: Optional[str] = app.app_id if app else None
         resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
         await resolver.load(obj)

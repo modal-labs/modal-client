@@ -138,7 +138,6 @@ class _App:
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
         volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
-        **kwargs: _Object,  # DEPRECATED: passing additional objects to the stub as kwargs is no longer supported
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
 
@@ -163,18 +162,7 @@ class _App:
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
 
-        if kwargs:
-            deprecation_error(
-                (2023, 12, 13),
-                "Passing additional objects to the app constructor is deprecated."
-                f" Please remove the following parameters from your app definition: {', '.join(kwargs)}."
-                " In most cases, persistent (named) objects can just be defined in the global scope.",
-            )
-
-        for k, v in kwargs.items():
-            self._validate_blueprint_value(k, v)
-
-        self._indexed_objects = kwargs
+        self._indexed_objects = {}
         self._image = image
         self._mounts = mounts
         self._secrets = secrets
@@ -774,6 +762,13 @@ class _App:
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
+        deprecation_warning(
+            (2024, 7, 5),
+            """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create`.
+
+            See https://modal.com/docs/guide/sandbox for more info.
+            """,
+        )
         if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 

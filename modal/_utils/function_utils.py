@@ -190,6 +190,37 @@ class FunctionInfo:
             logger.debug(f"Serializing function for class service function {self.user_cls.__qualname__} as empty")
             return b""
 
+    def get_cls_vars(self) -> Dict[str, Any]:
+        if self.cls is not None:
+            cls_vars = {
+                attr: getattr(self.cls, attr)
+                for attr in dir(self.cls)
+                if not callable(getattr(self.cls, attr)) and not attr.startswith("__")
+            }
+            return cls_vars
+        return {}
+
+    def get_cls_var_attrs(self) -> Dict[str, Any]:
+        import dis
+
+        import opcode
+
+        LOAD_ATTR = opcode.opmap["LOAD_ATTR"]
+        STORE_ATTR = opcode.opmap["STORE_ATTR"]
+
+        func = self.raw_f
+        code = func.__code__
+        f_attr_ops = set()
+        for instr in dis.get_instructions(code):
+            if instr.opcode == LOAD_ATTR:
+                f_attr_ops.add(instr.argval)
+            elif instr.opcode == STORE_ATTR:
+                f_attr_ops.add(instr.argval)
+
+        cls_vars = self.get_cls_vars()
+        f_attrs = {k: cls_vars[k] for k in cls_vars if k in f_attr_ops}
+        return f_attrs
+
     def get_globals(self) -> Dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals
 
