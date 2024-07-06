@@ -346,7 +346,7 @@ def _get_file_upload_spec(
         fp.seek(0)
 
         if size_limit_bytes is not None and size > size_limit_bytes:
-            # bail if limit configured before time-intensize sha digest compute
+            # if limit configured and exceeded, bail before time-intensize sha digest compute
             raise ValueError(f"file size {size}b exceeds {size_limit_bytes=}")
 
         if size >= LARGE_FILE_LIMIT:
