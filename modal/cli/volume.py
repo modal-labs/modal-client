@@ -202,7 +202,7 @@ async def put(
             try:
                 async with _VolumeUploadContextManager(vol.object_id, vol._client, force=force) as batch:
                     batch.put_directory(local_path, remote_path)
-            except FileExistsError as exc:
+            except (FileExistsError, ValueError) as exc:
                 raise UsageError(str(exc))
         console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
     elif "*" in local_path:
@@ -213,7 +213,7 @@ async def put(
             try:
                 async with _VolumeUploadContextManager(vol.object_id, vol._client, force=force) as batch:
                     batch.put_file(local_path, remote_path)
-            except FileExistsError as exc:
+            except (FileExistsError, ValueError) as exc:
                 raise UsageError(str(exc))
         console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
 
