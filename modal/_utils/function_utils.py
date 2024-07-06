@@ -191,11 +191,11 @@ class FunctionInfo:
             return b""
 
     def get_cls_vars(self) -> Dict[str, Any]:
-        if self.cls is not None:
+        if self.user_cls is not None:
             cls_vars = {
-                attr: getattr(self.cls, attr)
-                for attr in dir(self.cls)
-                if not callable(getattr(self.cls, attr)) and not attr.startswith("__")
+                attr: getattr(self.user_cls, attr)
+                for attr in dir(self.user_cls)
+                if not callable(getattr(self.user_cls, attr)) and not attr.startswith("__")
             }
             return cls_vars
         return {}
