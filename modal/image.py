@@ -902,7 +902,7 @@ class _Image(_Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
             secrets=secrets,
-            gpu_config=parse_gpu_config(gpu, raise_on_true=False),
+            gpu_config=parse_gpu_config(gpu),
             context_mount=context_mount,
             force_build=self.force_build or force_build,
         )
@@ -948,7 +948,7 @@ class _Image(_Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
             secrets=secrets,
-            gpu_config=parse_gpu_config(gpu, raise_on_true=False),
+            gpu_config=parse_gpu_config(gpu),
             force_build=self.force_build or force_build,
         )
 
