@@ -47,6 +47,9 @@ from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Ob
 # Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
 VOLUME_PUT_FILE_CLIENT_TIMEOUT = 30 * 60
+# Max file size allowed for upload to a Volume.
+# Enforced to ensure reliability and limit single-operation latency.
+VOLUME_MAX_PUT_BYTES = 32 * 1024 * 1024 * 1024  # 32 GiB
 
 
 class FileEntryType(enum.IntEnum):
@@ -608,9 +611,13 @@ class _VolumeUploadContextManager:
 
         def gen():
             if isinstance(local_file, str) or isinstance(local_file, Path):
-                yield lambda: get_file_upload_spec_from_path(local_file, PurePosixPath(remote_path), mode)
+                yield lambda: get_file_upload_spec_from_path(
+                    local_file, PurePosixPath(remote_path), mode, VOLUME_MAX_PUT_BYTES
+                )
             else:
-                yield lambda: get_file_upload_spec_from_fileobj(local_file, PurePosixPath(remote_path), mode or 0o644)
+                yield lambda: get_file_upload_spec_from_fileobj(
+                    local_file, PurePosixPath(remote_path), mode or 0o644, VOLUME_MAX_PUT_BYTES
+                )
 
         self._upload_generators.append(gen())
 

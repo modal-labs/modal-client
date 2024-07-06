@@ -371,7 +371,10 @@ def _get_file_upload_spec(
 
 
 def get_file_upload_spec_from_path(
-    filename: Path, mount_filename: PurePosixPath, mode: Optional[int] = None
+    filename: Path,
+    mount_filename: PurePosixPath,
+    mode: Optional[int] = None,
+    size_limit_bytes: int | None = None,
 ) -> FileUploadSpec:
     # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
     # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
@@ -381,10 +384,16 @@ def get_file_upload_spec_from_path(
         filename,
         mount_filename,
         mode,
+        size_limit_bytes,
     )
 
 
-def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPath, mode: int) -> FileUploadSpec:
+def get_file_upload_spec_from_fileobj(
+    fp: BinaryIO,
+    mount_filename: PurePosixPath,
+    mode: int,
+    size_limit_bytes: int | None = None,
+) -> FileUploadSpec:
     @contextmanager
     def source():
         # We ignore position in stream and always upload from position 0
@@ -396,6 +405,7 @@ def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPat
         str(fp),
         mount_filename,
         mode,
+        size_limit_bytes,
     )
 
 
