@@ -564,6 +564,9 @@ message ClassParameterInfo {
 }
 
 message ClassParameterSet {
+  // NOTE: adding additional *fields* here can invalidate function lookups
+  //  since we use the serialized message as the bound function identifier
+  //  for parameter-bound classes. Modify with *caution*
   repeated ClassParameterValue parameters = 1;
 }
 
@@ -573,6 +576,9 @@ message ClassParameterSpec {
 }
 
 message ClassParameterValue {
+  // NOTE: adding additional *fields* here can invalidate function lookups
+  //  since we use the serialized message as the bound function identifier
+  //  for parameter-bound classes. Modify with *caution*
   string name = 1;
   ParameterType type = 2;
   oneof value_oneof {
