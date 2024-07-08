@@ -35,7 +35,7 @@ from ._output import OutputManager
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
-from ._serialization import serialize
+from ._serialization import serialize, serialize_proto_params
 from ._utils.async_utils import (
     TaskContext,
     synchronize_api,
@@ -306,6 +306,8 @@ class _Function(_Object, type_prefix="fu"):
     #  this references the parent class-function and is used to infer the client for lazy-loaded methods
     _parent: Optional["_Function"] = None
 
+    _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
+
     def _bind_method(
         self,
         user_cls,
@@ -385,7 +387,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._tag = full_name
         fun._raw_f = partial_function.raw_f
         fun._info = FunctionInfo(
-            partial_function.raw_f, cls=user_cls, serialized=class_service_function.info.is_serialized()
+            partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
         )  # needed for .local()
         fun._use_method_name = method_name
         fun._app = class_service_function._app
@@ -508,7 +510,7 @@ class _Function(_Object, type_prefix="fu"):
                 )
         else:
             # must be a "class service function"
-            assert info.cls
+            assert info.user_cls
             assert not webhook_config
             assert not schedule
 
@@ -587,13 +589,13 @@ class _Function(_Object, type_prefix="fu"):
             scheduler_placement=scheduler_placement,
         )
 
-        if info.cls and not is_auto_snapshot:
+        if info.user_cls and not is_auto_snapshot:
             # Needed to avoid circular imports
             from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
 
-            build_functions = list(_find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD).values())
+            build_functions = list(_find_callables_for_cls(info.user_cls, _PartialFunctionFlags.BUILD).values())
             for build_function in build_functions:
-                snapshot_info = FunctionInfo(build_function, cls=info.cls)
+                snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)
                 snapshot_function = _Function.from_args(
                     snapshot_info,
                     app=None,
@@ -724,7 +726,7 @@ class _Function(_Object, type_prefix="fu"):
                     # serialize at _load time, not function decoration time
                     # otherwise we can't capture a surrounding class for lifetime methods etc.
                     function_serialized = info.serialized_function()
-                    class_serialized = serialize(info.cls) if info.cls is not None else None
+                    class_serialized = serialize(info.user_cls) if info.user_cls is not None else None
                     # Ensure that large data in global variables does not blow up the gRPC payload,
                     # which has maximum size 100 MiB. We set the limit lower for performance reasons.
                     if len(function_serialized) > 16 << 20:  # 16 MiB
@@ -801,7 +803,7 @@ class _Function(_Object, type_prefix="fu"):
                     allow_concurrent_inputs=allow_concurrent_inputs or 0,
                     worker_id=config.get("worker_id"),
                     is_auto_snapshot=is_auto_snapshot,
-                    is_method=bool(info.cls) and not info.is_service_class(),
+                    is_method=bool(info.user_cls) and not info.is_service_class(),
                     checkpointing_enabled=enable_memory_snapshot,
                     is_checkpointing_function=False,
                     object_dependencies=object_dependencies,
@@ -811,6 +813,7 @@ class _Function(_Object, type_prefix="fu"):
                     _experimental_boost=_experimental_boost,
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
+                    class_parameter_info=info.class_parameter_info(),
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
@@ -890,7 +893,17 @@ class _Function(_Object, type_prefix="fu"):
                     f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
                 )
             assert self._parent._client.stub
-            serialized_params = serialize((args, kwargs))
+            if (
+                self._parent._class_parameter_info
+                and self._parent._class_parameter_info.format
+                == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
+            ):
+                if args:
+                    # TODO(elias) - We could potentially support positional args as well, if we want to?
+                    raise InvalidError("Can't use positional arguments with strict parameter classes")
+                serialized_params = serialize_proto_params(kwargs, self._parent._class_parameter_info.schema)
+            else:
+                serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
             assert self._parent is not None
             req = api_pb2.FunctionBindParamsRequest(
@@ -1070,6 +1083,7 @@ class _Function(_Object, type_prefix="fu"):
         self._is_method = metadata.is_method
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
+        self._class_parameter_info = metadata.class_parameter_info
 
     def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id
@@ -1088,6 +1102,7 @@ class _Function(_Object, type_prefix="fu"):
             use_method_name=self._use_method_name,
             use_function_id=self._use_function_id,
             is_method=self._is_method,
+            class_parameter_info=self._class_parameter_info,
         )
 
     def _set_mute_cancellation(self, value: bool = True):
