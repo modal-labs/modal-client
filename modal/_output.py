@@ -503,7 +503,7 @@ async def get_app_logs_loop(
                 logger.debug("Lost connection. Retrying ...")
                 continue
             elif isinstance(exc, AttributeError):
-                if exc.obj is None:
+                if "_write_appdata" in str(exc):
                     # Happens after losing connection
                     # TODO: figure out a way to catch this in a more robust manner
                     # see: https://github.com/modal-labs/modal-client/pull/1967#discussion_r1666955873
