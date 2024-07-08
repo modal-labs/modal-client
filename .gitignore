@@ -1,5 +1,3 @@
-modal_proto/*.py
-modal_proto/*.pyi
 __pycache__
 *.pyc
 *.egg-info
