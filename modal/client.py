@@ -1,12 +1,10 @@
 # Copyright Modal Labs 2022
 import asyncio
 import platform
-import warnings
 from typing import AsyncIterator, Awaitable, Callable, ClassVar, Dict, Optional, Tuple
 
 import grpclib.client
 from aiohttp import ClientConnectorError, ClientResponseError
-from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -15,10 +13,10 @@ from modal_version import __version__
 
 from ._utils import async_utils
 from ._utils.async_utils import synchronize_api
-from ._utils.grpc_utils import create_channel, retry_transient_errors
+from ._utils.grpc_utils import create_channel
 from ._utils.http_utils import http_client_with_tls
 from .config import _check_config, config, logger
-from .exception import AuthError, ConnectionError, DeprecationError, VersionError
+from .exception import AuthError, ConnectionError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -175,18 +173,18 @@ class _Client:
         logger.debug("Client: Starting")
         _check_config()
         try:
-            req = empty_pb2.Empty()
-            resp = await retry_transient_errors(
-                self.stub.ClientHello,
-                req,
-                attempt_timeout=CLIENT_CREATE_ATTEMPT_TIMEOUT,
-                total_timeout=CLIENT_CREATE_TOTAL_TIMEOUT,
-            )
-            if resp.warning:
-                ALARM_EMOJI = chr(0x1F6A8)
-                warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
+            # req = empty_pb2.Empty()
+            # resp = await retry_transient_errors(
+            #     self.stub.ClientHello,
+            #     req,
+            #     attempt_timeout=CLIENT_CREATE_ATTEMPT_TIMEOUT,
+            #     total_timeout=CLIENT_CREATE_TOTAL_TIMEOUT,
+            # )
+            # if resp.warning:
+            #     ALARM_EMOJI = chr(0x1F6A8)
+            #     warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
             self._authenticated = True
-            self.image_builder_version = resp.image_builder_version
+            # self.image_builder_version = resp.image_builder_version
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
@@ -277,21 +275,21 @@ class _Client:
                 print("open client")
                 await client._open()
                 async_utils.on_shutdown(client._close())
-                # try:
-                #     print("init client")
-                #     await client._init()
-                # except AuthError:
-                #     if session_credentials and not credentials:
-                #         creds_missing_msg = "Session credentials missing. Could not authenticate client."
-                #     elif not credentials:
-                #         creds_missing_msg = (
-                #             "Token missing. Could not authenticate client."
-                #             " If you have token credentials, see modal.com/docs/reference/modal.config for setup help.
-                #             " If you are a new user, register an account at modal.com, then run `modal token new`."
-                #         )
-                #         raise AuthError(creds_missing_msg)
-                #     else:
-                #         raise
+                try:
+                    print("init client")
+                    await client._init()
+                except AuthError:
+                    if session_credentials and not credentials:
+                        creds_missing_msg = "Session credentials missing. Could not authenticate client."
+                    elif not credentials:
+                        creds_missing_msg = (
+                            "Token missing. Could not authenticate client."
+                            " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
+                            " If you are a new user, register an account at modal.com, then run `modal token new`."
+                        )
+                        raise AuthError(creds_missing_msg)
+                    else:
+                        raise
                 cls._client_from_env = client
                 return client
 
