@@ -29,7 +29,7 @@ CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 def _get_metadata(
     client_type: int,
     credentials: Optional[Tuple[str, str]],
-    session_credentials: Optional[Tuple[str, str]],
+    session_credentials: Optional[Tuple[str, str, str]],
     version: str,
 ) -> Dict[str, str]:  # This implements a simplified version of platform.platform() that's still machine-readable
     uname: platform.uname_result = platform.uname()
@@ -63,11 +63,12 @@ def _get_metadata(
             }
         )
     elif session_credentials and client_type == api_pb2.CLIENT_TYPE_CONTAINER:
-        session_id, session_secret = session_credentials
+        session_id, session_secret, workspace_id = session_credentials
         metadata.update(
             {
                 "x-modal-session-id": session_id,
                 "x-modal-session-secret": session_secret,
+                "x-modal-workspace": workspace_id,
             }
         )
     return metadata
@@ -132,9 +133,9 @@ class _Client:
             if config["task_id"] and config["task_secret"]:
                 logger.debug("restoring credentials for memory snapshotted client instance")
                 self._credentials = (config["task_id"], config["task_secret"])
-            elif config["session_id"] and config["session_secret"]:
+            elif config["session_id"] and config["session_secret"] and config["workspace"]:
                 logger.debug("using session credentials for new client instance")
-                self._session_credentials = (config["session_id"], config["session_secret"])
+                self._session_credentials = (config["session_id"], config["session_secret"], config["workspace"])
         return self._credentials
 
     async def _open(self):
