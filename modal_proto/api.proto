@@ -985,8 +985,8 @@ message Function {
 
   ClassParameterInfo class_parameter_info = 56;
   
-  int32 max_num_batch_inputs = 57; // Maximum number of inputs per batch
-  float max_batch_timout_sec = 58; // Seconds to block before a response is needed
+  int32 batch_max_num_inputs = 57; // Maximum number of inputs per batch
+  float batch_max_timout_sec = 58; // Seconds to block before a response is needed
 }
 
 message FunctionBindParamsRequest {

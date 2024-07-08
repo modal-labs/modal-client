@@ -496,8 +496,8 @@ class _Function(_Object, type_prefix="fu"):
         allow_background_volume_commits: Optional[bool] = None,
         block_network: bool = False,
         max_inputs: Optional[int] = None,
-        max_num_batch_inputs: Optional[int] = None,
-        max_batch_timout_sec: Optional[float] = None,
+        batch_max_num_inputs: Optional[int] = None,
+        batch_max_timeout_sec: Optional[float] = None,
         ephemeral_disk: Optional[int] = None,
     ) -> None:
         """mdmd:hidden"""
@@ -811,8 +811,8 @@ class _Function(_Object, type_prefix="fu"):
                     object_dependencies=object_dependencies,
                     block_network=block_network,
                     max_inputs=max_inputs or 0,
-                    max_num_batch_inputs=max_num_batch_inputs or 1,
-                    max_batch_timout_sec=max_batch_timout_sec or 0,
+                    batch_max_num_inputs=batch_max_num_inputs or 0,
+                    batch_max_timeout_sec=batch_max_timeout_sec or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                     _experimental_boost=_experimental_boost,
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
