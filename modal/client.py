@@ -241,9 +241,10 @@ class _Client:
         token_secret = c["token_secret"]
         task_id = c["task_id"]
         task_secret = c["task_secret"]
-        session_id = c["session_id"]
-        session_secret = c["session_secret"]
-        workspace = c["workspace"]
+
+        session_id = c.get("session_id")
+        session_secret = c.get("session_secret")
+        workspace = c.get("workspace")
 
         client_type = api_pb2.CLIENT_TYPE_CONTAINER
         session_credentials = None
