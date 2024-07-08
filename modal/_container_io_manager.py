@@ -8,7 +8,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple, Union
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -43,13 +43,11 @@ class Sentinel:
 
 @dataclass
 class LocalInput:
-    # TODO(cathy) support batching
-    input_id: Union[str, List[str]]
-    function_call_id: Union[str, List[str]]
+    input_id: str
+    function_call_id: str
     method_name: str
     args: Any
     kwargs: Any
-    batched: bool = False
 
 
 class _ContainerIOManager:
@@ -289,9 +287,7 @@ class _ContainerIOManager:
         req = api_pb2.FunctionCallPutDataRequest(function_call_id=function_call_id, data_chunks=data_chunks)
         await retry_transient_errors(self._client.stub.FunctionCallPutDataOut, req)
 
-    async def generator_output_task(
-        self, function_call_id: Union[str, List[str]], data_format: int, message_rx: asyncio.Queue
-    ) -> None:
+    async def generator_output_task(self, function_call_id: str, data_format: int, message_rx: asyncio.Queue) -> None:
         """Task that feeds generator outputs into a function call's `data_out` stream."""
         index = 1
         received_sentinel = False

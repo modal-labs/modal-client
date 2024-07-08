@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2024
 from contextvars import ContextVar
-from typing import Callable, List, Optional, Union
+from typing import Callable, Optional
 
 from modal._container_io_manager import _ContainerIOManager
 from modal._utils.async_utils import synchronize_api
@@ -70,9 +70,7 @@ def current_function_call_id() -> Optional[str]:
         return None
 
 
-def _set_current_context_ids(
-    input_id: Union[str, List[str]], function_call_id: Union[str, List[str]]
-) -> Callable[[], None]:
+def _set_current_context_ids(input_id: str, function_call_id: str) -> Callable[[], None]:
     input_token = _current_input_id.set(input_id)
     function_call_token = _current_function_call_id.set(function_call_id)
 
