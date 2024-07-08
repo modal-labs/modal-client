@@ -102,13 +102,14 @@ class _Client:
         server_url: str,
         client_type: int,
         credentials: Optional[Tuple[str, str]],
+        session_credentials: Optional[Tuple[str, str, str]],
         version: str = __version__,
     ):
         """The Modal client object is not intended to be instantiated directly by users."""
         self.server_url = server_url
         self.client_type = client_type
         self._credentials = credentials
-        self._session_credentials = None
+        self._session_credentials = session_credentials
         self.version = version
         self._authenticated = False
         self.image_builder_version: Optional[str] = None
@@ -243,6 +244,9 @@ class _Client:
         token_secret = c["token_secret"]
         task_id = c["task_id"]
         task_secret = c["task_secret"]
+        session_id = c["session_id"]
+        session_secret = c["session_secret"]
+        workspace = c["workspace"]
 
         if task_id and task_secret:
             client_type = api_pb2.CLIENT_TYPE_CONTAINER
@@ -250,6 +254,9 @@ class _Client:
         elif token_id and token_secret:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = (token_id, token_secret)
+        elif session_id and session_secret and workspace:
+            client_type = api_pb2.CLIENT_TYPE_CONTAINER
+            session_credentials = (session_id, session_secret, workspace)
         else:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = None
@@ -261,13 +268,15 @@ class _Client:
             if cls._client_from_env:
                 return cls._client_from_env
             else:
-                client = _Client(server_url, client_type, credentials)
+                client = _Client(server_url, client_type, credentials, session_credentials)
                 await client._open()
                 async_utils.on_shutdown(client._close())
                 try:
                     await client._init()
                 except AuthError:
-                    if not credentials:
+                    if session_credentials and not credentials:
+                        creds_missing_msg = "Session credentials missing. Could not authenticate client."
+                    elif not credentials:
                         creds_missing_msg = (
                             "Token missing. Could not authenticate client."
                             " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
