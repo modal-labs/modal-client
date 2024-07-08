@@ -247,6 +247,7 @@ class _Client:
         session_id = c["session_id"]
         session_secret = c["session_secret"]
         workspace = c["workspace"]
+        session_credentials = None
 
         if task_id and task_secret:
             client_type = api_pb2.CLIENT_TYPE_CONTAINER
@@ -272,6 +273,7 @@ class _Client:
                 await client._open()
                 async_utils.on_shutdown(client._close())
                 try:
+                    print("init client")
                     await client._init()
                 except AuthError:
                     if session_credentials and not credentials:
