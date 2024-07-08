@@ -724,10 +724,10 @@ class _App:
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
             # Disallow enable_memory_snapshot for parameterized classes
-            methods = dict(inspect.getmembers(user_cls, inspect.isfunction))
-            if init := methods.get("__init__", False):
-                params = inspect.signature(init).parameters
-                if enable_memory_snapshot and len(params) > 1:
+            constructor = dict(inspect.getmembers(user_cls, inspect.isfunction)).get("__init__")
+            if enable_memory_snapshot and constructor:
+                params = inspect.signature(constructor).parameters
+                if len(params) > 1:
                     raise InvalidError("Cannot use parameterized classes with `enable_memory_snapshot=True`.")
 
             tag: str = user_cls.__name__
