@@ -102,7 +102,7 @@ class _Client:
         server_url: str,
         client_type: int,
         credentials: Optional[Tuple[str, str]],
-        session_credentials: Optional[Tuple[str, str, str]],
+        session_credentials: Optional[Tuple[str, str, str]] = None,
         version: str = __version__,
     ):
         """The Modal client object is not intended to be instantiated directly by users."""
