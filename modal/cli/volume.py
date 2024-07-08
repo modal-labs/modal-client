@@ -66,7 +66,7 @@ def some_func():
 """
 
     console = Console()
-    console.print(f"Created volume '{name}' in environment '{env_name}'. \n\nCode example:\n")
+    console.print(f"Created Volume '{name}' in environment '{env_name}'. \n\nCode example:\n")
     usage = Syntax(usage_code, "python")
     console.print(usage)
 
@@ -80,7 +80,7 @@ async def get(
     force: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
-    """Download files from a Volume object.
+    """Download files from a modal.Volume object.
 
     If a folder is passed for REMOTE_PATH, the contents of the folder will be downloaded
     recursively, including all subdirectories.
@@ -102,7 +102,7 @@ async def get(
 
 @volume_cli.command(
     name="list",
-    help="List the details of all modal.Volume volumes in an environment.",
+    help="List the details of all modal.Volume volumes in an Environment.",
     rich_help_panel="Management",
 )
 @synchronizer.create_blocking
@@ -170,7 +170,7 @@ async def ls(
 
 @volume_cli.command(
     name="put",
-    help="""Upload a file or directory to a volume.
+    help="""Upload a file or directory to a modal.Volume.
 
 Remote parent directories will be created as needed.
 
@@ -218,7 +218,9 @@ async def put(
         console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
 
 
-@volume_cli.command(name="rm", help="Delete a file or directory from a volume.", rich_help_panel="File operations")
+@volume_cli.command(
+    name="rm", help="Delete a file or directory from a modal.Volume.", rich_help_panel="File operations"
+)
 @synchronizer.create_blocking
 async def rm(
     volume_name: str,
@@ -240,7 +242,10 @@ async def rm(
 
 @volume_cli.command(
     name="cp",
-    help="Copy source file to destination file or multiple source files to destination directory.",
+    help=(
+        "Copy within a modal.Volume. "
+        "Copy source file to destination file or multiple source files to destination directory."
+    ),
     rich_help_panel="File operations",
 )
 @synchronizer.create_blocking

@@ -7,6 +7,7 @@ from typing import List
 
 from modal import (
     App,
+    Sandbox,
     asgi_app,
     build,
     current_function_call_id,
@@ -426,7 +427,8 @@ class EventLoopCls:
 
 @app.function()
 def sandbox_f(x):
-    sb = app.spawn_sandbox("echo", str(x))
+    # TODO(erikbern): maybe inside containers, `app=app` should be automatic?
+    sb = Sandbox.create("echo", str(x), app=app)
     return sb.object_id
 
 

@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.36 (2024-07-05)
+
+- Persisting ClientSession to make upload / download of blobs faster
+
+
+
 ### 0.63.22 (2024-07-01)
 
 * Fixes error when running `@modal.build` methods, introduced in v0.63.19
