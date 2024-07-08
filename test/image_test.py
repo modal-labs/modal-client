@@ -153,15 +153,27 @@ def test_image_python_packages(builder_version, servicer, client):
         Image.debian_slim()
         .pip_install("sklearn[xyz]")
         .pip_install("numpy", "scipy", extra_index_url="https://xyz", find_links="https://abc?q=123", pre=True)
+        .pip_install("flash-attn", extra_options="--no-build-isolation --no-cache-dir")
+        .pip_install("pandas", pre=True)
     )
     app.function(image=image)(dummy)
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
-        assert any("pip install 'sklearn[xyz]'" in cmd for cmd in layers[1].dockerfile_commands)
+        assert any("pip install 'sklearn[xyz]'" in cmd for cmd in layers[3].dockerfile_commands)
         assert any(
             "pip install numpy scipy --find-links 'https://abc?q=123' --extra-index-url https://xyz --pre" in cmd
-            for cmd in layers[0].dockerfile_commands
+            for cmd in layers[2].dockerfile_commands
         )
+        assert any(
+            "pip install flash-attn --no-build-isolation --no-cache-dir" in cmd for cmd in layers[1].dockerfile_commands
+        )
+        assert any("pip install pandas" + 2 * " " + "--pre" in cmd for cmd in layers[0].dockerfile_commands)
+
+    with pytest.warns(DeprecationError):
+        app = App(image=Image.debian_slim().pip_install("--no-build-isolation", "flash-attn"))
+        app.function()(dummy)
+        with app.run(client=client):
+            pass
 
 
 def test_image_kwargs_validation(builder_version, servicer, client):
@@ -684,9 +696,11 @@ def test_image_gpu(builder_version, servicer, client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_UNSPECIFIED
 
-    with pytest.warns(DeprecationError):
-        app = App(image=Image.debian_slim().run_commands("echo 1", gpu=True))
-        app.function()(dummy)
+    with pytest.raises(DeprecationError):
+        Image.debian_slim().run_commands("echo 0", gpu=True)
+
+    app = App(image=Image.debian_slim().run_commands("echo 1", gpu="any"))
+    app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_ANY
@@ -750,9 +764,59 @@ class Foo:
         print("bar!", VARIABLE_6)
 
 
+class FooInstance:
+    not_used_by_build_method: str = "normal"
+    used_by_build_method: str = "normal"
+
+    @build()
+    def build_func(self):
+        global VARIABLE_5
+
+        print("global variable", VARIABLE_5)
+        print("static class var", FooInstance.used_by_build_method)
+        FooInstance.used_by_build_method = "normal"
+
+
+def test_image_cls_var_rebuild(client, servicer):
+    rebuild_app = App()
+    image_ids = []
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_ids = list(servicer.images)
+    FooInstance.used_by_build_method = "rebuild"
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_ids_rebuild = list(servicer.images)
+    # Ensure that a new image was created
+    assert image_ids[-1] != image_ids_rebuild[-1]
+    FooInstance.used_by_build_method = "normal"
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_ids = list(servicer.images)
+    # Ensure that no new image was created
+    assert len(image_ids) == len(image_ids_rebuild)
+
+
+def test_image_cls_var_no_rebuild(client, servicer):
+    rebuild_app = App()
+    image_id = -1
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_id = list(servicer.images)[-1]
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_id2 = list(servicer.images)[-1]
+    FooInstance.not_used_by_build_method = "no rebuild"
+    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
+    with rebuild_app.run(client=client):
+        image_id3 = list(servicer.images)[-1]
+    assert image_id == image_id2
+    assert image_id2 == image_id3
+
+
 def test_image_build_snapshot(client, servicer):
     with cls_app.run(client=client):
-        image_id = list(servicer.images.keys())[-1]
+        image_id = list(servicer.images)[-1]
         layers = get_image_layers(image_id, servicer)
 
         assert "foo!" in layers[0].build_function.definition

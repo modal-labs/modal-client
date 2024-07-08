@@ -5,7 +5,7 @@ import hashlib
 import io
 import os
 import platform
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Union
 from urllib.parse import urlparse
@@ -19,7 +19,7 @@ from ..exception import ExecutionError
 from .async_utils import TaskContext, retry
 from .grpc_utils import retry_transient_errors
 from .hash_utils import UploadHashes, get_sha256_hex, get_upload_hashes
-from .http_utils import http_client_with_tls
+from .http_utils import ClientSessionRegistry
 from .logger import logger
 
 # Max size for function inputs and outputs.
@@ -117,47 +117,44 @@ async def _upload_to_s3_url(
 ) -> str:
     """Returns etag of s3 object which is a md5 hex checksum of the uploaded content"""
     with payload.reset_on_error():  # ensure retries read the same data
-        async with http_client_with_tls(timeout=None) as session:
-            headers = {}
-            if content_md5_b64 and use_md5(upload_url):
-                headers["Content-MD5"] = content_md5_b64
-            if content_type:
-                headers["Content-Type"] = content_type
+        headers = {}
+        if content_md5_b64 and use_md5(upload_url):
+            headers["Content-MD5"] = content_md5_b64
+        if content_type:
+            headers["Content-Type"] = content_type
 
-            async with session.put(
-                upload_url,
-                data=payload,
-                headers=headers,
-                skip_auto_headers=["content-type"] if content_type is None else [],
-            ) as resp:
-                # S3 signal to slow down request rate.
-                if resp.status == 503:
-                    logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
-                    await asyncio.sleep(1)
+        async with ClientSessionRegistry.get_session().put(
+            upload_url,
+            data=payload,
+            headers=headers,
+            skip_auto_headers=["content-type"] if content_type is None else [],
+        ) as resp:
+            # S3 signal to slow down request rate.
+            if resp.status == 503:
+                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+                await asyncio.sleep(1)
 
-                if resp.status != 200:
-                    try:
-                        text = await resp.text()
-                    except Exception:
-                        text = "<no body>"
-                    raise ExecutionError(f"Put to url {upload_url} failed with status {resp.status}: {text}")
+            if resp.status != 200:
+                try:
+                    text = await resp.text()
+                except Exception:
+                    text = "<no body>"
+                raise ExecutionError(f"Put to url {upload_url} failed with status {resp.status}: {text}")
 
-                # client side ETag checksum verification
-                # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
-                etag = resp.headers["ETag"].strip()
-                if etag.startswith(("W/", "w/")):  # see https://www.rfc-editor.org/rfc/rfc7232#section-2.3
-                    etag = etag[2:]
-                if etag[0] == '"' and etag[-1] == '"':
-                    etag = etag[1:-1]
-                remote_md5 = etag
+            # client side ETag checksum verification
+            # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
+            etag = resp.headers["ETag"].strip()
+            if etag.startswith(("W/", "w/")):  # see https://www.rfc-editor.org/rfc/rfc7232#section-2.3
+                etag = etag[2:]
+            if etag[0] == '"' and etag[-1] == '"':
+                etag = etag[1:-1]
+            remote_md5 = etag
 
-                local_md5_hex = payload.md5_checksum().hexdigest()
-                if local_md5_hex != remote_md5:
-                    raise ExecutionError(
-                        f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})"
-                    )
+            local_md5_hex = payload.md5_checksum().hexdigest()
+            if local_md5_hex != remote_md5:
+                raise ExecutionError(f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})")
 
-                return remote_md5
+            return remote_md5
 
 
 async def perform_multipart_upload(
@@ -207,22 +204,21 @@ async def perform_multipart_upload(
     bin_hash_parts = [bytes.fromhex(etag) for etag in part_etags]
 
     expected_multipart_etag = hashlib.md5(b"".join(bin_hash_parts)).hexdigest() + f"-{len(part_etags)}"
-    async with http_client_with_tls(timeout=None) as session:
-        resp = await session.post(
-            completion_url, data=completion_body.encode("ascii"), skip_auto_headers=["content-type"]
-        )
-        if resp.status != 200:
-            try:
-                msg = await resp.text()
-            except Exception:
-                msg = "<no body>"
-            raise ExecutionError(f"Error when completing multipart upload: {resp.status}\n{msg}")
-        else:
-            response_body = await resp.text()
-            if expected_multipart_etag not in response_body:
-                raise ExecutionError(
-                    f"Hash mismatch on multipart upload assembly: {expected_multipart_etag} not in {response_body}"
-                )
+    resp = await ClientSessionRegistry.get_session().post(
+        completion_url, data=completion_body.encode("ascii"), skip_auto_headers=["content-type"]
+    )
+    if resp.status != 200:
+        try:
+            msg = await resp.text()
+        except Exception:
+            msg = "<no body>"
+        raise ExecutionError(f"Error when completing multipart upload: {resp.status}\n{msg}")
+    else:
+        response_body = await resp.text()
+        if expected_multipart_etag not in response_body:
+            raise ExecutionError(
+                f"Hash mismatch on multipart upload assembly: {expected_multipart_etag} not in {response_body}"
+            )
 
 
 def get_content_length(data: BinaryIO):
@@ -285,17 +281,16 @@ async def blob_upload_file(file_obj: BinaryIO, stub) -> str:
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
 async def _download_from_url(download_url) -> bytes:
-    async with http_client_with_tls(timeout=None) as session:
-        async with session.get(download_url) as resp:
-            # S3 signal to slow down request rate.
-            if resp.status == 503:
-                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
-                await asyncio.sleep(1)
+    async with ClientSessionRegistry.get_session().get(download_url) as resp:
+        # S3 signal to slow down request rate.
+        if resp.status == 503:
+            logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+            await asyncio.sleep(1)
 
-            if resp.status != 200:
-                text = await resp.text()
-                raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
-            return await resp.read()
+        if resp.status != 200:
+            text = await resp.text()
+            raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
+        return await resp.read()
 
 
 async def blob_download(blob_id, stub) -> bytes:
@@ -310,24 +305,23 @@ async def blob_iter(blob_id, stub) -> AsyncIterator[bytes]:
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await retry_transient_errors(stub.BlobGet, req)
     download_url = resp.download_url
-    async with http_client_with_tls(timeout=None) as session:
-        async with session.get(download_url) as resp:
-            # S3 signal to slow down request rate.
-            if resp.status == 503:
-                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
-                await asyncio.sleep(1)
+    async with ClientSessionRegistry.get_session().get(download_url) as resp:
+        # S3 signal to slow down request rate.
+        if resp.status == 503:
+            logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+            await asyncio.sleep(1)
 
-            if resp.status != 200:
-                text = await resp.text()
-                raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
+        if resp.status != 200:
+            text = await resp.text()
+            raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
 
-            async for chunk in resp.content.iter_any():
-                yield chunk
+        async for chunk in resp.content.iter_any():
+            yield chunk
 
 
 @dataclasses.dataclass
 class FileUploadSpec:
-    source: Callable[[], BinaryIO]
+    source: Callable[[], Union[AbstractContextManager, BinaryIO]]
     source_description: Any
     mount_filename: str
 
@@ -339,7 +333,10 @@ class FileUploadSpec:
 
 
 def _get_file_upload_spec(
-    source: Callable[[], BinaryIO], source_description: Any, mount_filename: PurePosixPath, mode: int
+    source: Callable[[], Union[AbstractContextManager, BinaryIO]],
+    source_description: Any,
+    mount_filename: PurePosixPath,
+    mode: int,
 ) -> FileUploadSpec:
     with source() as fp:
         # Current position is ignored - we always upload from position 0
@@ -383,10 +380,11 @@ def get_file_upload_spec_from_path(
 
 
 def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPath, mode: int) -> FileUploadSpec:
+    @contextmanager
     def source():
         # We ignore position in stream and always upload from position 0
         fp.seek(0)
-        return fp
+        yield fp
 
     return _get_file_upload_spec(
         source,

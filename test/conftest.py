@@ -833,6 +833,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ImageGetOrCreate(self, stream):
         request: api_pb2.ImageGetOrCreateRequest = await stream.recv_message()
+        for k in self.images:
+            if request.image.SerializeToString() == self.images[k].SerializeToString():
+                await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=k))
+                return
         idx = len(self.images) + 1
         image_id = f"im-{idx}"
 
@@ -885,6 +889,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             mount_id = f"mo-{self.n_mounts}"
             self.deployed_mounts[k] = mount_id
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
+            self.n_mounts += 1
+            mount_id = f"mo-{self.n_mounts}"
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             self.n_mounts += 1
             mount_id = f"mo-{self.n_mounts}"
 
@@ -1091,6 +1098,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
+            secret_id = "st-" + str(len(self.secrets))
+            self.secrets[secret_id] = request.env_dict
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:

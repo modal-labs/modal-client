@@ -30,7 +30,7 @@ from ._asgi import (
 )
 from ._container_io_manager import ContainerIOManager, UserException, _ContainerIOManager
 from ._proxy_tunnel import proxy_tunnel
-from ._serialization import deserialize
+from ._serialization import deserialize, deserialize_proto_params
 from ._utils.async_utils import TaskContext, synchronizer
 from ._utils.function_utils import (
     LocalFunctionError,
@@ -472,10 +472,10 @@ def call_function(
 
 def import_single_function_service(
     function_def: api_pb2.Function,
-    ser_cls,
+    ser_cls,  # used only for @build functions
     ser_fun,
-    ser_params: Optional[bytes],
-    _client: Client,
+    cls_args,  #  used only for @build functions
+    cls_kwargs,  #  used only for @build functions
 ) -> Service:
     """Imports a function dynamically, and locates the app.
 
@@ -527,9 +527,9 @@ def import_single_function_service(
             else:
                 user_defined_callable = f
         elif len(parts) == 2:
-            # This is a method on a class - legacy "method"
-            # TODO: Remove this branch when legacy non-class-pooled methods have been removed
+            # As of v0.63 - this path should only be triggered by @build class builder methods
             assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
+            assert function_def.is_builder_function
             cls_name, fun_name = parts
             cls = getattr(module, cls_name)
             if isinstance(cls, Cls):
@@ -547,13 +547,7 @@ def import_single_function_service(
     # Instantiate the class if it's defined
     if cls:
         # This code is only used for @build methods on classes
-        # TODO: refactor to have those use class service imports instead (!)
-        # Instantiate the class
-        if ser_params:
-            args, kwargs = deserialize(ser_params, _client)
-        else:
-            args, kwargs = (), {}
-        user_cls_instance = get_user_class_instance(cls, args, kwargs)
+        user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
         # Bind the function to the instance as self (using the descriptor protocol!)
         user_defined_callable = user_defined_callable.__get__(user_cls_instance)
     else:
@@ -573,8 +567,8 @@ def import_single_function_service(
 def import_class_service(
     function_def: api_pb2.Function,
     ser_cls,
-    ser_params: Optional[bytes],
-    _client: _Client,
+    cls_args,
+    cls_kwargs,
 ) -> Service:
     """
     This imports a full class to be able to execute any @method or webhook decorated methods.
@@ -615,13 +609,7 @@ def import_class_service(
         # Undecorated user class - find all methods
         method_partials = _find_partial_methods_for_user_cls(cls, _PartialFunctionFlags.all())
 
-    # Instantiate the class
-    if ser_params:
-        args, kwargs = deserialize(ser_params, _client)
-    else:
-        args, kwargs = (), {}
-
-    user_cls_instance = get_user_class_instance(cls, args, kwargs)
+    user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
 
     return ImportedClass(
         user_cls_instance,
@@ -694,53 +682,78 @@ def call_lifecycle_functions(
                 event_loop.run(res)
 
 
+def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function, _client: "modal.client._Client"):
+    if function_def.class_parameter_info.format in (
+        api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
+        api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE,
+    ):
+        # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
+        param_args, param_kwargs = deserialize(serialized_params, _client)
+    elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
+        param_args = ()
+        param_kwargs = deserialize_proto_params(serialized_params, list(function_def.class_parameter_info.schema))
+    else:
+        raise ExecutionError(
+            f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"
+        )
+
+    return param_args, param_kwargs
+
+
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
     container_io_manager = ContainerIOManager(container_args, client)
     active_app: Optional[_App] = None
     service: Service
-    is_auto_snapshot: bool = container_args.function_def.is_auto_snapshot
+    function_def = container_args.function_def
+    is_auto_snapshot: bool = function_def.is_auto_snapshot
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
 
     with container_io_manager.heartbeats(), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
-        if container_args.function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+        if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = container_io_manager.get_serialized_function()
         else:
             ser_cls, ser_fun = None, None
 
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
-            if container_args.function_def.is_class:
+            if container_args.serialized_params:
+                param_args, param_kwargs = deserialize_params(container_args.serialized_params, function_def, _client)
+            else:
+                param_args = ()
+                param_kwargs = {}
+
+            if function_def.is_class:
                 service = import_class_service(
-                    container_args.function_def,
+                    function_def,
                     ser_cls,
-                    container_args.serialized_params,
-                    _client,
+                    param_args,
+                    param_kwargs,
                 )
             else:
                 service = import_single_function_service(
-                    container_args.function_def,
+                    function_def,
                     ser_cls,
                     ser_fun,
-                    container_args.serialized_params,
-                    client,
+                    param_args,
+                    param_kwargs,
                 )
 
             # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
             active_app = service.app
             if active_app is None:
                 # if the app can't be inferred by the imported function, use name-based fallback
-                active_app = get_active_app_fallback(container_args.function_def)
+                active_app = get_active_app_fallback(function_def)
 
         # Container can fetch multiple inputs simultaneously
-        if container_args.function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+        if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
             # Concurrency doesn't apply for `modal shell`.
             input_concurrency = 1
         else:
-            input_concurrency = container_args.function_def.allow_concurrent_inputs or 1
+            input_concurrency = function_def.allow_concurrent_inputs or 1
 
         # Get ids and metadata for objects (primarily functions and classes) on the app
         container_app: RunningApp = container_io_manager.get_app_objects()
@@ -756,7 +769,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # 1. Enable lazy hydration for all objects
         # 2. Fully deprecate .new() objects
         if service.code_deps is not None:  # this is not set for serialized or non-global scope functions
-            dep_object_ids: List[str] = [dep.object_id for dep in container_args.function_def.object_dependencies]
+            dep_object_ids: List[str] = [dep.object_id for dep in function_def.object_dependencies]
             if len(service.code_deps) != len(dep_object_ids):
                 raise ExecutionError(
                     f"Function has {len(service.code_deps)} dependencies"
@@ -775,11 +788,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and innitialization. Checkpointed containers run from this point onwards.
-        if container_args.function_def.is_checkpointing_function:
+        if function_def.is_checkpointing_function:
             container_io_manager.memory_snapshot()
 
         # Install hooks for interactive functions.
-        if container_args.function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
+        if function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
 
             def breakpoint_wrapper():
                 # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
@@ -798,7 +811,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
 
         with container_io_manager.handle_user_exception():
-            finalized_functions = service.get_finalized_functions(container_args.function_def, container_io_manager)
+            finalized_functions = service.get_finalized_functions(function_def, container_io_manager)
 
         # Execute the function.
         try:
@@ -819,7 +832,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
                 # commit errors.
                 container_io_manager.volume_commit(
-                    [v.volume_id for v in container_args.function_def.volume_mounts if v.allow_background_commits]
+                    [v.volume_id for v in function_def.volume_mounts if v.allow_background_commits]
                 )
             finally:
                 # Restore the original signal handler, needed for container_test hygiene since the

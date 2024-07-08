@@ -10,7 +10,8 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext
 from .client import _Client
-from .exception import ExecutionError, NotFoundError
+from .config import logger
+from .exception import NotFoundError
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -72,9 +73,7 @@ class Resolver:
         self._deduplication_cache = {}
 
     @property
-    def app_id(self) -> str:
-        if self._app_id is None:
-            raise ExecutionError("Resolver has no app")
+    def app_id(self) -> Optional[str]:
         return self._app_id
 
     @property
@@ -148,8 +147,11 @@ class Resolver:
             self._local_uuid_to_future[obj.local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
-
-        return await cached_future
+        try:
+            return await cached_future
+        except:
+            logger.exception(f"Exception when resolving {obj}")
+            raise
 
     def objects(self) -> List["_Object"]:
         unique_objects: Dict[str, "_Object"] = {}

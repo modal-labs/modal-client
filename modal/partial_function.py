@@ -546,9 +546,9 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
         if method_has_params(f):
             message = (
                 "Support for decorating parameterized methods with `@exit` has been deprecated."
-                " To avoid future errors, please update your code by removing the parameters."
+                " Please update your code by removing the parameters."
             )
-            deprecation_warning((2024, 2, 23), message)
+            deprecation_error((2024, 2, 23), message)
         return _PartialFunction(f, _PartialFunctionFlags.EXIT)
 
     return wrapper
