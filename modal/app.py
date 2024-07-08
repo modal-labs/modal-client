@@ -731,7 +731,7 @@ class _App:
                 if len(params) > 1:
                     name = user_cls.__name__
                     raise InvalidError(
-                        f"In class '{name}': Cannot use parameterized classes with `enable_memory_snapshot=True`."
+                        f"Cannot use class parameterization in class {name} with `enable_memory_snapshot=True`."
                     )
 
             tag: str = user_cls.__name__
