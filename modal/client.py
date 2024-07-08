@@ -273,7 +273,7 @@ class _Client:
             if cls._client_from_env:
                 return cls._client_from_env
             else:
-                client = _Client(server_url, client_type, credentials)
+                client = _Client(server_url, client_type, credentials, session_credentials)
                 print("open client")
                 await client._open()
                 async_utils.on_shutdown(client._close())
