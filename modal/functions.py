@@ -497,7 +497,7 @@ class _Function(_Object, type_prefix="fu"):
         block_network: bool = False,
         max_inputs: Optional[int] = None,
         batch_max_num_inputs: Optional[int] = None,
-        batch_max_timeout_sec: Optional[float] = None,
+        batch_max_timeout_secs: Optional[float] = None,
         ephemeral_disk: Optional[int] = None,
     ) -> None:
         """mdmd:hidden"""
@@ -812,7 +812,7 @@ class _Function(_Object, type_prefix="fu"):
                     block_network=block_network,
                     max_inputs=max_inputs or 0,
                     batch_max_num_inputs=batch_max_num_inputs or 0,
-                    batch_max_timeout_sec=batch_max_timeout_sec or 0,
+                    batch_max_timeout_secs=batch_max_timeout_secs or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                     _experimental_boost=_experimental_boost,
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
