@@ -1,10 +1,12 @@
 # Copyright Modal Labs 2022
 import asyncio
 import platform
+import warnings
 from typing import AsyncIterator, Awaitable, Callable, ClassVar, Dict, Optional, Tuple
 
 import grpclib.client
 from aiohttp import ClientConnectorError, ClientResponseError
+from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -13,10 +15,10 @@ from modal_version import __version__
 
 from ._utils import async_utils
 from ._utils.async_utils import synchronize_api
-from ._utils.grpc_utils import create_channel
+from ._utils.grpc_utils import create_channel, retry_transient_errors
 from ._utils.http_utils import http_client_with_tls
 from .config import _check_config, config, logger
-from .exception import AuthError, ConnectionError, VersionError
+from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -132,9 +134,6 @@ class _Client:
             if config["task_id"] and config["task_secret"]:
                 logger.debug("restoring credentials for memory snapshotted client instance")
                 self._credentials = (config["task_id"], config["task_secret"])
-            elif config["session_id"] and config["session_secret"] and config["workspace"]:
-                logger.debug("using session credentials for new client instance")
-                self._session_credentials = (config["session_id"], config["session_secret"], config["workspace"])
         return self._credentials
 
     async def _open(self):
@@ -173,18 +172,18 @@ class _Client:
         logger.debug("Client: Starting")
         _check_config()
         try:
-            # req = empty_pb2.Empty()
-            # resp = await retry_transient_errors(
-            #     self.stub.ClientHello,
-            #     req,
-            #     attempt_timeout=CLIENT_CREATE_ATTEMPT_TIMEOUT,
-            #     total_timeout=CLIENT_CREATE_TOTAL_TIMEOUT,
-            # )
-            # if resp.warning:
-            #     ALARM_EMOJI = chr(0x1F6A8)
-            #     warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
+            req = empty_pb2.Empty()
+            resp = await retry_transient_errors(
+                self.stub.ClientHello,
+                req,
+                attempt_timeout=CLIENT_CREATE_ATTEMPT_TIMEOUT,
+                total_timeout=CLIENT_CREATE_TOTAL_TIMEOUT,
+            )
+            if resp.warning:
+                ALARM_EMOJI = chr(0x1F6A8)
+                warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
             self._authenticated = True
-            self.image_builder_version = "2024.04"
+            self.image_builder_version = resp.image_builder_version
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
@@ -245,9 +244,8 @@ class _Client:
         session_id = c["session_id"]
         session_secret = c["session_secret"]
         workspace = c["workspace"]
-        print(f"session id: {session_id}")
-        print(f"session secret: {session_secret}")
-        print(f"workspace: {workspace}")
+
+        client_type = api_pb2.CLIENT_TYPE_CONTAINER
         session_credentials = None
         credentials = None
 
@@ -260,9 +258,6 @@ class _Client:
         elif session_id and session_secret and workspace:
             client_type = api_pb2.CLIENT_TYPE_CONTAINER
             session_credentials = (session_id, session_secret, workspace)
-        else:
-            client_type = api_pb2.CLIENT_TYPE_CLIENT
-            credentials = None
 
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
@@ -279,9 +274,7 @@ class _Client:
                     print("init client")
                     await client._init()
                 except AuthError:
-                    if session_credentials and not credentials:
-                        creds_missing_msg = "Session credentials missing. Could not authenticate client."
-                    elif not credentials:
+                    if not credentials:
                         creds_missing_msg = (
                             "Token missing. Could not authenticate client."
                             " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
