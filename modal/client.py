@@ -277,21 +277,21 @@ class _Client:
                 print("open client")
                 await client._open()
                 async_utils.on_shutdown(client._close())
-                try:
-                    print("init client")
-                    await client._init()
-                except AuthError:
-                    if session_credentials and not credentials:
-                        creds_missing_msg = "Session credentials missing. Could not authenticate client."
-                    elif not credentials:
-                        creds_missing_msg = (
-                            "Token missing. Could not authenticate client."
-                            " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
-                            " If you are a new user, register an account at modal.com, then run `modal token new`."
-                        )
-                        raise AuthError(creds_missing_msg)
-                    else:
-                        raise
+                # try:
+                #     print("init client")
+                #     await client._init()
+                # except AuthError:
+                #     if session_credentials and not credentials:
+                #         creds_missing_msg = "Session credentials missing. Could not authenticate client."
+                #     elif not credentials:
+                #         creds_missing_msg = (
+                #             "Token missing. Could not authenticate client."
+                #             " If you have token credentials, see modal.com/docs/reference/modal.config for setup help.
+                #             " If you are a new user, register an account at modal.com, then run `modal token new`."
+                #         )
+                #         raise AuthError(creds_missing_msg)
+                #     else:
+                #         raise
                 cls._client_from_env = client
                 return client
 
