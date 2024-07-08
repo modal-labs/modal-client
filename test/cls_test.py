@@ -835,3 +835,28 @@ def test_cls_strict_parameters_without_type(client, servicer, monkeypatch):
 
     with pytest.raises(InvalidError, match="class parameters"):
         deploy_app(strict_param_cls_app, "my-cls-app", client=client)
+
+
+class ParameterizedClass1:
+    def __init__(self, a):
+        pass
+
+
+class ParameterizedClass2:
+    def __init__(self, a: int = 1):
+        pass
+
+
+class ParameterizedClass3:
+    def __init__(self):
+        pass
+
+
+def test_disabled_parameterized_snap_cls():
+    with pytest.raises(InvalidError, match="Cannot use parameterized classes with `enable_memory_snapshot=True`."):
+        app.cls(enable_memory_snapshot=True)(ParameterizedClass1)
+
+    with pytest.raises(InvalidError, match="Cannot use parameterized classes with `enable_memory_snapshot=True`."):
+        app.cls(enable_memory_snapshot=True)(ParameterizedClass2)
+
+    app.cls(enable_memory_snapshot=True)(ParameterizedClass3)
