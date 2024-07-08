@@ -540,6 +540,11 @@ def test_volume_get(servicer, set_env_client):
         with open(os.path.join(tmpdir, file_path), "rb") as f:
             assert f.read() == file_contents
 
+        download_path = os.path.join(tmpdir, "download.txt")
+        _run(["volume", "get", vol_name, file_path, download_path])
+        with open(download_path, "rb") as f:
+            assert f.read() == file_contents
+
     with tempfile.TemporaryDirectory() as tmpdir2:
         _run(["volume", "get", vol_name, "/", tmpdir2])
         with open(os.path.join(tmpdir2, file_path), "rb") as f:
