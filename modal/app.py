@@ -730,7 +730,9 @@ class _App:
                 params = inspect.signature(constructor).parameters
                 if len(params) > 1:
                     name = user_cls.__name__
-                    raise InvalidError(f"In class '{name}': Cannot use parameterized classes with `enable_memory_snapshot=True`.")
+                    raise InvalidError(
+                        f"In class '{name}': Cannot use parameterized classes with `enable_memory_snapshot=True`."
+                    )
 
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
