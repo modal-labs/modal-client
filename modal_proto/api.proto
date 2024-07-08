@@ -941,6 +941,9 @@ message Function {
 
   string use_function_id = 54;  // for class methods use this function id instead for invocations - the *referenced* function should have is_class=True
   string use_method_name = 55;  // for class methods - this method name needs to be included in the FunctionInput
+
+  int32 max_num_batch_inputs = 56; // Maximum number of inputs per batch
+  float max_batch_timout_sec = 57; // Seconds to block before a response is needed
 }
 
 message FunctionBindParamsRequest {
