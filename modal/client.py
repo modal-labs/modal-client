@@ -247,7 +247,11 @@ class _Client:
         session_id = c["session_id"]
         session_secret = c["session_secret"]
         workspace = c["workspace"]
+        print(f"session id: {session_id}")
+        print(f"session secret: {session_secret}")
+        print(f"workspace: {workspace}")
         session_credentials = None
+        credentials = None
 
         if task_id and task_secret:
             client_type = api_pb2.CLIENT_TYPE_CONTAINER
@@ -269,7 +273,8 @@ class _Client:
             if cls._client_from_env:
                 return cls._client_from_env
             else:
-                client = _Client(server_url, client_type, credentials, session_credentials)
+                client = _Client(server_url, client_type, credentials)
+                print("open client")
                 await client._open()
                 async_utils.on_shutdown(client._close())
                 try:
