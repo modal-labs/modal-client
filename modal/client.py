@@ -267,11 +267,9 @@ class _Client:
                 return cls._client_from_env
             else:
                 client = _Client(server_url, client_type, credentials, session_credentials)
-                print("open client")
                 await client._open()
                 async_utils.on_shutdown(client._close())
                 try:
-                    print("init client")
                     await client._init()
                 except AuthError:
                     if not credentials:
