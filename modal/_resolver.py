@@ -10,6 +10,7 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext
 from .client import _Client
+from .config import logger
 from .exception import NotFoundError
 
 if TYPE_CHECKING:
@@ -146,8 +147,11 @@ class Resolver:
             self._local_uuid_to_future[obj.local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
-
-        return await cached_future
+        try:
+            return await cached_future
+        except:
+            logger.exception(f"Exception when resolving {obj}")
+            raise
 
     def objects(self) -> List["_Object"]:
         unique_objects: Dict[str, "_Object"] = {}
