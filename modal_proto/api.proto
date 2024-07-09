@@ -984,6 +984,8 @@ message Function {
   string use_method_name = 55;  // for class methods - this method name needs to be included in the FunctionInput
 
   ClassParameterInfo class_parameter_info = 56;
+
+  repeated Resources _experimental_resources = 57; // overrides `resources` field above
 }
 
 message FunctionBindParamsRequest {
@@ -1661,6 +1663,7 @@ message Sandbox {
   // to look at fine-grained placement constraints.
   reserved 16; // _experimental_scheduler
   optional SchedulerPlacement scheduler_placement = 17;
+  repeated Resources _experimental_resources = 18; // overrides `resources` field above
 }
 
 message SandboxCreateRequest {

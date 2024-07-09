@@ -272,6 +272,7 @@ class _FunctionSpec:
     memory: Optional[Union[int, Tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
+    _experimental_gpus: Sequence[GPU_T]
 
 
 class _Function(_Object, type_prefix="fu"):
@@ -497,6 +498,7 @@ class _Function(_Object, type_prefix="fu"):
         block_network: bool = False,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
+        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -568,8 +570,6 @@ class _Function(_Object, type_prefix="fu"):
                 "Retries for generator functions are deprecated and will soon be removed.",
             )
 
-        gpu_config = parse_gpu_config(gpu)
-
         if proxy:
             # HACK: remove this once we stop using ssh tunnels for this.
             if image:
@@ -587,6 +587,7 @@ class _Function(_Object, type_prefix="fu"):
             memory=memory,
             ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
+            _experimental_gpus=_experimental_gpus,
         )
 
         if info.user_cls and not is_auto_snapshot:
@@ -612,6 +613,7 @@ class _Function(_Object, type_prefix="fu"):
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
+                    _experimental_gpus=_experimental_gpus,
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
@@ -814,6 +816,12 @@ class _Function(_Object, type_prefix="fu"):
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
+                    _experimental_resources=[
+                        convert_fn_config_to_resources_config(
+                            cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                        )
+                        for _experimental_gpu in _experimental_gpus
+                    ],
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
@@ -856,10 +864,14 @@ class _Function(_Object, type_prefix="fu"):
         # hash. We can't use the cloudpickle hash because it's not very stable.
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
-            gpu_config=repr(gpu_config),
+            gpu_config=repr(parse_gpu_config(gpu)),
             mounts=repr(mounts),
             network_file_systems=repr(network_file_systems),
         )
+        if _experimental_gpus:
+            obj._build_args["experimental_gpus"] = repr(
+                [parse_gpu_config(_experimental_gpu) for _experimental_gpu in _experimental_gpus]
+            )
 
         return obj
 
