@@ -260,6 +260,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         pty_info: Optional[api_pb2.PTYInfo] = None,
         _allow_background_volume_commits: Optional[bool] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
+        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -322,6 +323,12 @@ class _Sandbox(_Object, type_prefix="sb"):
                 volume_mounts=volume_mounts,
                 pty_info=pty_info,
                 scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
+                _experimental_resources=[
+                    convert_fn_config_to_resources_config(
+                        cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                    )
+                    for _experimental_gpu in _experimental_gpus
+                ],
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
@@ -361,6 +368,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
+        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
         if _allow_background_volume_commits is False:
             deprecation_warning(
@@ -389,6 +397,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             pty_info=pty_info,
             _allow_background_volume_commits=_allow_background_volume_commits,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
+            _experimental_gpus=_experimental_gpus,
         )
         if client is None:
             if app:
