@@ -718,6 +718,17 @@ class _App:
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
+            # Disallow enable_memory_snapshot for parameterized classes
+            # TODO(matt) Temporary fix for MOD-3048
+            constructor = dict(inspect.getmembers(user_cls, inspect.isfunction)).get("__init__")
+            if enable_memory_snapshot and constructor:
+                params = inspect.signature(constructor).parameters
+                if len(params) > 1:
+                    name = user_cls.__name__
+                    raise InvalidError(
+                        f"Cannot use class parameterization in class {name} with `enable_memory_snapshot=True`."
+                    )
+
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
             return cls
