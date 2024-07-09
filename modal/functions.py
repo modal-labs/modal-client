@@ -52,7 +52,7 @@ from ._utils.function_utils import (
     is_async,
 )
 from ._utils.grpc_utils import retry_transient_errors
-from ._utils.mount_utils import validate_mount_points, validate_volumes
+from ._utils.mount_utils import validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
@@ -85,7 +85,7 @@ from .retries import Retries
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
-from .volume import _Volume, network_file_system_mount_protos
+from .volume import _Volume, volume_nfs_mount_protos
 
 if TYPE_CHECKING:
     import modal.app
@@ -263,7 +263,6 @@ class _FunctionSpec:
     image: Optional[_Image]
     mounts: Sequence[_Mount]
     secrets: Sequence[_Secret]
-    network_file_systems: Dict[Union[str, PurePosixPath], _Volume]
     volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
     gpu: GPU_T
     cloud: Optional[str]
@@ -534,6 +533,9 @@ class _Function(_Object, type_prefix="fu"):
         elif allow_background_volume_commits is None:
             allow_background_volume_commits = True
 
+        if network_file_systems:
+            deprecation_error((2024, 7, 9), "network_file_systems has been deprecated. Use volumes instead.")
+
         explicit_mounts = mounts
 
         if is_local():
@@ -578,7 +580,6 @@ class _Function(_Object, type_prefix="fu"):
             mounts=all_mounts,
             secrets=secrets,
             gpu=gpu,
-            network_file_systems=network_file_systems,
             volumes=volumes,
             image=image,
             cloud=cloud,
@@ -602,7 +603,6 @@ class _Function(_Object, type_prefix="fu"):
                     secrets=secrets,
                     gpu=gpu,
                     mounts=mounts,
-                    network_file_systems=network_file_systems,
                     volumes=volumes,
                     memory=memory,
                     timeout=86400,  # TODO: make this an argument to `@build()`
@@ -647,14 +647,10 @@ class _Function(_Object, type_prefix="fu"):
             raise InvalidError("`container_idle_timeout` must be > 0")
 
         # Validate volumes
-        validated_volumes = validate_volumes(volumes)
+        validated_nfs_volumes = validate_volumes({k: v for k, v in volumes.items() if v.nfs})
+        validated_volumes = validate_volumes({k: v for k, v in volumes.items() if not v.nfs})
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
-
-        # Validate NFS
-        if not isinstance(network_file_systems, dict):
-            raise InvalidError("network_file_systems must be a dict[str, Volume] where the keys are paths")
-        validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
 
         # Validate image
         if image is not None and not isinstance(image, _Image):
@@ -677,7 +673,7 @@ class _Function(_Object, type_prefix="fu"):
                 deps.append(proxy)
             if image:
                 deps.append(image)
-            for _, nfs in validated_network_file_systems:
+            for _, nfs in validated_nfs_volumes:
                 deps.append(nfs)
             for _, vol in validated_volumes:
                 deps.append(vol)
@@ -783,9 +779,7 @@ class _Function(_Object, type_prefix="fu"):
                         cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
                     ),
                     webhook_config=webhook_config,
-                    shared_volume_mounts=network_file_system_mount_protos(
-                        validated_network_file_systems, allow_cross_region_volumes
-                    ),
+                    shared_volume_mounts=volume_nfs_mount_protos(validated_nfs_volumes, allow_cross_region_volumes),
                     volume_mounts=volume_mounts,
                     proxy_id=(proxy.object_id if proxy else None),
                     retry_policy=retry_policy,
@@ -857,7 +851,7 @@ class _Function(_Object, type_prefix="fu"):
             secrets=repr(secrets),
             gpu_config=repr(gpu_config),
             mounts=repr(mounts),
-            network_file_systems=repr(network_file_systems),
+            nfs_volumes=repr({k: v for k, v in volumes.items() if v.nfs}),
         )
 
         return obj
@@ -1260,7 +1254,7 @@ class _Function(_Object, type_prefix="fu"):
         # "user code" to run on the synchronicity thread, which seems bad
         info = self._get_info()
 
-        if is_local() and self.spec.volumes or self.spec.network_file_systems:
+        if is_local() and self.spec.volumes:
             warnings.warn(
                 f"The {info.function_name} function is executing locally "
                 + "and will not have access to the mounted Volume data"

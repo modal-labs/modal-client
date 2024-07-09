@@ -516,6 +516,8 @@ class _App:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
             )
+        if network_file_systems:
+            deprecation_error((2024, 7, 9), "network_file_systems has been deprecated. Use volumes instead.")
 
         if image is None:
             image = self._get_default_image()
@@ -572,7 +574,6 @@ class _App:
                 is_generator=is_generator,
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
-                network_file_systems=network_file_systems,
                 allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
                 cpu=cpu,
@@ -653,6 +654,9 @@ class _App:
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
             )
 
+        if network_file_systems:
+            deprecation_error((2024, 7, 9), "network_file_systems has been deprecated. Use volumes instead.")
+
         if image is None:
             image = self._get_default_image()
 
@@ -681,7 +685,6 @@ class _App:
                 secrets=secrets,
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
-                network_file_systems=network_file_systems,
                 allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
                 memory=memory,
@@ -786,6 +789,9 @@ class _App:
         elif _allow_background_volume_commits is None:
             _allow_background_volume_commits = True
 
+        if network_file_systems:
+            deprecation_error((2024, 7, 9), "network_file_systems has been deprecated. Use volumes instead.")
+
         return await _Sandbox.create(
             *entrypoint_args,
             app=self,
@@ -800,7 +806,6 @@ class _App:
             region=region,
             cpu=cpu,
             memory=memory,
-            network_file_systems=network_file_systems,
             block_network=block_network,
             volumes=volumes,
             pty_info=pty_info,

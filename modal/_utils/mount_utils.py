@@ -49,8 +49,8 @@ def validate_volumes(
             raise InvalidError(f"Object of type {type(volume)} mounted at '{path}' is not useable as a volume.")
         elif isinstance(volume, _Volume):
             volume_to_paths.setdefault(volume, []).append(path)
-    for paths in volume_to_paths.values():
-        if len(paths) > 1:
+    for volume, paths in volume_to_paths.items():
+        if not volume.nfs and len(paths) > 1:
             conflicting = ", ".join(paths)
             raise InvalidError(
                 f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"

@@ -16,17 +16,17 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
-from ._utils.mount_utils import validate_mount_points, validate_volumes
+from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .config import config
-from .exception import deprecation_warning
+from .exception import deprecation_error, deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .object import _Object
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
-from .volume import network_file_system_mount_protos
+from .volume import volume_nfs_mount_protos
 
 _default_image: _Image = _Image.debian_slim()
 
@@ -266,9 +266,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         if len(entrypoint_args) == 0:
             raise InvalidError("entrypoint_args must not be empty")
 
-        if not isinstance(network_file_systems, dict):
-            raise InvalidError("network_file_systems must be a dict[str, Volume] where the keys are paths")
-        validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+        if network_file_systems:
+            deprecation_error((2024, 7, 9), "network_file_systems has been deprecated. Use volumes instead.")
 
         scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
         if region:
@@ -277,13 +276,14 @@ class _Sandbox(_Object, type_prefix="sb"):
             scheduler_placement = SchedulerPlacement(region=region)
 
         # Validate volumes
-        validated_volumes = validate_volumes(volumes)
+        validated_nfs_volumes = validate_volumes({k: v for k, v in volumes.items() if v.nfs})
+        validated_volumes = validate_volumes({k: v for k, v in volumes.items() if not v.nfs})
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         def _deps() -> List[_Object]:
             deps: List[_Object] = [image] + list(mounts) + list(secrets)
-            for _, vol in validated_network_file_systems:
+            for _, vol in validated_nfs_volumes:
                 deps.append(vol)
             for _, vol in validated_volumes:
                 deps.append(vol)
@@ -315,7 +315,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
                 ),
                 cloud_provider=parse_cloud_provider(cloud) if cloud else None,
-                nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
+                nfs_mounts=volume_nfs_mount_protos(validated_nfs_volumes, False),
                 runtime_debug=config.get("function_runtime_debug"),
                 block_network=block_network,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
@@ -370,6 +370,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         elif _allow_background_volume_commits is None:
             _allow_background_volume_commits = True
 
+        if network_file_systems:
+            deprecation_error((2024, 7, 9), "network_file_systems has been deprecated. Use volumes instead.")
+
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
             entrypoint_args,
@@ -383,7 +386,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             region=region,
             cpu=cpu,
             memory=memory,
-            network_file_systems=network_file_systems,
             block_network=block_network,
             volumes=volumes,
             pty_info=pty_info,

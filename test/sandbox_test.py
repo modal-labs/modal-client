@@ -72,9 +72,9 @@ def test_sandbox_secret(client, servicer, tmpdir):
 def test_sandbox_nfs(client, servicer, tmpdir):
     with Volume.ephemeral(client=client, nfs=True) as nfs:
         with pytest.raises(InvalidError):
-            Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs}, client=client)
+            Sandbox.create("echo", "foo > /cache/a.txt", volumes={"/": nfs}, client=client)
 
-        Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs}, client=client)
+        Sandbox.create("echo", "foo > /cache/a.txt", volumes={"/cache": nfs}, client=client)
 
     assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
 

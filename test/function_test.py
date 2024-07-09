@@ -552,7 +552,7 @@ def test_allow_cross_region_volumes(client, servicer):
     vol1 = Volume.from_name("xyz-1", create_if_missing=True, nfs=True)
     vol2 = Volume.from_name("xyz-2", create_if_missing=True, nfs=True)
     # Should pass flag for all the function's NetworkFileSystemMounts
-    app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
+    app.function(volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1
@@ -568,9 +568,7 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
     vol1 = Volume.from_name("xyz-1", create_if_missing=True, nfs=True)
     vol2 = Volume.from_name("xyz-2", create_if_missing=True, nfs=True)
     # Should pass flag for all the function's NetworkFileSystemMounts
-    app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
-        web_endpoint()(dummy)
-    )
+    app.function(volumes={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(web_endpoint()(dummy))
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1
@@ -655,7 +653,7 @@ def test_deps_explicit(client, servicer):
     nfs_1 = Volume.from_name("nfs-1", create_if_missing=True, nfs=True)
     nfs_2 = Volume.from_name("nfs-2", create_if_missing=True, nfs=True)
 
-    app.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
+    app.function(image=image, volumes={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
 
     with app.run(client=client):
         object_id: str = app.indexed_objects["dummy"].object_id

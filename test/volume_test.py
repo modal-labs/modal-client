@@ -404,7 +404,7 @@ def test_network_file_system_files(client, test_dir, servicer):
     app = modal.App()
     nfs = modal.Volume.from_name("xyz", create_if_missing=True, nfs=True)
 
-    dummy_modal = app.function(network_file_systems={"/root/foo": nfs})(dummy)
+    dummy_modal = app.function(volumes={"/root/foo": nfs})(dummy)
 
     with app.run(client=client):
         dummy_modal.remote()
@@ -418,13 +418,13 @@ def test_network_file_system_bad_paths():
         pass
 
     with pytest.raises(InvalidError):
-        app.function(network_file_systems={"/root/../../foo": nfs})(dummy)
+        app.function(volumes={"/root/../../foo": nfs})(dummy)
 
     with pytest.raises(InvalidError):
-        app.function(network_file_systems={"/": nfs})(dummy)
+        app.function(volumes={"/": nfs})(dummy)
 
     with pytest.raises(InvalidError):
-        app.function(network_file_systems={"/tmp/": nfs})(dummy)
+        app.function(volumes={"/tmp/": nfs})(dummy)
 
 
 def test_network_file_system_handle_single_file(client, tmp_path, servicer):

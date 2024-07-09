@@ -399,7 +399,6 @@ def shell(
             image=function_spec.image,
             mounts=function_spec.mounts,
             secrets=function_spec.secrets,
-            network_file_systems=function_spec.network_file_systems,
             gpu=function_spec.gpu,
             cloud=function_spec.cloud,
             cpu=function_spec.cpu,

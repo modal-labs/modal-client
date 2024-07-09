@@ -128,14 +128,14 @@ class _Volume(_Object, type_prefix="vo"):
     ```python
     import modal
 
-    nfs = modal.Volume.from_name("my-nfs", create_if_missing=True)
+    nfs_volume = modal.Volume.from_name("my-nfs", create_if_missing=True, nfs=True)
     app = modal.App()  # Note: "app" was called "stub" up until April 2024
 
-    @app.function(network_file_systems={"/root/foo": nfs})
+    @app.function(volumes={"/root/foo": nfs_volume})
     def f():
         pass
 
-    @app.function(network_file_systems={"/root/goo": nfs})
+    @app.function(volumes={"/root/goo": nfs_volume})
     def g():
         pass
     ```
@@ -149,12 +149,13 @@ class _Volume(_Object, type_prefix="vo"):
     A `Volume` can also be useful for some local scripting scenarios, e.g.:
 
     ```python notest
-    nfs = modal.Volume.lookup("my-network-file-system")
-    for chunk in nfs.read_file("my_db_dump.csv"):
+    nfs_volume = modal.Volume.lookup("my-network-file-system", nfs=True)
+    for chunk in nfs_volume.read_file("my_db_dump.csv"):
         ...
     ```
     """
 
+    nfs: bool
     _lock: asyncio.Lock
 
     def _initialize_from_empty(self):
@@ -255,6 +256,12 @@ class _Volume(_Object, type_prefix="vo"):
         if client is None:
             client = await _Client.from_env()
 
+        def _wrapper(obj):
+            obj.nfs = nfs
+            if obj.nfs:
+                obj._type_prefix = "sv"
+            return obj
+
         if nfs:
             request = api_pb2.SharedVolumeGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
@@ -264,7 +271,7 @@ class _Volume(_Object, type_prefix="vo"):
             async with TaskContext() as tc:
                 request = api_pb2.SharedVolumeHeartbeatRequest(shared_volume_id=response.shared_volume_id)
                 tc.infinite_loop(lambda: client.stub.SharedVolumeHeartbeat(request), sleep=_heartbeat_sleep)
-                yield cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True)
+                yield _wrapper(cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True))
         else:
             request = api_pb2.VolumeGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
@@ -275,7 +282,7 @@ class _Volume(_Object, type_prefix="vo"):
             async with TaskContext() as tc:
                 request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
                 tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
-                yield cls._new_hydrated(response.volume_id, client, None, is_another_app=True)
+                yield _wrapper(cls._new_hydrated(response.volume_id, client, None, is_another_app=True))
 
     @staticmethod
     def persisted(
@@ -940,18 +947,18 @@ def _open_files_error_annotation(mount_path: str) -> Optional[str]:
     return None
 
 
-def network_file_system_mount_protos(
-    validated_network_file_systems: List[Tuple[str, "_Volume"]],
+def volume_nfs_mount_protos(
+    validated_nfs_volumes: List[Tuple[str, "_Volume"]],
     allow_cross_region_volumes: bool,
 ) -> List[api_pb2.SharedVolumeMount]:
-    network_file_system_mounts = []
+    nfs_volume_mounts = []
     # Relies on dicts being ordered (true as of Python 3.6).
-    for path, volume in validated_network_file_systems:
-        network_file_system_mounts.append(
+    for path, volume in validated_nfs_volumes:
+        nfs_volume_mounts.append(
             api_pb2.SharedVolumeMount(
                 mount_path=path,
                 shared_volume_id=volume.object_id,
                 allow_cross_region=allow_cross_region_volumes,
             )
         )
-    return network_file_system_mounts
+    return nfs_volume_mounts

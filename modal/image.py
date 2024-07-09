@@ -1552,6 +1552,9 @@ class _Image(_Object, type_prefix="im"):
             # It may be possible to support lambdas eventually, but for now we don't handle them well, so reject quickly
             raise InvalidError("Image.run_function does not support lambda functions.")
 
+        if network_file_systems:
+            deprecation_error((2024, 7, 9), "network_file_systems has been deprecated. Use volumes instead.")
+
         info = FunctionInfo(raw_f)
 
         function = _Function.from_args(
@@ -1563,7 +1566,6 @@ class _Image(_Object, type_prefix="im"):
             gpu=gpu,
             mounts=mounts,
             volumes=volumes,
-            network_file_systems=network_file_systems,
             memory=memory,
             timeout=timeout,
             cpu=cpu,

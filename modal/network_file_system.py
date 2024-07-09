@@ -28,7 +28,7 @@ def network_file_system_mount_protos(
 ) -> List[api_pb2.SharedVolumeMount]:
     """`modal.network_file_system.network_file_system_mount_protos` is deprecated.
 
-    Please use `modal.volume.network_file_system_mount_protos instead.
+    Please use `modal.volume.volume_nfs_mount_protos instead.
     """
     deprecation_error((2024, 7, 9), network_file_system_mount_protos.__doc__)
 

@@ -53,7 +53,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 
 def gen_usage_code(label):
     return f"""
-@app.function(network_file_systems={{"/my_vol": modal.Volume.from_name("{label}", nfs=True)}})
+@app.function(volumes={{"/my_vol": modal.Volume.from_name("{label}", nfs=True)}})
 def some_func():
     os.listdir("/my_vol")
 """
