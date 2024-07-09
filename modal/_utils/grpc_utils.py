@@ -173,6 +173,8 @@ async def retry_transient_errors(
                 # no point sleeping if that's going to push us past the deadline
                 raise exc
 
+            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name}")
+
             n_retries += 1
 
             await asyncio.sleep(delay)
