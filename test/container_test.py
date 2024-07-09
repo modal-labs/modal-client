@@ -1684,5 +1684,5 @@ def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env
     warnings = len(recwarn)
     for w in range(warnings):
         warning = str(recwarn.pop().message)
-        assert "and will not have access to the mounted Volume or NetworkFileSystem data" not in warning
+        assert "and will not have access to the mounted Volume data" not in warning
     assert len(recwarn) == 0

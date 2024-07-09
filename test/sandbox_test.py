@@ -6,7 +6,7 @@ import pytest
 import time
 from pathlib import Path
 
-from modal import App, Image, Mount, NetworkFileSystem, Sandbox, Secret
+from modal import App, Image, Mount, Sandbox, Secret, Volume
 from modal.exception import DeprecationError, InvalidError
 
 app = App()
@@ -70,7 +70,7 @@ def test_sandbox_secret(client, servicer, tmpdir):
 
 @skip_non_linux
 def test_sandbox_nfs(client, servicer, tmpdir):
-    with NetworkFileSystem.ephemeral(client=client) as nfs:
+    with Volume.ephemeral(client=client, nfs=True) as nfs:
         with pytest.raises(InvalidError):
             Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs}, client=client)
 

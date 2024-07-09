@@ -23,10 +23,10 @@ from .exception import deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
-from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _Object
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
+from .volume import network_file_system_mount_protos
 
 _default_image: _Image = _Image.debian_slim()
 
@@ -254,7 +254,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         region: Optional[Union[str, Sequence[str]]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[int, Tuple[int, int]]] = None,
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, os.PathLike], _Volume] = {},
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty_info: Optional[api_pb2.PTYInfo] = None,
@@ -267,7 +267,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError("entrypoint_args must not be empty")
 
         if not isinstance(network_file_systems, dict):
-            raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
+            raise InvalidError("network_file_systems must be a dict[str, Volume] where the keys are paths")
         validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
 
         scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
@@ -341,7 +341,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, os.PathLike], _Volume] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,

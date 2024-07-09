@@ -4,19 +4,18 @@ import os
 import shutil
 import sys
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, Optional, Tuple, Union
+from typing import AsyncIterator, Optional, Tuple
 
 from click import UsageError
 
 from modal._utils.async_utils import TaskContext
-from modal.network_file_system import _NetworkFileSystem
 from modal.volume import FileEntry, FileEntryType, _Volume
 
 PIPE_PATH = Path("-")
 
 
 async def _volume_download(
-    volume: Union[_NetworkFileSystem, _Volume],
+    volume: _Volume,
     remote_path: str,
     local_destination: Path,
     overwrite: bool,
@@ -28,10 +27,10 @@ async def _volume_download(
 
     async def producer():
         iterator: AsyncIterator[FileEntry]
-        if isinstance(volume, _Volume):
-            iterator = volume.iterdir(remote_path, recursive=True)
+        if volume.nfs:
+            iterator = volume.iterdir(remote_path, recursive=False)  # NFS still supports "glob" paths
         else:
-            iterator = volume.iterdir(remote_path)  # NFS still supports "glob" paths
+            iterator = volume.iterdir(remote_path, recursive=True)
 
         async for entry in iterator:
             if is_pipe:

@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import App, Image, Mount, NetworkFileSystem, Proxy, web_endpoint
+from modal import App, Image, Mount, Proxy, Volume, web_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import ExecutionError, InvalidError
@@ -549,8 +549,8 @@ def f(x):
 
 def test_allow_cross_region_volumes(client, servicer):
     app = App()
-    vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
-    vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
+    vol1 = Volume.from_name("xyz-1", create_if_missing=True, nfs=True)
+    vol2 = Volume.from_name("xyz-2", create_if_missing=True, nfs=True)
     # Should pass flag for all the function's NetworkFileSystemMounts
     app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
 
@@ -565,8 +565,8 @@ def test_allow_cross_region_volumes(client, servicer):
 def test_allow_cross_region_volumes_webhook(client, servicer):
     # TODO(erikbern): this test seems a bit redundant
     app = App()
-    vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
-    vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
+    vol1 = Volume.from_name("xyz-1", create_if_missing=True, nfs=True)
+    vol2 = Volume.from_name("xyz-2", create_if_missing=True, nfs=True)
     # Should pass flag for all the function's NetworkFileSystemMounts
     app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
         web_endpoint()(dummy)
@@ -652,8 +652,8 @@ def test_deps_explicit(client, servicer):
     app = App()
 
     image = Image.debian_slim()
-    nfs_1 = NetworkFileSystem.from_name("nfs-1", create_if_missing=True)
-    nfs_2 = NetworkFileSystem.from_name("nfs-2", create_if_missing=True)
+    nfs_1 = Volume.from_name("nfs-1", create_if_missing=True, nfs=True)
+    nfs_2 = Volume.from_name("nfs-2", create_if_missing=True, nfs=True)
 
     app.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
 

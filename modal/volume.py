@@ -18,6 +18,7 @@ from typing import (
     List,
     Optional,
     Sequence,
+    Tuple,
     Type,
     Union,
 )
@@ -26,12 +27,13 @@ import aiostream
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_error, deprecation_warning
+from modal.exception import InvalidError, TimeoutError, VolumeUploadTimeoutError, deprecation_error, deprecation_warning
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, asyncnullcontext, synchronize_api
 from ._utils.blob_utils import (
+    LARGE_FILE_LIMIT,
     FileUploadSpec,
     blob_iter,
     blob_upload_file,
@@ -39,14 +41,24 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_path,
 )
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
+from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
-from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
+from .object import (
+    EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    _get_environment_name,
+    _Object,
+    live_method,
+    live_method_gen,
+)
 
 # Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
 VOLUME_PUT_FILE_CLIENT_TIMEOUT = 30 * 60
+NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
+    10 * 60
+)  # 10 min max for transferring files (does not include upload time to s3)
 
 
 class FileEntryType(enum.IntEnum):
@@ -106,25 +118,40 @@ class _Volume(_Object, type_prefix="vo"):
     Volumes can only be reloaded if there are no open files for the volume - attempting to reload with open files
     will result in an error.
 
+    A shared, writable file system accessible by one or more Modal functions.
+
+    By attaching this file system as a mount to one or more functions, they can
+    share and persist data with each other.
+
     **Usage**
 
     ```python
     import modal
 
+    nfs = modal.Volume.from_name("my-nfs", create_if_missing=True)
     app = modal.App()  # Note: "app" was called "stub" up until April 2024
-    volume = modal.Volume.from_name("my-persisted-volume", create_if_missing=True)
 
-    @app.function(volumes={"/root/foo": volume})
+    @app.function(network_file_systems={"/root/foo": nfs})
     def f():
-        with open("/root/foo/bar.txt", "w") as f:
-            f.write("hello")
-        volume.commit()  # Persist changes
+        pass
 
-    @app.function(volumes={"/root/foo": volume})
+    @app.function(network_file_systems={"/root/goo": nfs})
     def g():
-        volume.reload()  # Fetch latest changes
-        with open("/root/foo/bar.txt", "r") as f:
-            print(f.read())
+        pass
+    ```
+
+    Also see the CLI methods for accessing network file systems:
+
+    ```bash
+    modal nfs --help
+    ```
+
+    A `Volume` can also be useful for some local scripting scenarios, e.g.:
+
+    ```python notest
+    nfs = modal.Volume.lookup("my-network-file-system")
+    for chunk in nfs.read_file("my_db_dump.csv"):
+        ...
     ```
     """
 
@@ -138,7 +165,7 @@ class _Volume(_Object, type_prefix="vo"):
         self._lock = asyncio.Lock()
 
     @staticmethod
-    def new():
+    def new(cloud: Optional[str] = None):
         """`Volume.new` is deprecated.
 
         Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes.
@@ -152,6 +179,7 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
         version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
+        nfs: bool = False,
     ) -> "_Volume":
         """Create a reference to a persisted volume. Optionally create it lazily.
 
@@ -173,17 +201,35 @@ class _Volume(_Object, type_prefix="vo"):
         check_object_name(label, "Volume")
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
-            req = api_pb2.VolumeGetOrCreateRequest(
-                deployment_name=label,
-                namespace=namespace,
-                environment_name=_get_environment_name(environment_name, resolver),
-                object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
-                version=version,
-            )
-            response = await resolver.client.stub.VolumeGetOrCreate(req)
-            self._hydrate(response.volume_id, resolver.client, None)
+            if nfs:
+                req = api_pb2.SharedVolumeGetOrCreateRequest(
+                    deployment_name=label,
+                    namespace=namespace,
+                    environment_name=_get_environment_name(environment_name, resolver),
+                    object_creation_type=(
+                        api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None
+                    ),
+                )
+                response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
+                self._hydrate(response.shared_volume_id, resolver.client, None)
+            else:
+                req = api_pb2.VolumeGetOrCreateRequest(
+                    deployment_name=label,
+                    namespace=namespace,
+                    environment_name=_get_environment_name(environment_name, resolver),
+                    object_creation_type=(
+                        api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None
+                    ),
+                    version=version,
+                )
+                response = await resolver.client.stub.VolumeGetOrCreate(req)
+                self._hydrate(response.volume_id, resolver.client, None)
 
-        return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
+        obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
+        obj.nfs = nfs
+        if nfs:
+            obj._type_prefix = "sv"
+        return obj
 
     @classmethod
     @asynccontextmanager
@@ -193,6 +239,7 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+        nfs: bool = False,
     ) -> AsyncIterator["_Volume"]:
         """Creates a new ephemeral volume within a context manager:
 
@@ -207,16 +254,28 @@ class _Volume(_Object, type_prefix="vo"):
         """
         if client is None:
             client = await _Client.from_env()
-        request = api_pb2.VolumeGetOrCreateRequest(
-            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
-            environment_name=_get_environment_name(environment_name),
-            version=version,
-        )
-        response = await client.stub.VolumeGetOrCreate(request)
-        async with TaskContext() as tc:
-            request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
-            tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.volume_id, client, None, is_another_app=True)
+
+        if nfs:
+            request = api_pb2.SharedVolumeGetOrCreateRequest(
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+                environment_name=_get_environment_name(environment_name),
+            )
+            response = await client.stub.SharedVolumeGetOrCreate(request)
+            async with TaskContext() as tc:
+                request = api_pb2.SharedVolumeHeartbeatRequest(shared_volume_id=response.shared_volume_id)
+                tc.infinite_loop(lambda: client.stub.SharedVolumeHeartbeat(request), sleep=_heartbeat_sleep)
+                yield cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True)
+        else:
+            request = api_pb2.VolumeGetOrCreateRequest(
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+                environment_name=_get_environment_name(environment_name),
+                version=version,
+            )
+            response = await client.stub.VolumeGetOrCreate(request)
+            async with TaskContext() as tc:
+                request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
+                tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
+                yield cls._new_hydrated(response.volume_id, client, None, is_another_app=True)
 
     @staticmethod
     def persisted(
@@ -228,6 +287,17 @@ class _Volume(_Object, type_prefix="vo"):
         """Deprecated! Use `Volume.from_name(name, create_if_missing=True)`."""
         deprecation_error((2024, 3, 1), _Volume.persisted.__doc__)
 
+    def persist(
+        self,
+        label: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+        cloud: Optional[str] = None,
+    ):
+        """`Volume().persist("my-volume")` is deprecated.
+        Use `Volume.from_name("my-volume", create_if_missing=True)` instead."""
+        deprecation_error((2024, 2, 29), _Volume.persist.__doc__)
+
     @staticmethod
     async def lookup(
         label: str,
@@ -236,6 +306,7 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
         version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
+        nfs: bool = False,
     ) -> "_Volume":
         """Lookup a volume with a given name
 
@@ -250,11 +321,16 @@ class _Volume(_Object, type_prefix="vo"):
             environment_name=environment_name,
             create_if_missing=create_if_missing,
             version=version,
+            nfs=nfs,
         )
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
         await resolver.load(obj)
+
+        if nfs:
+            obj._type_prefix = "sv"
+
         return obj
 
     @staticmethod
@@ -264,20 +340,32 @@ class _Volume(_Object, type_prefix="vo"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
+        nfs: bool = False,
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "Volume")
         if client is None:
             client = await _Client.from_env()
-        request = api_pb2.VolumeGetOrCreateRequest(
-            deployment_name=deployment_name,
-            namespace=namespace,
-            environment_name=_get_environment_name(environment_name),
-            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
-            version=version,
-        )
-        resp = await retry_transient_errors(client.stub.VolumeGetOrCreate, request)
-        return resp.volume_id
+
+        if nfs:
+            request = api_pb2.SharedVolumeGetOrCreateRequest(
+                deployment_name=deployment_name,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name),
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+            )
+            resp = await retry_transient_errors(client.stub.SharedVolumeGetOrCreate, request)
+            return resp.shared_volume_id
+        else:
+            request = api_pb2.VolumeGetOrCreateRequest(
+                deployment_name=deployment_name,
+                namespace=namespace,
+                environment_name=_get_environment_name(environment_name),
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+                version=version,
+            )
+            resp = await retry_transient_errors(client.stub.VolumeGetOrCreate, request)
+            return resp.volume_id
 
     @live_method
     async def _do_reload(self, lock=True):
@@ -335,35 +423,45 @@ class _Volume(_Object, type_prefix="vo"):
         """Iterate over all files in a directory in the volume.
 
         Passing a directory path lists all files in the directory. For a file path, return only that
-        file's description. If `recursive` is set to True, list all files and folders under the path
-        recursively.
+        file's description. For NFS you can pass glob paths (including at least one * or ** sequence)
+        which returns all files matching that glob path (using absolute paths). For regular volumes instead,
+        `recursive` is set to True, list all files and folders under the path recursively.
         """
-        from modal_version import major_number, minor_number
 
-        # This allows us to remove the server shim after 0.62 is no longer supported.
-        deprecation = deprecation_warning if (major_number, minor_number) <= (0, 62) else deprecation_error
-        if path.endswith("**"):
-            msg = (
-                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
-                "Please pass recursive=True instead. For the CLI, just remove the glob suffix."
-            )
-            deprecation(
-                (2024, 4, 23),
-                msg,
-            )
-        elif path.endswith("*"):
-            deprecation(
-                (2024, 4, 23),
-                (
+        if self.nfs:
+            if recursive:
+                raise InvalidError("`recursive` is not available for NFS, please use glob patterns instead")
+            req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self.object_id, path=path)
+            async for batch in unary_stream(self._client.stub.SharedVolumeListFilesStream, req):
+                for entry in batch.entries:
+                    yield FileEntry._from_proto(entry)
+        else:
+            from modal_version import major_number, minor_number
+
+            # This allows us to remove the server shim after 0.62 is no longer supported.
+            deprecation = deprecation_warning if (major_number, minor_number) <= (0, 62) else deprecation_error
+            if path.endswith("**"):
+                msg = (
                     "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
-                    "Please remove the glob `*` suffix."
-                ),
-            )
+                    "Please pass recursive=True instead. For the CLI, just remove the glob suffix."
+                )
+                deprecation(
+                    (2024, 4, 23),
+                    msg,
+                )
+            elif path.endswith("*"):
+                deprecation(
+                    (2024, 4, 23),
+                    (
+                        "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
+                        "Please remove the glob `*` suffix."
+                    ),
+                )
 
-        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
-        async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
-            for entry in batch.entries:
-                yield FileEntry._from_proto(entry)
+            req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
+            async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
+                for entry in batch.entries:
+                    yield FileEntry._from_proto(entry)
 
     @live_method
     async def listdir(self, path: str, *, recursive: bool = False) -> List[FileEntry]:
@@ -390,18 +488,31 @@ class _Volume(_Object, type_prefix="vo"):
         print(len(data))  # == 1024 * 1024
         ```
         """
-        req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
-        try:
-            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
-        except GRPCError as exc:
-            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
-        # TODO(Jonathon): use ranged requests.
-        if response.WhichOneof("data_oneof") == "data":
-            yield response.data
-            return
+
+        if self.nfs:
+            req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self.object_id, path=path)
+            try:
+                response = await retry_transient_errors(self._client.stub.SharedVolumeGetFile, req)
+            except GRPCError as exc:
+                raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
+            if response.WhichOneof("data_oneof") == "data":
+                yield response.data
+            else:
+                async for data in blob_iter(response.data_blob_id, self._client.stub):
+                    yield data
         else:
-            async for data in blob_iter(response.data_blob_id, self._client.stub):
-                yield data
+            req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
+            try:
+                response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+            except GRPCError as exc:
+                raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
+            # TODO(Jonathon): use ranged requests.
+            if response.WhichOneof("data_oneof") == "data":
+                yield response.data
+                return
+            else:
+                async for data in blob_iter(response.data_blob_id, self._client.stub):
+                    yield data
 
     @live_method
     async def read_file_into_fileobj(self, path: str, fileobj: IO[bytes]) -> int:
@@ -454,8 +565,12 @@ class _Volume(_Object, type_prefix="vo"):
     @live_method
     async def remove_file(self, path: str, recursive: bool = False) -> None:
         """Remove a file or directory from a volume."""
-        req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
-        await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+        if self.nfs:
+            req = api_pb2.SharedVolumeRemoveFileRequest(shared_volume_id=self.object_id, path=path, recursive=recursive)
+            await retry_transient_errors(self._client.stub.SharedVolumeRemoveFile, req)
+        else:
+            req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
+            await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
 
     @live_method
     async def copy_files(self, src_paths: Sequence[str], dst_path: str) -> None:
@@ -538,6 +653,95 @@ class _Volume(_Object, type_prefix="vo"):
         obj = await _Volume.lookup(label, client=client, environment_name=environment_name)
         req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.VolumeDelete, req)
+
+    @live_method
+    async def write_file(self, remote_path: str, fp: BinaryIO) -> int:
+        """Write from a file object to a path on the network file system, atomically.
+
+        Will create any needed parent directories automatically.
+
+        If remote_path ends with `/` it's assumed to be a directory and the
+        file will be uploaded with its current name to that directory.
+        """
+
+        if not self.nfs:
+            raise InvalidError("Method is only avaiable for NFS volumes")
+
+        sha_hash = get_sha256_hex(fp)
+        fp.seek(0, os.SEEK_END)
+        data_size = fp.tell()
+        fp.seek(0)
+        if data_size > LARGE_FILE_LIMIT:
+            blob_id = await blob_upload_file(fp, self._client.stub)
+            req = api_pb2.SharedVolumePutFileRequest(
+                shared_volume_id=self.object_id,
+                path=remote_path,
+                data_blob_id=blob_id,
+                sha256_hex=sha_hash,
+                resumable=True,
+            )
+        else:
+            data = fp.read()
+            req = api_pb2.SharedVolumePutFileRequest(
+                shared_volume_id=self.object_id, path=remote_path, data=data, resumable=True
+            )
+
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT:
+            response = await retry_transient_errors(self._client.stub.SharedVolumePutFile, req)
+            if response.exists:
+                break
+        else:
+            raise TimeoutError(f"Uploading of {remote_path} timed out")
+
+        return data_size  # might be better if this is returned from the server
+
+    @live_method
+    async def add_local_file(
+        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+    ):
+        if not self.nfs:
+            raise InvalidError("Method is only avaiable for NFS volumes")
+
+        local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = PurePosixPath("/", local_path.name).as_posix()
+        else:
+            remote_path = PurePosixPath(remote_path).as_posix()
+
+        with local_path.open("rb") as local_file:
+            return await self.write_file(remote_path, local_file)
+
+    @live_method
+    async def add_local_dir(
+        self,
+        local_path: Union[Path, str],
+        remote_path: Optional[Union[str, PurePosixPath, None]] = None,
+    ):
+        if not self.nfs:
+            raise InvalidError("Method is only avaiable for NFS volumes")
+
+        _local_path = Path(local_path)
+        if remote_path is None:
+            remote_path = PurePosixPath("/", _local_path.name).as_posix()
+        else:
+            remote_path = PurePosixPath(remote_path).as_posix()
+
+        assert _local_path.is_dir()
+
+        def gen_transfers():
+            for subpath in _local_path.rglob("*"):
+                if subpath.is_dir():
+                    continue
+                relpath_str = subpath.relative_to(_local_path).as_posix()
+                yield subpath, PurePosixPath(remote_path, relpath_str)
+
+        transfer_paths = aiostream.stream.iterate(gen_transfers())
+        await aiostream.stream.map(
+            transfer_paths,
+            aiostream.async_(lambda paths: self.add_local_file(paths[0], paths[1])),
+            task_limit=20,
+        )
 
 
 class _VolumeUploadContextManager:
@@ -734,3 +938,20 @@ def _open_files_error_annotation(mount_path: str) -> Optional[str]:
                 pass
 
     return None
+
+
+def network_file_system_mount_protos(
+    validated_network_file_systems: List[Tuple[str, "_Volume"]],
+    allow_cross_region_volumes: bool,
+) -> List[api_pb2.SharedVolumeMount]:
+    network_file_system_mounts = []
+    # Relies on dicts being ordered (true as of Python 3.6).
+    for path, volume in validated_network_file_systems:
+        network_file_system_mounts.append(
+            api_pb2.SharedVolumeMount(
+                mount_path=path,
+                shared_volume_id=volume.object_id,
+                allow_cross_region=allow_cross_region_volumes,
+            )
+        )
+    return network_file_system_mounts

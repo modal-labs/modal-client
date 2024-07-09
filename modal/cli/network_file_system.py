@@ -22,10 +22,10 @@ from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.network_file_system import _NetworkFileSystem
+from modal.volume import _Volume
 from modal_proto import api_pb2
 
-nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
+nfs_cli = Typer(name="nfs", help="Read and edit `modal.Volume` file systems.", no_args_is_help=True)
 
 
 @nfs_cli.command(name="list", help="List the names of all network file systems.", rich_help_panel="Management")
@@ -53,7 +53,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 
 def gen_usage_code(label):
     return f"""
-@app.function(network_file_systems={{"/my_vol": modal.NetworkFileSystem.from_name("{label}")}})
+@app.function(network_file_systems={{"/my_vol": modal.Volume.from_name("{label}", nfs=True)}})
 def some_func():
     os.listdir("/my_vol")
 """
@@ -65,18 +65,18 @@ def create(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    modal.NetworkFileSystem.create_deployed(name, environment_name=env)
+    modal.Volume.create_deployed(name, environment_name=env, nfs=True)
     console = Console()
     console.print(f"Created volume '{name}'. \n\nCode example:\n")
     usage = Syntax(gen_usage_code(name), "python")
     console.print(usage)
 
 
-async def _volume_from_name(deployment_name: str) -> _NetworkFileSystem:
-    network_file_system = await _NetworkFileSystem.lookup(
-        deployment_name, environment_name=None
+async def _nfs_volume_from_name(deployment_name: str) -> _Volume:
+    network_file_system = await _Volume.lookup(
+        deployment_name, environment_name=None, nfs=True
     )  # environment None will take value from config
-    if not isinstance(network_file_system, _NetworkFileSystem):
+    if not isinstance(network_file_system, _Volume):
         raise Exception("The specified app entity is not a network file system")
     return network_file_system
 
@@ -93,7 +93,7 @@ async def ls(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _volume_from_name(volume_name)
+    volume = await _nfs_volume_from_name(volume_name)
     try:
         entries = await volume.listdir(path)
     except GRPCError as exc:
@@ -137,7 +137,7 @@ async def put(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _volume_from_name(volume_name)
+    volume = await _nfs_volume_from_name(volume_name)
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
     console = Console()
@@ -188,7 +188,7 @@ async def get(
     """
     ensure_env(env)
     destination = Path(local_destination)
-    volume = await _volume_from_name(volume_name)
+    volume = await _nfs_volume_from_name(volume_name)
     await _volume_download(volume, remote_path, destination, force)
 
 
@@ -203,7 +203,7 @@ async def rm(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _volume_from_name(volume_name)
+    volume = await _nfs_volume_from_name(volume_name)
     try:
         await volume.remove_file(remote_path, recursive=recursive)
     except GRPCError as exc:

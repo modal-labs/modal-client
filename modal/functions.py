@@ -69,7 +69,6 @@ from .execution_context import current_input_id, is_local
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts
-from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _get_environment_name, _Object, live_method, live_method_gen
 from .parallel_map import (
     _for_each_async,
@@ -86,7 +85,7 @@ from .retries import Retries
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
-from .volume import _Volume
+from .volume import _Volume, network_file_system_mount_protos
 
 if TYPE_CHECKING:
     import modal.app
@@ -264,7 +263,7 @@ class _FunctionSpec:
     image: Optional[_Image]
     mounts: Sequence[_Mount]
     secrets: Sequence[_Secret]
-    network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
+    network_file_systems: Dict[Union[str, PurePosixPath], _Volume]
     volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
     gpu: GPU_T
     cloud: Optional[str]
@@ -473,7 +472,7 @@ class _Function(_Object, type_prefix="fu"):
         gpu: GPU_T = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _Volume] = {},
         allow_cross_region_volumes: bool = False,
         volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
@@ -654,7 +653,7 @@ class _Function(_Object, type_prefix="fu"):
 
         # Validate NFS
         if not isinstance(network_file_systems, dict):
-            raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
+            raise InvalidError("network_file_systems must be a dict[str, Volume] where the keys are paths")
         validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
 
         # Validate image
@@ -1264,7 +1263,7 @@ class _Function(_Object, type_prefix="fu"):
         if is_local() and self.spec.volumes or self.spec.network_file_systems:
             warnings.warn(
                 f"The {info.function_name} function is executing locally "
-                + "and will not have access to the mounted Volume or NetworkFileSystem data"
+                + "and will not have access to the mounted Volume data"
             )
         if not info or not info.raw_f:
             msg = (

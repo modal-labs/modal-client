@@ -30,7 +30,7 @@ volume_cli = Typer(
     help="""
     Read and edit `modal.Volume` volumes.
 
-    Note: users of `modal.NetworkFileSystem` should use the `modal nfs` command instead.
+    Note: users of `modal.Volume(nfs=True)` should use the `modal nfs` command instead.
     """,
 )
 

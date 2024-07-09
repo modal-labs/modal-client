@@ -3,7 +3,7 @@ import modal
 
 app = modal.App("my-app")
 
-nfs = modal.NetworkFileSystem.lookup("volume_app")
+nfs = modal.Volume.lookup("volume_app", nfs=True)
 
 
 @app.function()

@@ -27,7 +27,6 @@ from .config import config, logger, user_config_path
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
-from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .secret import _Secret
 from .volume import _Volume
@@ -1509,7 +1508,7 @@ class _Image(_Object, type_prefix="im"):
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),  # Mounts attached to the function
         volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
+        network_file_systems: Dict[Union[str, PurePosixPath], _Volume] = {},  # NFS mount paths
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
@@ -1519,7 +1518,7 @@ class _Image(_Object, type_prefix="im"):
         kwargs: Dict[str, Any] = {},  # Keyword arguments to the function.
     ) -> "_Image":
         """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
-        function, and any kwargs accepted by `@app.function` (such as `Mount`s, `NetworkFileSystem`s,
+        function, and any kwargs accepted by `@app.function` (such as `Mount`s, `Volume`s,
         and resource requests) can be supplied to it.
         After it finishes execution, a snapshot of the resulting container file system is saved as an image.
 

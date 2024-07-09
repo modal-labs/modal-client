@@ -29,7 +29,6 @@ from .functions import _Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
-from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .partial_function import _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
 from .proxy import _Proxy
@@ -463,9 +462,7 @@ class _App:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),  # Modal Mounts added to the container
-        network_file_systems: Dict[
-            Union[str, PurePosixPath], _NetworkFileSystem
-        ] = {},  # Mountpoints for Modal NetworkFileSystems
+        network_file_systems: Dict[Union[str, PurePosixPath], _Volume] = {},  # Mountpoints for Modal NetworkFileSystems
         volumes: Dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
@@ -613,9 +610,7 @@ class _App:
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        network_file_systems: Dict[
-            Union[str, PurePosixPath], _NetworkFileSystem
-        ] = {},  # Mountpoints for Modal NetworkFileSystems
+        network_file_systems: Dict[Union[str, PurePosixPath], _Volume] = {},  # Mountpoints for Modal NetworkFileSystems
         volumes: Dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
@@ -735,7 +730,7 @@ class _App:
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
+        network_file_systems: Dict[Union[str, PurePosixPath], _Volume] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
