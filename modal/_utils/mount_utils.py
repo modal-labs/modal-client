@@ -18,6 +18,9 @@ def validate_mount_points(
 ) -> List[Tuple[str, T]]:
     """Mount point path validation for volumes and network file systems."""
 
+    if not isinstance(volume_likes, dict):
+        raise InvalidError(f"{display_name} must be a dict[str, {display_name}] where the keys are paths")
+
     validated = []
     for path, vol in volume_likes.items():
         path = PurePath(path).as_posix()
@@ -36,9 +39,7 @@ def validate_mount_points(
 
 
 def validate_network_file_systems(network_file_systems: Mapping[Union[str, PurePosixPath], _NetworkFileSystem]):
-    if not isinstance(network_file_systems, dict):
-        raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
-    validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+    validated_network_file_systems = validate_mount_points("NetworkFileSystem", network_file_systems)
 
     for path, network_file_system in validated_network_file_systems:
         if not isinstance(network_file_system, (_NetworkFileSystem)):
@@ -53,9 +54,6 @@ def validate_network_file_systems(network_file_systems: Mapping[Union[str, PureP
 def validate_volumes(
     volumes: Mapping[Union[str, PurePosixPath], Union["_Volume", "_CloudBucketMount"]],
 ) -> Sequence[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_CloudBucketMount"]]]:
-    if not isinstance(volumes, dict):
-        raise InvalidError("volumes must be a dict where the keys are mount paths")
-
     validated_volumes = validate_mount_points("Volume", volumes)
     # We don't support mounting a modal.Volume in more than one location,
     # but the same CloudBucketMount object can be used in more than one location.
