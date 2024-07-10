@@ -353,7 +353,6 @@ class _ContainerIOManager:
             request.max_values = self.get_max_inputs_to_fetch()
             request.input_concurrency = self._input_concurrency
             request.block_duration = 0.0  # TODO(cathy): support batching block duration
-            request.is_batched = False
 
             await self._semaphore.acquire()
             yielded = False
