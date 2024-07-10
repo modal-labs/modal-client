@@ -16,7 +16,7 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
-from ._utils.mount_utils import validate_mount_points, validate_volumes
+from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .exception import deprecation_warning
@@ -267,9 +267,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         if len(entrypoint_args) == 0:
             raise InvalidError("entrypoint_args must not be empty")
 
-        if not isinstance(network_file_systems, dict):
-            raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
-        validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+        validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
         scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
         if region:
