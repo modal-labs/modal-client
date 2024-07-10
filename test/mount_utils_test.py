@@ -49,4 +49,4 @@ def test_validate_volumes(client, servicer):
     # invalid attempt mount volume twice
     vol = _Volume.from_name("foo", create_if_missing=False)
     with pytest.raises(InvalidError, match="Volume"):
-        volumes = {"/my/path": vol, "/my/other/path": vol}
+        validate_volumes({"/my/path": vol, "/my/other/path": vol})
