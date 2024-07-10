@@ -380,14 +380,9 @@ class _Cls(_Object, type_prefix="cs"):
 
         ```python notest
         import modal
-        Model = modal.Cls.lookup(
-            "flywheel-generic", "Model", workspace="mk-1"
-        )
-        Model2 = Model.with_options(
-            gpu=modal.gpu.A100(memory=40),
-            volumes={"/models": models_vol}
-        )
-        Model2().generate.remote(42)
+        Model = modal.Cls.lookup("my_app", "Model")
+        ModelUsingGPU = Model.with_options(gpu="A100")
+        ModelUsingGPU().generate.remote(42)  # will run with an A100 GPU
         ```
         """
         retry_policy = _parse_retries(retries, f"Class {self.__name__}" if self._user_cls else "")
