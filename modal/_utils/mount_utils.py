@@ -35,6 +35,21 @@ def validate_mount_points(
     return validated
 
 
+def validate_network_file_systems(network_file_systems: Mapping[Union[str, PurePosixPath], _NetworkFileSystem]):
+    if not isinstance(network_file_systems, dict):
+        raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
+    validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+
+    for path, network_file_system in validated_network_file_systems:
+        if not isinstance(network_file_system, (_NetworkFileSystem)):
+            raise InvalidError(
+                f"Object of type {type(network_file_system)} mounted at '{path}' "
+                + "is not useable as a network file system."
+            )
+
+    return validated_network_file_systems
+
+
 def validate_volumes(
     volumes: Mapping[Union[str, PurePosixPath], Union["_Volume", "_CloudBucketMount"]],
 ) -> Sequence[Tuple[str, Union["_Volume", "_NetworkFileSystem", "_CloudBucketMount"]]]:
