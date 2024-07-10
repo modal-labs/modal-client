@@ -25,6 +25,7 @@ from .exception import (
     ExecutionError,
     InteractiveTimeoutError,
     InvalidError,
+    RemoteError,
     _CliUserExecutionError,
     deprecation_warning,
 )
@@ -524,7 +525,16 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
             raise InteractiveTimeoutError("Timed out while waiting for sandbox to start")
 
         loading_status.stop()
-        await connect_to_sandbox(sb)
+        try:
+            await connect_to_sandbox(sb)
+        except InteractiveTimeoutError:
+            # Check on status of Sandbox. It may have crashed, causing connection failure.
+            req = api_pb2.SandboxWaitRequest(sandbox_id=sb._object_id, timeout=0)
+            resp = await retry_transient_errors(sb._client.stub.SandboxWait, req)
+            if resp.result.exception:
+                raise RemoteError(resp.result.exception)
+            else:
+                raise
 
 
 def _run_stub(*args: Any, **kwargs: Any) -> AsyncGenerator[_App, None]:
