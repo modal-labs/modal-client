@@ -50,6 +50,6 @@ def test_validate_volumes(client, servicer):
 
     # invalid attempt mount volume twice
     vol = _Volume.from_name("foo", create_if_missing=False)
-    volumes: Mapping = {"/my/path": vol, "/my/other/path": vol}
+    bad_path_volumes: Mapping = {"/my/path": vol, "/my/other/path": vol}
     with pytest.raises(InvalidError, match="Volume"):
-        validate_volumes(volumes)
+        validate_volumes(bad_path_volumes)
