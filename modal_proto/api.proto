@@ -1083,7 +1083,6 @@ message FunctionGetInputsRequest {
   float average_call_time = 5;
   int32 input_concurrency = 6; // Container aims to fetch multiple inputs at the same time
   float block_duration = 7; // Seconds to block before a response is needed
-  bool is_batched = 8; // If true, the function is being called in batch mode
 }
 
 message FunctionGetInputsResponse {
