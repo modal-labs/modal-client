@@ -193,7 +193,6 @@ async def _run_app(
     client: Optional[_Client] = None,
     show_progress: bool = True,
     detach: bool = False,
-    output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
     shell: bool = False,
     interactive: bool = False,
@@ -226,10 +225,11 @@ async def _run_app(
 
     if client is None:
         client = await _Client.from_env()
-    if output_mgr is None:
-        output_mgr = OutputManager(show_progress=show_progress)
+
     if shell:
-        output_mgr._visible_progress = False
+        show_progress = False
+    output_mgr = OutputManager(show_progress=show_progress)
+
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     running_app: RunningApp = await _init_local_app_new(
         client,
