@@ -229,7 +229,7 @@ async def _run_app(
     if client is None:
         client = await _Client.from_env()
     if output_mgr is None:
-        output_mgr = OutputManager(stdout, show_progress, "Running app...")
+        output_mgr = OutputManager(stdout=stdout, show_progress=show_progress)
     if shell:
         output_mgr._visible_progress = False
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
@@ -347,7 +347,7 @@ async def _serve_update(
         running_app: RunningApp = await _init_local_app_existing(client, existing_app_id)
 
         # Create objects
-        output_mgr = OutputManager(None, True)
+        output_mgr = OutputManager(show_progress=True)
         await _create_all_objects(
             client,
             running_app,
@@ -430,7 +430,7 @@ async def _deploy_app(
     if client is None:
         client = await _Client.from_env()
 
-    output_mgr = OutputManager(stdout, show_progress)
+    output_mgr = OutputManager(stdout=stdout, show_progress=show_progress)
 
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name

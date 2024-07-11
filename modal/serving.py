@@ -113,7 +113,7 @@ async def _serve_app(
 
     client = await _Client.from_env()
 
-    output_mgr = OutputManager(stdout, show_progress, "Running app...")
+    output_mgr = OutputManager(stdout=stdout, show_progress=show_progress)
     if _watcher is not None:
         watcher = _watcher  # Only used by tests
     else:
