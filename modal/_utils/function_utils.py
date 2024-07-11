@@ -338,13 +338,13 @@ async def _stream_function_call_data(
             async for chunk in unary_stream(stub_fn, req):
                 if chunk.index <= last_index:
                     continue
-                last_index = chunk.index
                 if chunk.data_blob_id:
                     message_bytes = await blob_download(chunk.data_blob_id, client.stub)
                 else:
                     message_bytes = chunk.data
                 message = deserialize_data_format(message_bytes, chunk.data_format, client)
                 yield message
+                last_index = chunk.index
         except (GRPCError, StreamTerminatedError) as exc:
             if retries_remaining > 0:
                 retries_remaining -= 1
