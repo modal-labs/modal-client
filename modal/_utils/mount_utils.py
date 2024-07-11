@@ -41,7 +41,7 @@ def validate_mount_points(
 
 
 def validate_network_file_systems(
-    network_file_systems: Mapping[Union[str, PurePosixPath], Union[_NetworkFileSystem]],
+    network_file_systems: Mapping[Union[str, PurePosixPath], _NetworkFileSystem],
 ):
     validated_network_file_systems = validate_mount_points("NetworkFileSystem", network_file_systems)
 
@@ -61,7 +61,7 @@ def validate_volumes(
     validated_volumes = validate_mount_points("Volume", volumes)
     # We don't support mounting a modal.Volume in more than one location,
     # but the same CloudBucketMount object can be used in more than one location.
-    volume_to_paths: Dict[Union[_Volume], List[str]] = {}
+    volume_to_paths: Dict[_Volume, List[str]] = {}
     for path, volume in validated_volumes:
         if not isinstance(volume, (_Volume, _CloudBucketMount)):
             raise InvalidError(f"Object of type {type(volume)} mounted at '{path}' is not useable as a volume.")
