@@ -16,7 +16,7 @@ def test_validate_mount_points():
     # invalid list input, should be dicts
     list_input = [_NetworkFileSystem.from_name("NetworkFileSystem", create_if_missing=False)]
 
-    with pytest.raises(InvalidError, match="NetworkFileSystem"):
+    with pytest.raises(InvalidError, match="volume_likes"):
         validate_mount_points("NetworkFileSystem", list_input)  # type: ignore
 
 

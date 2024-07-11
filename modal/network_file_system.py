@@ -131,8 +131,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND and exc.message == "App has wrong entity vo":
                     raise InvalidError(
-                        f"Attempted to mount: `{label}` as a NetworkFileSystem "
-                        + "which already exists as a Volume, please create new a NetworkFileSystem instead"
+                        f"Attempted to mount: `{label}` as a NetworkFileSystem " + "which already exists as a Volume"
                     )
                 raise
 
