@@ -986,6 +986,9 @@ message Function {
   ClassParameterInfo class_parameter_info = 56;
 
   repeated Resources _experimental_resources = 57; // overrides `resources` field above
+
+  int32 batch_max_size = 58; // Maximum number of inputs to fetch at once
+  float batch_linger_secs = 59; // Seconds to block before a response is needed
 }
 
 message FunctionBindParamsRequest {
