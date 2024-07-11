@@ -350,7 +350,7 @@ class _ContainerIOManager:
         iteration = 0
         while not eof_received and self._fetching_inputs:
             request.average_call_time = self.get_average_call_time()
-            request.max_values = self.get_max_inputs_to_fetch() # Deprecated; remove.
+            request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self._input_concurrency
 
             await self._semaphore.acquire()
