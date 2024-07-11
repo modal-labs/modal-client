@@ -110,4 +110,4 @@ async def connect_to_terminal(
         except (asyncio.TimeoutError, TimeoutError):
             stop_connecting_status()
             exec_output_task.cancel()
-            raise InteractiveTimeoutError("Failed to establish connection to container.")
+            raise InteractiveTimeoutError("Failed to establish connection to container. Please try again.")
