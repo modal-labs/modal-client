@@ -86,6 +86,57 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
             test_breakpoint.assert_called_once()
 
 
+@pytest.fixture(scope="function")
+def fake_torch_module():
+    module_path = os.path.join(os.getcwd(), "torch.py")
+    with open(module_path, "w") as f:
+        f.write(
+            """
+import dataclasses
+@dataclasses.dataclass
+class CUDA:
+    device_count = lambda self: 0
+    _device_count_nvml = lambda self: 2
+
+cuda = CUDA()
+"""
+        )
+
+    yield module_path
+    # Teardown: remove the torch.py file
+    os.remove(module_path)
+
+
+@pytest.mark.asyncio
+async def test_container_snapshot_patching(fake_torch_module, container_client, tmpdir, servicer):
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    restore_path = tmpdir.join("fake-restore-state.json")
+
+    # bring fake torch into scope and call the utility fn
+    import torch
+
+    assert torch.cuda.device_count() == 0
+
+    # Write out a restore file so that snapshot+restore will complete
+    restore_path.write_text(
+        json.dumps(
+            {
+                "task_id": "ta-i-am-restored",
+                "task_secret": "ts-i-am-restored",
+                "function_id": "fu-i-am-restored",
+            }
+        ),
+        encoding="utf-8",
+    )
+    with mock.patch.dict(
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
+    ):
+        io_manager.memory_snapshot()
+        import torch
+
+        assert torch.cuda.device_count() == 2
+
+
 def test_interact(container_client, servicer):
     # Initialize container singleton
     ContainerIOManager(api_pb2.ContainerArguments(), container_client)

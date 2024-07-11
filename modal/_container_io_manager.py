@@ -608,9 +608,7 @@ class _ContainerIOManager:
         # perf: scanning sys.modules keys before import to avoid slow PYTHONPATH scanning.
         if "torch" in sys.modules:
             try:
-                import torch
-
-                torch.cuda.device_count = torch.cuda._device_count_nvml
+                sys.modules["torch"].cuda.device_count = sys.modules["torch"].cuda._device_count_nvml
             # Wide-open except to catch anything. We don't want to crash here.
             except Exception as exc:
                 logger.warning(
