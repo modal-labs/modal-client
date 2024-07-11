@@ -2,7 +2,6 @@
 import asyncio
 import dataclasses
 import os
-from io import TextIOWrapper
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Coroutine, Dict, List, Optional, TypeVar
 
@@ -192,7 +191,6 @@ async def _disconnect(
 async def _run_app(
     app: _App,
     client: Optional[_Client] = None,
-    stdout: Optional[TextIOWrapper] = None,
     show_progress: bool = True,
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
@@ -229,7 +227,7 @@ async def _run_app(
     if client is None:
         client = await _Client.from_env()
     if output_mgr is None:
-        output_mgr = OutputManager(stdout=stdout, show_progress=show_progress)
+        output_mgr = OutputManager(show_progress=show_progress)
     if shell:
         output_mgr._visible_progress = False
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
@@ -376,7 +374,6 @@ async def _deploy_app(
     name: Optional[str] = None,
     namespace: Any = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client: Optional[_Client] = None,
-    stdout: Optional[TextIOWrapper] = None,
     show_progress: bool = True,
     environment_name: Optional[str] = None,
     tag: Optional[str] = None,
@@ -430,7 +427,7 @@ async def _deploy_app(
     if client is None:
         client = await _Client.from_env()
 
-    output_mgr = OutputManager(stdout=stdout, show_progress=show_progress)
+    output_mgr = OutputManager(show_progress=show_progress)
 
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name

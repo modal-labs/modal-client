@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import io
 import multiprocessing
 import platform
 import sys
@@ -103,7 +102,6 @@ def _get_clean_app_description(app_ref: str) -> str:
 async def _serve_app(
     app: "_App",
     app_ref: str,
-    stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
     _watcher: Optional[AsyncGenerator[Set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
@@ -113,7 +111,7 @@ async def _serve_app(
 
     client = await _Client.from_env()
 
-    output_mgr = OutputManager(stdout=stdout, show_progress=show_progress)
+    output_mgr = OutputManager(show_progress=show_progress)
     if _watcher is not None:
         watcher = _watcher  # Only used by tests
     else:

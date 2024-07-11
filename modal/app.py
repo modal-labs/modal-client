@@ -2,7 +2,6 @@
 import inspect
 import typing
 import warnings
-from io import TextIOWrapper
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -299,7 +298,6 @@ class _App:
     async def run(
         self,
         client: Optional[_Client] = None,
-        stdout: Optional[TextIOWrapper] = None,
         show_progress: bool = True,
         detach: bool = False,
         output_mgr: Optional[OutputManager] = None,
@@ -315,7 +313,7 @@ class _App:
         objects. For backwards compatibility reasons, it returns the same app.
         """
         # TODO(erikbern): deprecate this one too?
-        async with _run_app(self, client, stdout, show_progress, detach, output_mgr):
+        async with _run_app(self, client, show_progress, detach, output_mgr):
             yield self
 
     def _get_default_image(self):
