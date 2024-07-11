@@ -1140,6 +1140,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         k = (request.deployment_name, request.namespace, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_nfss:
+                if k in self.deployed_volumes:
+                    raise GRPCError(Status.NOT_FOUND, "App has wrong entity vo")
                 raise GRPCError(Status.NOT_FOUND, f"NFS {k} not found")
             nfs_id = self.deployed_nfss[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:

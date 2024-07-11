@@ -18,7 +18,7 @@ from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
-from .exception import deprecation_error
+from .exception import InvalidError, deprecation_error
 from .object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -125,8 +125,15 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
-            response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
-            self._hydrate(response.shared_volume_id, resolver.client, None)
+            try:
+                response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
+                self._hydrate(response.shared_volume_id, resolver.client, None)
+            except GRPCError as exc:
+                if exc.status == Status.NOT_FOUND and exc.message == "App has wrong entity vo":
+                    raise InvalidError(
+                        f"Attempted to mount: `{label}` as a NetworkFileSystem " + "which already exists as a Volume"
+                    )
+                raise
 
         return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()", hydrate_lazily=True)
 
