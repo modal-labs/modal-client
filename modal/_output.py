@@ -505,8 +505,9 @@ async def get_app_logs_loop(
             elif isinstance(exc, AttributeError):
                 if "_write_appdata" in str(exc):
                     # Happens after losing connection
-                    # TODO: figure out a way to catch this in a more robust manner
-                    # see: https://github.com/modal-labs/modal-client/pull/1967#discussion_r1666955873
+                    # StreamTerminatedError are not properly raised in grpclib<=0.4.7
+                    # fixed in https://github.com/vmagamedov/grpclib/issues/185
+                    # TODO: update to newer version (>=0.4.8) once stable
                     logger.debug("Lost connection. Retrying ...")
                     continue
             raise
