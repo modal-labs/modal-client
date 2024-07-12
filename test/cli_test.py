@@ -439,6 +439,19 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 
+@pytest.mark.parametrize(("platform", "expected_exit_code"), [("win32", 1), ("cygwin", 1), ("linux", 0), ("darwin", 0)])
+def test_shell_cmd_fails_on_windows(
+    servicer, set_env_client, mock_shell_pty, monkeypatch, platform, expected_exit_code
+):
+    # sys.platform values
+    # https://docs.python.org/3/library/sys.html#sys.platform
+    monkeypatch.setattr("sys.platform", platform)
+    res = _run(["shell"], expected_exit_code=expected_exit_code)
+
+    if expected_exit_code != 0:
+        assert re.search("Windows", str(res.exception)), "exception message does not match expected string"
+
+
 def test_app_descriptions(servicer, server_url_env, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "prints_desc_app.py"
     _run(["run", "--detach", app_file.as_posix() + "::foo"])

@@ -388,6 +388,11 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
+    if sys.platform in ("cygwin", "win32"):
+        # sys.platform values
+        # https://docs.python.org/3/library/sys.html#sys.platform
+        raise InvalidError("`modal shell` is currently not supported on Windows")
+
     app = App("modal shell")
 
     if func_ref is not None:
