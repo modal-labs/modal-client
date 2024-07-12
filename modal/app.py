@@ -2,7 +2,6 @@
 import inspect
 import typing
 import warnings
-from io import TextIOWrapper
 from pathlib import PurePosixPath
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -12,7 +11,6 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
-from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo
 from ._utils.mount_utils import validate_volumes
@@ -299,10 +297,8 @@ class _App:
     async def run(
         self,
         client: Optional[_Client] = None,
-        stdout: Optional[TextIOWrapper] = None,
         show_progress: bool = True,
         detach: bool = False,
-        output_mgr: Optional[OutputManager] = None,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
@@ -315,7 +311,7 @@ class _App:
         objects. For backwards compatibility reasons, it returns the same app.
         """
         # TODO(erikbern): deprecate this one too?
-        async with _run_app(self, client, stdout, show_progress, detach, output_mgr):
+        async with _run_app(self, client, show_progress, detach):
             yield self
 
     def _get_default_image(self):
