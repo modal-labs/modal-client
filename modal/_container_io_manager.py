@@ -4,6 +4,7 @@ import json
 import math
 import os
 import signal
+import sys
 import time
 import traceback
 from dataclasses import dataclass
@@ -607,6 +608,20 @@ class _ContainerIOManager:
         # Restore input to default state.
         self.current_input_id = None
         self.current_input_started_at = None
+
+        # Patch torch to ensure it doesn't return CUDA unavailibility due to
+        # cached queries that executed during snapshot process. ref: MOD-3257
+        #
+        # perf: scanning sys.modules keys before import to avoid slow PYTHONPATH scanning.
+        if "torch" in sys.modules:
+            try:
+                sys.modules["torch"].cuda.device_count = sys.modules["torch"].cuda._device_count_nvml
+            # Wide-open except to catch anything. We don't want to crash here.
+            except Exception as exc:
+                logger.warning(
+                    f"failed to patch 'torch.cuda.device_count' during snapshot restore: {exc}. "
+                    "CUDA device availability may be inaccurate."
+                )
 
         self._client = await _Client.from_env()
         self._waiting_for_memory_snapshot = False
