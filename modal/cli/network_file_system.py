@@ -8,14 +8,13 @@ import typer
 from click import UsageError
 from grpclib import GRPCError, Status
 from rich.console import Console
-from rich.live import Live
 from rich.syntax import Syntax
 from rich.table import Table
 from typer import Typer
 
 import modal
 from modal._location import display_location
-from modal._output import ProgressHandler, step_completed, step_progress
+from modal._output import ProgressHandler, step_completed
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli._download import _volume_download
@@ -143,9 +142,9 @@ async def put(
     console = Console()
 
     if Path(local_path).is_dir():
-        spinner = step_progress(f"Uploading directory '{local_path}' to '{remote_path}'...")
-        with Live(spinner, console=console):
-            await volume.add_local_dir(local_path, remote_path)
+        progress_handler = ProgressHandler(type="upload", console=console)
+        with progress_handler.live:
+            await volume.add_local_dir(local_path, remote_path, progress_cb=progress_handler.progress)
         console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
 
     elif "*" in local_path:

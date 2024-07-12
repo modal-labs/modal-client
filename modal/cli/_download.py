@@ -9,6 +9,7 @@ from typing import AsyncIterator, Callable, Optional, Tuple, Union
 from click import UsageError
 
 from modal._utils.async_utils import TaskContext
+from modal.config import logger
 from modal.network_file_system import _NetworkFileSystem
 from modal.volume import FileEntry, FileEntryType, _Volume
 
@@ -81,7 +82,7 @@ async def _volume_download(
                             async for chunk in volume.read_file(entry.path):
                                 b += fp.write(chunk)
                                 progress_cb(task_id=progress_task_id, advance=len(chunk))
-                        print(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
+                        logger.debug(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
                         progress_cb(task_id=progress_task_id, complete=True)
                     elif entry.type == FileEntryType.DIRECTORY:
                         output_path.mkdir(parents=True, exist_ok=True)

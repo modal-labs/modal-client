@@ -327,6 +327,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         self,
         local_path: Union[Path, str],
         remote_path: Optional[Union[str, PurePosixPath, None]] = None,
+        progress_cb: Callable = None,
     ):
         _local_path = Path(local_path)
         if remote_path is None:
@@ -346,7 +347,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         transfer_paths = aiostream.stream.iterate(gen_transfers())
         await aiostream.stream.map(
             transfer_paths,
-            aiostream.async_(lambda paths: self.add_local_file(paths[0], paths[1])),
+            aiostream.async_(lambda paths: self.add_local_file(paths[0], paths[1], progress_cb)),
             task_limit=20,
         )
 

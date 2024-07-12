@@ -471,10 +471,10 @@ class ProgressHandler:
             if complete:
                 self._complete_sub_task(task_id)
                 return task_id
-            if advance:
+            if advance is not None:
                 self._advance_sub_task(task_id, advance)
                 return task_id
-        if name and size:
+        if name is not None and size is not None:
             return self._add_sub_task(name, size)
         raise NotImplementedError(
             "Unknown action to take with args: "
