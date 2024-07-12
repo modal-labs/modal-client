@@ -1087,8 +1087,10 @@ message FunctionGetInputsRequest {
   int32 max_values = 3;
   float average_call_time = 5;
   int32 input_concurrency = 6; // Container aims to fetch multiple inputs at the same time
-  int32 batch_max_size = 7; // Maximum number of inputs to fetch at once
-  float batch_linger_secs = 8; // Seconds to block before a response is needed
+  int32 max_values_to_fetch = 7;
+  float block_duration_secs = 8;
+  int32 batch_max_size = 9; // Maximum number of inputs to fetch at once
+  float batch_linger_secs = 10; // Seconds to block before a response is needed
 }
 
 message FunctionGetInputsResponse {
