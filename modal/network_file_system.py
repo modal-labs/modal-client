@@ -243,6 +243,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         If remote_path ends with `/` it's assumed to be a directory and the
         file will be uploaded with its current name to that directory.
         """
+        progress_cb = progress_cb or (lambda *_, **__: None)
+
         sha_hash = get_sha256_hex(fp)
         fp.seek(0, os.SEEK_END)
         data_size = fp.tell()
