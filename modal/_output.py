@@ -7,6 +7,7 @@ import functools
 import io
 import platform
 import re
+import socket
 import sys
 from datetime import timedelta
 from typing import Callable, Dict, Optional, Tuple
@@ -586,7 +587,7 @@ async def get_app_logs_loop(
                 f"[grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
             )
             raise
-        except (GRPCError, StreamTerminatedError) as exc:
+        except (GRPCError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
             if isinstance(exc, GRPCError):
                 if exc.status in RETRYABLE_GRPC_STATUS_CODES:
                     # Try again if we had a temporary connection drop,
@@ -596,6 +597,17 @@ async def get_app_logs_loop(
             elif isinstance(exc, StreamTerminatedError):
                 logger.debug("Stream closed. Retrying ...")
                 continue
+            elif isinstance(exc, socket.gaierror):
+                logger.debug("Lost connection. Retrying ...")
+                continue
+            elif isinstance(exc, AttributeError):
+                if "_write_appdata" in str(exc):
+                    # Happens after losing connection
+                    # StreamTerminatedError are not properly raised in grpclib<=0.4.7
+                    # fixed in https://github.com/vmagamedov/grpclib/issues/185
+                    # TODO: update to newer version (>=0.4.8) once stable
+                    logger.debug("Lost connection. Retrying ...")
+                    continue
             raise
         except Exception as exc:
             logger.exception(f"Failed to fetch logs: {exc}")

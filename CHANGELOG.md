@@ -10,15 +10,23 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+###
+
+
+### 0.63.36 (2024-07-05)
+
+- Image layers defined with a `@modal.build` method will now include the values of any _class variables_ that are referenced within the method as part of the layer cache key. That means that the layer will rebuild when the class variables change or are overridden by a subclass.
+
+
 ### 0.63.22 (2024-07-01)
 
-* Fixes error when running `@modal.build` methods, introduced in v0.63.19
+* Fixed an error when running `@modal.build` methods that was introduced in v0.63.19
 
 
 
 ### 0.63.20 (2024-07-01)
 
-* Fixes bug where self.method.local() re-triggers lifecycle methods in classes
+* Fixed bug where `self.method.local()` would re-trigger lifecycle methods in classes
 
 
 

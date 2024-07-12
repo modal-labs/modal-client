@@ -141,10 +141,10 @@ def _get_click_command_for_function(app: App, function_tag):
     signature: Dict[str, ParameterMetadata]
     cls: Optional[Cls] = None
     method_name: Optional[str] = None
-    if function.info.cls is not None:
+    if function.info.user_cls is not None:
         class_name, method_name = function_tag.rsplit(".", 1)
         cls = typing.cast(Cls, app.indexed_objects[class_name])
-        cls_signature = _get_signature(function.info.cls)
+        cls_signature = _get_signature(function.info.user_cls)
         fun_signature = _get_signature(function.info.raw_f, is_method=True)
         signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
         # TODO(erikbern): assert there's no overlap?
@@ -407,6 +407,7 @@ def shell(
             volumes=function_spec.volumes,
             region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
             _allow_background_volume_commits=True,
+            _experimental_gpus=function_spec._experimental_gpus,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None

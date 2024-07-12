@@ -25,12 +25,14 @@ from .exception import (
     ExecutionError,
     InteractiveTimeoutError,
     InvalidError,
+    RemoteError,
     _CliUserExecutionError,
     deprecation_warning,
 )
 from .execution_context import is_local
 from .object import _Object
 from .running_app import RunningApp
+from .sandbox import _Sandbox
 
 if TYPE_CHECKING:
     from .app import _App
@@ -240,7 +242,11 @@ async def _run_app(
     )
     async with app._set_local_app(client, running_app), TaskContext(grace=config["logs_timeout"]) as tc:
         # Start heartbeats loop to keep the client alive
-        tc.infinite_loop(lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL)
+        # we don't log heartbeat exceptions in detached mode
+        # as losing the local connection will not affect the running app
+        tc.infinite_loop(
+            lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL, log_exception=not detach
+        )
 
         with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
             initialized_msg = (
@@ -507,7 +513,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
         loading_status.start()
 
         sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
-        sb = await _app.spawn_sandbox(*sandbox_cmds, pty_info=get_pty_info(shell=True), **kwargs)
+        sb = await _Sandbox.create(*sandbox_cmds, pty_info=get_pty_info(shell=True), app=_app, **kwargs)
         for _ in range(40):
             await asyncio.sleep(0.5)
             resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
@@ -519,7 +525,16 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
             raise InteractiveTimeoutError("Timed out while waiting for sandbox to start")
 
         loading_status.stop()
-        await connect_to_sandbox(sb)
+        try:
+            await connect_to_sandbox(sb)
+        except InteractiveTimeoutError:
+            # Check on status of Sandbox. It may have crashed, causing connection failure.
+            req = api_pb2.SandboxWaitRequest(sandbox_id=sb._object_id, timeout=0)
+            resp = await retry_transient_errors(sb._client.stub.SandboxWait, req)
+            if resp.result.exception:
+                raise RemoteError(resp.result.exception)
+            else:
+                raise
 
 
 def _run_stub(*args: Any, **kwargs: Any) -> AsyncGenerator[_App, None]:

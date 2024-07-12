@@ -833,6 +833,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ImageGetOrCreate(self, stream):
         request: api_pb2.ImageGetOrCreateRequest = await stream.recv_message()
+        for k in self.images:
+            if request.image.SerializeToString() == self.images[k].SerializeToString():
+                await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=k))
+                return
         idx = len(self.images) + 1
         image_id = f"im-{idx}"
 
@@ -1136,6 +1140,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         k = (request.deployment_name, request.namespace, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_nfss:
+                if k in self.deployed_volumes:
+                    raise GRPCError(Status.NOT_FOUND, "App has wrong entity vo")
                 raise GRPCError(Status.NOT_FOUND, f"NFS {k} not found")
             nfs_id = self.deployed_nfss[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:

@@ -138,7 +138,6 @@ class _App:
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
         volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
-        **kwargs: _Object,  # DEPRECATED: passing additional objects to the stub as kwargs is no longer supported
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
 
@@ -163,18 +162,7 @@ class _App:
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
 
-        if kwargs:
-            deprecation_error(
-                (2023, 12, 13),
-                "Passing additional objects to the app constructor is deprecated."
-                f" Please remove the following parameters from your app definition: {', '.join(kwargs)}."
-                " In most cases, persistent (named) objects can just be defined in the global scope.",
-            )
-
-        for k, v in kwargs.items():
-            self._validate_blueprint_value(k, v)
-
-        self._indexed_objects = kwargs
+        self._indexed_objects = {}
         self._image = image
         self._mounts = mounts
         self._secrets = secrets
@@ -519,6 +507,7 @@ class _App:
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -609,6 +598,7 @@ class _App:
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
+                _experimental_gpus=_experimental_gpus,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -661,6 +651,7 @@ class _App:
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
@@ -682,7 +673,7 @@ class _App:
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
-            info = FunctionInfo(None, serialized=serialized, cls=user_cls)
+            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
             if region:
@@ -723,6 +714,7 @@ class _App:
                 # the callable itself are invalid and set to defaults:
                 webhook_config=None,
                 is_generator=False,
+                _experimental_gpus=_experimental_gpus,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
@@ -734,6 +726,17 @@ class _App:
                 and not enable_memory_snapshot
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
+
+            # Disallow enable_memory_snapshot for parameterized classes
+            # TODO(matt) Temporary fix for MOD-3048
+            constructor = dict(inspect.getmembers(user_cls, inspect.isfunction)).get("__init__")
+            if enable_memory_snapshot and constructor:
+                params = inspect.signature(constructor).parameters
+                if len(params) > 1:
+                    name = user_cls.__name__
+                    raise InvalidError(
+                        f"Cannot use class parameterization in class {name} with `enable_memory_snapshot=True`."
+                    )
 
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
@@ -774,6 +777,13 @@ class _App:
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
+        deprecation_warning(
+            (2024, 7, 5),
+            """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create`.
+
+            See https://modal.com/docs/guide/sandbox for more info.
+            """,
+        )
         if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 

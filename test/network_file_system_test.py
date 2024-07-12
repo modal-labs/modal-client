@@ -151,3 +151,13 @@ def test_nfs_lazy_hydration_from_name(set_env_client):
 def test_invalid_name(servicer, client, name):
     with pytest.raises(InvalidError, match="Invalid NetworkFileSystem name"):
         modal.NetworkFileSystem.lookup(name)
+
+
+def test_attempt_mount_volume(client, servicer):
+    app = modal.App()
+    modal.Volume.create_deployed("my-other-vol", client=client)
+    vol = modal.NetworkFileSystem.from_name("my-other-vol", create_if_missing=False)
+    f = app.function(network_file_systems={"/data": vol})(dummy)
+    with pytest.raises(InvalidError, match="already exists as a Volume"):
+        with app.run(client=client):
+            f.remote()

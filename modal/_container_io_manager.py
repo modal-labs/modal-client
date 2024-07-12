@@ -4,8 +4,10 @@ import json
 import math
 import os
 import signal
+import sys
 import time
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple
 
@@ -38,6 +40,15 @@ class UserException(Exception):
 
 class Sentinel:
     """Used to get type-stubs to work with this object."""
+
+
+@dataclass
+class LocalInput:
+    input_id: str
+    function_call_id: str
+    method_name: str
+    args: Any
+    kwargs: Any
 
 
 class _ContainerIOManager:
@@ -390,7 +401,7 @@ class _ContainerIOManager:
                     self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[Tuple[str, str, str, Any, Any]]:
+    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[LocalInput]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
@@ -401,7 +412,7 @@ class _ContainerIOManager:
         async for input_id, function_call_id, input_pb in self._generate_inputs():
             args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
             self.current_input_id, self.current_input_started_at = (input_id, time.time())
-            yield input_id, function_call_id, input_pb.method_name, args, kwargs
+            yield LocalInput(input_id, function_call_id, input_pb.method_name, args, kwargs)
             self.current_input_id, self.current_input_started_at = (None, None)
 
         # collect all active input slots, meaning all inputs have wrapped up.
@@ -590,6 +601,20 @@ class _ContainerIOManager:
         # Restore input to default state.
         self.current_input_id = None
         self.current_input_started_at = None
+
+        # Patch torch to ensure it doesn't return CUDA unavailibility due to
+        # cached queries that executed during snapshot process. ref: MOD-3257
+        #
+        # perf: scanning sys.modules keys before import to avoid slow PYTHONPATH scanning.
+        if "torch" in sys.modules:
+            try:
+                sys.modules["torch"].cuda.device_count = sys.modules["torch"].cuda._device_count_nvml
+            # Wide-open except to catch anything. We don't want to crash here.
+            except Exception as exc:
+                logger.warning(
+                    f"failed to patch 'torch.cuda.device_count' during snapshot restore: {exc}. "
+                    "CUDA device availability may be inaccurate."
+                )
 
         self._client = await _Client.from_env()
         self._waiting_for_memory_snapshot = False

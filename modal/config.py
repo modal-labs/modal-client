@@ -87,7 +87,7 @@ from google.protobuf.empty_pb2 import Empty
 from modal_proto import api_pb2
 
 from ._utils.logger import configure_logger
-from .exception import InvalidError, deprecation_warning
+from .exception import InvalidError, deprecation_error
 
 # Locate config file and read it
 
@@ -166,11 +166,9 @@ def _check_config() -> None:
             Support for using an implicit 'default' profile is deprecated.
             Please use `modal profile activate` to activate one of your profiles.
             (Use `modal profile list` to see the options.)
-
-            This will become an error in a future update.
             """
         )
-        deprecation_warning((2024, 2, 6), message, show_source=False)
+        deprecation_error((2024, 2, 6), message)
 
 
 _profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
@@ -210,6 +208,7 @@ _SETTINGS = {
     "force_build": _Setting(False, transform=_to_boolean),
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
+    "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
 }
 
 

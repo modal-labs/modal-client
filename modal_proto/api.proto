@@ -87,9 +87,7 @@ enum CloudProvider {
   CLOUD_PROVIDER_GCP = 2;
   CLOUD_PROVIDER_AUTO = 3;
   CLOUD_PROVIDER_OCI = 4;
-  CLOUD_PROVIDER_LAMBDA_LABS = 5;
-  CLOUD_PROVIDER_FLUIDSTACK = 6;  // experimental
-  CLOUD_PROVIDER_LATITUDE = 7;  // experimental
+  reserved 5, 6, 7; // now unused internal experimental values
 }
 
 enum DNSRecordType {
@@ -146,6 +144,12 @@ enum ObjectCreationType {
   OBJECT_CREATION_TYPE_CREATE_OVERWRITE_IF_EXISTS = 3;
   OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP = 4;  // deprecate at some point
   OBJECT_CREATION_TYPE_EPHEMERAL = 5;
+}
+
+enum ParameterType {
+  PARAM_TYPE_UNSPECIFIED = 0;
+  PARAM_TYPE_STRING = 1;
+  PARAM_TYPE_INT = 2;
 }
 
 enum ProgressType {
@@ -547,6 +551,40 @@ message ClassMethod {
   FunctionHandleMetadata function_handle_metadata = 3;
 }
 
+message ClassParameterInfo {
+  enum ParameterSerializationFormat {
+    PARAM_SERIALIZATION_FORMAT_UNSPECIFIED = 0;
+    PARAM_SERIALIZATION_FORMAT_PICKLE = 1; // legacy format - pickle of (args, kwargs) tuple
+    PARAM_SERIALIZATION_FORMAT_PROTO = 2; // new format using api.FunctionParameterSet
+  }
+  ParameterSerializationFormat format = 1;
+  repeated ClassParameterSpec schema = 2; // only set for PARAM_SERIALIZATION_FORMAT_PROTO
+}
+
+message ClassParameterSet {
+  // NOTE: adding additional *fields* here can invalidate function lookups
+  //  since we use the serialized message as the bound function identifier
+  //  for parameter-bound classes. Modify with *caution*
+  repeated ClassParameterValue parameters = 1;
+}
+
+message ClassParameterSpec {
+  string name = 1;
+  ParameterType type = 2;
+}
+
+message ClassParameterValue {
+  // NOTE: adding additional *fields* here can invalidate function lookups
+  //  since we use the serialized message as the bound function identifier
+  //  for parameter-bound classes. Modify with *caution*
+  string name = 1;
+  ParameterType type = 2;
+  oneof value_oneof {
+    string string_value = 3;
+    int64 int_value = 4;
+  }
+}
+
 message ClientCreateRequest {
   ClientType client_type = 1  [ (modal.options.audit_target_attr) = true ];
   string version = 2;
@@ -843,6 +881,7 @@ message FileEntry {
   uint64 size = 4;
 }
 
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -941,6 +980,10 @@ message Function {
 
   string use_function_id = 54;  // for class methods use this function id instead for invocations - the *referenced* function should have is_class=True
   string use_method_name = 55;  // for class methods - this method name needs to be included in the FunctionInput
+
+  ClassParameterInfo class_parameter_info = 56;
+
+  repeated Resources _experimental_resources = 57; // overrides `resources` field above
 }
 
 message FunctionBindParamsRequest {
@@ -1106,6 +1149,7 @@ message FunctionHandleMetadata {
   string use_function_id = 40; // used for methods
   string use_method_name = 41; // used for methods
   string definition_id = 42;
+  ClassParameterInfo class_parameter_info = 43;
 }
 
 message FunctionInput {
@@ -1617,6 +1661,7 @@ message Sandbox {
   // to look at fine-grained placement constraints.
   reserved 16; // _experimental_scheduler
   optional SchedulerPlacement scheduler_placement = 17;
+  repeated Resources _experimental_resources = 18; // overrides `resources` field above
 }
 
 message SandboxCreateRequest {
