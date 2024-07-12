@@ -381,6 +381,7 @@ class OutputManager:
 
 class ProgressHandler:
     live: Live
+    _type: str
     _spinner: Spinner
     _overall_progress: Progress
     _download_progress: Progress
@@ -388,11 +389,20 @@ class ProgressHandler:
     _total_tasks: int
     _completed_tasks: int
 
-    def __init__(self, console):
-        self._spinner = step_progress("Uploading file(s) to volume...")
+    def __init__(self, type: str, console: Console):
+        self._type = type
+
+        if self._type == "download":
+            title = "Downloading file(s) to local..."
+        elif self._type == "upload":
+            title = "Uploading file(s) to volume..."
+        else:
+            raise NotImplementedError(f"Progress handler of type: `{type}` not yet implemented")
+
+        self._spinner = step_progress(title)
 
         self._overall_progress = Progress(
-            TextColumn("[bold white]Uploading files", justify="right"),
+            TextColumn(f"[bold white]{title}", justify="right"),
             TimeElapsedColumn(),
             BarColumn(bar_width=None),
             TextColumn("[bold white]{task.description}"),
@@ -417,12 +427,12 @@ class ProgressHandler:
             Group(self._spinner, self._overall_progress, self._download_progress), transient=True, refresh_per_second=4
         )
 
-        self._overall_progress_task_id = self._overall_progress.add_task("upload files", start=True)
+        self._overall_progress_task_id = self._overall_progress.add_task(".", start=True)
         self._total_tasks = 0
         self._completed_tasks = 0
 
     def _add_sub_task(self, name, size):
-        task_id = self._download_progress.add_task("upload", path=name, start=True, total=size)
+        task_id = self._download_progress.add_task(self._type, path=name, start=True, total=size)
         self._total_tasks += 1
         self._overall_progress.update(self._overall_progress_task_id, total=self._total_tasks)
         return task_id
@@ -436,7 +446,7 @@ class ProgressHandler:
         self._overall_progress.update(
             self._overall_progress_task_id,
             advance=1,
-            description=f"({self._completed_tasks} out of {self._total_tasks} files uploaded)",
+            description=f"({self._completed_tasks} out of {self._total_tasks} files completed)",
         )
         if self._completed_tasks == self._total_tasks:
             self._overall_progress.remove_task(self._overall_progress_task_id)

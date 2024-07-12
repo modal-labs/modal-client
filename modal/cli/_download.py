@@ -4,13 +4,15 @@ import os
 import shutil
 import sys
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, Optional, Tuple, Union
+from typing import AsyncIterator, Callable, Optional, Tuple, Union
 
 from click import UsageError
 
 from modal._utils.async_utils import TaskContext
 from modal.network_file_system import _NetworkFileSystem
 from modal.volume import FileEntry, FileEntryType, _Volume
+
+from .config import logger
 
 PIPE_PATH = Path("-")
 
@@ -20,6 +22,7 @@ async def _volume_download(
     remote_path: str,
     local_destination: Path,
     overwrite: bool,
+    progress_cb: Callable,
 ):
     is_pipe = local_destination == PIPE_PATH
 
@@ -66,16 +69,22 @@ async def _volume_download(
             try:
                 if is_pipe:
                     if entry.type == FileEntryType.FILE:
+                        progress_task_id = progress_cb(name=entry.path, size=entry.size)
                         async for chunk in volume.read_file(entry.path):
                             sys.stdout.buffer.write(chunk)
+                            progress_cb(task_id=progress_task_id, advance=len(chunk))
+                        progress_cb(task_id=progress_task_id, complete=True)
                 else:
                     if entry.type == FileEntryType.FILE:
+                        progress_task_id = progress_cb(name=entry.path, size=entry.size)
                         output_path.parent.mkdir(parents=True, exist_ok=True)
                         with output_path.open("wb") as fp:
                             b = 0
                             async for chunk in volume.read_file(entry.path):
                                 b += fp.write(chunk)
-                        print(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
+                                progress_cb(task_id=progress_task_id, advance=len(chunk))
+                        logger.debug(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
+                        progress_cb(task_id=progress_task_id, complete=True)
                     elif entry.type == FileEntryType.DIRECTORY:
                         output_path.mkdir(parents=True, exist_ok=True)
             finally:

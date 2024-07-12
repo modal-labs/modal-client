@@ -15,7 +15,7 @@ from typer import Typer
 
 import modal
 from modal._location import display_location
-from modal._output import step_completed, step_progress
+from modal._output import ProgressHandler, step_completed, step_progress
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli._download import _volume_download
@@ -189,7 +189,11 @@ async def get(
     ensure_env(env)
     destination = Path(local_destination)
     volume = await _volume_from_name(volume_name)
-    await _volume_download(volume, remote_path, destination, force)
+    console = Console()
+    progress_handler = ProgressHandler(type="download", console=console)
+    with progress_handler.live:
+        await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
+    console.print(step_completed("Finished downloading files to local!"))
 
 
 @nfs_cli.command(

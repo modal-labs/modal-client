@@ -96,7 +96,11 @@ async def get(
     ensure_env(env)
     destination = Path(local_destination)
     volume = await _Volume.lookup(volume_name, environment_name=env)
-    await _volume_download(volume, remote_path, destination, force)
+    console = Console()
+    progress_handler = ProgressHandler(type="download", console=console)
+    with progress_handler.live:
+        await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
+    console.print(step_completed("Finished downloading files to local!"))
 
 
 @volume_cli.command(
@@ -194,7 +198,7 @@ async def put(
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
     console = Console()
-    progress_handler = ProgressHandler(console=console)
+    progress_handler = ProgressHandler(type="upload", console=console)
 
     if Path(local_path).is_dir():
         with progress_handler.live:

@@ -108,11 +108,11 @@ class BytesIOSegmentPayload(BytesIOPayload):
         chunk = await safe_read()
         while chunk and self.remaining_bytes() > 0:
             await writer.write(chunk)
-            self.progress_report_cb(len(chunk))
+            self.progress_report_cb(advance=len(chunk))
             chunk = await safe_read()
         if chunk:
             await writer.write(chunk)
-            self.progress_report_cb(len(chunk))
+            self.progress_report_cb(advance=len(chunk))
 
         self.progress_report_cb(complete=True)
 

@@ -677,9 +677,9 @@ class _VolumeUploadContextManager:
             if not response.exists:
                 raise VolumeUploadTimeoutError(f"Uploading of {file_spec.source_description} timed out")
             elif not file_spec.use_blob:
-                self._progress_cb(progress_task_id, complete=True)
+                self._progress_cb(task_id=progress_task_id, complete=True)
         else:
-            self._progress_cb(progress_task_id, complete=True)
+            self._progress_cb(task_id=progress_task_id, complete=True)
         return api_pb2.MountFile(
             filename=remote_filename,
             sha256_hex=file_spec.sha256_hex,
