@@ -431,16 +431,23 @@ class ProgressHandler:
         self._total_tasks = 0
         self._completed_tasks = 0
 
-    def _add_sub_task(self, name, size):
+    def _add_sub_task(self, name: str, size: float) -> TaskID:
         task_id = self._download_progress.add_task(self._type, path=name, start=True, total=size)
         self._total_tasks += 1
         self._overall_progress.update(self._overall_progress_task_id, total=self._total_tasks)
         return task_id
 
-    def _reset_sub_task(self, task_id):
+    def _reset_sub_task(self, task_id: TaskID):
         self._download_progress.reset(task_id)
 
-    def _complete_sub_task(self, task_id):
+    def _complete_progress(self):
+        # TODO: we could probably implement some callback progression from the server
+        # to get progress reports for the post processing too
+        # so we don't have to just spin here
+        self._overall_progress.remove_task(self._overall_progress_task_id)
+        self._spinner.update(text="Post processing...")
+
+    def _complete_sub_task(self, task_id: TaskID):
         self._completed_tasks += 1
         self._download_progress.remove_task(task_id)
         self._overall_progress.update(
@@ -448,11 +455,8 @@ class ProgressHandler:
             advance=1,
             description=f"({self._completed_tasks} out of {self._total_tasks} files completed)",
         )
-        if self._completed_tasks == self._total_tasks:
-            self._overall_progress.remove_task(self._overall_progress_task_id)
-            self._spinner.update(text="Post processing...")
 
-    def _advance_sub_task(self, task_id, advance):
+    def _advance_sub_task(self, task_id: TaskID, advance: float):
         self._download_progress.update(task_id, advance=advance)
 
     def progress(
@@ -463,19 +467,19 @@ class ProgressHandler:
         size: Optional[float] = None,
         reset: Optional[bool] = False,
         complete: Optional[bool] = False,
-    ):
+    ) -> Optional[TaskID]:
         if task_id is not None:
             if reset:
-                self._reset_sub_task(task_id)
-                return task_id
-            if complete:
-                self._complete_sub_task(task_id)
-                return task_id
-            if advance is not None:
-                self._advance_sub_task(task_id, advance)
-                return task_id
-        if name is not None and size is not None:
+                return self._reset_sub_task(task_id)
+            elif complete:
+                return self._complete_sub_task(task_id)
+            elif advance is not None:
+                return self._advance_sub_task(task_id, advance)
+        elif name is not None and size is not None:
             return self._add_sub_task(name, size)
+        elif complete:
+            return self._complete_progress()
+
         raise NotImplementedError(
             "Unknown action to take with args: "
             + f"name={name} "

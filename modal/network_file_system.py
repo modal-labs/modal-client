@@ -262,7 +262,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 resumable=True,
             )
         else:
-            # TODO: start task here too
             data = fp.read()
             req = api_pb2.SharedVolumePutFileRequest(
                 shared_volume_id=self.object_id, path=remote_path, data=data, resumable=True

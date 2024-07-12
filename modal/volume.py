@@ -582,6 +582,7 @@ class _VolumeUploadContextManager:
             # Upload files
             uploads_stream = aiostream.stream.map(files_stream, self._upload_file, task_limit=20)
             files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
+            self._progress_cb(complete=True)
 
             request = api_pb2.VolumePutFilesRequest(
                 volume_id=self._volume_id,
@@ -666,6 +667,7 @@ class _VolumeUploadContextManager:
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
+                self._progress_cb(task_id=progress_task_id, complete=True)
 
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
                 response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
@@ -674,8 +676,6 @@ class _VolumeUploadContextManager:
 
             if not response.exists:
                 raise VolumeUploadTimeoutError(f"Uploading of {file_spec.source_description} timed out")
-            elif not file_spec.use_blob:
-                self._progress_cb(task_id=progress_task_id, complete=True)
         else:
             self._progress_cb(task_id=progress_task_id, complete=True)
         return api_pb2.MountFile(
