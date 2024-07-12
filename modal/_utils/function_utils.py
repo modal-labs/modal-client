@@ -47,8 +47,16 @@ def entrypoint_only_package_mount_condition(entrypoint_file):
     return inner
 
 
-def is_global_object(object_qual_name):
+def is_global_object(object_qual_name: str):
     return "<locals>" not in object_qual_name.split(".")
+
+
+def is_top_level_function(f: Callable) -> bool:
+    """Returns True if this function is defined in global scope.
+
+    Returns False if this function is locally scoped (including on a class).
+    """
+    return f.__name__ == f.__qualname__
 
 
 def is_async(function):
@@ -104,15 +112,6 @@ class FunctionInfo:
         elif f is None and user_cls:
             # "service function" for running all methods of a class
             self.function_name = f"{user_cls.__name__}.*"
-        elif f.__qualname__ != f.__name__ and not serialized:
-            # single method of a class - should be only @build-methods at this point
-            if len(f.__qualname__.split(".")) > 2:
-                raise InvalidError(
-                    f"Cannot wrap `{f.__qualname__}`:"
-                    " functions and classes used in Modal must be defined in global scope."
-                    " If trying to apply additional decorators, they may need to use `functools.wraps`."
-                )
-            self.function_name = f"{user_cls.__name__}.{f.__name__}"
         else:
             self.function_name = f.__qualname__
 
