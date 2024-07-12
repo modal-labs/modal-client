@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2023
+import functools
 import os
 import time
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, BinaryIO, List, Optional, Tuple, Type, Union
+from typing import AsyncIterator, BinaryIO, Callable, List, Optional, Tuple, Type, Union
 
 import aiostream
 from grpclib import GRPCError, Status
@@ -234,7 +235,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         return resp.shared_volume_id
 
     @live_method
-    async def write_file(self, remote_path: str, fp: BinaryIO) -> int:
+    async def write_file(self, remote_path: str, fp: BinaryIO, progress_cb: Callable = None) -> int:
         """Write from a file object to a path on the network file system, atomically.
 
         Will create any needed parent directories automatically.
@@ -247,7 +248,10 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         data_size = fp.tell()
         fp.seek(0)
         if data_size > LARGE_FILE_LIMIT:
-            blob_id = await blob_upload_file(fp, self._client.stub)
+            progress_task_id = progress_cb(name=remote_path, size=data_size)
+            blob_id = await blob_upload_file(
+                fp, self._client.stub, progress_report_cb=functools.partial(progress_cb, progress_task_id)
+            )
             req = api_pb2.SharedVolumePutFileRequest(
                 shared_volume_id=self.object_id,
                 path=remote_path,
@@ -256,6 +260,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 resumable=True,
             )
         else:
+            # TODO: start task here too
             data = fp.read()
             req = api_pb2.SharedVolumePutFileRequest(
                 shared_volume_id=self.object_id, path=remote_path, data=data, resumable=True
@@ -301,7 +306,10 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
     @live_method
     async def add_local_file(
-        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+        self,
+        local_path: Union[Path, str],
+        remote_path: Optional[Union[str, PurePosixPath, None]] = None,
+        progress_cb: Callable = None,
     ):
         local_path = Path(local_path)
         if remote_path is None:
@@ -310,7 +318,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             remote_path = PurePosixPath(remote_path).as_posix()
 
         with local_path.open("rb") as local_file:
-            return await self.write_file(remote_path, local_file)
+            return await self.write_file(remote_path, local_file, progress_cb=progress_cb)
 
     @live_method
     async def add_local_dir(

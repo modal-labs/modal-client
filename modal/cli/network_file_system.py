@@ -151,9 +151,9 @@ async def put(
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
     else:
-        spinner = step_progress(f"Uploading file '{local_path}' to '{remote_path}'...")
-        with Live(spinner, console=console):
-            written_bytes = await volume.add_local_file(local_path, remote_path)
+        progress_handler = ProgressHandler(type="upload", console=console)
+        with progress_handler.live:
+            written_bytes = await volume.add_local_file(local_path, remote_path, progress_cb=progress_handler.progress)
         console.print(
             step_completed(f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)")
         )
