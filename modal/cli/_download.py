@@ -82,7 +82,7 @@ async def _volume_download(
                             async for chunk in volume.read_file(entry.path):
                                 b += fp.write(chunk)
                                 progress_cb(task_id=progress_task_id, advance=len(chunk))
-                        logger.debug(f"Wrote {b} bytes to {output_path}", file=sys.stderr)
+                        logger.debug(f"Wrote {b} bytes to {output_path}")
                         progress_cb(task_id=progress_task_id, complete=True)
                     elif entry.type == FileEntryType.DIRECTORY:
                         output_path.mkdir(parents=True, exist_ok=True)
