@@ -1359,6 +1359,7 @@ message ImageJoinStreamingRequest {
   string image_id = 1;
   float timeout = 2;
   string last_entry_id = 3;
+  bool include_logs_for_finished = 4;
 }
 
 message ImageJoinStreamingResponse {

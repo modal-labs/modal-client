@@ -1679,7 +1679,9 @@ class _Image(_Object, type_prefix="im"):
     async def logs(self) -> AsyncGenerator[str, None]:
         last_entry_id: Optional[str] = None
 
-        request = api_pb2.ImageJoinStreamingRequest(image_id=self._object_id, timeout=55, last_entry_id=last_entry_id)
+        request = api_pb2.ImageJoinStreamingRequest(
+            image_id=self._object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
+        )
         async for response in unary_stream(self._client.stub.ImageJoinStreaming, request):
             if response.result.status:
                 return
