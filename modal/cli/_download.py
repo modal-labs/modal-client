@@ -9,10 +9,9 @@ from typing import AsyncIterator, Callable, Optional, Tuple, Union
 from click import UsageError
 
 from modal._utils.async_utils import TaskContext
+from modal.config import logger
 from modal.network_file_system import _NetworkFileSystem
 from modal.volume import FileEntry, FileEntryType, _Volume
-
-from .config import logger
 
 PIPE_PATH = Path("-")
 
