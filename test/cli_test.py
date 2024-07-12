@@ -440,6 +440,7 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
 
 
 @pytest.mark.parametrize(("platform", "expected_exit_code"), [("win32", 1), ("cygwin", 1), ("linux", 0), ("darwin", 0)])
+@skip_windows("modal shell is not supported on Windows.")
 def test_shell_cmd_fails_on_windows(
     servicer, set_env_client, mock_shell_pty, monkeypatch, platform, expected_exit_code
 ):
