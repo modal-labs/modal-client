@@ -162,12 +162,10 @@ class _ContainerIOManager:
 
         async with self._pause_heartbeats:
             await self._pause_heartbeats.wait()
-
             # TODO(erikbern): capture exceptions?
             response = await retry_transient_errors(
                 self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
             )
-            print("SENT HEARTBEAT")
 
         if response.HasField("cancel_input_event"):
             # Pause processing of the current input by signaling self a SIGUSR1.
@@ -631,7 +629,7 @@ class _ContainerIOManager:
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
 
-        # Pause heartbeats, since they keep the client connection open, causing the snapshotter to crash.
+        # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self._pause_heartbeats:
             await self._client.stub.ContainerCheckpoint(
                 api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
