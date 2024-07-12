@@ -790,3 +790,15 @@ def test_warn_on_local_volume_mount(client, servicer):
     assert modal.is_local()
     with pytest.warns(match="local"):
         dummy_function.local()
+
+
+class X:
+    def f(self):
+        ...
+
+
+def test_function_decorator_on_method():
+    app = modal.App()
+
+    with pytest.raises(InvalidError, match="@app.cls"):
+        app.function()(X.f)
