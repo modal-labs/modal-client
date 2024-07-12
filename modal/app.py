@@ -4,6 +4,7 @@ import typing
 import warnings
 from io import TextIOWrapper
 from pathlib import PurePosixPath
+from textwrap import dedent
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
@@ -14,7 +15,7 @@ from modal_proto import api_pb2
 from ._ipython import is_notebook
 from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
-from ._utils.function_utils import FunctionInfo
+from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
 from ._utils.mount_utils import validate_volumes
 from .app_utils import (  # noqa: F401
     _list_apps,
@@ -533,7 +534,9 @@ class _App:
 
             # Check if the decorated object is a class
             if inspect.isclass(f):
-                raise TypeError("The @app.function decorator cannot be used on a class. Please use @app.cls instead.")
+                raise TypeError(
+                    "The `@app.function` decorator cannot be used on a class. Please use `@app.cls` instead."
+                )
 
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint and @asgi_app
@@ -547,6 +550,35 @@ class _App:
                 if webhook_config and interactive:
                     raise InvalidError("interactive=True is not supported with web endpoint functions")
             else:
+                if not is_global_object(f.__qualname__) and not serialized:
+                    raise InvalidError(
+                        dedent(
+                            """
+                            The `@app.function` decorator must apply to functions in global scope,
+                            unless `serialize=True` is set.
+                            If trying to apply additional decorators, they may need to use `functools.wraps`.
+                            """
+                        )
+                    )
+
+                if not is_top_level_function(f) and is_global_object(f.__qualname__):
+                    raise InvalidError(
+                        dedent(
+                            """
+                            The `@app.function` decorator cannot be used on class methods.
+                            Please use `@app.cls` with `@modal.method` instead. Example:
+
+                            ```python
+                            @app.cls()
+                            class MyClass:
+                                @modal.method()
+                                def f(self, x):
+                                    ...
+                            ```
+                            """
+                        )
+                    )
+
                 info = FunctionInfo(f, serialized=serialized, name_override=name)
                 webhook_config = None
                 raw_f = f
