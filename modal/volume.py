@@ -550,14 +550,12 @@ class _VolumeUploadContextManager:
     progress_cb: Callable
     _upload_generators: List[Generator[Callable[[], FileUploadSpec], None, None]]
 
-    def __init__(
-        self, volume_id: str, client: _Client, progress_cb: Callable = (lambda *_, **__: None), force: bool = False
-    ):
+    def __init__(self, volume_id: str, client: _Client, progress_cb: Callable = None, force: bool = False):
         """mdmd:hidden"""
         self._volume_id = volume_id
         self._client = client
         self._upload_generators = []
-        self._progress_cb = progress_cb
+        self._progress_cb = progress_cb or (lambda *_, **__: None)
         self._force = force
 
     async def __aenter__(self):
