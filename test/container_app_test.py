@@ -107,6 +107,17 @@ cuda = CUDA()
     os.remove(module_path)
 
 
+@pytest.fixture(scope="function")
+def weird_torch_module():
+    module_path = os.path.join(os.getcwd(), "torch.py")
+    with open(module_path, "w") as f:
+        f.write("IM_WEIRD = 42\n")
+
+    yield module_path
+
+    os.remove(module_path)  # Teardown: remove the torch.py file
+
+
 @pytest.mark.asyncio
 async def test_container_snapshot_patching(fake_torch_module, container_client, tmpdir, servicer):
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
@@ -135,6 +146,33 @@ async def test_container_snapshot_patching(fake_torch_module, container_client, 
         import torch
 
         assert torch.cuda.device_count() == 2
+
+
+@pytest.mark.asyncio
+async def test_container_snapshot_patching_err(weird_torch_module, container_client, tmpdir, servicer):
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    restore_path = tmpdir.join("fake-restore-state.json")
+
+    # bring weird torch into scope and call the utility fn
+    import torch as trch
+
+    assert trch.IM_WEIRD == 42
+
+    # Write out a restore file so that snapshot+restore will complete
+    restore_path.write_text(
+        json.dumps(
+            {
+                "task_id": "ta-i-am-restored",
+                "task_secret": "ts-i-am-restored",
+                "function_id": "fu-i-am-restored",
+            }
+        ),
+        encoding="utf-8",
+    )
+    with mock.patch.dict(
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
+    ):
+        io_manager.memory_snapshot()  # should not crash
 
 
 def test_interact(container_client, servicer):
