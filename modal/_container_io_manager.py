@@ -74,6 +74,7 @@ class _ContainerIOManager:
     _environment_name: str
     _waiting_for_memory_snapshot: bool
     _heartbeat_loop: Optional[asyncio.Task]
+    _pause_heartbeats: Optional[asyncio.Event]
 
     _is_interactivity_enabled: bool
     _fetching_inputs: bool
@@ -102,6 +103,7 @@ class _ContainerIOManager:
         self._environment_name = container_args.environment_name
         self._waiting_for_memory_snapshot = False
         self._heartbeat_loop = None
+        self._pause_heartbeats = None
 
         self._is_interactivity_enabled = False
         self._fetching_inputs = True
@@ -157,6 +159,9 @@ class _ContainerIOManager:
         if self.current_input_started_at is not None:
             request.current_input_started_at = self.current_input_started_at
 
+        # Wait until memory snapshotting finishes
+        await self._pause_heartbeats.wait()
+
         # TODO(erikbern): capture exceptions?
         response = await retry_transient_errors(
             self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
@@ -198,6 +203,7 @@ class _ContainerIOManager:
     async def heartbeats(self) -> AsyncGenerator[None, None]:
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
+            self._pause_heartbeats = asyncio.Event()
             t.set_name("heartbeat loop")
             try:
                 yield
@@ -572,6 +578,7 @@ class _ContainerIOManager:
             logger.debug(f"Waiting for restore (elapsed={time.perf_counter() - start:.3f}s)")
             await asyncio.sleep(0.01)
             continue
+        self._pause_heartbeats.set() # Resume heartbeats
 
         logger.debug("Container: restored")
 
@@ -609,9 +616,8 @@ class _ContainerIOManager:
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
 
-        # Heartbeats can leave the modal.sock file open, causing gVisor to crash
-        self.stop_heartbeat()
-
+        # Pause heartbeats, since they keep the client connection open, causing the snapshotter to crash.
+        self._pause_heartbeats.clear()
         await self._client.stub.ContainerCheckpoint(
             api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
         )
