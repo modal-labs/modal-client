@@ -1130,5 +1130,5 @@ async def test_logs(servicer, client):
     async with app.run.aio(client=client):
         pass
 
-    logs = [data async for data in image.logs.aio()]
+    logs = [data async for data in image._logs.aio()]
     assert logs == ["build starting\n", "build finished\n"]
