@@ -572,6 +572,7 @@ class _Image(_Object, type_prefix="im"):
                 "flash-attn==2.5.8", extra_options="--no-build-isolation"
             )
         )
+        ```
         """
         pkgs = _flatten_str_args("pip_install", "packages", packages)
         if not pkgs:
