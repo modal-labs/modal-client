@@ -118,6 +118,8 @@ class _App:
     In this example, the secret and schedule are registered with the app.
     """
 
+    _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
+
     _name: Optional[str]
     _description: Optional[str]
     _indexed_objects: Dict[str, _Object]
@@ -128,10 +130,11 @@ class _App:
     _volumes: Dict[Union[str, PurePosixPath], _Volume]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, _LocalEntrypoint]
-    _is_running: bool  # True if the app is a container or a running local app
+
+    # Running apps only (container apps or running local)
+    _app_id: Optional[str]  # Kept after app finishes
     _running_app: Optional[RunningApp]  # various app info. TODO: bring it onto the app object instead.
     _client: Optional[_Client]
-    _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
 
     def __init__(
         self,
@@ -172,7 +175,8 @@ class _App:
         self._volumes = volumes
         self._local_entrypoints = {}
         self._web_endpoints = []
-        self._is_running = False
+
+        self._app_id = None
         self._running_app = None  # Set inside container, OR during the time an app is running locally
         self._client = None
 
@@ -195,11 +199,8 @@ class _App:
 
     @property
     def app_id(self) -> Optional[str]:
-        """Return the app_id, if the app is running."""
-        if self._running_app:
-            return self._running_app.app_id
-        else:
-            return None
+        """Return the app_id of a running or stopped app."""
+        return self._app_id
 
     @property
     def description(self) -> Optional[str]:
@@ -214,7 +215,7 @@ class _App:
             raise InvalidError(f"App attribute `{key}` with value {value!r} is not a valid Modal object")
 
     def _add_object(self, tag, obj):
-        if self._is_running:
+        if self._running_app:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the app.
             if tag in self._running_app.tag_to_object_id:
@@ -290,16 +291,15 @@ class _App:
         deprecation_error((2023, 11, 8), _App.is_inside.__doc__)
 
     @asynccontextmanager
-    async def _set_local_app(self, client: _Client, app: RunningApp) -> AsyncGenerator[None, None]:
+    async def _set_local_app(self, client: _Client, running_app: RunningApp) -> AsyncGenerator[None, None]:
+        self._app_id = running_app.app_id
+        self._running_app = running_app
         self._client = client
-        self._running_app = app
-        self._is_running = True
         try:
             yield
         finally:
-            # Keep self._running_app around so we can access app_id after running etc
+            self._running_app = None
             self._client = None
-            self._is_running = False
 
     @asynccontextmanager
     async def run(
@@ -358,9 +358,9 @@ class _App:
             self._web_endpoints.append(function.tag)
 
     def _init_container(self, client: _Client, running_app: RunningApp):
-        self._client = client
+        self._app_id = running_app.app_id
         self._running_app = running_app
-        self._is_running = True
+        self._client = client
 
         # Hydrate objects on app
         for tag, object_id in running_app.tag_to_object_id.items():
@@ -822,7 +822,7 @@ class _App:
             See https://modal.com/docs/guide/sandbox for more info.
             """,
         )
-        if not self._is_running:
+        if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
         if _allow_background_volume_commits is False:
