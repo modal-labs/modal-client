@@ -895,15 +895,15 @@ class _App:
 
         This method is considered private and its interface may change - use at your own risk!
         """
-        if not self._running_app:
-            raise InvalidError("`app._logs` requires a running app.")
+        if not self._app_id:
+            raise InvalidError("`app._logs` requires a running/stopped app.")
 
         client = client or self._client or await _Client.from_env()
 
         last_log_batch_entry_id: Optional[str] = None
         while True:
             request = api_pb2.AppGetLogsRequest(
-                app_id=self._running_app.app_id,
+                app_id=self._app_id,
                 timeout=55,
                 last_entry_id=last_log_batch_entry_id,
             )
