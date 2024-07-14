@@ -16,6 +16,7 @@ from ._ipython import is_notebook
 from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
+from ._utils.grpc_utils import unary_stream
 from ._utils.mount_utils import validate_volumes
 from .app_utils import (  # noqa: F401
     _list_apps,
@@ -127,7 +128,8 @@ class _App:
     _volumes: Dict[Union[str, PurePosixPath], _Volume]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, _LocalEntrypoint]
-    _running_app: Optional[RunningApp]
+    _is_running: bool  # True if the app is a container or a running local app
+    _running_app: Optional[RunningApp]  # various app info. TODO: bring it onto the app object instead.
     _client: Optional[_Client]
     _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
 
@@ -170,6 +172,7 @@ class _App:
         self._volumes = volumes
         self._local_entrypoints = {}
         self._web_endpoints = []
+        self._is_running = False
         self._running_app = None  # Set inside container, OR during the time an app is running locally
         self._client = None
 
@@ -211,7 +214,7 @@ class _App:
             raise InvalidError(f"App attribute `{key}` with value {value!r} is not a valid Modal object")
 
     def _add_object(self, tag, obj):
-        if self._running_app:
+        if self._is_running:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the app.
             if tag in self._running_app.tag_to_object_id:
@@ -290,11 +293,13 @@ class _App:
     async def _set_local_app(self, client: _Client, app: RunningApp) -> AsyncGenerator[None, None]:
         self._client = client
         self._running_app = app
+        self._is_running = True
         try:
             yield
         finally:
+            # Keep self._running_app around so we can access app_id after running etc
             self._client = None
-            self._running_app = None
+            self._is_running = False
 
     @asynccontextmanager
     async def run(
@@ -355,6 +360,7 @@ class _App:
     def _init_container(self, client: _Client, running_app: RunningApp):
         self._client = client
         self._running_app = running_app
+        self._is_running = True
 
         # Hydrate objects on app
         for tag, object_id in running_app.tag_to_object_id.items():
@@ -816,7 +822,7 @@ class _App:
             See https://modal.com/docs/guide/sandbox for more info.
             """,
         )
-        if not self._running_app:
+        if not self._is_running:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
         if _allow_background_volume_commits is False:
@@ -883,6 +889,33 @@ class _App:
                 )
 
             self._add_object(tag, object)
+
+    async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
+        """Stream logs from the app.
+
+        This method is considered private and its interface may change - use at your own risk!
+        """
+        if not self._running_app:
+            raise InvalidError("`app._logs` requires a running app.")
+
+        client = client or self._client or await _Client.from_env()
+
+        last_log_batch_entry_id: Optional[str] = None
+        while True:
+            request = api_pb2.AppGetLogsRequest(
+                app_id=self._running_app.app_id,
+                timeout=55,
+                last_entry_id=last_log_batch_entry_id,
+            )
+            async for log_batch in unary_stream(client.stub.AppGetLogs, request):
+                if log_batch.entry_id:
+                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
+                    last_log_batch_entry_id = log_batch.entry_id
+                if log_batch.app_done:
+                    return
+                for log in log_batch.items:
+                    if log.data:
+                        yield log.data
 
 
 App = synchronize_api(_App)

@@ -210,7 +210,7 @@ async def _run_app(
             " Are you calling app.run() directly?"
             " Consider using the `modal run` shell command."
         )
-    if app._running_app:
+    if app._is_running:
         raise InvalidError(
             "App is already running and can't be started again.\n"
             "You should not use `app.run` or `run_app` within a Modal `local_entrypoint`"
