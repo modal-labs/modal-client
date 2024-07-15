@@ -161,7 +161,7 @@ class OutputManager:
         show_progress: bool = True,
         status_spinner_text: str = "Running app...",
     ):
-        self.stdout = stdout or sys.stdout
+        self._stdout = stdout or sys.stdout
         self._visible_progress = show_progress
         self._console = Console(file=stdout, highlight=False)
         self._task_states = {}
@@ -347,7 +347,7 @@ class OutputManager:
                 stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
                 self._line_buffers[log.file_descriptor] = stream
             stream.write(log.data)
-        elif hasattr(self.stdout, "buffer"):
+        elif hasattr(self._stdout, "buffer"):
             # If we're not showing progress, there's no need to buffer lines,
             # because the progress spinner can't interfere with output.
 
@@ -356,8 +356,8 @@ class OutputManager:
             n_retries = 0
             while written < len(data):
                 try:
-                    written += self.stdout.buffer.write(data[written:])
-                    self.stdout.flush()
+                    written += self._stdout.buffer.write(data[written:])
+                    self._stdout.flush()
                 except BlockingIOError:
                     if n_retries >= 5:
                         raise
@@ -366,8 +366,8 @@ class OutputManager:
         else:
             # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
             # io.StringIO).
-            self.stdout.write(log.data)
-            self.stdout.flush()
+            self._stdout.write(log.data)
+            self._stdout.flush()
 
     def flush_lines(self):
         for stream in self._line_buffers.values():
