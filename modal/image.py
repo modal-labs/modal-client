@@ -9,7 +9,7 @@ import warnings
 from dataclasses import dataclass
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, get_args
+from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, get_args
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -28,7 +28,7 @@ from .exception import InvalidError, NotFoundError, RemoteError, VersionError, d
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
-from .object import _Object
+from .object import _Object, live_method_gen
 from .secret import _Secret
 from .volume import _Volume
 
@@ -572,6 +572,7 @@ class _Image(_Object, type_prefix="im"):
                 "flash-attn==2.5.8", extra_options="--no-build-isolation"
             )
         )
+        ```
         """
         pkgs = _flatten_str_args("pip_install", "packages", packages)
         if not pkgs:
@@ -1674,6 +1675,26 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         deprecation_error((2023, 12, 15), Image.run_inside.__doc__)
+
+    @live_method_gen
+    async def _logs(self) -> AsyncGenerator[str, None]:
+        """Streams logs from an image, or returns logs from an already completed image.
+
+        This method is considered private since its interface may change - use it at your own risk!
+        """
+        last_entry_id: Optional[str] = None
+
+        request = api_pb2.ImageJoinStreamingRequest(
+            image_id=self._object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
+        )
+        async for response in unary_stream(self._client.stub.ImageJoinStreaming, request):
+            if response.result.status:
+                return
+            if response.entry_id:
+                last_entry_id = response.entry_id
+            for task_log in response.task_logs:
+                if task_log.data:
+                    yield task_log.data
 
 
 Image = synchronize_api(_Image)
