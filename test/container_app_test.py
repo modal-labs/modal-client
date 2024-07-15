@@ -4,6 +4,7 @@ import os
 import pytest
 from typing import Dict
 from unittest import mock
+import asyncio
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -79,6 +80,8 @@ async def test_container_snapshot_restore_heartbeats(container_client, tmpdir, s
         encoding="utf-8",
     )
 
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
     # Ensure that heartbeats do not run before the snapshot
     # Ensure that heartbeats do run after the snapshot
     with io_manager.heartbeats(True):
@@ -87,6 +90,8 @@ async def test_container_snapshot_restore_heartbeats(container_client, tmpdir, s
         ):
             with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
                 with mock.patch.object(container_client.stub, 'ContainerHeartbeat') as mock_heartbeat:
+
+                    await asyncio.sleep(2)
                     mock_heartbeat.assert_not_called()
                     io_manager.memory_snapshot()
                     mock_heartbeat.assert_called_once()
