@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+from modal.client import _Client
 import pytest
 from typing import Dict
 from unittest import mock
@@ -10,7 +11,7 @@ from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 
 from modal import App, interact
-from modal._container_io_manager import ContainerIOManager
+from modal._container_io_manager import ContainerIOManager, _ContainerIOManager
 from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
@@ -66,31 +67,32 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
         assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
 
 @pytest.mark.asyncio
-async def test_container_snapshot_restore_heartbeats(container_client, tmpdir, servicer):
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
-    restore_path = tmpdir.join("fake-restore-state.json")
-    restore_path.write_text(
-        json.dumps(
-            {
-                "task_id": "ta-i-am-restored",
-                "task_secret": "ts-i-am-restored",
-                "function_id": "fu-i-am-restored",
-            }
-        ),
-        encoding="utf-8",
-    )
+async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
+    async with _Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as async_client:
+        io_manager = _ContainerIOManager(api_pb2.ContainerArguments(), async_client)
+        restore_path = tmpdir.join("fake-restore-state.json")
+        restore_path.write_text(
+            json.dumps(
+                {
+                    "task_id": "ta-i-am-restored",
+                    "task_secret": "ts-i-am-restored",
+                    "function_id": "fu-i-am-restored",
+                }
+            ),
+            encoding="utf-8",
+        )
 
-    # Ensure that heartbeats do not run before the snapshot
-    # Ensure that heartbeats do run after the snapshot
-    with io_manager.heartbeats(True):
-        with mock.patch.dict(
-            os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
-        ):
-            with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
-                with mock.patch.object(container_client.stub, 'ContainerHeartbeat') as mock_heartbeat:
-                    mock_heartbeat.assert_not_called()
-                    await io_manager.memory_snapshot()
-                    mock_heartbeat.assert_called_once()
+        # Ensure that heartbeats do not run before the snapshot
+        # Ensure that heartbeats do run after the snapshot
+        async with io_manager.heartbeats(True):
+            with mock.patch.dict(
+                os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
+            ):
+                with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
+                    with mock.patch.object(async_client.stub, 'ContainerHeartbeat') as mock_heartbeat:
+                        mock_heartbeat.assert_not_called()
+                        await io_manager.memory_snapshot()
+                        mock_heartbeat.assert_called_once()
 
 
 @pytest.mark.asyncio
