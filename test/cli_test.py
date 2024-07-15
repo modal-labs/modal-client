@@ -439,14 +439,14 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 
-@pytest.mark.parametrize(("platform", "expected_exit_code"), [("win32", 1), ("cygwin", 1), ("linux", 0), ("darwin", 0)])
-@skip_windows("modal shell is not supported on Windows.")
-def test_shell_cmd_fails_on_windows(
-    servicer, set_env_client, mock_shell_pty, monkeypatch, platform, expected_exit_code
-):
-    # sys.platform values
+def test_shell_cmd_fails_on_windows(servicer, set_env_client, mock_shell_pty):
     # https://docs.python.org/3/library/sys.html#sys.platform
-    monkeypatch.setattr("sys.platform", platform)
+    if sys.platform in ("cygwin", "win32"):
+        expected_exit_code = 1
+        print(f"sys.platform={sys.platform}")
+    else:
+        expected_exit_code = 0
+
     res = _run(["shell"], expected_exit_code=expected_exit_code)
 
     if expected_exit_code != 0:
