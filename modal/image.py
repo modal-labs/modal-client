@@ -572,6 +572,7 @@ class _Image(_Object, type_prefix="im"):
                 "flash-attn==2.5.8", extra_options="--no-build-isolation"
             )
         )
+        ```
         """
         pkgs = _flatten_str_args("pip_install", "packages", packages)
         if not pkgs:
@@ -1676,7 +1677,11 @@ class _Image(_Object, type_prefix="im"):
         deprecation_error((2023, 12, 15), Image.run_inside.__doc__)
 
     @live_method_gen
-    async def logs(self) -> AsyncGenerator[str, None]:
+    async def _logs(self) -> AsyncGenerator[str, None]:
+        """Streams logs from an image, or returns logs from an already completed image.
+
+        This method is considered private since its interface may change - use it at your own risk!
+        """
         last_entry_id: Optional[str] = None
 
         request = api_pb2.ImageJoinStreamingRequest(
