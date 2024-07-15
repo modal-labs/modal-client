@@ -78,3 +78,4 @@ async def test_heartbeats(app_ref, server_url_env, servicer):
     # Typically [0s, 1s, 2s, 3s], but asyncio.sleep may lag.
     actual_heartbeats = servicer.app_heartbeats[apps[0]]
     assert abs(actual_heartbeats - (total_secs + 1)) <= 1
+

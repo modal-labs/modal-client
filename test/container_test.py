@@ -819,6 +819,9 @@ def test_container_heartbeats(servicer):
     _run_container(servicer, "test.supports.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in servicer.requests)
 
+    _run_container(servicer, "test.supports.functions", "snapshotting_square")
+    assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in servicer.requests)
+
 
 @skip_github_non_linux
 def test_cli(servicer):

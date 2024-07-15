@@ -414,6 +414,11 @@ class CheckpointingCls:
         return "".join(self._vals) + x
 
 
+@app.function(enable_memory_snapshot=True)
+def snapshotting_square(x):
+    return x * x
+
+
 @app.cls()
 class EventLoopCls:
     @enter()

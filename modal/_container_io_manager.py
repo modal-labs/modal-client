@@ -196,11 +196,11 @@ class _ContainerIOManager:
         return False
 
     @asynccontextmanager
-    async def heartbeats(self, enable: bool) -> AsyncGenerator[None, None]:
+    async def heartbeats(self, disable_init: bool) -> AsyncGenerator[None, None]:
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")
-            self._waiting_for_memory_snapshot = enable
+            self._waiting_for_memory_snapshot = disable_init
             try:
                 yield
             finally:
