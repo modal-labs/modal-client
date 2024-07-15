@@ -2,6 +2,7 @@
 import asyncio
 import functools
 import inspect
+import platform
 import re
 import shlex
 import sys
@@ -387,6 +388,9 @@ def shell(
     console = Console()
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
+
+    if platform.system() == "Windows":
+        raise InvalidError("`modal shell` is currently not supported on Windows")
 
     app = App("modal shell")
 
