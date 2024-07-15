@@ -228,8 +228,6 @@ async def _run_app(
         client = await _Client.from_env()
     if output_mgr is None:
         output_mgr = OutputManager(show_progress=show_progress)
-    if shell:
-        output_mgr._visible_progress = False
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     running_app: RunningApp = await _init_local_app_new(
         client,
@@ -504,7 +502,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
     **kwargs will be passed into spawn_sandbox().
     """
     client = await _Client.from_env()
-    async with _run_app(_app, client, environment_name=environment_name, shell=True):
+    async with _run_app(_app, client, environment_name=environment_name, shell=True, show_progress=False):
         console = Console()
         loading_status = console.status("Starting container...")
         loading_status.start()

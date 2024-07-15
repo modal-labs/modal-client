@@ -175,6 +175,9 @@ class OutputManager:
         self._app_page_url = None
         self._show_image_logs = False
 
+    def hide_output(self):
+        self._visible_progress = False
+
     def print_if_visible(self, renderable) -> None:
         if self._visible_progress:
             self._console.print(renderable)
@@ -470,7 +473,7 @@ async def get_app_logs_loop(
                 else:
                     output_mgr.flush_lines()
                     output_mgr.hide_status_spinner()
-                    output_mgr._visible_progress = False
+                    output_mgr.hide_output()
                     pty_shell_finish_event = asyncio.Event()
                     pty_shell_task_id = log_batch.task_id
                     asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
