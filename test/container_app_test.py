@@ -60,10 +60,9 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
     with mock.patch.dict(
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
     ):
-        with io_manager.heartbeats():
-            io_manager.memory_snapshot()
-            # In-memory Client instance should have update credentials, not old credentials
-            assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
+        io_manager.memory_snapshot()
+        # In-memory Client instance should have update credentials, not old credentials
+        assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
 
 
 @pytest.mark.asyncio
@@ -83,9 +82,8 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
         with mock.patch.dict(
             os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
         ):
-            with io_manager.heartbeats():
-                io_manager.memory_snapshot()
-                test_breakpoint.assert_called_once()
+            io_manager.memory_snapshot()
+            test_breakpoint.assert_called_once()
 
 
 @pytest.fixture(scope="function")
@@ -144,11 +142,10 @@ async def test_container_snapshot_patching(fake_torch_module, container_client, 
     with mock.patch.dict(
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
     ):
-        with io_manager.heartbeats():
-            io_manager.memory_snapshot()
-            import torch
+        io_manager.memory_snapshot()
+        import torch
 
-            assert torch.cuda.device_count() == 2
+        assert torch.cuda.device_count() == 2
 
 
 @pytest.mark.asyncio
@@ -175,8 +172,7 @@ async def test_container_snapshot_patching_err(weird_torch_module, container_cli
     with mock.patch.dict(
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
     ):
-        with io_manager.heartbeats():
-            io_manager.memory_snapshot()  # should not crash
+        io_manager.memory_snapshot()  # should not crash
 
 
 def test_interact(container_client, servicer):

@@ -76,6 +76,7 @@ class _ContainerIOManager:
     _waiting_for_memory_snapshot: bool
     _heartbeat_loop: Optional[asyncio.Task]
     _pause_heartbeats: Optional[asyncio.Condition]
+    _snapshot_running: bool
 
     _is_interactivity_enabled: bool
     _fetching_inputs: bool
@@ -104,7 +105,8 @@ class _ContainerIOManager:
         self._environment_name = container_args.environment_name
         self._waiting_for_memory_snapshot = False
         self._heartbeat_loop = None
-        self._pause_heartbeats = None
+        self._pause_heartbeats = asyncio.Condition()
+        self._snapshot_running = False
 
         self._is_interactivity_enabled = False
         self._fetching_inputs = True
@@ -161,11 +163,15 @@ class _ContainerIOManager:
             request.current_input_started_at = self.current_input_started_at
 
         async with self._pause_heartbeats:
-            await self._pause_heartbeats.wait()
+            print("heartbeat acquired lock")
+            while self._snapshot_running:
+                await self._pause_heartbeats.wait()
+
             # TODO(erikbern): capture exceptions?
             response = await retry_transient_errors(
                 self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
             )
+        print("heartbeat released lock")
 
         if response.HasField("cancel_input_event"):
             # Pause processing of the current input by signaling self a SIGUSR1.
@@ -203,7 +209,7 @@ class _ContainerIOManager:
     async def heartbeats(self) -> AsyncGenerator[None, None]:
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
-            self._pause_heartbeats = asyncio.Condition()
+            self._snapshot_running = False
             t.set_name("heartbeat loop")
             try:
                 yield
@@ -579,6 +585,13 @@ class _ContainerIOManager:
             await asyncio.sleep(0.01)
             continue
 
+        # Turn heartbeats back on
+        async with self._pause_heartbeats:
+            print("restore acquired lock")
+            self._snapshot_running = False
+            self._pause_heartbeats.notify_all()
+        print("restore released lock")
+
         logger.debug("Container: restored")
 
         # Look for state file and create new client with updated credentials.
@@ -631,9 +644,14 @@ class _ContainerIOManager:
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self._pause_heartbeats:
-            await self._client.stub.ContainerCheckpoint(
-                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
-            )
+            print("snapshot acquired lock")
+            self._snapshot_running = True
+            self._pause_heartbeats.notify_all()
+
+        await self._client.stub.ContainerCheckpoint(
+            api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+        )
+        print("snapshot sent request")
 
         self._waiting_for_memory_snapshot = True
         await self._client._close(forget_credentials=True)
