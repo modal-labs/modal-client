@@ -1,8 +1,6 @@
 # Copyright Modal Labs 2022
-import asyncio
 import json
 import os
-from modal.client import _Client
 import pytest
 from typing import Dict
 from unittest import mock
@@ -12,6 +10,7 @@ from google.protobuf.message import Message
 
 from modal import App, interact
 from modal._container_io_manager import ContainerIOManager, _ContainerIOManager
+from modal.client import _Client
 from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
@@ -66,9 +65,11 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
         # In-memory Client instance should have update credentials, not old credentials
         assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
 
+
 @pytest.mark.asyncio
 async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
-    async with _Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as async_client:
+    client = _Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret"))
+    async with client as async_client:
         io_manager = _ContainerIOManager(api_pb2.ContainerArguments(), async_client)
         restore_path = tmpdir.join("fake-restore-state.json")
         restore_path.write_text(
@@ -86,12 +87,17 @@ async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
         # Ensure that heartbeats do run after the snapshot
         async with io_manager.heartbeats(True):
             with mock.patch.dict(
-                os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
+                os.environ,
+                {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
             ):
                 with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
-                    assert not list(filter(lambda req : isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests))
+                    assert not list(
+                        filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
+                    )
                     await io_manager.memory_snapshot()
-                    assert list(filter(lambda req : isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests))
+                    assert list(
+                        filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
+                    )
 
 
 @pytest.mark.asyncio
