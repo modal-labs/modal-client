@@ -169,13 +169,13 @@ class Resolver:
     def display(self):
         from ._output import step_completed
 
-        if self._output_mgr is None:
+        if self._output_mgr is None or not self._output_mgr.is_visible():
             yield
         else:
-            with self._output_mgr.ctx_if_visible(self._output_mgr.make_live(self._tree)):
+            with self._output_mgr.make_live(self._tree):
                 yield
             self._tree.label = step_completed("Created objects.")
-            self._output_mgr.print_if_visible(self._tree)
+            self._output_mgr.print(self._tree)
 
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._tree)

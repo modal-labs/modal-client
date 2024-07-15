@@ -244,12 +244,13 @@ async def _run_app(
             lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL, log_exception=not detach
         )
 
-        with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-            initialized_msg = (
-                f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
-            )
-            output_mgr.print_if_visible(step_completed(initialized_msg))
-            output_mgr.update_app_page_url(running_app.app_page_url)
+        if output_mgr.is_visible():
+            with output_mgr.make_live(step_progress("Initializing...")):
+                initialized_msg = (
+                    f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+                )
+                output_mgr.print(step_completed(initialized_msg))
+                output_mgr.update_app_page_url(running_app.app_page_url)
 
         # Start logs loop
         if not shell:
@@ -287,23 +288,26 @@ async def _run_app(
                 obj._set_mute_cancellation(True)
 
             if detach:
-                output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
-                output_mgr.print_if_visible(
-                    "The detached app keeps running. You can track its progress at: "
-                    f"[magenta]{running_app.app_page_url}[/magenta]"
-                    ""
-                )
+                if output_mgr.is_visible():
+                    output_mgr.print(step_completed("Shutting down Modal client."))
+                    output_mgr.print(
+                        "The detached app keeps running. You can track its progress at: "
+                        f"[magenta]{running_app.app_page_url}[/magenta]"
+                        ""
+                    )
                 if not shell:
                     logs_loop.cancel()
             else:
-                output_mgr.print_if_visible(
-                    step_completed(
-                        f"App aborted. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+                if output_mgr.is_visible():
+                    output_mgr.print(
+                        step_completed(
+                            "App aborted. "
+                            f"[grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+                        )
                     )
-                )
-                output_mgr.print_if_visible(
-                    "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
-                )
+                    output_mgr.print(
+                        "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
+                    )
         except BaseException as e:
             exc_info = e
             raise e
@@ -325,9 +329,12 @@ async def _run_app(
             await _disconnect(client, running_app.app_id, reason, exc_str)
             app._uncreate_all_objects()
 
-    output_mgr.print_if_visible(
-        step_completed(f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]")
-    )
+    if output_mgr.is_visible():
+        output_mgr.print(
+            step_completed(
+                f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+            )
+        )
 
 
 async def _serve_update(
@@ -473,8 +480,9 @@ async def _deploy_app(
             await _disconnect(client, running_app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
-    output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
-    output_mgr.print_if_visible(f"\nView Deployment: [magenta]{url}[/magenta]")
+    if output_mgr.is_visible():
+        output_mgr.print(step_completed("App deployed! 🎉"))
+        output_mgr.print(f"\nView Deployment: [magenta]{url}[/magenta]")
     return DeployResult(app_id=running_app.app_id)
 
 
