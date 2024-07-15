@@ -154,7 +154,12 @@ class OutputManager:
     _show_image_logs: bool
     _status_spinner_live: Optional[Live]
 
-    def __init__(self, stdout: io.TextIOWrapper, show_progress: bool, status_spinner_text: str = "Running app..."):
+    def __init__(
+        self,
+        stdout: Optional[io.TextIOWrapper] = None,
+        show_progress: bool = True,
+        status_spinner_text: str = "Running app...",
+    ):
         self.stdout = stdout or sys.stdout
 
         self._visible_progress = show_progress
