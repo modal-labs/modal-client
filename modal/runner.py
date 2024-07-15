@@ -2,7 +2,6 @@
 import asyncio
 import dataclasses
 import os
-from io import TextIOWrapper
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Coroutine, Dict, List, Optional, TypeVar
 
@@ -192,7 +191,6 @@ async def _disconnect(
 async def _run_app(
     app: _App,
     client: Optional[_Client] = None,
-    stdout: Optional[TextIOWrapper] = None,
     show_progress: bool = True,
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
@@ -229,9 +227,7 @@ async def _run_app(
     if client is None:
         client = await _Client.from_env()
     if output_mgr is None:
-        output_mgr = OutputManager(stdout, show_progress, "Running app...")
-    if shell:
-        output_mgr._visible_progress = False
+        output_mgr = OutputManager(show_progress=show_progress)
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     running_app: RunningApp = await _init_local_app_new(
         client,
@@ -347,7 +343,7 @@ async def _serve_update(
         running_app: RunningApp = await _init_local_app_existing(client, existing_app_id)
 
         # Create objects
-        output_mgr = OutputManager(None, True)
+        output_mgr = OutputManager()
         await _create_all_objects(
             client,
             running_app,
@@ -376,7 +372,6 @@ async def _deploy_app(
     name: Optional[str] = None,
     namespace: Any = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client: Optional[_Client] = None,
-    stdout: Optional[TextIOWrapper] = None,
     show_progress: bool = True,
     environment_name: Optional[str] = None,
     tag: Optional[str] = None,
@@ -430,7 +425,7 @@ async def _deploy_app(
     if client is None:
         client = await _Client.from_env()
 
-    output_mgr = OutputManager(stdout, show_progress)
+    output_mgr = OutputManager(show_progress=show_progress)
 
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
@@ -507,7 +502,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
     **kwargs will be passed into spawn_sandbox().
     """
     client = await _Client.from_env()
-    async with _run_app(_app, client, environment_name=environment_name, shell=True):
+    async with _run_app(_app, client, environment_name=environment_name, shell=True, show_progress=False):
         console = Console()
         loading_status = console.status("Starting container...")
         loading_status.start()

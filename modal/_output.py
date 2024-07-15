@@ -154,9 +154,14 @@ class OutputManager:
     _show_image_logs: bool
     _status_spinner_live: Optional[Live]
 
-    def __init__(self, stdout: io.TextIOWrapper, show_progress: bool, status_spinner_text: str = "Running app..."):
-        self.stdout = stdout or sys.stdout
-
+    def __init__(
+        self,
+        *,
+        stdout: Optional[io.TextIOWrapper] = None,
+        show_progress: bool = True,
+        status_spinner_text: str = "Running app...",
+    ):
+        self._stdout = stdout or sys.stdout
         self._visible_progress = show_progress
         self._console = Console(file=stdout, highlight=False)
         self._task_states = {}
@@ -169,6 +174,9 @@ class OutputManager:
         self._status_spinner = step_progress(status_spinner_text)
         self._app_page_url = None
         self._show_image_logs = False
+
+    def hide_output(self):
+        self._visible_progress = False
 
     def print_if_visible(self, renderable) -> None:
         if self._visible_progress:
@@ -342,7 +350,7 @@ class OutputManager:
                 stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
                 self._line_buffers[log.file_descriptor] = stream
             stream.write(log.data)
-        elif hasattr(self.stdout, "buffer"):
+        elif hasattr(self._stdout, "buffer"):
             # If we're not showing progress, there's no need to buffer lines,
             # because the progress spinner can't interfere with output.
 
@@ -351,8 +359,8 @@ class OutputManager:
             n_retries = 0
             while written < len(data):
                 try:
-                    written += self.stdout.buffer.write(data[written:])
-                    self.stdout.flush()
+                    written += self._stdout.buffer.write(data[written:])
+                    self._stdout.flush()
                 except BlockingIOError:
                     if n_retries >= 5:
                         raise
@@ -361,8 +369,8 @@ class OutputManager:
         else:
             # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
             # io.StringIO).
-            self.stdout.write(log.data)
-            self.stdout.flush()
+            self._stdout.write(log.data)
+            self._stdout.flush()
 
     def flush_lines(self):
         for stream in self._line_buffers.values():
@@ -577,7 +585,7 @@ async def get_app_logs_loop(
                 else:
                     output_mgr.flush_lines()
                     output_mgr.hide_status_spinner()
-                    output_mgr._visible_progress = False
+                    output_mgr.hide_output()
                     pty_shell_finish_event = asyncio.Event()
                     pty_shell_task_id = log_batch.task_id
                     asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
