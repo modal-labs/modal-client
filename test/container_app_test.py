@@ -1,10 +1,10 @@
 # Copyright Modal Labs 2022
+import asyncio
 import json
 import os
 import pytest
 from typing import Dict
 from unittest import mock
-import asyncio
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -59,7 +59,7 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
         encoding="utf-8",
     )
     with mock.patch.dict(
-        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
     ):
         io_manager.memory_snapshot()
         # In-memory Client instance should have update credentials, not old credentials

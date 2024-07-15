@@ -183,7 +183,7 @@ async def test_warn_if_generator_is_not_consumed(caplog):
     assert "list" in caplog.text
 
 
-@pytest.mark.asyncio
+@pytest.mark
 def test_warn_if_generator_is_not_consumed_sync(caplog):
     @warn_if_generator_is_not_consumed()
     def my_generator():
