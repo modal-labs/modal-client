@@ -79,7 +79,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
             if msg["type"] == "http.response.body":
                 body_chunk_size = MAX_OBJECT_SIZE_BYTES - 1024  # reserve 1 KiB for framing
                 body_chunk_limit = 20 * body_chunk_size
-                s3_chunk_size = 150 * body_chunk_size
+                s3_chunk_size = 50 * body_chunk_size
 
                 size = len(msg.get("body", b""))
                 if size <= body_chunk_limit:
