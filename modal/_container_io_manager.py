@@ -73,7 +73,6 @@ class _ContainerIOManager:
     _input_concurrency: Optional[int]
     _semaphore: Optional[asyncio.Semaphore]
     _environment_name: str
-    _waiting_for_memory_snapshot: bool
     _heartbeat_loop: Optional[asyncio.Task]
     _pause_heartbeats: Optional[asyncio.Condition]
     _snapshot_running: bool
@@ -103,7 +102,6 @@ class _ContainerIOManager:
 
         self._semaphore = None
         self._environment_name = container_args.environment_name
-        self._waiting_for_memory_snapshot = False
         self._heartbeat_loop = None
         self._pause_heartbeats = asyncio.Condition()
 
@@ -148,12 +146,6 @@ class _ContainerIOManager:
     async def _heartbeat_handle_cancellations(self) -> bool:
         # Return True if a cancellation event was received, in that case
         # we shouldn't wait too long for another heartbeat
-
-        # Don't send heartbeats for tasks waiting to be checkpointed.
-        # Calling gRPC methods open new connections which block the
-        # checkpointing process.
-        if self._waiting_for_memory_snapshot:
-            return False
 
         request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
         if self.current_input_id is not None:
@@ -630,7 +622,6 @@ class _ContainerIOManager:
                 )
 
         self._client = await _Client.from_env()
-        self._waiting_for_memory_snapshot = False
 
     async def memory_snapshot(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
@@ -646,7 +637,6 @@ class _ContainerIOManager:
             api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
         )
 
-        self._waiting_for_memory_snapshot = True
         await self._client._close(forget_credentials=True)
 
         logger.debug("Memory snapshot request sent. Connection closed.")
