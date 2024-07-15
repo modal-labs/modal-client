@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import json
 import os
 import pytest
@@ -95,6 +96,7 @@ async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
                         filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
                     )
                     await io_manager.memory_snapshot()
+                    await asyncio.sleep(1)
                     assert list(
                         filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
                     )
