@@ -89,9 +89,9 @@ async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
                 os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
             ):
                 with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
-                    assert servicer.n_sent_heartbeats == 0
+                    assert not list(filter(lambda req : isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests))
                     await io_manager.memory_snapshot()
-                    assert servicer.n_sent_heartbeats > 0
+                    assert list(filter(lambda req : isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests))
 
 
 @pytest.mark.asyncio
