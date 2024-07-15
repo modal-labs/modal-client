@@ -790,7 +790,7 @@ def test_checkpointing_cls_function(servicer):
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "CheckpointingCls.*",
+        "SnapshottingCls.*",
         inputs=_get_inputs((("D",), {}), method_name="f"),
         is_checkpointing_function=True,
         is_class=True,

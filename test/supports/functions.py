@@ -393,7 +393,7 @@ class BuildCls:
 
 
 @app.cls(enable_memory_snapshot=True)
-class CheckpointingCls:
+class SnapshottingCls:
     def __init__(self):
         self._vals = []
 
