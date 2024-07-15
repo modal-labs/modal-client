@@ -1120,3 +1120,15 @@ def test_image_parallel_build(builder_version, servicer, client):
         ctx.set_responder("ImageJoinStreaming", MockImageJoinStreaming)
         with parallel_app.run(client=client):
             pass
+
+
+@pytest.mark.asyncio
+async def test_logs(servicer, client):
+    app = App()
+    image = Image.debian_slim().pip_install("foobarbaz")
+    app.function(image=image)(dummy)
+    async with app.run.aio(client=client):
+        pass
+
+    logs = [data async for data in image._logs.aio()]
+    assert logs == ["build starting\n", "build finished\n"]

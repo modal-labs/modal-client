@@ -355,3 +355,14 @@ def test_deploy_stub(servicer, client):
     deploy_app(app, client=client)
     with pytest.warns(match="deploy_app"):
         deploy_stub(app, client=client)
+
+
+def test_app_logs(servicer, client):
+    app = App()
+    f = app.function()(dummy)
+
+    with app.run(client=client):
+        f.remote()
+
+    logs = [data for data in app._logs(client=client)]
+    assert logs == ["hello, world (1)\n"]

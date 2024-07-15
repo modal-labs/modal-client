@@ -43,7 +43,7 @@ async def container_exec(task_id: str, command: List[str], *, pty: bool, client:
     except GRPCError as err:
         connecting_status.stop()
         if err.status == Status.NOT_FOUND:
-            raise NotFoundError(f"Container ID {task_id} not found")
+            raise NotFoundError(err.message)
         raise
 
     await connect_to_exec(res.exec_id, pty, connecting_status)
