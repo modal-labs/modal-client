@@ -133,7 +133,7 @@ class _App:
 
     # Running apps only (container apps or running local)
     _app_id: Optional[str]  # Kept after app finishes
-    _running_app: Optional[RunningApp]  # various app info. TODO: bring it onto the app object instead.
+    _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
 
     def __init__(
