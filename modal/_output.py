@@ -341,33 +341,12 @@ class OutputManager:
             self._task_progress_items[task_key] = progress_task_id
 
     async def put_log_content(self, log: api_pb2.TaskLogs):
-        if self._visible_progress:
-            stream = self._line_buffers.get(log.file_descriptor)
-            if stream is None:
-                stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
-                self._line_buffers[log.file_descriptor] = stream
-            stream.write(log.data)
-        elif hasattr(self._stdout, "buffer"):
-            # If we're not showing progress, there's no need to buffer lines,
-            # because the progress spinner can't interfere with output.
-
-            data = log.data.encode("utf-8")
-            written = 0
-            n_retries = 0
-            while written < len(data):
-                try:
-                    written += self._stdout.buffer.write(data[written:])
-                    self._stdout.flush()
-                except BlockingIOError:
-                    if n_retries >= 5:
-                        raise
-                    n_retries += 1
-                    await asyncio.sleep(0.1)
-        else:
-            # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
-            # io.StringIO).
-            self._stdout.write(log.data)
-            self._stdout.flush()
+        assert self._visible_progress  # Caller's responsibility
+        stream = self._line_buffers.get(log.file_descriptor)
+        if stream is None:
+            stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
+            self._line_buffers[log.file_descriptor] = stream
+        stream.write(log.data)
 
     def flush_lines(self):
         for stream in self._line_buffers.values():
@@ -439,7 +418,8 @@ async def get_app_logs_loop(
             else:  # Ensure forward-compatible with new types.
                 logger.debug(f"Received unrecognized progress type: {log.task_progress.progress_type}")
         elif log.data:
-            await output_mgr.put_log_content(log)
+            if output_mgr.is_visible():
+                await output_mgr.put_log_content(log)
 
     async def _get_logs():
         nonlocal last_log_batch_entry_id, pty_shell_finish_event, pty_shell_task_id
@@ -471,6 +451,7 @@ async def get_app_logs_loop(
                 if pty_shell_finish_event:
                     print("ERROR: concurrent PTY shells are not supported.")
                 else:
+                    # TODO(erikbern): we should just break the loop here
                     output_mgr.flush_lines()
                     output_mgr.hide_status_spinner()
                     output_mgr.hide_output()
