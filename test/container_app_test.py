@@ -66,10 +66,8 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
 
 @pytest.mark.asyncio
 async def test_container_snapshot_restore_heartbeats(container_client, tmpdir, servicer):
-    # Get a reference to a Client instance in memory
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = tmpdir.join("fake-restore-state.json")
-    # Write out a restore file so that snapshot+restore will complete
     restore_path.write_text(
         json.dumps(
             {
@@ -81,15 +79,17 @@ async def test_container_snapshot_restore_heartbeats(container_client, tmpdir, s
         encoding="utf-8",
     )
 
+    # Ensure that heartbeats do not run before the snapshot
+    # Ensure that heartbeats do run after the snapshot
     with io_manager.heartbeats(True):
         with mock.patch.dict(
             os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
         ):
-            with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 0.5):
+            with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
                 with mock.patch.object(container_client.stub, 'ContainerHeartbeat') as mock_heartbeat:
+                    mock_heartbeat.assert_not_called()
                     io_manager.memory_snapshot()
-                    assert not mock_heartbeat.assert_called_once()
-
+                    mock_heartbeat.assert_called_once()
 
 
 @pytest.mark.asyncio
