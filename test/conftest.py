@@ -106,6 +106,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_queue_heartbeats = 0
         self.n_nfs_heartbeats = 0
         self.n_vol_heartbeats = 0
+        self.n_sent_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
         self.mount_contents = {}
@@ -464,6 +465,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if self.container_heartbeat_response:
             await stream.send_message(self.container_heartbeat_response)
             self.container_heartbeat_response = None
+            self.n_sent_heartbeats += 1
         else:
             await stream.send_message(api_pb2.ContainerHeartbeatResponse())
 
