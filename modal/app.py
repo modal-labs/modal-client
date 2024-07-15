@@ -16,6 +16,7 @@ from ._ipython import is_notebook
 from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
+from ._utils.grpc_utils import unary_stream
 from ._utils.mount_utils import validate_volumes
 from .app_utils import (  # noqa: F401
     _list_apps,
@@ -117,6 +118,8 @@ class _App:
     In this example, the secret and schedule are registered with the app.
     """
 
+    _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
+
     _name: Optional[str]
     _description: Optional[str]
     _indexed_objects: Dict[str, _Object]
@@ -127,9 +130,11 @@ class _App:
     _volumes: Dict[Union[str, PurePosixPath], _Volume]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, _LocalEntrypoint]
-    _running_app: Optional[RunningApp]
+
+    # Running apps only (container apps or running local)
+    _app_id: Optional[str]  # Kept after app finishes
+    _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
-    _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
 
     def __init__(
         self,
@@ -170,6 +175,8 @@ class _App:
         self._volumes = volumes
         self._local_entrypoints = {}
         self._web_endpoints = []
+
+        self._app_id = None
         self._running_app = None  # Set inside container, OR during the time an app is running locally
         self._client = None
 
@@ -192,11 +199,8 @@ class _App:
 
     @property
     def app_id(self) -> Optional[str]:
-        """Return the app_id, if the app is running."""
-        if self._running_app:
-            return self._running_app.app_id
-        else:
-            return None
+        """Return the app_id of a running or stopped app."""
+        return self._app_id
 
     @property
     def description(self) -> Optional[str]:
@@ -287,14 +291,15 @@ class _App:
         deprecation_error((2023, 11, 8), _App.is_inside.__doc__)
 
     @asynccontextmanager
-    async def _set_local_app(self, client: _Client, app: RunningApp) -> AsyncGenerator[None, None]:
+    async def _set_local_app(self, client: _Client, running_app: RunningApp) -> AsyncGenerator[None, None]:
+        self._app_id = running_app.app_id
+        self._running_app = running_app
         self._client = client
-        self._running_app = app
         try:
             yield
         finally:
-            self._client = None
             self._running_app = None
+            self._client = None
 
     @asynccontextmanager
     async def run(
@@ -353,8 +358,9 @@ class _App:
             self._web_endpoints.append(function.tag)
 
     def _init_container(self, client: _Client, running_app: RunningApp):
-        self._client = client
+        self._app_id = running_app.app_id
         self._running_app = running_app
+        self._client = client
 
         # Hydrate objects on app
         for tag, object_id in running_app.tag_to_object_id.items():
@@ -883,6 +889,33 @@ class _App:
                 )
 
             self._add_object(tag, object)
+
+    async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
+        """Stream logs from the app.
+
+        This method is considered private and its interface may change - use at your own risk!
+        """
+        if not self._app_id:
+            raise InvalidError("`app._logs` requires a running/stopped app.")
+
+        client = client or self._client or await _Client.from_env()
+
+        last_log_batch_entry_id: Optional[str] = None
+        while True:
+            request = api_pb2.AppGetLogsRequest(
+                app_id=self._app_id,
+                timeout=55,
+                last_entry_id=last_log_batch_entry_id,
+            )
+            async for log_batch in unary_stream(client.stub.AppGetLogs, request):
+                if log_batch.entry_id:
+                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
+                    last_log_batch_entry_id = log_batch.entry_id
+                if log_batch.app_done:
+                    return
+                for log in log_batch.items:
+                    if log.data:
+                        yield log.data
 
 
 App = synchronize_api(_App)
