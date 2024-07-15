@@ -75,7 +75,7 @@ class _ContainerIOManager:
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
     _pause_heartbeats: Optional[asyncio.Condition]
-    _snapshot_running: bool
+    _waiting_for_memory_snapshot: bool
 
     _is_interactivity_enabled: bool
     _fetching_inputs: bool
@@ -104,6 +104,7 @@ class _ContainerIOManager:
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
         self._pause_heartbeats = asyncio.Condition()
+        self._waiting_for_memory_snapshot = False
 
         self._is_interactivity_enabled = False
         self._fetching_inputs = True
@@ -154,7 +155,7 @@ class _ContainerIOManager:
             request.current_input_started_at = self.current_input_started_at
 
         async with self._pause_heartbeats:
-            while self._snapshot_running:
+            while self._waiting_for_memory_snapshot:
                 await self._pause_heartbeats.wait()
 
             # TODO(erikbern): capture exceptions?
@@ -199,7 +200,7 @@ class _ContainerIOManager:
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")
-            self._snapshot_running = enable
+            self._waiting_for_memory_snapshot = enable
             try:
                 yield
             finally:
@@ -576,7 +577,7 @@ class _ContainerIOManager:
 
         # Turn heartbeats back on
         async with self._pause_heartbeats:
-            self._snapshot_running = False
+            self._waiting_for_memory_snapshot = False
             self._pause_heartbeats.notify_all()
 
         logger.debug("Container: restored")
@@ -630,7 +631,7 @@ class _ContainerIOManager:
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self._pause_heartbeats:
-            self._snapshot_running = True
+            self._waiting_for_memory_snapshot = True
             self._pause_heartbeats.notify_all()
 
         await self._client.stub.ContainerCheckpoint(
