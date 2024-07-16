@@ -319,6 +319,20 @@ message AppLookupResponse {
   string app_id = 1;
 }
 
+message AppPublishRequest {
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 2;
+  string deployment_tag = 3;  // Additional metadata to identify a deployment
+  AppState app_state = 4;  // Published app will be in this state
+  map<string, string> function_ids = 5;  // function_name -> function_id
+  map<string, string> class_ids = 6;  // class_name -> class_id
+  map<string, string> definition_ids = 7;  // function_id -> definition_id
+}
+
+message AppPublishResponse {
+  string url = 1;
+}
+
 message AppSetObjectsRequest {
   string app_id = 1;
   map<string, string> indexed_object_ids = 2;
@@ -2163,6 +2177,7 @@ service ModalClient {
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
+  rpc AppPublish(AppPublishRequest) returns (AppPublishResponse);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
 
