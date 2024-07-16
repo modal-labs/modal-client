@@ -74,7 +74,7 @@ class _ContainerIOManager:
     _semaphore: Optional[asyncio.Semaphore]
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
-    _pause_heartbeats: Optional[asyncio.Condition]
+    _heartbeat_condition: asyncio.Condition
     _waiting_for_memory_snapshot: bool
 
     _is_interactivity_enabled: bool
@@ -103,7 +103,7 @@ class _ContainerIOManager:
         self._semaphore = None
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
-        self._pause_heartbeats = asyncio.Condition()
+        self._heartbeat_condition = asyncio.Condition()
         self._waiting_for_memory_snapshot = False
 
         self._is_interactivity_enabled = False
@@ -154,9 +154,11 @@ class _ContainerIOManager:
         if self.current_input_started_at is not None:
             request.current_input_started_at = self.current_input_started_at
 
-        async with self._pause_heartbeats:
+        async with self._heartbeat_condition:
+            # Continuously wait until `waiting_for_memory_snapshot` is false. More efficient
+            # than a busy-wait since `.wait()` yields control
             while self._waiting_for_memory_snapshot:
-                await self._pause_heartbeats.wait()
+                await self._heartbeat_condition.wait()
 
             # TODO(erikbern): capture exceptions?
             response = await retry_transient_errors(
@@ -196,11 +198,11 @@ class _ContainerIOManager:
         return False
 
     @asynccontextmanager
-    async def heartbeats(self, disable_init: bool) -> AsyncGenerator[None, None]:
+    async def heartbeats(self, wait_for_mem_snap: bool) -> AsyncGenerator[None, None]:
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")
-            self._waiting_for_memory_snapshot = disable_init
+            self._waiting_for_memory_snapshot = wait_for_mem_snap
             try:
                 yield
             finally:
@@ -575,10 +577,11 @@ class _ContainerIOManager:
             await asyncio.sleep(0.01)
             continue
 
-        # Turn heartbeats back on
-        async with self._pause_heartbeats:
+        # Turn heartbeats back on. It is safe to do this here since the Snapshot RPC
+        # is certainly finished at this point.
+        async with self._heartbeat_condition:
             self._waiting_for_memory_snapshot = False
-            self._pause_heartbeats.notify_all()
+            self._heartbeat_condition.notify_all()
 
         logger.debug("Container: restored")
 
@@ -630,9 +633,9 @@ class _ContainerIOManager:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
-        async with self._pause_heartbeats:
+        async with self._heartbeat_condition:
             self._waiting_for_memory_snapshot = True
-            self._pause_heartbeats.notify_all()
+            self._heartbeat_condition.notify_all()
 
         await self._client.stub.ContainerCheckpoint(
             api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
