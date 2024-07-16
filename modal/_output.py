@@ -387,6 +387,118 @@ class OutputManager:
             self._status_spinner_live.stop()
 
 
+class ProgressHandler:
+    live: Live
+    _type: str
+    _spinner: Spinner
+    _overall_progress: Progress
+    _download_progress: Progress
+    _overall_progress_task_id: TaskID
+    _total_tasks: int
+    _completed_tasks: int
+
+    def __init__(self, type: str, console: Console):
+        self._type = type
+
+        if self._type == "download":
+            title = "Downloading file(s) to local..."
+        elif self._type == "upload":
+            title = "Uploading file(s) to volume..."
+        else:
+            raise NotImplementedError(f"Progress handler of type: `{type}` not yet implemented")
+
+        self._spinner = step_progress(title)
+
+        self._overall_progress = Progress(
+            TextColumn(f"[bold white]{title}", justify="right"),
+            TimeElapsedColumn(),
+            BarColumn(bar_width=None),
+            TextColumn("[bold white]{task.description}"),
+            transient=True,
+            console=console,
+        )
+        self._download_progress = Progress(
+            TextColumn("[bold white]{task.fields[path]}", justify="right"),
+            BarColumn(bar_width=None),
+            "[progress.percentage]{task.percentage:>3.1f}%",
+            "•",
+            DownloadColumn(),
+            "•",
+            TransferSpeedColumn(),
+            "•",
+            TimeRemainingColumn(),
+            transient=True,
+            console=console,
+        )
+
+        self.live = Live(
+            Group(self._spinner, self._overall_progress, self._download_progress), transient=True, refresh_per_second=4
+        )
+
+        self._overall_progress_task_id = self._overall_progress.add_task(".", start=True)
+        self._total_tasks = 0
+        self._completed_tasks = 0
+
+    def _add_sub_task(self, name: str, size: float) -> TaskID:
+        task_id = self._download_progress.add_task(self._type, path=name, start=True, total=size)
+        self._total_tasks += 1
+        self._overall_progress.update(self._overall_progress_task_id, total=self._total_tasks)
+        return task_id
+
+    def _reset_sub_task(self, task_id: TaskID):
+        self._download_progress.reset(task_id)
+
+    def _complete_progress(self):
+        # TODO: we could probably implement some callback progression from the server
+        # to get progress reports for the post processing too
+        # so we don't have to just spin here
+        self._overall_progress.remove_task(self._overall_progress_task_id)
+        self._spinner.update(text="Post processing...")
+
+    def _complete_sub_task(self, task_id: TaskID):
+        self._completed_tasks += 1
+        self._download_progress.remove_task(task_id)
+        self._overall_progress.update(
+            self._overall_progress_task_id,
+            advance=1,
+            description=f"({self._completed_tasks} out of {self._total_tasks} files completed)",
+        )
+
+    def _advance_sub_task(self, task_id: TaskID, advance: float):
+        self._download_progress.update(task_id, advance=advance)
+
+    def progress(
+        self,
+        task_id: Optional[TaskID] = None,
+        advance: Optional[float] = None,
+        name: Optional[str] = None,
+        size: Optional[float] = None,
+        reset: Optional[bool] = False,
+        complete: Optional[bool] = False,
+    ) -> Optional[TaskID]:
+        if task_id is not None:
+            if reset:
+                return self._reset_sub_task(task_id)
+            elif complete:
+                return self._complete_sub_task(task_id)
+            elif advance is not None:
+                return self._advance_sub_task(task_id, advance)
+        elif name is not None and size is not None:
+            return self._add_sub_task(name, size)
+        elif complete:
+            return self._complete_progress()
+
+        raise NotImplementedError(
+            "Unknown action to take with args: "
+            + f"name={name} "
+            + f"size={size} "
+            + f"task_id={task_id} "
+            + f"advance={advance} "
+            + f"reset={reset} "
+            + f"complete={complete} "
+        )
+
+
 async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: asyncio.Event):
     """
     Streams stdin to the given exec id until finish_event is triggered
