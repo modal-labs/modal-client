@@ -8,7 +8,7 @@ from aiostream import pipe, stream
 from grpclib import Status
 
 from modal._utils.async_utils import (
-    AsyncOrSyncIteratable,
+    AsyncOrSyncIterable,
     queue_batch_iterator,
     synchronize_api,
     synchronizer,
@@ -247,7 +247,7 @@ def _map_sync(
     kwargs={},  # any extra keyword arguments for the function
     order_outputs: bool = True,  # return outputs in order
     return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
-) -> AsyncOrSyncIteratable:
+) -> AsyncOrSyncIterable:
     """Parallel map over a set of inputs.
 
     Takes one iterator argument per argument in the function being mapped over.
@@ -285,7 +285,7 @@ def _map_sync(
     ```
     """
 
-    return AsyncOrSyncIteratable(
+    return AsyncOrSyncIterable(
         _map_async(
             self, *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
         ),
@@ -391,7 +391,7 @@ def _starmap_sync(
     kwargs={},
     order_outputs: bool = True,
     return_exceptions: bool = False,
-) -> AsyncOrSyncIteratable:
+) -> AsyncOrSyncIterable:
     """Like `map`, but spreads arguments over multiple function arguments.
 
     Assumes every input is a sequence (e.g. a tuple).
@@ -408,7 +408,7 @@ def _starmap_sync(
         assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
     ```
     """
-    return AsyncOrSyncIteratable(
+    return AsyncOrSyncIterable(
         _starmap_async(
             self, input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
         ),
