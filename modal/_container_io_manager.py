@@ -155,8 +155,10 @@ class _ContainerIOManager:
             request.current_input_started_at = self.current_input_started_at
 
         async with self._heartbeat_condition:
-            # Continuously wait until `waiting_for_memory_snapshot` is false. More efficient
-            # than a busy-wait since `.wait()` yields control
+            # Continuously wait until `waiting_for_memory_snapshot` is false.
+            # TODO(matt): Verify that a `while` is necessary over an `if`. Spurious
+            # wakeups could allow execution to continue despite `_waiting_for_memory_snapshot`
+            # being true.
             while self._waiting_for_memory_snapshot:
                 await self._heartbeat_condition.wait()
 
@@ -577,12 +579,6 @@ class _ContainerIOManager:
             await asyncio.sleep(0.01)
             continue
 
-        # Turn heartbeats back on. It is safe to do this here since the Snapshot RPC
-        # is certainly finished at this point.
-        async with self._heartbeat_condition:
-            self._waiting_for_memory_snapshot = False
-            self._heartbeat_condition.notify_all()
-
         logger.debug("Container: restored")
 
         # Look for state file and create new client with updated credentials.
@@ -634,17 +630,24 @@ class _ContainerIOManager:
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self._heartbeat_condition:
+            # Notify the heartbeat loop that the snapshot phase has begun in order to
+            # prevent it from sending heartbeat RPCs
             self._waiting_for_memory_snapshot = True
             self._heartbeat_condition.notify_all()
 
-        await self._client.stub.ContainerCheckpoint(
-            api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
-        )
+            await self._client.stub.ContainerCheckpoint(
+                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+            )
 
-        await self._client._close(forget_credentials=True)
+            await self._client._close(forget_credentials=True)
 
-        logger.debug("Memory snapshot request sent. Connection closed.")
-        await self.memory_restore()
+            logger.debug("Memory snapshot request sent. Connection closed.")
+            await self.memory_restore()
+
+            # Turn heartbeats back on. This is safe since the snapshot RPC
+            # and the restore phase has finished.
+            self._waiting_for_memory_snapshot = False
+            self._heartbeat_condition.notify_all()
 
     async def volume_commit(self, volume_ids: List[str]) -> None:
         """
