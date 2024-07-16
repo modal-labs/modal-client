@@ -91,4 +91,5 @@ async def _volume_download(
 
     consumers = [consumer() for _ in range(num_consumers)]
     await TaskContext.gather(producer(), *consumers)
+    progress_cb(complete=True)
     sys.stdout.flush()

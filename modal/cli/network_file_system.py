@@ -145,6 +145,7 @@ async def put(
         progress_handler = ProgressHandler(type="upload", console=console)
         with progress_handler.live:
             await volume.add_local_dir(local_path, remote_path, progress_cb=progress_handler.progress)
+            progress_handler.progress(complete=True)
         console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
 
     elif "*" in local_path:
@@ -153,6 +154,7 @@ async def put(
         progress_handler = ProgressHandler(type="upload", console=console)
         with progress_handler.live:
             written_bytes = await volume.add_local_file(local_path, remote_path, progress_cb=progress_handler.progress)
+            progress_handler.progress(complete=True)
         console.print(
             step_completed(f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)")
         )
