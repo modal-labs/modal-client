@@ -53,6 +53,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
         segment_start: int,
         segment_length: int,
         chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
+        progress_report_cb: Optional[Callable] = None,
     ):
         # not thread safe constructor!
         super().__init__(bytes_io)
@@ -63,6 +64,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
         self._value.seek(self.initial_seek_pos + segment_start)
         assert self.segment_length <= super().size
         self.chunk_size = chunk_size
+        self.progress_report_cb = progress_report_cb or (lambda *_, **__: None)
         self.reset_state()
 
     def reset_state(self):
@@ -74,6 +76,12 @@ class BytesIOSegmentPayload(BytesIOPayload):
     def reset_on_error(self):
         try:
             yield
+        except Exception as exc:
+            try:
+                self.progress_report_cb(reset=True)
+            except Exception as cb_exc:
+                raise cb_exc from exc
+            raise exc
         finally:
             self.reset_state()
 
@@ -100,9 +108,13 @@ class BytesIOSegmentPayload(BytesIOPayload):
         chunk = await safe_read()
         while chunk and self.remaining_bytes() > 0:
             await writer.write(chunk)
+            self.progress_report_cb(advance=len(chunk))
             chunk = await safe_read()
         if chunk:
             await writer.write(chunk)
+            self.progress_report_cb(advance=len(chunk))
+
+        self.progress_report_cb(complete=True)
 
     def remaining_bytes(self):
         return self.segment_length - self.num_bytes_read
@@ -165,6 +177,7 @@ async def perform_multipart_upload(
     part_urls: List[str],
     completion_url: str,
     upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
+    progress_report_cb: Optional[Callable] = None,
 ):
     upload_coros = []
     file_offset = 0
@@ -187,6 +200,7 @@ async def perform_multipart_upload(
             segment_start=file_offset,
             segment_length=part_length_bytes,
             chunk_size=upload_chunk_size,
+            progress_report_cb=progress_report_cb,
         )
         upload_coros.append(_upload_to_s3_url(part_url, payload=part_payload, content_type=None))
         num_bytes_left -= part_length_bytes
@@ -230,7 +244,9 @@ def get_content_length(data: BinaryIO):
     return content_length - pos
 
 
-async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub) -> str:
+async def _blob_upload(
+    upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub, progress_report_cb: Optional[Callable] = None
+) -> str:
     if isinstance(data, bytes):
         data = io.BytesIO(data)
 
@@ -253,9 +269,12 @@ async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO]
             part_urls=resp.multipart.upload_urls,
             completion_url=resp.multipart.completion_url,
             upload_chunk_size=DEFAULT_SEGMENT_CHUNK_SIZE,
+            progress_report_cb=progress_report_cb,
         )
     else:
-        payload = BytesIOSegmentPayload(data, segment_start=0, segment_length=content_length)
+        payload = BytesIOSegmentPayload(
+            data, segment_start=0, segment_length=content_length, progress_report_cb=progress_report_cb
+        )
         await _upload_to_s3_url(
             resp.upload_url,
             payload,
@@ -274,9 +293,9 @@ async def blob_upload(payload: bytes, stub) -> str:
     return await _blob_upload(upload_hashes, payload, stub)
 
 
-async def blob_upload_file(file_obj: BinaryIO, stub) -> str:
+async def blob_upload_file(file_obj: BinaryIO, stub, progress_report_cb: Optional[Callable] = None) -> str:
     upload_hashes = get_upload_hashes(file_obj)
-    return await _blob_upload(upload_hashes, file_obj, stub)
+    return await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
 
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
