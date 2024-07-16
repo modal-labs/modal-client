@@ -393,7 +393,7 @@ class BuildCls:
 
 
 @app.cls(enable_memory_snapshot=True)
-class CheckpointingCls:
+class SnapshottingCls:
     def __init__(self):
         self._vals = []
 
@@ -412,6 +412,11 @@ class CheckpointingCls:
     @method()
     def f(self, x):
         return "".join(self._vals) + x
+
+
+@app.function(enable_memory_snapshot=True)
+def snapshotting_square(x):
+    return x * x
 
 
 @app.cls()
