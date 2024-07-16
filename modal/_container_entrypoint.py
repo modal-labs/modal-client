@@ -699,7 +699,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
 
-    with container_io_manager.heartbeats(), UserCodeEventLoop() as event_loop:
+    with container_io_manager.heartbeats(function_def.is_checkpointing_function), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = container_io_manager.get_serialized_function()
@@ -778,6 +778,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # global imports and innitialization. Checkpointed containers run from this point onwards.
         if function_def.is_checkpointing_function:
             container_io_manager.memory_snapshot()
+
 
         # Install hooks for interactive functions.
         if function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
