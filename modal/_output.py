@@ -175,17 +175,14 @@ class OutputManager:
         self._app_page_url = None
         self._show_image_logs = False
 
+    def is_visible(self) -> bool:
+        return self._visible_progress
+
     def hide_output(self):
         self._visible_progress = False
 
-    def print_if_visible(self, renderable) -> None:
-        if self._visible_progress:
-            self._console.print(renderable)
-
-    def ctx_if_visible(self, context_mgr):
-        if self._visible_progress:
-            return context_mgr
-        return contextlib.nullcontext()
+    def print(self, renderable) -> None:
+        self._console.print(renderable)
 
     def make_live(self, renderable: RenderableType) -> Live:
         """Creates a customized `rich.Live` instance with the given renderable. The renderable
@@ -379,7 +376,10 @@ class OutputManager:
     @contextlib.contextmanager
     def show_status_spinner(self):
         self._status_spinner_live = self.make_live(self._status_spinner)
-        with self.ctx_if_visible(self._status_spinner_live):
+        if self.is_visible():
+            with self._status_spinner_live:
+                yield
+        else:
             yield
 
     def hide_status_spinner(self):
@@ -604,10 +604,11 @@ async def get_app_logs_loop(
         except asyncio.CancelledError:
             # TODO: this should come from the backend maybe
             app_logs_url = f"https://modal.com/logs/{app_id}"
-            output_mgr.print_if_visible(
-                f"[red]Timed out waiting for logs. "
-                f"[grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
-            )
+            if output_mgr.is_visible():
+                output_mgr.print(
+                    f"[red]Timed out waiting for logs. "
+                    f"[grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
+                )
             raise
         except (GRPCError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
             if isinstance(exc, GRPCError):
