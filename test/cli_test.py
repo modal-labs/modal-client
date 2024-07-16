@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import json
 import os
+import platform
 import pytest
 import re
 import subprocess
@@ -437,6 +438,14 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
     shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
+
+
+def test_shell_unsuported_cmds_fails_on_windows(servicer, set_env_client, mock_shell_pty):
+    expected_exit_code = 1 if platform.system() == "Windows" else 0
+    res = _run(["shell"], expected_exit_code=expected_exit_code)
+
+    if expected_exit_code != 0:
+        assert re.search("Windows", str(res.exception)), "exception message does not match expected string"
 
 
 def test_app_descriptions(servicer, server_url_env, test_dir):

@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import io
 import multiprocessing
 import platform
 import sys
@@ -53,11 +52,11 @@ async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, ti
         proc.terminate()
         await asyncify(proc.join)(timeout)
         if proc.exitcode is not None:
-            output_mgr.print_if_visible(f"Serve process {proc.pid} terminated")
+            if output_mgr.is_visible():
+                output_mgr.print(f"Serve process {proc.pid} terminated")
         else:
-            output_mgr.print_if_visible(
-                f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it[/red]"
-            )
+            if output_mgr.is_visible():
+                output_mgr.print(f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it[/red]")
             proc.kill()
     except ProcessLookupError:
         pass  # Child process already finished
@@ -76,8 +75,9 @@ async def _run_watch_loop(
         " This can hopefully be fixed in a future version of Modal."
 
     if unsupported_msg:
-        async for _ in watcher:
-            output_mgr.print_if_visible(unsupported_msg)
+        if output_mgr.is_visible():
+            async for _ in watcher:
+                output_mgr.print(unsupported_msg)
     else:
         curr_proc = None
         try:
@@ -103,7 +103,6 @@ def _get_clean_app_description(app_ref: str) -> str:
 async def _serve_app(
     app: "_App",
     app_ref: str,
-    stdout: Optional[io.TextIOWrapper] = None,
     show_progress: bool = True,
     _watcher: Optional[AsyncGenerator[Set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
@@ -113,7 +112,7 @@ async def _serve_app(
 
     client = await _Client.from_env()
 
-    output_mgr = OutputManager(stdout, show_progress, "Running app...")
+    output_mgr = OutputManager(show_progress=show_progress)
     if _watcher is not None:
         watcher = _watcher  # Only used by tests
     else:
