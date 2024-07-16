@@ -177,7 +177,7 @@ async def perform_multipart_upload(
     part_urls: List[str],
     completion_url: str,
     upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
-    progress_report_cb: Callable,
+    progress_report_cb: Optional[Callable] = None,
 ):
     upload_coros = []
     file_offset = 0

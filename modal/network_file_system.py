@@ -235,7 +235,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         return resp.shared_volume_id
 
     @live_method
-    async def write_file(self, remote_path: str, fp: BinaryIO, progress_cb: Callable = None) -> int:
+    async def write_file(self, remote_path: str, fp: BinaryIO, progress_cb: Optional[Callable] = None) -> int:
         """Write from a file object to a path on the network file system, atomically.
 
         Will create any needed parent directories automatically.
@@ -310,7 +310,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         self,
         local_path: Union[Path, str],
         remote_path: Optional[Union[str, PurePosixPath, None]] = None,
-        progress_cb: Callable = None,
+        progress_cb: Optional[Callable] = None,
     ):
         local_path = Path(local_path)
         if remote_path is None:
@@ -326,7 +326,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         self,
         local_path: Union[Path, str],
         remote_path: Optional[Union[str, PurePosixPath, None]] = None,
-        progress_cb: Callable = None,
+        progress_cb: Optional[Callable] = None,
     ):
         _local_path = Path(local_path)
         if remote_path is None:
