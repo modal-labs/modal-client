@@ -181,7 +181,7 @@ class Resolver:
         return StatusRow(self._tree)
 
     async def console_write(self, log: api_pb2.TaskLogs):
-        if self._output_mgr is not None:
+        if self._output_mgr is not None and self._output_mgr.is_visible():
             await self._output_mgr.put_log_content(log)
 
     def console_flush(self):
