@@ -353,28 +353,8 @@ class OutputManager:
         stream.write(log.data)
 
     async def put_raw_content(self, log: api_pb2.TaskLogs):
-        # TODO(erikbern): move this out of the OutputMgr?
-        if hasattr(self._stdout, "buffer"):
-            # If we're not showing progress, there's no need to buffer lines,
-            # because the progress spinner can't interfere with output.
-
-            data = log.data.encode("utf-8")
-            written = 0
-            n_retries = 0
-            while written < len(data):
-                try:
-                    written += self._stdout.buffer.write(data[written:])
-                    self._stdout.flush()
-                except BlockingIOError:
-                    if n_retries >= 5:
-                        raise
-                    n_retries += 1
-                    await asyncio.sleep(0.1)
-        else:
-            # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
-            # io.StringIO).
-            self._stdout.write(log.data)
-            self._stdout.flush()
+        self._stdout.write(log.data)
+        self._stdout.flush()
 
     def flush_lines(self):
         for stream in self._line_buffers.values():
