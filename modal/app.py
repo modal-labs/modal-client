@@ -12,7 +12,6 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
-from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
 from ._utils.grpc_utils import unary_stream
@@ -306,7 +305,6 @@ class _App:
         client: Optional[_Client] = None,
         show_progress: bool = True,
         detach: bool = False,
-        output_mgr: Optional[OutputManager] = None,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
@@ -319,7 +317,7 @@ class _App:
         objects. For backwards compatibility reasons, it returns the same app.
         """
         # TODO(erikbern): deprecate this one too?
-        async with _run_app(self, client, show_progress, detach, output_mgr):
+        async with _run_app(self, client=client, show_progress=show_progress, detach=detach):
             yield self
 
     def _get_default_image(self):
