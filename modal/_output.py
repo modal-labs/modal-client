@@ -345,13 +345,16 @@ class OutputManager:
             self._task_progress_items[task_key] = progress_task_id
 
     async def put_log_content(self, log: api_pb2.TaskLogs):
-        if self._visible_progress:
-            stream = self._line_buffers.get(log.file_descriptor)
-            if stream is None:
-                stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
-                self._line_buffers[log.file_descriptor] = stream
-            stream.write(log.data)
-        elif hasattr(self._stdout, "buffer"):
+        assert self._visible_progress
+        stream = self._line_buffers.get(log.file_descriptor)
+        if stream is None:
+            stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
+            self._line_buffers[log.file_descriptor] = stream
+        stream.write(log.data)
+
+    async def put_raw_content(self, log: api_pb2.TaskLogs):
+        # TODO(erikbern): move this out of the OutputMgr?
+        if hasattr(self._stdout, "buffer"):
             # If we're not showing progress, there's no need to buffer lines,
             # because the progress spinner can't interfere with output.
 
@@ -551,7 +554,10 @@ async def get_app_logs_loop(
             else:  # Ensure forward-compatible with new types.
                 logger.debug(f"Received unrecognized progress type: {log.task_progress.progress_type}")
         elif log.data:
-            await output_mgr.put_log_content(log)
+            if pty_shell_finish_event:
+                await output_mgr.put_raw_content(log)
+            else:
+                await output_mgr.put_log_content(log)
 
     async def _get_logs():
         nonlocal last_log_batch_entry_id, pty_shell_finish_event, pty_shell_task_id
