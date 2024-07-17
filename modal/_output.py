@@ -179,8 +179,11 @@ class OutputManager:
     def is_visible(self) -> bool:
         return self._visible_progress
 
-    def hide_output(self):
+    def disable(self):
+        self.flush_lines()
         self._visible_progress = False
+        if self._status_spinner_live:
+            self._status_spinner_live.stop()
 
     def print(self, renderable) -> None:
         self._console.print(renderable)
@@ -383,10 +386,6 @@ class OutputManager:
         else:
             yield
 
-    def hide_status_spinner(self):
-        if self._status_spinner_live:
-            self._status_spinner_live.stop()
-
 
 class ProgressHandler:
     live: Live
@@ -581,12 +580,12 @@ async def get_app_logs_loop(
                 # statically and dynamically built images.
                 pass
             elif log_batch.pty_exec_id:
+                # This corresponds to the `modal run -i` use case where a breakpoint
+                # triggers and the task drops into an interactive PTY mode
                 if pty_shell_finish_event:
                     print("ERROR: concurrent PTY shells are not supported.")
                 else:
-                    output_mgr.flush_lines()
-                    output_mgr.hide_status_spinner()
-                    output_mgr.hide_output()
+                    output_mgr.disable()
                     pty_shell_finish_event = asyncio.Event()
                     pty_shell_task_id = log_batch.task_id
                     asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
