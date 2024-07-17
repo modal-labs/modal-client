@@ -174,6 +174,7 @@ class OutputManager:
         self._status_spinner = step_progress(status_spinner_text)
         self._app_page_url = None
         self._show_image_logs = False
+        self._status_spinner_live = None
 
     def is_visible(self) -> bool:
         return self._visible_progress
