@@ -735,10 +735,10 @@ def test_no_state_reuse(client, servicer, supports_dir):
     app = App("reuse-mount-app")
     app.function(mounts=[mount_instance_1, mount_instance_2])(dummy)
 
-    deploy_app(app, client=client, show_progress=False)
+    deploy_app(app, client=client)
     first_deploy = {mount_instance_1.object_id, mount_instance_2.object_id}
 
-    deploy_app(app, client=client, show_progress=False)
+    deploy_app(app, client=client)
     second_deploy = {mount_instance_1.object_id, mount_instance_2.object_id}
 
     # mount ids should not overlap between first and second deploy

@@ -10,7 +10,7 @@ import re
 import socket
 import sys
 from datetime import timedelta
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, ClassVar, Dict, Optional, Tuple
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console, Group, RenderableType
@@ -140,6 +140,8 @@ class LineBufferedOutput(io.StringIO):
 
 
 class OutputManager:
+    _instance: ClassVar[Optional["OutputManager"]] = None
+
     _visible_progress: bool
     _console: Console
     _task_states: Dict[str, int]
@@ -177,13 +179,30 @@ class OutputManager:
         self._status_spinner_live = None
 
     def is_visible(self) -> bool:
+        # TODO(erikbern): remove this and just check exsistance
         return self._visible_progress
 
-    def disable(self):
-        self.flush_lines()
-        self._visible_progress = False
-        if self._status_spinner_live:
-            self._status_spinner_live.stop()
+    @classmethod
+    def disable(cls):
+        cls._instance.flush_lines()
+        cls._instance._visible_progress = False
+        if cls._instance._status_spinner_live:
+            cls._instance._status_spinner_live.stop()
+        cls._instance = None
+
+    @classmethod
+    def get(cls) -> Optional["OutputManager"]:
+        return cls._instance
+
+    @classmethod
+    @contextlib.contextmanager
+    def enable_output(cls, show_progress: bool = True):
+        if show_progress:
+            cls._instance = OutputManager()
+        try:
+            yield
+        finally:
+            cls._instance = None
 
     def print(self, renderable) -> None:
         self._console.print(renderable)

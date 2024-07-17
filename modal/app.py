@@ -303,7 +303,6 @@ class _App:
     async def run(
         self,
         client: Optional[_Client] = None,
-        show_progress: bool = True,
         detach: bool = False,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
@@ -317,7 +316,7 @@ class _App:
         objects. For backwards compatibility reasons, it returns the same app.
         """
         # TODO(erikbern): deprecate this one too?
-        async with _run_app(self, client=client, show_progress=show_progress, detach=detach):
+        async with _run_app(self, client=client, detach=detach):
             yield self
 
     def _get_default_image(self):

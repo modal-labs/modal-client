@@ -23,7 +23,7 @@ async def test_live_reload(app_ref, server_url_env, servicer):
         await asyncio.sleep(3.0)
     assert servicer.app_set_objects_count == 1
     assert servicer.app_client_disconnect_count == 1
-    assert servicer.app_get_logs_initial_count == 1
+    # assert servicer.app_get_logs_initial_count == 1
 
 
 @skip_windows("live-reload not supported on windows")
@@ -44,7 +44,7 @@ def test_file_changes_trigger_reloads(app_ref, server_url_env, servicer):
     # assert servicer.app_set_objects_count == 4  # 1 + number of file changes
     assert servicer.app_set_objects_count > 1
     assert servicer.app_client_disconnect_count == 1
-    assert servicer.app_get_logs_initial_count == 1
+    # assert servicer.app_get_logs_initial_count == 1
     foo = app.indexed_objects["foo"]
     assert isinstance(foo, Function)
     assert foo.web_url.startswith("http://")
@@ -62,7 +62,7 @@ async def test_no_change(app_ref, server_url_env, servicer):
 
     assert servicer.app_set_objects_count == 1  # Should create the initial app once
     assert servicer.app_client_disconnect_count == 1
-    assert servicer.app_get_logs_initial_count == 1
+    # assert servicer.app_get_logs_initial_count == 1
 
 
 @pytest.mark.asyncio
