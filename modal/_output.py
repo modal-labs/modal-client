@@ -352,10 +352,6 @@ class OutputManager:
             self._line_buffers[log.file_descriptor] = stream
         stream.write(log.data)
 
-    async def put_raw_content(self, log: api_pb2.TaskLogs):
-        self._stdout.write(log.data)
-        self._stdout.flush()
-
     def flush_lines(self):
         for stream in self._line_buffers.values():
             stream.finalize()
@@ -500,6 +496,11 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
         await finish_event.wait()
 
 
+def put_pty_content(log: api_pb2.TaskLogs, stdout):
+    stdout.write(log.data)
+    stdout.flush()
+
+
 async def get_app_logs_loop(
     client: _Client, output_mgr: OutputManager, app_id: Optional[str] = None, task_id: Optional[str] = None
 ):
@@ -535,7 +536,7 @@ async def get_app_logs_loop(
                 logger.debug(f"Received unrecognized progress type: {log.task_progress.progress_type}")
         elif log.data:
             if pty_shell_finish_event:
-                await output_mgr.put_raw_content(log)
+                put_pty_content(log, output_mgr._stdout)
             else:
                 await output_mgr.put_log_content(log)
 
