@@ -225,7 +225,7 @@ async def _run_app(
 
     if client is None:
         client = await _Client.from_env()
-    output_mgr = OutputManager(show_progress=show_progress)
+    output_mgr = OutputManager() if show_progress else None
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     running_app: RunningApp = await _init_local_app_new(
         client,
@@ -242,7 +242,7 @@ async def _run_app(
             lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL, log_exception=not detach
         )
 
-        if output_mgr.is_visible():
+        if output_mgr and output_mgr.is_visible():
             with output_mgr.make_live(step_progress("Initializing...")):
                 initialized_msg = (
                     f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
@@ -251,7 +251,7 @@ async def _run_app(
                 output_mgr.update_app_page_url(running_app.app_page_url)
 
         # Start logs loop
-        if show_progress:
+        if output_mgr:
             logs_loop = tc.create_task(get_app_logs_loop(client, output_mgr, running_app.app_id))
 
         exc_info: Optional[BaseException] = None
@@ -274,11 +274,12 @@ async def _run_app(
             output_mgr.enable_image_logs()
 
             # Yield to context
-            if not show_progress:
-                yield app
-            else:
+            if output_mgr and output_mgr.is_visible():
                 with output_mgr.show_status_spinner():
                     yield app
+            else:
+                yield app
+
         except KeyboardInterrupt as e:
             exc_info = e
             # mute cancellation errors on all function handles to prevent exception spam
@@ -286,7 +287,7 @@ async def _run_app(
                 obj._set_mute_cancellation(True)
 
             if detach:
-                if output_mgr.is_visible():
+                if output_mgr and output_mgr.is_visible():
                     output_mgr.print(step_completed("Shutting down Modal client."))
                     output_mgr.print(
                         "The detached app keeps running. You can track its progress at: "
@@ -296,7 +297,7 @@ async def _run_app(
                 if show_progress:
                     logs_loop.cancel()
             else:
-                if output_mgr.is_visible():
+                if output_mgr and output_mgr.is_visible():
                     output_mgr.print(
                         step_completed(
                             "App aborted. "
@@ -327,7 +328,7 @@ async def _run_app(
             await _disconnect(client, running_app.app_id, reason, exc_str)
             app._uncreate_all_objects()
 
-    if output_mgr.is_visible():
+    if output_mgr and output_mgr.is_visible():
         output_mgr.print(
             step_completed(
                 f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
@@ -430,7 +431,7 @@ async def _deploy_app(
     if client is None:
         client = await _Client.from_env()
 
-    output_mgr = OutputManager(show_progress=show_progress)
+    output_mgr = OutputManager() if show_progress else None
 
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
@@ -478,7 +479,7 @@ async def _deploy_app(
             await _disconnect(client, running_app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
-    if output_mgr.is_visible():
+    if output_mgr:
         output_mgr.print(step_completed("App deployed! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{url}[/magenta]")
     return DeployResult(app_id=running_app.app_id)
