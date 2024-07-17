@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import pytest
+import time
 
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
@@ -366,3 +367,32 @@ def test_app_logs(servicer, client):
 
     logs = [data for data in app._logs(client=client)]
     assert logs == ["hello, world (1)\n"]
+
+
+def test_app_interactive(servicer, client, capsys):
+    app = App()
+
+    async def app_logs_pty(servicer, stream):
+        await stream.recv_message()
+
+        # Enable PTY
+        await stream.send_message(api_pb2.TaskLogsBatch(pty_exec_id="ta-123"))
+
+        # Send some data (should be written raw to stdout)
+        log = api_pb2.TaskLogs(data="some data\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
+        await stream.send_message(api_pb2.TaskLogsBatch(entry_id="xyz", items=[log]))
+
+        # Send an EOF
+        await stream.send_message(api_pb2.TaskLogsBatch(eof=True, task_id="ta-123"))
+
+        # Terminate app
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppGetLogs", app_logs_pty)
+
+        with app.run(client=client):
+            time.sleep(0.1)
+
+    captured = capsys.readouterr()
+    assert captured.out.endswith("\nsome data\n\r")

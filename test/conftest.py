@@ -366,6 +366,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_snapshot_requests += 1
         await stream.send_message(Empty())
 
+    async def ContainerExecPutInput(self, stream):
+        await stream.recv_message()
+        await stream.send_message(Empty())
+
     ### Blob
 
     async def BlobCreate(self, stream):
