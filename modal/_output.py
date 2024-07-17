@@ -633,9 +633,6 @@ async def get_app_logs_loop(
                     logger.debug("Lost connection. Retrying ...")
                     continue
             raise
-        except Exception as exc:
-            logger.exception(f"Failed to fetch logs: {exc}")
-            await asyncio.sleep(1)
 
         if last_log_batch_entry_id is None:
             break
