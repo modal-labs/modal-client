@@ -505,6 +505,8 @@ async def get_app_logs_loop(
     client: _Client, output_mgr: OutputManager, app_id: Optional[str] = None, task_id: Optional[str] = None
 ):
     last_log_batch_entry_id = ""
+
+    pty_shell_stdout = None
     pty_shell_finish_event: Optional[asyncio.Event] = None
     pty_shell_task_id: Optional[str] = None
 
@@ -536,12 +538,13 @@ async def get_app_logs_loop(
                 logger.debug(f"Received unrecognized progress type: {log.task_progress.progress_type}")
         elif log.data:
             if pty_shell_finish_event:
-                put_pty_content(log, output_mgr._stdout)
+                put_pty_content(log, pty_shell_stdout)
             else:
                 await output_mgr.put_log_content(log)
 
     async def _get_logs():
-        nonlocal last_log_batch_entry_id, pty_shell_finish_event, pty_shell_task_id
+        nonlocal last_log_batch_entry_id
+        nonlocal pty_shell_stdout, pty_shell_finish_event, pty_shell_task_id
 
         request = api_pb2.AppGetLogsRequest(
             app_id=app_id or "",
@@ -572,9 +575,10 @@ async def get_app_logs_loop(
                 if pty_shell_finish_event:
                     print("ERROR: concurrent PTY shells are not supported.")
                 else:
-                    output_mgr.disable()
+                    pty_shell_stdout = output_mgr._stdout
                     pty_shell_finish_event = asyncio.Event()
                     pty_shell_task_id = log_batch.task_id
+                    output_mgr.disable()
                     asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
             else:
                 for log in log_batch.items:
