@@ -195,7 +195,6 @@ async def _run_app(
     detach: bool = False,
     output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
-    shell: bool = False,
     interactive: bool = False,
 ) -> AsyncGenerator[_App, None]:
     """mdmd:hidden"""
@@ -253,7 +252,7 @@ async def _run_app(
                 output_mgr.update_app_page_url(running_app.app_page_url)
 
         # Start logs loop
-        if not shell:
+        if show_progress:
             logs_loop = tc.create_task(get_app_logs_loop(client, output_mgr, running_app.app_id))
 
         exc_info: Optional[BaseException] = None
@@ -276,7 +275,7 @@ async def _run_app(
             output_mgr.enable_image_logs()
 
             # Yield to context
-            if shell:
+            if not show_progress:
                 yield app
             else:
                 with output_mgr.show_status_spinner():
@@ -295,7 +294,7 @@ async def _run_app(
                         f"[magenta]{running_app.app_page_url}[/magenta]"
                         ""
                     )
-                if not shell:
+                if show_progress:
                     logs_loop.cancel()
             else:
                 if output_mgr.is_visible():
@@ -510,7 +509,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
     **kwargs will be passed into spawn_sandbox().
     """
     client = await _Client.from_env()
-    async with _run_app(_app, client, environment_name=environment_name, shell=True, show_progress=False):
+    async with _run_app(_app, client, environment_name=environment_name, show_progress=False):
         console = Console()
         loading_status = console.status("Starting container...")
         loading_status.start()

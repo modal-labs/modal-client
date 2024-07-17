@@ -488,7 +488,7 @@ def test_image_run_function_interactivity(builder_version, servicer, client):
 
     from modal.runner import run_app
 
-    with run_app(app, client=client, shell=True):
+    with run_app(app, client=client):
         image_id = app.image.object_id
         layers = get_image_layers(image_id, servicer)
         assert "foo!" in layers[0].build_function.definition
