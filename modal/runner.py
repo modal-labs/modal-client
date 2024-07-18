@@ -106,7 +106,6 @@ async def _create_all_objects(
     indexed_objects: Dict[str, _Object],
     new_app_state: int,
     environment_name: str,
-    output_mgr: Optional[OutputManager] = None,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
     if not client.authenticated:
@@ -116,7 +115,6 @@ async def _create_all_objects(
         client,
         environment_name=environment_name,
         app_id=running_app.app_id,
-        output_mgr=output_mgr,
     )
     with resolver.display():
         # Get current objects, and reset all objects
