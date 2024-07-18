@@ -530,9 +530,16 @@ class _Function(_Object, type_prefix="fu"):
             enable_memory_snapshot = checkpointing_enabled
 
         if allow_background_volume_commits is False:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
-                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+                "Disabling volume background commits is now deprecated. "
+                "Remove _allow_background_volume_commits=False to enable the functionality.",
+            )
+        elif allow_background_volume_commits is True:
+            deprecation_warning(
+                (2024, 7, 18),
+                "Setting volume background commits is deprecated. "
+                "The functionality is now unconditionally enabled (set to True).",
             )
         elif allow_background_volume_commits is None:
             allow_background_volume_commits = True
