@@ -533,7 +533,7 @@ class _Function(_Object, type_prefix="fu"):
             deprecation_error(
                 (2024, 5, 13),
                 "Disabling volume background commits is now deprecated. "
-                "Remove this argument to enable the functionality.",
+                "Remove _allow_background_volume_commits=False to enable the functionality.",
             )
         elif allow_background_volume_commits is True:
             deprecation_warning(
