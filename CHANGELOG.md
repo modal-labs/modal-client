@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.77 (2024-07-18)
+
+* Setting `_allow_background_volume_commits` is no longer necessary and has been deprecated. Remove this argument in your decorators.
+
+
+
 ###
 
 
