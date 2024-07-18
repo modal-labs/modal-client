@@ -17,7 +17,7 @@ from rich.console import Console
 from typing_extensions import TypedDict
 
 from .. import Cls
-from .._output import OutputManager
+from .._output import enable_output
 from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
@@ -156,7 +156,7 @@ def _get_click_command_for_function(app: App, function_tag):
     @click.pass_context
     def f(ctx, **kwargs):
         show_progress: bool = ctx.obj["show_progress"]
-        with OutputManager.enable_output(show_progress):
+        with enable_output(show_progress):
             with run_app(
                 app,
                 detach=ctx.obj["detach"],
@@ -192,7 +192,7 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
             )
 
         show_progress: bool = ctx.obj["show_progress"]
-        with OutputManager.enable_output(show_progress):
+        with enable_output(show_progress):
             with run_app(
                 app,
                 detach=ctx.obj["detach"],
@@ -291,7 +291,7 @@ def deploy(
     if name is None:
         name = app.name
 
-    with OutputManager.enable_output():
+    with enable_output():
         res = deploy_app(app, name=name, environment_name=env, tag=tag)
 
     if stream_logs:
@@ -317,7 +317,7 @@ def serve(
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))
 
-    with OutputManager.enable_output():
+    with enable_output():
         with serve_app(app, app_ref, environment_name=env):
             if timeout is None:
                 timeout = config["serve_timeout"]

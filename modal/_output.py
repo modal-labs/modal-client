@@ -10,7 +10,7 @@ import re
 import socket
 import sys
 from datetime import timedelta
-from typing import Callable, ClassVar, Dict, Optional, Tuple
+from typing import Callable, ClassVar, Dict, Generator, Optional, Tuple
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console, Group, RenderableType
@@ -196,7 +196,7 @@ class OutputManager:
 
     @classmethod
     @contextlib.contextmanager
-    def enable_output(cls, show_progress: bool = True):
+    def enable_output(cls, show_progress: bool = True) -> Generator[None, None, None]:
         if show_progress:
             cls._instance = OutputManager()
         try:
@@ -698,3 +698,9 @@ class FunctionCreationStatus:
                 )
         else:
             self.status_row.finish(f"Created function {self.tag}.")
+
+
+@contextlib.contextmanager
+def enable_output(show_progress: bool = True) -> Generator[None, None, None]:
+    with OutputManager.enable_output(show_progress):
+        yield
