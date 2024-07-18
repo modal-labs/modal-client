@@ -12,6 +12,7 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
+from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
 from ._utils.grpc_utils import unary_stream
@@ -303,7 +304,7 @@ class _App:
     async def run(
         self,
         client: Optional[_Client] = None,
-        show_progress=None,
+        show_progress: Optional[bool] = None,
         detach: bool = False,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
@@ -316,14 +317,35 @@ class _App:
         no longer useful since you can use the app itself for access to all
         objects. For backwards compatibility reasons, it returns the same app.
         """
-        # TODO(erikbern): deprecate this one too?
-        if show_progress is not None:
-            deprecation_error(
-                (2024, 7, 18),
-                "The argument `show_progress` is no longer supported."
-                " The default behavior is to NOT output anything."
-                " In order to enable output, use `with modal.enable_output():`",
-            )
+
+        enable_output_warning = """
+        Note that output will no longer be printed with `app.run`.
+
+        If you want to print output, use `modal.enable_output()`:
+
+        ```python
+        with modal.enable_output():
+            with app.run():
+                ...
+        ```
+
+        If you don't want output, and you want to to suppress this warning,
+        use `app.run(..., show_progress=False)`.
+        """
+
+        # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
+
+        if show_progress is None:
+            if OutputManager.get() is None:
+                deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+        elif show_progress is True:
+            if OutputManager.get() is None:
+                deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+            else:
+                deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
+        elif show_progress is False:
+            if OutputManager.get() is not None:
+                deprecation_warning((2024, 7, 18), "`show_progress=False` will have no effect since output is enabled.")
         async with _run_app(self, client=client, detach=detach):
             yield self
 
