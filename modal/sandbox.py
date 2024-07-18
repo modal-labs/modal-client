@@ -376,6 +376,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         elif _allow_background_volume_commits is None:
             _allow_background_volume_commits = True
 
+        if environment_name is None:
+            environment_name = config.get("environment")
+
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
             entrypoint_args,
