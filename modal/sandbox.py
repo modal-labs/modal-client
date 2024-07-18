@@ -19,7 +19,7 @@ from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_erro
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
-from .exception import deprecation_warning
+from .exception import deprecation_error, deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -361,7 +361,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
         pty_info: Optional[api_pb2.PTYInfo] = None,
-        _allow_background_volume_commits: Optional[bool] = None,
+        _allow_background_volume_commits: None = None,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -369,9 +369,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
         if _allow_background_volume_commits is False:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
-                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+                "Disabling volume background commits is now deprecated. "
+                "Remove this argument to enable the functionality.",
+            )
+        elif _allow_background_volume_commits is True:
+            deprecation_warning(
+                (2024, 7, 18),
+                "Setting volume background commits is deprecated. "
+                "The functionality is now unconditionally enabled (set to True).",
             )
         elif _allow_background_volume_commits is None:
             _allow_background_volume_commits = True
