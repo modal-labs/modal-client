@@ -691,7 +691,7 @@ message ContainerHeartbeatResponse {
 }
 
 message ContainerStopRequest {
-  string task_id = 1;
+  string task_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message ContainerStopResponse {
@@ -762,7 +762,7 @@ message DictEntry {
 }
 
 message DictGetOrCreateRequest {
-  string deployment_name = 1;
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -819,7 +819,7 @@ message DictPopResponse {
 }
 
 message DictUpdateRequest {
-  string dict_id = 1;
+  string dict_id = 1 [ (modal.options.audit_target_attr) = true ];
   repeated DictEntry updates = 2;
 }
 
@@ -859,11 +859,11 @@ message DomainListResponse {
 }
 
 message EnvironmentCreateRequest {
-  string name = 1;
+  string name = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message EnvironmentDeleteRequest {
-  string name = 1;
+  string name = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message EnvironmentListItem {
@@ -876,7 +876,7 @@ message EnvironmentListResponse {
 }
 
 message EnvironmentUpdateRequest {
-  string current_name = 1;
+  string current_name = 1 [ (modal.options.audit_target_attr) = true ];
   google.protobuf.StringValue name = 2;
   google.protobuf.StringValue web_suffix = 3;
 }
@@ -1499,7 +1499,7 @@ message PTYInfo {
 }
 
 message ProxyGetOrCreateRequest {
-  string deployment_name = 1;
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
@@ -1523,7 +1523,7 @@ message QueueClearRequest {
 }
 
 message QueueCreateRequest {
-  string app_id = 1;
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   string existing_queue_id = 2;
 }
 
@@ -1532,7 +1532,7 @@ message QueueCreateResponse {
 }
 
 message QueueDeleteRequest {
-  string queue_id = 1;
+  string queue_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message QueueGetOrCreateRequest {
@@ -1798,7 +1798,7 @@ message SecretCreateResponse {  // Not used by client anymore
 }
 
 message SecretGetOrCreateRequest {
-  string deployment_name = 1;
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // Not used atm
@@ -1848,7 +1848,7 @@ message SharedVolumeGetFileResponse {
 }
 
 message SharedVolumeGetOrCreateRequest {
-  string deployment_name = 1;
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -2071,7 +2071,7 @@ message VolumeGetFileResponse {
 }
 
 message VolumeGetOrCreateRequest {
-  string deployment_name = 1;
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
