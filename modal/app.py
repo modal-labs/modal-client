@@ -303,6 +303,7 @@ class _App:
     async def run(
         self,
         client: Optional[_Client] = None,
+        show_progress=None,
         detach: bool = False,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
@@ -316,6 +317,13 @@ class _App:
         objects. For backwards compatibility reasons, it returns the same app.
         """
         # TODO(erikbern): deprecate this one too?
+        if show_progress is not None:
+            deprecation_error(
+                (2024, 7, 18),
+                "The argument `show_progress` is no longer supported."
+                " The default behavior is to NOT output anything."
+                " In order to enable output, use `with modal.enable_output():`",
+            )
         async with _run_app(self, client=client, detach=detach):
             yield self
 

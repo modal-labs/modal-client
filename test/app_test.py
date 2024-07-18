@@ -398,3 +398,10 @@ def test_app_interactive(servicer, client, capsys):
 
     captured = capsys.readouterr()
     assert captured.out.endswith("\nsome data\n\r")
+
+
+def test_show_progress():
+    app = App()
+    with pytest.raises(DeprecationError, match="show_progress"):
+        with app.run(show_progress=True):
+            pass
