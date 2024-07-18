@@ -34,6 +34,6 @@ def hello():
 
 # + tags=["main"]
 with client:
-    with app.run(client=client, show_progress=True):
+    with app.run(client=client):
         hello.remote()
 # -
