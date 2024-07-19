@@ -400,7 +400,10 @@ def test_app_interactive(servicer, client, capsys):
     assert captured.out.endswith("\nsome data\n\r")
 
 
-def test_show_progress_deprecations(client):
+def test_show_progress_deprecations(client, monkeypatch):
+    # Unset env used to disable warning
+    monkeypatch.delenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING")
+
     app = App()
 
     # If show_progress is not provided, and output is not enabled, warn

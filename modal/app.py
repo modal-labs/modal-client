@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import inspect
+import os
 import typing
 import warnings
 from pathlib import PurePosixPath
@@ -335,17 +336,21 @@ class _App:
 
         # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
 
-        if show_progress is None:
-            if OutputManager.get() is None:
-                deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
-        elif show_progress is True:
-            if OutputManager.get() is None:
-                deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
-            else:
-                deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
-        elif show_progress is False:
-            if OutputManager.get() is not None:
-                deprecation_warning((2024, 7, 18), "`show_progress=False` will have no effect since output is enabled.")
+        if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
+            if show_progress is None:
+                if OutputManager.get() is None:
+                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+            elif show_progress is True:
+                if OutputManager.get() is None:
+                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                else:
+                    deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
+            elif show_progress is False:
+                if OutputManager.get() is not None:
+                    deprecation_warning(
+                        (2024, 7, 18), "`show_progress=False` will have no effect since output is enabled."
+                    )
+
         async with _run_app(self, client=client, detach=detach):
             yield self
 
