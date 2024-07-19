@@ -192,10 +192,3 @@ class Resolver:
 
         if output_mgr := OutputManager.get():
             output_mgr.flush_lines()
-
-    def image_snapshot_update(self, image_id: str, task_progress: api_pb2.TaskProgress):
-        # TODO(erikbern): get rid of this wrapper
-        from ._output import OutputManager
-
-        if output_mgr := OutputManager.get():
-            output_mgr.update_snapshot_progress(image_id, task_progress)
