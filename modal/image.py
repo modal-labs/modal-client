@@ -1375,11 +1375,13 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def from_dockerfile(
+        # Filepath to Dockerfile.
         path: Union[str, Path],
-        context_mount: Optional[
-            _Mount
-        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
-        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        # modal.Mount with local files to supply as build context for COPY commands.
+        # NOTE: The remote_path of the Mount should match the Dockerfile's WORKDIR.
+        context_mount: Optional[_Mount] = None,
+        # Ignore cached builds, similar to 'docker build --no-cache'
+        force_build: bool = False,
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
