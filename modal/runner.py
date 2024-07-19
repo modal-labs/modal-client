@@ -254,14 +254,6 @@ async def _run_app(
             # Create all members
             await _create_all_objects(client, running_app, app._indexed_objects, app_state, environment_name)
 
-            # Update all functions client-side to have the output mgr
-            for obj in app.registered_functions.values():
-                obj._set_output_mgr(output_mgr)
-
-            # Update all the classes client-side to propagate output manager to their methods.
-            for obj in app.registered_classes.values():
-                obj._set_output_mgr(output_mgr)
-
             # Show logs from dynamically created images.
             # TODO: better way to do this
             if output_mgr := OutputManager.get():
