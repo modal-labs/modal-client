@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
 
 from grpclib import GRPCError, Status
 
-from modal_proto import api_pb2
-
 from ._utils.async_utils import TaskContext
 from .client import _Client
 from .config import logger
@@ -178,24 +176,3 @@ class Resolver:
 
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._tree)
-
-    async def console_write(self, log: api_pb2.TaskLogs):
-        # TODO(erikbern): get rid of this wrapper
-        from ._output import OutputManager
-
-        if output_mgr := OutputManager.get():
-            await output_mgr.put_log_content(log)
-
-    def console_flush(self):
-        # TODO(erikbern): get rid of this wrapper
-        from ._output import OutputManager
-
-        if output_mgr := OutputManager.get():
-            output_mgr.flush_lines()
-
-    def image_snapshot_update(self, image_id: str, task_progress: api_pb2.TaskProgress):
-        # TODO(erikbern): get rid of this wrapper
-        from ._output import OutputManager
-
-        if output_mgr := OutputManager.get():
-            output_mgr.update_snapshot_progress(image_id, task_progress)
