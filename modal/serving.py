@@ -45,17 +45,17 @@ async def _restart_serve(
     return p
 
 
-async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, timeout: float = 5.0):
+async def _terminate(proc: Optional[SpawnProcess], timeout: float = 5.0):
     if proc is None:
         return
     try:
         proc.terminate()
         await asyncify(proc.join)(timeout)
         if proc.exitcode is not None:
-            if output_mgr.is_visible():
+            if output_mgr := OutputManager.get():
                 output_mgr.print(f"Serve process {proc.pid} terminated")
         else:
-            if output_mgr.is_visible():
+            if output_mgr := OutputManager.get():
                 output_mgr.print(f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it[/red]")
             proc.kill()
     except ProcessLookupError:
@@ -65,7 +65,6 @@ async def _terminate(proc: Optional[SpawnProcess], output_mgr: OutputManager, ti
 async def _run_watch_loop(
     app_ref: str,
     app_id: str,
-    output_mgr: OutputManager,
     watcher: AsyncGenerator[Set[str], None],
     environment_name: str,
 ):
@@ -75,7 +74,7 @@ async def _run_watch_loop(
         " This can hopefully be fixed in a future version of Modal."
 
     if unsupported_msg:
-        if output_mgr.is_visible():
+        if output_mgr := OutputManager.get():
             async for _ in watcher:
                 output_mgr.print(unsupported_msg)
     else:
@@ -83,10 +82,10 @@ async def _run_watch_loop(
         try:
             async for trigger_files in watcher:
                 logger.debug(f"The following files triggered an app update: {', '.join(trigger_files)}")
-                await _terminate(curr_proc, output_mgr)
+                await _terminate(curr_proc)
                 curr_proc = await _restart_serve(app_ref, existing_app_id=app_id, environment_name=environment_name)
         finally:
-            await _terminate(curr_proc, output_mgr)
+            await _terminate(curr_proc)
 
 
 def _get_clean_app_description(app_ref: str) -> str:
@@ -103,7 +102,6 @@ def _get_clean_app_description(app_ref: str) -> str:
 async def _serve_app(
     app: "_App",
     app_ref: str,
-    show_progress: bool = True,
     _watcher: Optional[AsyncGenerator[Set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
 ) -> AsyncGenerator["_App", None]:
@@ -112,16 +110,15 @@ async def _serve_app(
 
     client = await _Client.from_env()
 
-    output_mgr = OutputManager(show_progress=show_progress)
     if _watcher is not None:
         watcher = _watcher  # Only used by tests
     else:
         mounts_to_watch = app._get_watch_mounts()
-        watcher = watch(mounts_to_watch, output_mgr)
+        watcher = watch(mounts_to_watch)
 
-    async with _run_app(app, client=client, output_mgr=output_mgr, environment_name=environment_name):
+    async with _run_app(app, client=client, environment_name=environment_name):
         async with TaskContext(grace=0.1) as tc:
-            tc.create_task(_run_watch_loop(app_ref, app.app_id, output_mgr, watcher, environment_name))
+            tc.create_task(_run_watch_loop(app_ref, app.app_id, watcher, environment_name))
             yield app
 
 

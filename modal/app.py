@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import inspect
+import os
 import typing
 import warnings
 from pathlib import PurePosixPath
@@ -304,9 +305,8 @@ class _App:
     async def run(
         self,
         client: Optional[_Client] = None,
-        show_progress: bool = True,
+        show_progress: Optional[bool] = None,
         detach: bool = False,
-        output_mgr: Optional[OutputManager] = None,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
@@ -318,9 +318,50 @@ class _App:
         no longer useful since you can use the app itself for access to all
         objects. For backwards compatibility reasons, it returns the same app.
         """
-        # TODO(erikbern): deprecate this one too?
-        async with _run_app(self, client, show_progress, detach, output_mgr):
-            yield self
+
+        enable_output_warning = """
+        Note that output will soon not be be printed with `app.run`.
+
+        If you want to print output, use `modal.enable_output()`:
+
+        ```python
+        with modal.enable_output():
+            with app.run():
+                ...
+        ```
+
+        If you don't want output, and you want to to suppress this warning,
+        use `app.run(..., show_progress=False)`.
+        """
+
+        # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
+
+        auto_enable_output = False
+
+        if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
+            if show_progress is None:
+                if OutputManager.get() is None:
+                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    auto_enable_output = True
+            elif show_progress is True:
+                if OutputManager.get() is None:
+                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    auto_enable_output = True
+                else:
+                    deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
+            elif show_progress is False:
+                if OutputManager.get() is not None:
+                    deprecation_warning(
+                        (2024, 7, 18), "`show_progress=False` will have no effect since output is enabled."
+                    )
+
+        if auto_enable_output:
+            with OutputManager.enable_output():
+                async with _run_app(self, client=client, detach=detach):
+                    yield self
+        else:
+            async with _run_app(self, client=client, detach=detach):
+                yield self
 
     def _get_default_image(self):
         if self._image:

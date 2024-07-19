@@ -4,7 +4,6 @@ import pytest
 import time
 from typing import Optional
 
-from modal._output import OutputManager
 from modal._resolver import Resolver
 from modal.object import _Object
 
@@ -12,8 +11,7 @@ from modal.object import _Object
 @pytest.mark.flaky(max_runs=2)
 @pytest.mark.asyncio
 async def test_multi_resolve_sequential_loads_once():
-    output_manager = OutputManager()
-    resolver = Resolver(None, output_mgr=output_manager, environment_name="", app_id=None)
+    resolver = Resolver(None, environment_name="", app_id=None)
 
     load_count = 0
 
@@ -38,8 +36,7 @@ async def test_multi_resolve_sequential_loads_once():
 
 @pytest.mark.asyncio
 async def test_multi_resolve_concurrent_loads_once():
-    output_manager = OutputManager()
-    resolver = Resolver(None, output_mgr=output_manager, environment_name="", app_id=None)
+    resolver = Resolver(None, environment_name="", app_id=None)
 
     load_count = 0
 

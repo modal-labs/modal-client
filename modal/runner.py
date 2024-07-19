@@ -106,7 +106,6 @@ async def _create_all_objects(
     indexed_objects: Dict[str, _Object],
     new_app_state: int,
     environment_name: str,
-    output_mgr: Optional[OutputManager] = None,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
     if not client.authenticated:
@@ -114,7 +113,6 @@ async def _create_all_objects(
 
     resolver = Resolver(
         client,
-        output_mgr=output_mgr,
         environment_name=environment_name,
         app_id=running_app.app_id,
     )
@@ -190,10 +188,9 @@ async def _disconnect(
 @asynccontextmanager
 async def _run_app(
     app: _App,
+    *,
     client: Optional[_Client] = None,
-    show_progress: bool = True,
     detach: bool = False,
-    output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
     interactive: bool = False,
 ) -> AsyncGenerator[_App, None]:
@@ -225,8 +222,6 @@ async def _run_app(
 
     if client is None:
         client = await _Client.from_env()
-    if output_mgr is None:
-        output_mgr = OutputManager(show_progress=show_progress)
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     running_app: RunningApp = await _init_local_app_new(
         client,
@@ -243,7 +238,7 @@ async def _run_app(
             lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL, log_exception=not detach
         )
 
-        if output_mgr.is_visible():
+        if output_mgr := OutputManager.get():
             with output_mgr.make_live(step_progress("Initializing...")):
                 initialized_msg = (
                     f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
@@ -251,16 +246,13 @@ async def _run_app(
                 output_mgr.print(step_completed(initialized_msg))
                 output_mgr.update_app_page_url(running_app.app_page_url)
 
-        # Start logs loop
-        if show_progress:
+            # Start logs loop
             logs_loop = tc.create_task(get_app_logs_loop(client, output_mgr, running_app.app_id))
 
         exc_info: Optional[BaseException] = None
         try:
             # Create all members
-            await _create_all_objects(
-                client, running_app, app._indexed_objects, app_state, environment_name, output_mgr=output_mgr
-            )
+            await _create_all_objects(client, running_app, app._indexed_objects, app_state, environment_name)
 
             # Update all functions client-side to have the output mgr
             for obj in app.registered_functions.values():
@@ -272,14 +264,15 @@ async def _run_app(
 
             # Show logs from dynamically created images.
             # TODO: better way to do this
-            output_mgr.enable_image_logs()
+            if output_mgr := OutputManager.get():
+                output_mgr.enable_image_logs()
 
             # Yield to context
-            if not show_progress:
-                yield app
-            else:
+            if output_mgr := OutputManager.get():
                 with output_mgr.show_status_spinner():
                     yield app
+            else:
+                yield app
         except KeyboardInterrupt as e:
             exc_info = e
             # mute cancellation errors on all function handles to prevent exception spam
@@ -287,17 +280,16 @@ async def _run_app(
                 obj._set_mute_cancellation(True)
 
             if detach:
-                if output_mgr.is_visible():
+                if output_mgr := OutputManager.get():
                     output_mgr.print(step_completed("Shutting down Modal client."))
                     output_mgr.print(
                         "The detached app keeps running. You can track its progress at: "
                         f"[magenta]{running_app.app_page_url}[/magenta]"
                         ""
                     )
-                if show_progress:
                     logs_loop.cancel()
             else:
-                if output_mgr.is_visible():
+                if output_mgr := OutputManager.get():
                     output_mgr.print(
                         step_completed(
                             "App aborted. "
@@ -328,7 +320,7 @@ async def _run_app(
             await _disconnect(client, running_app.app_id, reason, exc_str)
             app._uncreate_all_objects()
 
-    if output_mgr.is_visible():
+    if output_mgr := OutputManager.get():
         output_mgr.print(
             step_completed(
                 f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
@@ -349,14 +341,12 @@ async def _serve_update(
         running_app: RunningApp = await _init_local_app_existing(client, existing_app_id)
 
         # Create objects
-        output_mgr = OutputManager()
         await _create_all_objects(
             client,
             running_app,
             app._indexed_objects,
             api_pb2.APP_STATE_UNSPECIFIED,
             environment_name,
-            output_mgr=output_mgr,
         )
 
         # Communicate to the parent process
@@ -378,7 +368,6 @@ async def _deploy_app(
     name: Optional[str] = None,
     namespace: Any = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client: Optional[_Client] = None,
-    show_progress: bool = True,
     environment_name: Optional[str] = None,
     tag: Optional[str] = None,
 ) -> DeployResult:
@@ -431,8 +420,6 @@ async def _deploy_app(
     if client is None:
         client = await _Client.from_env()
 
-    output_mgr = OutputManager(show_progress=show_progress)
-
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
     )
@@ -452,7 +439,6 @@ async def _deploy_app(
                 app._indexed_objects,
                 post_init_state,
                 environment_name=environment_name,
-                output_mgr=output_mgr,
             )
 
             # Deploy app
@@ -479,7 +465,7 @@ async def _deploy_app(
             await _disconnect(client, running_app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
-    if output_mgr.is_visible():
+    if output_mgr := OutputManager.get():
         output_mgr.print(step_completed("App deployed! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{url}[/magenta]")
     return DeployResult(app_id=running_app.app_id)
@@ -509,7 +495,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
     **kwargs will be passed into spawn_sandbox().
     """
     client = await _Client.from_env()
-    async with _run_app(_app, client, environment_name=environment_name, show_progress=False):
+    async with _run_app(_app, client=client, environment_name=environment_name):
         console = Console()
         loading_status = console.status("Starting container...")
         loading_status.start()
