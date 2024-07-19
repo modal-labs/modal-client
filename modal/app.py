@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import inspect
+import os
 import typing
 import warnings
 from pathlib import PurePosixPath
@@ -304,9 +305,8 @@ class _App:
     async def run(
         self,
         client: Optional[_Client] = None,
-        show_progress: bool = True,
+        show_progress: Optional[bool] = None,
         detach: bool = False,
-        output_mgr: Optional[OutputManager] = None,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
@@ -318,9 +318,50 @@ class _App:
         no longer useful since you can use the app itself for access to all
         objects. For backwards compatibility reasons, it returns the same app.
         """
-        # TODO(erikbern): deprecate this one too?
-        async with _run_app(self, client, show_progress, detach, output_mgr):
-            yield self
+
+        enable_output_warning = """
+        Note that output will soon not be be printed with `app.run`.
+
+        If you want to print output, use `modal.enable_output()`:
+
+        ```python
+        with modal.enable_output():
+            with app.run():
+                ...
+        ```
+
+        If you don't want output, and you want to to suppress this warning,
+        use `app.run(..., show_progress=False)`.
+        """
+
+        # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
+
+        auto_enable_output = False
+
+        if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
+            if show_progress is None:
+                if OutputManager.get() is None:
+                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    auto_enable_output = True
+            elif show_progress is True:
+                if OutputManager.get() is None:
+                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    auto_enable_output = True
+                else:
+                    deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
+            elif show_progress is False:
+                if OutputManager.get() is not None:
+                    deprecation_warning(
+                        (2024, 7, 18), "`show_progress=False` will have no effect since output is enabled."
+                    )
+
+        if auto_enable_output:
+            with OutputManager.enable_output():
+                async with _run_app(self, client=client, detach=detach):
+                    yield self
+        else:
+            async with _run_app(self, client=client, detach=detach):
+                yield self
 
     def _get_default_image(self):
         if self._image:
@@ -507,7 +548,7 @@ class _App:
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
-        _allow_background_volume_commits: Optional[bool] = None,
+        _allow_background_volume_commits: None = None,
         _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -675,7 +716,7 @@ class _App:
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
-        _allow_background_volume_commits: Optional[bool] = None,
+        _allow_background_volume_commits: None = None,
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
@@ -800,7 +841,7 @@ class _App:
         volumes: Dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
-        _allow_background_volume_commits: Optional[bool] = None,
+        _allow_background_volume_commits: None = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -824,9 +865,16 @@ class _App:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
         if _allow_background_volume_commits is False:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
-                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+                "Disabling volume background commits is now deprecated. "
+                "Remove _allow_background_volume_commits=False to enable the functionality.",
+            )
+        elif _allow_background_volume_commits is True:
+            deprecation_warning(
+                (2024, 7, 18),
+                "Setting volume background commits is deprecated. "
+                "The functionality is now unconditionally enabled (set to True).",
             )
         elif _allow_background_volume_commits is None:
             _allow_background_volume_commits = True

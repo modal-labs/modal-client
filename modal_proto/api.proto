@@ -319,6 +319,20 @@ message AppLookupResponse {
   string app_id = 1;
 }
 
+message AppPublishRequest {
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 2;
+  string deployment_tag = 3;  // Additional metadata to identify a deployment
+  AppState app_state = 4;  // Published app will be in this state
+  map<string, string> function_ids = 5;  // function_name -> function_id
+  map<string, string> class_ids = 6;  // class_name -> class_id
+  map<string, string> definition_ids = 7;  // function_id -> definition_id
+}
+
+message AppPublishResponse {
+  string url = 1;
+}
+
 message AppSetObjectsRequest {
   string app_id = 1;
   map<string, string> indexed_object_ids = 2;
@@ -677,7 +691,7 @@ message ContainerHeartbeatResponse {
 }
 
 message ContainerStopRequest {
-  string task_id = 1;
+  string task_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message ContainerStopResponse {
@@ -748,7 +762,7 @@ message DictEntry {
 }
 
 message DictGetOrCreateRequest {
-  string deployment_name = 1;
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -805,7 +819,7 @@ message DictPopResponse {
 }
 
 message DictUpdateRequest {
-  string dict_id = 1;
+  string dict_id = 1 [ (modal.options.audit_target_attr) = true ];
   repeated DictEntry updates = 2;
 }
 
@@ -845,11 +859,11 @@ message DomainListResponse {
 }
 
 message EnvironmentCreateRequest {
-  string name = 1;
+  string name = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message EnvironmentDeleteRequest {
-  string name = 1;
+  string name = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message EnvironmentListItem {
@@ -862,7 +876,7 @@ message EnvironmentListResponse {
 }
 
 message EnvironmentUpdateRequest {
-  string current_name = 1;
+  string current_name = 1 [ (modal.options.audit_target_attr) = true ];
   google.protobuf.StringValue name = 2;
   google.protobuf.StringValue web_suffix = 3;
 }
@@ -1489,7 +1503,7 @@ message PTYInfo {
 }
 
 message ProxyGetOrCreateRequest {
-  string deployment_name = 1;
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
@@ -1513,7 +1527,7 @@ message QueueClearRequest {
 }
 
 message QueueCreateRequest {
-  string app_id = 1;
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   string existing_queue_id = 2;
 }
 
@@ -1522,7 +1536,7 @@ message QueueCreateResponse {
 }
 
 message QueueDeleteRequest {
-  string queue_id = 1;
+  string queue_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message QueueGetOrCreateRequest {
@@ -1788,7 +1802,7 @@ message SecretCreateResponse {  // Not used by client anymore
 }
 
 message SecretGetOrCreateRequest {
-  string deployment_name = 1;
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // Not used atm
@@ -1838,7 +1852,7 @@ message SharedVolumeGetFileResponse {
 }
 
 message SharedVolumeGetOrCreateRequest {
-  string deployment_name = 1;
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -2061,7 +2075,7 @@ message VolumeGetFileResponse {
 }
 
 message VolumeGetOrCreateRequest {
-  string deployment_name = 1;
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -2167,6 +2181,7 @@ service ModalClient {
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
+  rpc AppPublish(AppPublishRequest) returns (AppPublishResponse);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
 

@@ -790,7 +790,7 @@ def test_checkpointing_cls_function(servicer):
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "CheckpointingCls.*",
+        "SnapshottingCls.*",
         inputs=_get_inputs((("D",), {}), method_name="f"),
         is_checkpointing_function=True,
         is_class=True,
@@ -817,6 +817,9 @@ def test_cls_enter_uses_event_loop(servicer):
 @skip_github_non_linux
 def test_container_heartbeats(servicer):
     _run_container(servicer, "test.supports.functions", "square")
+    assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in servicer.requests)
+
+    _run_container(servicer, "test.supports.functions", "snapshotting_square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in servicer.requests)
 
 

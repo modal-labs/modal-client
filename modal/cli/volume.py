@@ -8,12 +8,11 @@ import typer
 from click import UsageError
 from grpclib import GRPCError, Status
 from rich.console import Console
-from rich.live import Live
 from rich.syntax import Syntax
 from typer import Argument, Option, Typer
 
 import modal
-from modal._output import step_completed, step_progress
+from modal._output import ProgressHandler, step_completed
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli._download import _volume_download
@@ -97,7 +96,11 @@ async def get(
     ensure_env(env)
     destination = Path(local_destination)
     volume = await _Volume.lookup(volume_name, environment_name=env)
-    await _volume_download(volume, remote_path, destination, force)
+    console = Console()
+    progress_handler = ProgressHandler(type="download", console=console)
+    with progress_handler.live:
+        await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
+    console.print(step_completed("Finished downloading files to local!"))
 
 
 @volume_cli.command(
@@ -195,12 +198,14 @@ async def put(
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
     console = Console()
+    progress_handler = ProgressHandler(type="upload", console=console)
 
     if Path(local_path).is_dir():
-        spinner = step_progress(f"Uploading directory '{local_path}' to '{remote_path}'...")
-        with Live(spinner, console=console):
+        with progress_handler.live:
             try:
-                async with _VolumeUploadContextManager(vol.object_id, vol._client, force=force) as batch:
+                async with _VolumeUploadContextManager(
+                    vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
+                ) as batch:
                     batch.put_directory(local_path, remote_path)
             except FileExistsError as exc:
                 raise UsageError(str(exc))
@@ -208,11 +213,13 @@ async def put(
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
     else:
-        spinner = step_progress(f"Uploading file '{local_path}' to '{remote_path}'...")
-        with Live(spinner, console=console):
+        with progress_handler.live:
             try:
-                async with _VolumeUploadContextManager(vol.object_id, vol._client, force=force) as batch:
+                async with _VolumeUploadContextManager(
+                    vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
+                ) as batch:
                     batch.put_file(local_path, remote_path)
+
             except FileExistsError as exc:
                 raise UsageError(str(exc))
         console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))

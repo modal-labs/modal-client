@@ -530,9 +530,16 @@ class _Function(_Object, type_prefix="fu"):
             enable_memory_snapshot = checkpointing_enabled
 
         if allow_background_volume_commits is False:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
-                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+                "Disabling volume background commits is now deprecated. "
+                "Remove _allow_background_volume_commits=False to enable the functionality.",
+            )
+        elif allow_background_volume_commits is True:
+            deprecation_warning(
+                (2024, 7, 18),
+                "Setting volume background commits is deprecated. "
+                "The functionality is now unconditionally enabled (set to True).",
             )
         elif allow_background_volume_commits is None:
             allow_background_volume_commits = True
@@ -1075,7 +1082,6 @@ class _Function(_Object, type_prefix="fu"):
         self._progress = None
         self._is_generator = None
         self._web_url = None
-        self._output_mgr: Optional[OutputManager] = None
         self._mute_cancellation = (
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
@@ -1118,9 +1124,6 @@ class _Function(_Object, type_prefix="fu"):
     def _set_mute_cancellation(self, value: bool = True):
         self._mute_cancellation = value
 
-    def _set_output_mgr(self, output_mgr: OutputManager):
-        self._output_mgr = output_mgr
-
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
@@ -1159,9 +1162,10 @@ class _Function(_Object, type_prefix="fu"):
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         assert self._function_name
-        count_update_callback = (
-            self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
-        )
+        if output_mgr := OutputManager.get():
+            count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
+        else:
+            count_update_callback = None
 
         async for item in _map_invocation(
             self,  # type: ignore

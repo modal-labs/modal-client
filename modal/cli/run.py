@@ -17,6 +17,7 @@ from rich.console import Console
 from typing_extensions import TypedDict
 
 from .. import Cls
+from .._output import enable_output
 from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
@@ -154,24 +155,25 @@ def _get_click_command_for_function(app: App, function_tag):
 
     @click.pass_context
     def f(ctx, **kwargs):
-        with run_app(
-            app,
-            detach=ctx.obj["detach"],
-            show_progress=ctx.obj["show_progress"],
-            environment_name=ctx.obj["env"],
-            interactive=ctx.obj["interactive"],
-        ):
-            if cls is None:
-                function.remote(**kwargs)
-            else:
-                # unpool class and method arguments
-                # TODO(erikbern): this code is a bit hacky
-                cls_kwargs = {k: kwargs[k] for k in cls_signature}
-                fun_kwargs = {k: kwargs[k] for k in fun_signature}
+        show_progress: bool = ctx.obj["show_progress"]
+        with enable_output(show_progress):
+            with run_app(
+                app,
+                detach=ctx.obj["detach"],
+                environment_name=ctx.obj["env"],
+                interactive=ctx.obj["interactive"],
+            ):
+                if cls is None:
+                    function.remote(**kwargs)
+                else:
+                    # unpool class and method arguments
+                    # TODO(erikbern): this code is a bit hacky
+                    cls_kwargs = {k: kwargs[k] for k in cls_signature}
+                    fun_kwargs = {k: kwargs[k] for k in fun_signature}
 
-                instance = cls(**cls_kwargs)
-                method: Function = getattr(instance, method_name)
-                method.remote(**fun_kwargs)
+                    instance = cls(**cls_kwargs)
+                    method: Function = getattr(instance, method_name)
+                    method.remote(**fun_kwargs)
 
     with_click_options = _add_click_options(f, signature)
     return click.command(with_click_options)
@@ -189,20 +191,21 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
                 "triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
-        with run_app(
-            app,
-            detach=ctx.obj["detach"],
-            show_progress=ctx.obj["show_progress"],
-            environment_name=ctx.obj["env"],
-            interactive=ctx.obj["interactive"],
-        ):
-            try:
-                if isasync:
-                    asyncio.run(func(*args, **kwargs))
-                else:
-                    func(*args, **kwargs)
-            except Exception as exc:
-                raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
+        show_progress: bool = ctx.obj["show_progress"]
+        with enable_output(show_progress):
+            with run_app(
+                app,
+                detach=ctx.obj["detach"],
+                environment_name=ctx.obj["env"],
+                interactive=ctx.obj["interactive"],
+            ):
+                try:
+                    if isasync:
+                        asyncio.run(func(*args, **kwargs))
+                    else:
+                        func(*args, **kwargs)
+                except Exception as exc:
+                    raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
 
     with_click_options = _add_click_options(f, _get_signature(func))
     return click.command(with_click_options)
@@ -288,7 +291,8 @@ def deploy(
     if name is None:
         name = app.name
 
-    res = deploy_app(app, name=name, environment_name=env, tag=tag)
+    with enable_output():
+        res = deploy_app(app, name=name, environment_name=env, tag=tag)
 
     if stream_logs:
         stream_app_logs(res.app_id)
@@ -313,15 +317,16 @@ def serve(
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))
 
-    with serve_app(app, app_ref, environment_name=env):
-        if timeout is None:
-            timeout = config["serve_timeout"]
-        if timeout is None:
-            timeout = float("inf")
-        while timeout > 0:
-            t = min(timeout, 3600)
-            time.sleep(t)
-            timeout -= t
+    with enable_output():
+        with serve_app(app, app_ref, environment_name=env):
+            if timeout is None:
+                timeout = config["serve_timeout"]
+            if timeout is None:
+                timeout = float("inf")
+            while timeout > 0:
+                t = min(timeout, 3600)
+                time.sleep(t)
+                timeout -= t
 
 
 def shell(
@@ -410,7 +415,6 @@ def shell(
             memory=function_spec.memory,
             volumes=function_spec.volumes,
             region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
-            _allow_background_volume_commits=True,
             _experimental_gpus=function_spec._experimental_gpus,
         )
     else:
