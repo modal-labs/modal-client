@@ -320,7 +320,7 @@ class _App:
         """
 
         enable_output_warning = """
-        Note that output will no longer be printed with `app.run`.
+        Note that output will soon not be be printed with `app.run`.
 
         If you want to print output, use `modal.enable_output()`:
 
@@ -336,13 +336,17 @@ class _App:
 
         # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
 
+        auto_enable_output = False
+
         if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
             if show_progress is None:
                 if OutputManager.get() is None:
                     deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    auto_enable_output = True
             elif show_progress is True:
                 if OutputManager.get() is None:
                     deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    auto_enable_output = True
                 else:
                     deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
             elif show_progress is False:
@@ -351,8 +355,13 @@ class _App:
                         (2024, 7, 18), "`show_progress=False` will have no effect since output is enabled."
                     )
 
-        async with _run_app(self, client=client, detach=detach):
-            yield self
+        if auto_enable_output:
+            with OutputManager.enable_output():
+                async with _run_app(self, client=client, detach=detach):
+                    yield self
+        else:
+            async with _run_app(self, client=client, detach=detach):
+                yield self
 
     def _get_default_image(self):
         if self._image:
