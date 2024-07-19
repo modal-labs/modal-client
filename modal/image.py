@@ -425,7 +425,8 @@ class _Image(_Object, type_prefix="im"):
                                 output_mgr.update_snapshot_progress(image_id, task_log.task_progress)
                         elif task_log.data:
                             await resolver.console_write(task_log)
-                resolver.console_flush()
+                if output_mgr := OutputManager.get():
+                    output_mgr.flush_lines()
 
             # Handle up to n exceptions while fetching logs
             retry_count = 0

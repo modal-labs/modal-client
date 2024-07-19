@@ -185,10 +185,3 @@ class Resolver:
 
         if output_mgr := OutputManager.get():
             await output_mgr.put_log_content(log)
-
-    def console_flush(self):
-        # TODO(erikbern): get rid of this wrapper
-        from ._output import OutputManager
-
-        if output_mgr := OutputManager.get():
-            output_mgr.flush_lines()
