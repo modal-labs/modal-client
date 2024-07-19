@@ -985,8 +985,10 @@ message Function {
 
   repeated Resources _experimental_resources = 57; // overrides `resources` field above
 
-  int32 batch_max_size = 58; // Maximum number of inputs to fetch at once
-  float batch_linger_secs = 59; // Seconds to block before a response is needed
+  reserved 58;
+  reserved 59;
+  uint32 batch_max_size = 60; // Maximum number of inputs to fetch at once
+  uint64 batch_linger_ms = 61; // Seconds to block before a response is needed
 }
 
 message FunctionBindParamsRequest {
@@ -1085,8 +1087,10 @@ message FunctionGetInputsRequest {
   int32 max_values = 3;
   float average_call_time = 5;
   int32 input_concurrency = 6; // Container aims to fetch multiple inputs at the same time
-  int32 batch_max_size = 9; // Maximum number of inputs to fetch at once
-  float batch_linger_secs = 10; // Seconds to block before a response is needed
+  reserved 9;
+  reserved 10;
+  uint32 batch_max_size = 11; // Maximum number of inputs to fetch at once
+  uint64 batch_linger_ms = 12; // Seconds to block before a response is needed
 }
 
 message FunctionGetInputsResponse {
