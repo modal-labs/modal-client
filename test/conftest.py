@@ -55,6 +55,11 @@ def set_env(monkeypatch):
     monkeypatch.setenv("MODAL_ENVIRONMENT", "main")
 
 
+@pytest.fixture(scope="function", autouse=True)
+def disable_app_run_warning(monkeypatch):
+    monkeypatch.setenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING", "1")
+
+
 @patch_mock_servicer
 class MockClientServicer(api_grpc.ModalClientBase):
     # TODO(erikbern): add more annotations
