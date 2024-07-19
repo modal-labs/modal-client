@@ -16,6 +16,7 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
 
+from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
@@ -420,10 +421,13 @@ class _Image(_Object, type_prefix="im"):
                     for task_log in response.task_logs:
                         if task_log.task_progress.pos or task_log.task_progress.len:
                             assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
-                            resolver.image_snapshot_update(image_id, task_log.task_progress)
+                            if output_mgr := OutputManager.get():
+                                output_mgr.update_snapshot_progress(image_id, task_log.task_progress)
                         elif task_log.data:
-                            await resolver.console_write(task_log)
-                resolver.console_flush()
+                            if output_mgr := OutputManager.get():
+                                await output_mgr.put_log_content(task_log)
+                if output_mgr := OutputManager.get():
+                    output_mgr.flush_lines()
 
             # Handle up to n exceptions while fetching logs
             retry_count = 0
