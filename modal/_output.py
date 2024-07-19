@@ -515,9 +515,28 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
         await finish_event.wait()
 
 
-def put_pty_content(log: api_pb2.TaskLogs, stdout):
-    stdout.write(log.data)
-    stdout.flush()
+async def put_pty_content(log: api_pb2.TaskLogs, stdout):
+    if hasattr(stdout, "buffer"):
+        # If we're not showing progress, there's no need to buffer lines,
+        # because the progress spinner can't interfere with output.
+
+        data = log.data.encode("utf-8")
+        written = 0
+        n_retries = 0
+        while written < len(data):
+            try:
+                written += stdout.buffer.write(data[written:])
+                stdout.flush()
+            except BlockingIOError:
+                if n_retries >= 5:
+                    raise
+                n_retries += 1
+                await asyncio.sleep(0.1)
+    else:
+        # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
+        # io.StringIO).
+        stdout.write(log.data)
+        stdout.flush()
 
 
 async def get_app_logs_loop(
@@ -557,7 +576,7 @@ async def get_app_logs_loop(
                 logger.debug(f"Received unrecognized progress type: {log.task_progress.progress_type}")
         elif log.data:
             if pty_shell_finish_event:
-                put_pty_content(log, pty_shell_stdout)
+                await put_pty_content(log, pty_shell_stdout)
             else:
                 await output_mgr.put_log_content(log)
 
