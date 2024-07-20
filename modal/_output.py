@@ -142,7 +142,6 @@ class LineBufferedOutput(io.StringIO):
 class OutputManager:
     _instance: ClassVar[Optional["OutputManager"]] = None
 
-    _visible_progress: bool
     _console: Console
     _task_states: Dict[str, int]
     _task_progress_items: Dict[Tuple[str, int], TaskID]
@@ -160,11 +159,9 @@ class OutputManager:
         self,
         *,
         stdout: Optional[io.TextIOWrapper] = None,
-        show_progress: bool = True,
         status_spinner_text: str = "Running app...",
     ):
         self._stdout = stdout or sys.stdout
-        self._visible_progress = show_progress
         self._console = Console(file=stdout, highlight=False)
         self._task_states = {}
         self._task_progress_items = {}
@@ -178,14 +175,9 @@ class OutputManager:
         self._show_image_logs = False
         self._status_spinner_live = None
 
-    def is_visible(self) -> bool:
-        # TODO(erikbern): remove this and just check exsistance
-        return self._visible_progress
-
     @classmethod
     def disable(cls):
         cls._instance.flush_lines()
-        cls._instance._visible_progress = False
         if cls._instance._status_spinner_live:
             cls._instance._status_spinner_live.stop()
         cls._instance = None
@@ -364,7 +356,6 @@ class OutputManager:
             self._task_progress_items[task_key] = progress_task_id
 
     async def put_log_content(self, log: api_pb2.TaskLogs):
-        assert self._visible_progress
         stream = self._line_buffers.get(log.file_descriptor)
         if stream is None:
             stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
@@ -378,10 +369,7 @@ class OutputManager:
     @contextlib.contextmanager
     def show_status_spinner(self):
         self._status_spinner_live = self.make_live(self._status_spinner)
-        if self.is_visible():
-            with self._status_spinner_live:
-                yield
-        else:
+        with self._status_spinner_live:
             yield
 
 
@@ -614,11 +602,10 @@ async def get_app_logs_loop(
         except asyncio.CancelledError:
             # TODO: this should come from the backend maybe
             app_logs_url = f"https://modal.com/logs/{app_id}"
-            if output_mgr.is_visible():
-                output_mgr.print(
-                    f"[red]Timed out waiting for logs. "
-                    f"[grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
-                )
+            output_mgr.print(
+                f"[red]Timed out waiting for logs. "
+                f"[grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
+            )
             raise
         except (GRPCError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
             if isinstance(exc, GRPCError):
