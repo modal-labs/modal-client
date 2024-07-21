@@ -301,7 +301,7 @@ class _Mount(_Object, type_prefix="mo"):
         *,
         # Where the directory is placed within in the mount
         remote_path: Union[str, PurePosixPath, None] = None,
-        # Predicate filter function for file selection; function should return `True` for inclusion, `False` otherwise.
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
         # add files from subdirectories as well
@@ -336,7 +336,7 @@ class _Mount(_Object, type_prefix="mo"):
         *,
         # Where the directory is placed within in the mount
         remote_path: Union[str, PurePosixPath, None] = None,
-        # Predicate filter function for file selection; function should return `True` for inclusion, `False` otherwise.
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
         # add files from subdirectories as well
@@ -524,7 +524,7 @@ class _Mount(_Object, type_prefix="mo"):
     def from_local_python_packages(
         *module_names: str,
         remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
-        # Predicate filter function for file selection; function should return `True` for inclusion, `False` otherwise.
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
     ) -> "_Mount":
