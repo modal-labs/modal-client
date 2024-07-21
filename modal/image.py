@@ -1375,11 +1375,13 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def from_dockerfile(
+        # Filepath to Dockerfile.
         path: Union[str, Path],
-        context_mount: Optional[
-            _Mount
-        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
-        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        # modal.Mount with local files to supply as build context for COPY commands.
+        # NOTE: The remote_path of the Mount should match the Dockerfile's WORKDIR.
+        context_mount: Optional[_Mount] = None,
+        # Ignore cached builds, similar to 'docker build --no-cache'
+        force_build: bool = False,
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -1395,6 +1397,22 @@ class _Image(_Object, type_prefix="im"):
 
         ```python
         image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.12")
+        ```
+
+        If your Dockerfile uses `COPY` instructions which copy data from the local context of the
+        build into the image, this local data must be uploaded to Modal via a context mount:
+
+        ```python
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            context_mount=modal.Mount.from_local_dir(
+                local_path="src",
+                remote_path=".",  # to current WORKDIR
+            ),
+        )
+        ```
+
+        The context mount will allow a `COPY src/ src/` instruction to succeed in Modal's remote builder.
         ```
         """
 
