@@ -114,8 +114,6 @@ class BytesIOSegmentPayload(BytesIOPayload):
             await writer.write(chunk)
             self.progress_report_cb(advance=len(chunk))
 
-        self.progress_report_cb(complete=True)
-
     def remaining_bytes(self):
         return self.segment_length - self.num_bytes_read
 
@@ -281,6 +279,9 @@ async def _blob_upload(
             # for single part uploads, we use server side md5 checksums
             content_md5_b64=upload_hashes.md5_base64,
         )
+
+    if progress_report_cb:
+        progress_report_cb(complete=True)
 
     return blob_id
 

@@ -462,18 +462,21 @@ class ProgressHandler:
         reset: Optional[bool] = False,
         complete: Optional[bool] = False,
     ) -> Optional[TaskID]:
-        if task_id is not None:
-            if reset:
-                return self._reset_sub_task(task_id)
+        try:
+            if task_id is not None:
+                if reset:
+                    return self._reset_sub_task(task_id)
+                elif complete:
+                    return self._complete_sub_task(task_id)
+                elif advance is not None:
+                    return self._advance_sub_task(task_id, advance)
+            elif name is not None and size is not None:
+                return self._add_sub_task(name, size)
             elif complete:
-                return self._complete_sub_task(task_id)
-            elif advance is not None:
-                return self._advance_sub_task(task_id, advance)
-        elif name is not None and size is not None:
-            return self._add_sub_task(name, size)
-        elif complete:
-            return self._complete_progress()
-
+                return self._complete_progress()
+        except Exception as exc:
+            # Liberal exception handling to avoid crashing downloads and uploads.
+            logger.error(f"failed progress update: {exc}")
         raise NotImplementedError(
             "Unknown action to take with args: "
             + f"name={name} "
