@@ -488,7 +488,7 @@ class _Function(_Object, type_prefix="fu"):
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
         cloud: Optional[str] = None,
-        _experimental_boost: bool = False,
+        _experimental_boost: None = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
