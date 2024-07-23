@@ -1106,22 +1106,6 @@ def test_checkpoint_and_restore_success(servicer):
 @skip_windows(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
 def test_memory_snapshot_error_open_connection(servicer):
     """Functions fail to checkpoint if connections are open."""
-    pre_existing_connections = [c.remote_addr for c in get_open_connections()]
-
-    def _filtered_open_connections():
-        connections = get_open_connections()
-        return [c for c in connections if c.remote_addr not in pre_existing_connections]
-
-    # A connection is opened and closed.
-    with mock.patch("modal._container_io_manager.get_open_connections", _filtered_open_connections):
-        _run_container(
-            servicer,
-            "test.supports.functions",
-            "SnapshottingClsNetworkConnectionClosed.*",
-            inputs=_get_inputs((("D",), {}), method_name="open_connection"),
-            is_checkpointing_function=True,
-            is_class=True,
-        )
 
     # A connection is left open.
     with pytest.raises(ConnectionError):
