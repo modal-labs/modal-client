@@ -757,7 +757,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Patch socket.close() to prevent lingering open connections due to TIME_WAIT.
         # Refer to modal._contaienr_utils.patch_socket_close() for full extent of patch.
         if is_checkpointing_function:
-            logger.debug("patching socket.close() for memory snapshots")
+            logger.debug("patching socket.close() for memory snapshot")
             patch_socket_close()
 
         # Hydrate all function dependencies.
