@@ -51,11 +51,11 @@ def patch_socket_close():
             pass
         original_close(self)
 
-    socket.socket.close = new_close
+    socket.socket.close = new_close  # type: ignore
 
 
 def unpatch_socket_close():
-    socket.socket.close = original_close
+    socket.socket.close = original_close  # type: ignore
 
 
 def is_socket_patched():
