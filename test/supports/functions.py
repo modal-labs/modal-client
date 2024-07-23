@@ -416,7 +416,7 @@ class SnapshottingCls:
 
 
 @app.cls(enable_memory_snapshot=True)
-class CheckpointingClsNetworkConnectionOpen:
+class SnapshottingClsNetworkConnectionOpen:
     def __init__(self):
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 

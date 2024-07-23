@@ -791,7 +791,7 @@ def test_cls_generator(servicer):
 @skip_github_non_linux
 def test_checkpointing_cls_function(servicer):
     # Monkey-patched to prevent side effects with other existing connections.
-    with mock.patch("modal._container_entrypoint.get_open_connections", lambda: []):
+    with mock.patch("modal._container_io_manager.get_open_connections", lambda: []):
         ret = _run_container(
             servicer,
             "test.supports.functions",
@@ -1087,7 +1087,7 @@ def test_call_function_that_calls_method(servicer, set_env_client):
 def test_checkpoint_and_restore_success(servicer):
     """Functions send a checkpointing request and continue to execute normally,
     simulating a restore operation."""
-    with mock.patch("modal._container_entrypoint.get_open_connections", lambda: []):
+    with mock.patch("modal._container_io_manager.get_open_connections", lambda: []):
         ret = _run_container(
             servicer,
             "test.supports.functions",
@@ -1104,14 +1104,16 @@ def test_checkpoint_and_restore_success(servicer):
 
 @skip_macos(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
 @skip_windows(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
-def test_error_open_connection(unix_servicer, event_loop):
+def test_error_open_connection(servicer):
     """Functions fail to checkpoint if connections are open."""
     with pytest.raises(ConnectionError):
         _run_container(
-            unix_servicer,
-            "modal_test_support.functions",
-            "CheckpointingClsNetworkConnectionOpen.open_connection",
+            servicer,
+            "test.supports.functions",
+            "SnapshottingClsNetworkConnectionOpen.*",
+            inputs=_get_inputs((("D",), {}), method_name="f"),
             is_checkpointing_function=True,
+            is_class=True,
         )
 
 
