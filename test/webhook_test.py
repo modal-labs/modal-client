@@ -6,25 +6,25 @@ import sys
 
 from fastapi.testclient import TestClient
 
-from modal import Stub, asgi_app, web_endpoint, wsgi_app
+from modal import App, asgi_app, web_endpoint, wsgi_app
 from modal._asgi import webhook_asgi_app
-from modal.app import ContainerApp
 from modal.exception import InvalidError
 from modal.functions import Function
+from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
-stub = Stub()
+app = App()
 
 
-@stub.function(cpu=42)
-@web_endpoint(method="PATCH")
+@app.function(cpu=42)
+@web_endpoint(method="PATCH", docs=True)
 async def f(x):
     return {"square": x**2}
 
 
 @pytest.mark.asyncio
-async def test_webhook(servicer, client):
-    async with stub.run(client=client):
+async def test_webhook(servicer, client, reset_container_app):
+    async with app.run(client=client):
         assert f.web_url
 
         assert servicer.app_functions["fu-1"].webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
@@ -36,19 +36,17 @@ async def test_webhook(servicer, client):
         assert await f.local(100) == {"square": 10000}
 
         # Make sure the container gets the app id as well
-        container_app = ContainerApp()
-        await ContainerApp.init.aio(client, stub.app_id)
-        container_app._associate_stub_container(stub)
-        f_c = stub["f"]
-        assert isinstance(f_c, Function)
-        assert f_c.web_url
+        container_app = RunningApp(app_id=app.app_id)
+        app._init_container(client, container_app)
+        assert isinstance(f, Function)
+        assert f.web_url
 
 
 def test_webhook_cors():
     def handler():
         return {"message": "Hello, World!"}
 
-    app = webhook_asgi_app(handler, method="GET")
+    app = webhook_asgi_app(handler, method="GET", docs=False)
     client = TestClient(app)
     resp = client.options(
         "/",
@@ -65,7 +63,7 @@ def test_webhook_cors():
 
 @pytest.mark.asyncio
 async def test_webhook_no_docs():
-    # FastAPI automatically sets docs URLs for apps, which we disable because it
+    # FastAPI automatically sets docs URLs for apps, which we disable by default because it
     # can be unexpected for users who are unfamilar with FastAPI.
     #
     # https://fastapi.tiangolo.com/tutorial/metadata/#docs-urls
@@ -73,18 +71,32 @@ async def test_webhook_no_docs():
     def handler():
         return {"message": "Hello, World!"}
 
-    app = webhook_asgi_app(handler, method="GET")
+    app = webhook_asgi_app(handler, method="GET", docs=False)
     client = TestClient(app)
     assert client.get("/docs").status_code == 404
     assert client.get("/redoc").status_code == 404
+    assert client.get("/openapi.json").status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_webhook_docs():
+    # By turning on docs, we should get three new routes: /docs, /redoc, and /openapi.json
+    def handler():
+        return {"message": "Hello, docs!"}
+
+    app = webhook_asgi_app(handler, method="GET", docs=True)
+    client = TestClient(app)
+    assert client.get("/docs").status_code == 200
+    assert client.get("/redoc").status_code == 200
+    assert client.get("/openapi.json").status_code == 200
 
 
 def test_webhook_generator():
-    stub = Stub()
+    app = App()
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @stub.function(serialized=True)
+        @app.function(serialized=True)
         @web_endpoint()
         def web_gen():
             yield None
@@ -95,21 +107,21 @@ def test_webhook_generator():
 @pytest.mark.asyncio
 async def test_webhook_forgot_function(servicer, client):
     lib_dir = pathlib.Path(__file__).parent.parent
-    args = [sys.executable, "-m", "modal_test_support.webhook_forgot_function"]
+    args = [sys.executable, "-m", "test.supports.webhook_forgot_function"]
     ret = subprocess.run(args, cwd=lib_dir, stderr=subprocess.PIPE)
     stderr = ret.stderr.decode()
     assert "absent_minded_function" in stderr
-    assert "@stub.function" in stderr
+    assert "@app.function" in stderr
 
 
 @pytest.mark.asyncio
 async def test_webhook_decorator_in_wrong_order(servicer, client):
-    stub = Stub()
+    app = App()
 
     with pytest.raises(InvalidError) as excinfo:
 
-        @web_endpoint()
-        @stub.function(serialized=True)
+        @web_endpoint()  # type: ignore
+        @app.function(serialized=True)
         async def g(x):
             pass
 
@@ -117,36 +129,20 @@ async def test_webhook_decorator_in_wrong_order(servicer, client):
 
 
 @pytest.mark.asyncio
-async def test_webhook_decorator_with_interactivity(servicer, client):
-    stub = Stub()
-
-    # Debuggers can't work with Modal Functions triggered over HTTP.
-    for dec in [web_endpoint, asgi_app, wsgi_app]:
-        with pytest.raises(InvalidError) as excinfo:
-
-            @stub.function(serialized=True, interactive=True)
-            @dec()  # type: ignore
-            def web():
-                pass
-
-        assert "not supported" in str(excinfo.value).lower()
-
-
-@pytest.mark.asyncio
 async def test_asgi_wsgi(servicer, client):
-    stub = Stub()
+    app = App()
 
-    @stub.function(serialized=True)
+    @app.function(serialized=True)
     @asgi_app()
     async def my_asgi(x):
         pass
 
-    @stub.function(serialized=True)
+    @app.function(serialized=True)
     @wsgi_app()
     async def my_wsgi(x):
         pass
 
-    async with stub.run(client=client):
+    async with app.run(client=client):
         pass
 
     assert len(servicer.app_functions) == 2

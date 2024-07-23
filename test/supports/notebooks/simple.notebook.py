@@ -24,16 +24,16 @@ client = Client(server_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"
 # +
 import modal
 
-stub = modal.Stub()
+app = modal.App()
 
 
-@stub.function()
+@app.function()
 def hello():
     print("running")
 
 
 # + tags=["main"]
 with client:
-    with stub.run(client=client, show_progress=True):
+    with app.run(client=client):
         hello.remote()
 # -

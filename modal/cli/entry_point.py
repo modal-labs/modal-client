@@ -6,16 +6,18 @@ import typer
 from rich.console import Console
 from rich.rule import Rule
 
-from modal_utils.async_utils import synchronizer
+from modal._utils.async_utils import synchronizer
 
 from . import run
 from .app import app_cli
 from .config import config_cli
 from .container import container_cli
+from .dict import dict_cli
 from .environment import environment_cli
 from .launch import launch_cli
 from .network_file_system import nfs_cli
 from .profile import profile_cli
+from .queues import queue_cli
 from .secret import secret_cli
 from .token import _new_token, token_cli
 from .volume import volume_cli
@@ -81,22 +83,33 @@ async def setup(profile: Optional[str] = None):
     await _new_token(profile=profile, next_url="/home")
 
 
-entrypoint_cli_typer.add_typer(app_cli)
-entrypoint_cli_typer.add_typer(config_cli)
-entrypoint_cli_typer.add_typer(container_cli)
-entrypoint_cli_typer.add_typer(environment_cli)
-entrypoint_cli_typer.add_typer(launch_cli)
-entrypoint_cli_typer.add_typer(nfs_cli)
-entrypoint_cli_typer.add_typer(profile_cli)
-entrypoint_cli_typer.add_typer(secret_cli)
-entrypoint_cli_typer.add_typer(token_cli)
-entrypoint_cli_typer.add_typer(volume_cli)
-
-entrypoint_cli_typer.command("deploy", help="Deploy a Modal stub as an application.", no_args_is_help=True)(run.deploy)
+# Commands
+entrypoint_cli_typer.command("deploy", help="Deploy a Modal application.", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
-entrypoint_cli_typer.command("setup", help="Bootstrap Modal's configuration.")(setup)
 entrypoint_cli_typer.command("shell")(run.shell)
+entrypoint_cli_typer.add_typer(launch_cli)
 
+# Deployments
+entrypoint_cli_typer.add_typer(app_cli, rich_help_panel="Deployments")
+entrypoint_cli_typer.add_typer(container_cli, rich_help_panel="Deployments")
+
+# Storage
+entrypoint_cli_typer.add_typer(dict_cli, rich_help_panel="Storage")
+entrypoint_cli_typer.add_typer(nfs_cli, rich_help_panel="Storage")
+entrypoint_cli_typer.add_typer(secret_cli, rich_help_panel="Storage")
+entrypoint_cli_typer.add_typer(queue_cli, rich_help_panel="Storage")
+entrypoint_cli_typer.add_typer(volume_cli, rich_help_panel="Storage")
+
+# Configuration
+entrypoint_cli_typer.add_typer(config_cli, rich_help_panel="Configuration")
+entrypoint_cli_typer.add_typer(environment_cli, rich_help_panel="Configuration")
+entrypoint_cli_typer.add_typer(profile_cli, rich_help_panel="Configuration")
+entrypoint_cli_typer.add_typer(token_cli, rich_help_panel="Configuration")
+
+# Hide setup from help as it's redundant with modal token new, but nicer for onboarding
+entrypoint_cli_typer.command("setup", help="Bootstrap Modal's configuration.", rich_help_panel="Onboarding")(setup)
+
+# Special handling for modal run, which is more complicated
 entrypoint_cli = typer.main.get_command(entrypoint_cli_typer)
 entrypoint_cli.add_command(run.run, name="run")  # type: ignore
 entrypoint_cli.list_commands(None)  # type: ignore

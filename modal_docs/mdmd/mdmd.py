@@ -103,7 +103,6 @@ def module_str(header, module, title_level="#", filter_items: Callable[[ModuleTy
     object_docs = []
     member_title_level = title_level + "#"
     for qual_name, name, item in module_items(module, filter_items):
-        print(qual_name, name, item)
         try:
             if hasattr(item, "__wrapped__"):
                 item = item.__wrapped__

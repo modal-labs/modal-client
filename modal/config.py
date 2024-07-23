@@ -4,15 +4,15 @@ r"""Modal intentionally keeps configurability to a minimum.
 The main configuration options are the API tokens: the token id and the token secret.
 These can be configured in two ways:
 
-1. By running the ``modal token set`` command.
-   This writes the tokens to ``.modal.toml`` file in your home directory.
-2. By setting the environment variables ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET``.
+1. By running the `modal token set` command.
+   This writes the tokens to `.modal.toml` file in your home directory.
+2. By setting the environment variables `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`.
    This takes precedence over the previous method.
 
 .modal.toml
 ---------------
 
-The ``.modal.toml`` file is generally stored in your home directory.
+The `.modal.toml` file is generally stored in your home directory.
 It should look like this::
 
 ```toml
@@ -21,7 +21,7 @@ token_id = "ak-12345..."
 token_secret = "as-12345..."
 ```
 
-You can create this file manually, or you can run the ``modal token set ...``
+You can create this file manually, or you can run the `modal token set ...`
 command (see below).
 
 Setting tokens using the CLI
@@ -35,9 +35,9 @@ modal token set \
   --token-secret <token secret>
 ```
 
-This will write the token id and secret to ``.modal.toml``.
+This will write the token id and secret to `.modal.toml`.
 
-If the token id or secret is provided as the string ``-`` (a single dash),
+If the token id or secret is provided as the string `-` (a single dash),
 then it will be read in a secret way from stdin instead.
 
 Other configuration options
@@ -45,29 +45,33 @@ Other configuration options
 
 Other possible configuration options are:
 
-* ``loglevel`` (in the .toml file) / ``MODAL_LOGLEVEL`` (as an env var).
-  Defaults to ``WARNING``.
-  Set this to ``DEBUG`` to see a bunch of internal output.
-* ``logs_timeout`` (in the .toml file) / ``MODAL_LOGS_TIMEOUT`` (as an env var).
+* `loglevel` (in the .toml file) / `MODAL_LOGLEVEL` (as an env var).
+  Defaults to `WARNING`. Set this to `DEBUG` to see internal messages.
+* `logs_timeout` (in the .toml file) / `MODAL_LOGS_TIMEOUT` (as an env var).
   Defaults to 10.
   Number of seconds to wait for logs to drain when closing the session,
   before giving up.
-* ``automount`` (in the .toml file) / ``MODAL_AUTOMOUNT`` (as an env var).
+* `automount` (in the .toml file) / `MODAL_AUTOMOUNT` (as an env var).
   Defaults to True.
   By default, Modal automatically mounts modules imported in the current scope, that
   are deemed to be "local". This can be turned off by setting this to False.
-* ``server_url`` (in the .toml file) / ``MODAL_SERVER_URL`` (as an env var).
-  Defaults to ``https://api.modal.com``.
-  Not typically meant to be used.
+* `force_build` (in the .toml file) / `MODAL_FORCE_BUILD` (as an env var).
+  Defaults to False.
+  When set, ignores the Image cache and builds all Image layers. Note that this
+  will break the cache for all images based on the rebuilt layers, so other images
+  may rebuild on subsequent runs / deploys even if the config is reverted.
+* `traceback` (in the .toml file) / `MODAL_TRACEBACK` (as an env var).
+  Defaults to False. Enables printing full tracebacks on unexpected CLI
+  errors, which can be useful for debugging client issues.
 
 Meta-configuration
 ------------------
 
 Some "meta-options" are set using environment variables only:
 
-* ``MODAL_CONFIG_PATH`` lets you override the location of the .toml file,
-  by default ``~/.modal.toml``.
-* ``MODAL_PROFILE`` lets you use multiple sections in the .toml file
+* `MODAL_CONFIG_PATH` lets you override the location of the .toml file,
+  by default `~/.modal.toml`.
+* `MODAL_PROFILE` lets you use multiple sections in the .toml file
   and switch between them. It defaults to "default".
 """
 
@@ -78,21 +82,31 @@ import warnings
 from textwrap import dedent
 from typing import Any, Dict, Optional
 
-import toml
 from google.protobuf.empty_pb2 import Empty
 
 from modal_proto import api_pb2
-from modal_utils.logger import configure_logger
 
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from ._utils.logger import configure_logger
+from .exception import InvalidError, deprecation_error
 
 # Locate config file and read it
 
 user_config_path: str = os.environ.get("MODAL_CONFIG_PATH") or os.path.expanduser("~/.modal.toml")
 
 
+def _is_remote() -> bool:
+    # We want to prevent read/write on a modal config file in the container
+    # environment, both because that doesn't make sense and might cause weird
+    # behavior, and because we want to keep the `toml` dependency out of the
+    # container runtime.
+    return os.environ.get("MODAL_IS_REMOTE") == "1"
+
+
 def _read_user_config():
-    if os.path.exists(user_config_path):
+    if not _is_remote() and os.path.exists(user_config_path):
+        # Defer toml import so we don't need it in the container runtime environment
+        import toml
+
         with open(user_config_path) as f:
             return toml.load(f)
     else:
@@ -152,19 +166,18 @@ def _check_config() -> None:
             Support for using an implicit 'default' profile is deprecated.
             Please use `modal profile activate` to activate one of your profiles.
             (Use `modal profile list` to see the options.)
-
-            This will become an error in a future update.
             """
         )
-        deprecation_warning((2024, 2, 6), message, show_source=False)
+        deprecation_error((2024, 2, 6), message)
 
-
-if "MODAL_ENV" in os.environ:
-    deprecation_error((2023, 5, 24), "MODAL_ENV has been replaced with MODAL_PROFILE")
 
 _profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
 
 # Define settings
+
+
+def _to_boolean(x: object) -> bool:
+    return str(x).lower() not in {"", "0", "false"}
 
 
 class _Setting(typing.NamedTuple):
@@ -184,16 +197,18 @@ _SETTINGS = {
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
-    "automount": _Setting(True, transform=lambda x: x not in ("", "0")),
-    "profiling_enabled": _Setting(False, transform=lambda x: x not in ("", "0")),
+    "automount": _Setting(True, transform=_to_boolean),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
-    "function_runtime_debug": _Setting(False, transform=lambda x: x not in ("", "0")),  # For internal debugging use.
+    "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.
     "environment": _Setting(),
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
     "worker_id": _Setting(),  # For internal debugging use.
     "restore_state_path": _Setting("/__modal/restore-state.json"),
-    "force_build": _Setting(False, transform=lambda x: x not in ("", "0")),
+    "force_build": _Setting(False, transform=_to_boolean),
+    "traceback": _Setting(False, transform=_to_boolean),
+    "image_builder_version": _Setting(),
+    "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
 }
 
 
@@ -231,7 +246,7 @@ class Config:
             os.environ["MODAL_" + key.upper()] = value
         except KeyError:
             # Override env vars not available in config, e.g. NVIDIA_VISIBLE_DEVICES.
-            # This is used for restoring env vars from a checkpoint.
+            # This is used for restoring env vars from a memory snapshot.
             os.environ[key.upper()] = value
 
     def __getitem__(self, key):
@@ -272,6 +287,12 @@ def _store_user_config(
 
 
 def _write_user_config(user_config):
+    if _is_remote():
+        raise InvalidError("Can't update config file in remote environment.")
+
+    # Defer toml import so we don't need it in the container runtime environment
+    import toml
+
     with open(user_config_path, "w") as f:
         toml.dump(user_config, f)
 

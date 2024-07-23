@@ -1,14 +1,17 @@
 # Copyright Modal Labs 2022
 import io
 import pickle
+import typing
 from typing import Any
 
-import cloudpickle
+from synchronicity.synchronizer import Interface
 
+from modal._utils.async_utils import synchronizer
 from modal_proto import api_pb2
 
+from ._vendor import cloudpickle
 from .config import logger
-from .exception import InvalidError
+from .exception import DeserializationError, ExecutionError, InvalidError
 from .object import Object, _Object
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
@@ -19,10 +22,31 @@ class Pickler(cloudpickle.Pickler):
         super().__init__(buf, protocol=PICKLE_PROTOCOL)
 
     def persistent_id(self, obj):
+        from modal.partial_function import PartialFunction
+
         if isinstance(obj, _Object):
             flag = "_o"
         elif isinstance(obj, Object):
             flag = "o"
+        elif isinstance(obj, PartialFunction):
+            # Special case for PartialObject since it's a synchronicity wrapped object
+            # that's set on serialized classes.
+            # The resulting pickled instance can't be deserialized without this in a
+            # new process, since the original referenced synchronizer will have different
+            # values for `._original_attr` etc.
+
+            impl_object = synchronizer._translate_in(obj)
+            attributes = impl_object.__dict__.copy()
+            # ugly - we remove the `._wrapped_attr` attribute from the implementation instance
+            # to avoid referencing and therefore pickling the wrapped instance despite having
+            # translated it to the implementation type
+
+            # it would be nice if we could avoid this by not having the wrapped instances
+            # be directly linked from objects and instead having a lookup table in the Synchronizer:
+            if synchronizer._wrapped_attr and synchronizer._wrapped_attr in attributes:
+                attributes.pop(synchronizer._wrapped_attr)
+
+            return ("sync", (impl_object.__class__, attributes))
         else:
             return
         if not obj.object_id:
@@ -36,8 +60,20 @@ class Unpickler(pickle.Unpickler):
         super().__init__(buf)
 
     def persistent_load(self, pid):
-        (object_id, flag, handle_proto) = pid
+        if len(pid) == 2:
+            # more general protocol
+            obj_type, obj_data = pid
+            if obj_type == "sync":  # synchronicity wrapped object
+                # not actually a proto object in this case but the underlying object of a synchronicity object
+                impl_class, attributes = obj_data
+                impl_instance = impl_class.__new__(impl_class)
+                impl_instance.__dict__.update(attributes)
+                return synchronizer._translate_out(impl_instance, interface=Interface.BLOCKING)
+            else:
+                raise ExecutionError("Unknown serialization format")
 
+        # old protocol, always a 3-tuple
+        (object_id, flag, handle_proto) = pid
         if flag in ("o", "p", "h"):
             return Object._new_hydrated(object_id, self.client, handle_proto)
         elif flag in ("_o", "_p", "_h"):
@@ -55,6 +91,9 @@ def serialize(obj: Any) -> bytes:
 
 def deserialize(s: bytes, client) -> Any:
     """Deserializes object and replaces all client placeholders by self."""
+    from .execution_context import is_local  # Avoid circular import
+
+    env = "local" if is_local() else "remote"
     try:
         return Unpickler(client, io.BytesIO(s)).load()
     except AttributeError as exc:
@@ -62,12 +101,31 @@ def deserialize(s: bytes, client) -> Any:
         # doesn't expose some kind of serialization version number, so we have to guess based
         # on the error message.
         if "Can't get attribute '_make_function'" in str(exc):
-            raise InvalidError(
-                "Failed to deserialize value due to a version mismatch between your local client and the image. "
-                "Try changing the `python_version` in your Modal image to match your local Python version. "
+            raise DeserializationError(
+                "Deserialization failed due to a version mismatch between local and remote environments. "
+                "Try changing the Python version in your Modal image to match your local Python version. "
             ) from exc
         else:
-            raise exc
+            # On Python 3.10+, AttributeError has `.name` and `.obj` attributes for better custom reporting
+            raise DeserializationError(
+                f"Deserialization failed with an AttributeError, {exc}. This is probably because"
+                " you have different versions of a library in your local and remote environments."
+            ) from exc
+    except ModuleNotFoundError as exc:
+        raise DeserializationError(
+            f"Deserialization failed because the '{exc.name}' module is not available in the {env} environment."
+        ) from exc
+    except Exception as exc:
+        if env == "remote":
+            # We currently don't always package the full traceback from errors in the remote entrypoint logic.
+            # So try to include as much information as we can in the main error message.
+            more = f": {type(exc)}({str(exc)})"
+        else:
+            # When running locally, we can just rely on standard exception chaining.
+            more = " (see above for details)"
+        raise DeserializationError(
+            f"Encountered an error when deserializing an object in the {env} environment{more}."
+        ) from exc
 
 
 def _serialize_asgi(obj: Any) -> api_pb2.Asgi:
@@ -295,9 +353,6 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
 
 
 def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
-    if data_format == api_pb2.DATA_FORMAT_UNSPECIFIED:
-        # TODO: Remove this after Modal client version 0.52, when the data_format field is always set.
-        return deserialize(s, client)
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return deserialize(s, client)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
@@ -306,3 +361,81 @@ def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
         return api_pb2.GeneratorDone.FromString(s)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
+
+
+class ClsConstructorPickler(pickle.Pickler):
+    def __init__(self, buf):
+        super().__init__(buf, protocol=PICKLE_PROTOCOL)
+
+    def persistent_id(self, obj):
+        if isinstance(obj, (_Object, Object)):
+            if not obj.object_id:
+                raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
+            return True
+
+
+def check_valid_cls_constructor_arg(key, obj):
+    # Basically pickle, but with support for modal objects
+    buf = io.BytesIO()
+    try:
+        ClsConstructorPickler(buf).dump(obj)
+        return True
+    except (AttributeError, ValueError):
+        raise ValueError(
+            f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(obj)}."
+        )
+
+
+def serialize_proto_params(
+    python_params: typing.Dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]
+) -> bytes:
+    proto_params: typing.List[api_pb2.ClassParameterValue] = []
+    for schema_param in schema:
+        python_value = python_params[schema_param.name]
+        if schema_param.type == api_pb2.PARAM_TYPE_STRING:
+            proto_param = api_pb2.ClassParameterValue(
+                name=schema_param.name, type=api_pb2.PARAM_TYPE_STRING, string_value=python_value
+            )
+        elif schema_param.type == api_pb2.PARAM_TYPE_INT:
+            proto_param = api_pb2.ClassParameterValue(
+                name=schema_param.name, type=api_pb2.PARAM_TYPE_INT, int_value=python_value
+            )
+        else:
+            raise ValueError(f"Unsupported type: {schema_param.type}")
+        proto_params.append(proto_param)
+
+    proto_bytes = api_pb2.ClassParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
+    return proto_bytes
+
+
+def deserialize_proto_params(
+    serialized_params: bytes, schema: typing.List[api_pb2.ClassParameterSpec]
+) -> typing.Dict[str, Any]:
+    proto_struct = api_pb2.ClassParameterSet()
+    proto_struct.ParseFromString(serialized_params)
+    value_by_name = {p.name: p for p in proto_struct.parameters}
+    python_params = {}
+    for schema_param in schema:
+        if schema_param.name not in value_by_name:
+            # TODO: handle default values? Could just be a flag on the FunctionParameter schema spec,
+            #  allowing it to not be supplied in the FunctionParameterSet?
+            raise AttributeError(f"Constructor arguments don't match declared parameters (missing {schema_param.name})")
+        param_value = value_by_name[schema_param.name]
+        if schema_param.type != param_value.type:
+            raise ValueError(
+                "Constructor arguments types don't match declared parameters "
+                f"({schema_param.name}: type {schema_param.type} != type {param_value.type})"
+            )
+        python_value: Any
+        if schema_param.type == api_pb2.PARAM_TYPE_STRING:
+            python_value = param_value.string_value
+        elif schema_param.type == api_pb2.PARAM_TYPE_INT:
+            python_value = param_value.int_value
+        else:
+            # TODO(elias): based on `parameters` declared types, we could add support for
+            #  custom non proto types encoded as bytes in the proto, e.g. PARAM_TYPE_PYTHON_PICKLE
+            raise NotImplementedError("Only strings and ints are supported parameter value types at the moment")
+
+        python_params[schema_param.name] = python_value
+
+    return python_params

@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2022
+# Copyright Modal Labs 2024
 from __future__ import annotations
 
 import asyncio
@@ -7,9 +7,9 @@ import dataclasses
 import hashlib
 import inspect
 import os
+import platform
 import pytest
 import shutil
-import subprocess
 import sys
 import tempfile
 import textwrap
@@ -17,11 +17,10 @@ import threading
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple, get_args
 
 import aiohttp.web
 import aiohttp.web_runner
-import cloudpickle
 import grpclib.server
 import pkg_resources
 import pytest_asyncio
@@ -30,15 +29,17 @@ from grpclib import GRPCError, Status
 
 import modal._serialization
 from modal import __version__, config
+from modal._container_io_manager import _ContainerIOManager
 from modal._serialization import serialize_data_format
-from modal.app import _ContainerApp
-from modal.client import HEARTBEAT_INTERVAL, Client
+from modal._utils.async_utils import asyncify, synchronize_api
+from modal._utils.grpc_testing import patch_mock_servicer
+from modal._utils.grpc_utils import find_free_port
+from modal._utils.http_utils import run_temporary_http_server
+from modal._vendor import cloudpickle
+from modal.client import Client
+from modal.image import ImageBuilderVersion
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
-from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_testing import patch_mock_servicer
-from modal_utils.grpc_utils import find_free_port
-from modal_utils.http_utils import run_temporary_http_server
 
 
 @dataclasses.dataclass
@@ -46,6 +47,17 @@ class VolumeFile:
     data: bytes
     data_blob_id: str
     mode: int
+
+
+# TODO: Isolate all test config from the host
+@pytest.fixture(scope="function", autouse=True)
+def set_env(monkeypatch):
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "main")
+
+
+@pytest.fixture(scope="function", autouse=True)
+def disable_app_run_warning(monkeypatch):
+    monkeypatch.setenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING", "1")
 
 
 @patch_mock_servicer
@@ -56,7 +68,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
     fc_data_in: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
     fc_data_out: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
 
+    # Set when the server runs
+    client_addr: str
+    container_addr: str
+
     def __init__(self, blob_host, blobs):
+        self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
             1, timeout=10
         )  # set to non-1 to get lock-step of output pushing within a test
@@ -66,7 +83,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.app_state_history = defaultdict(list)
         self.app_heartbeats: Dict[str, int] = defaultdict(int)
-        self.container_checkpoint_requests = 0
+        self.container_snapshot_requests = 0
         self.n_blobs = 0
         self.blob_host = blob_host
         self.blobs = blobs  # shared dict
@@ -79,20 +96,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_outputs = []
         self.fc_data_in = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.fc_data_out = defaultdict(lambda: asyncio.Queue())  # unbounded
-        self.queue = []
+        self.queue: Dict[bytes, List[bytes]] = {b"": []}
         self.deployed_apps = {
             client_mount_name(): "ap-x",
-            "my-proxy": "ap-proxy",
         }
         self.app_objects = {}
-        self.app_single_objects = {
-            "ap-proxy": "pr-123",
-        }
+        self.app_single_objects = {}
         self.app_unindexed_objects = {
             "ap-1": ["im-1", "vo-1"],
         }
         self.n_inputs = 0
         self.n_queues = 0
+        self.n_dict_heartbeats = 0
+        self.n_queue_heartbeats = 0
+        self.n_nfs_heartbeats = 0
+        self.n_vol_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
         self.mount_contents = {}
@@ -115,13 +133,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_files: Dict[str, Dict[str, VolumeFile]] = defaultdict(dict)
         self.images = {}
         self.image_build_function_ids = {}
+        self.image_builder_versions = {}
         self.force_built_images = []
         self.fail_blob_create = []
         self.blob_create_metadata = None
         self.blob_multipart_threshold = 10_000_000
 
         self.precreated_functions = set()
-        self.app_functions = {}
+
+        self.app_functions: Dict[str, api_pb2.Function] = {}
+        self.bound_functions: Dict[Tuple[str, bytes], str] = {}
+        self.function_params: Dict[str, Tuple[Tuple, Dict[str, Any]]] = {}
+        self.function_options: Dict[str, api_pb2.FunctionOptions] = {}
         self.fcidx = 0
 
         self.function_serialized = None
@@ -136,8 +159,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_mounts = {
             (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): "mo-123",
         }
+        self.deployed_nfss = {}
         self.deployed_queues = {}
         self.deployed_secrets = {}
+        self.deployed_volumes = {}
 
         self.cleared_function_calls = set()
 
@@ -153,13 +178,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
 
         self.sandbox_defs = []
-        self.sandbox: subprocess.Popen = None
+        self.sandbox: asyncio.subprocess.Process = None
+
+        # Whether the sandbox is executing a shell program in interactive mode.
+        self.sandbox_is_interactive = False
+        self.sandbox_shell_prompt = "TEST_PROMPT# "
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
         self.token_flow_localhost_port = None
-        self.queue_max_len = 1_00
+        self.queue_max_len = 100
 
+        self.container_heartbeat_response = None
         self.container_heartbeat_abort = threading.Event()
+
+        self.image_join_sleep_duration = None
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -169,6 +201,25 @@ class MockClientServicer(api_grpc.ModalClientBase):
         """Decorator for setting the function that will be called for any FunctionGetOutputs calls"""
         self._function_body = func
         return func
+
+    def function_by_name(self, name: str, params: Optional[Tuple[Tuple, Dict[str, Any]]] = None) -> api_pb2.Function:
+        matches = []
+        all_names = []
+        for function_id, fun in self.app_functions.items():
+            all_names.append(fun.function_name)
+            if fun.function_name != name:
+                continue
+            if fun.is_class and params:
+                if self.function_params.get(function_id, ((), {})) != params:
+                    continue
+
+            matches.append(fun)
+        if len(matches) == 1:
+            return matches[0]
+
+        if len(matches) > 1:
+            raise ValueError("More than 1 matching function")
+        raise ValueError(f"No function with name {name=} {params=} ({all_names=})")
 
     def container_heartbeat_return_now(self, response: api_pb2.ContainerHeartbeatResponse):
         self.container_heartbeat_response = response
@@ -181,6 +232,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function_type=definition.function_type,
             web_url=definition.web_url,
             is_method=definition.is_method,
+            use_method_name=definition.use_method_name,
+            use_function_id=definition.use_function_id,
         )
 
     def get_class_metadata(self, object_id: str) -> api_pb2.ClassHandleMetadata:
@@ -192,6 +245,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     function_name=f_name, function_id=f_id, function_handle_metadata=function_handle_metadata
                 )
             )
+
         return class_handle_metadata
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -284,33 +338,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppGetByDeploymentNameRequest = await stream.recv_message()
         await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name)))
 
-    async def AppLookupObject(self, stream):
-        # TODO(erikbern): remove soon
-        request: api_pb2.AppLookupObjectRequest = await stream.recv_message()
-        if not request.object_id:
-            app_id = self.deployed_apps.get(request.app_name)
-            if app_id is None:
-                raise GRPCError(Status.NOT_FOUND, f"can't find app {request.app_name}")
-            assert not request.object_tag
-            object_id = self.app_single_objects.get(app_id)
-            if object_id is None:
-                raise GRPCError(Status.NOT_FOUND, "can't find single object for app")
-        else:
-            app_id = None
-            object_id = request.object_id
-
-        if request.app_name:
-            assert request.object_entity
-            if object_id:
-                assert object_id.startswith(request.object_entity)
-
-        response = api_pb2.AppLookupObjectResponse(object=self.get_object_metadata(object_id), app_id=app_id)
-        await stream.send_message(response)
-
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
         self.requests.append(request)
         self.app_heartbeats[request.app_id] += 1
+        await stream.send_message(Empty())
+
+    async def AppList(self, stream):
+        await stream.recv_message()
+        apps = []
+        for app_name, app_id in self.deployed_apps.items():
+            apps.append(
+                api_pb2.AppStats(
+                    name=app_name,
+                    description=app_name,
+                    app_id=app_id,
+                    state=api_pb2.APP_STATE_DEPLOYED,
+                )
+            )
+        await stream.send_message(api_pb2.AppListResponse(apps=apps))
+
+    async def AppStop(self, stream):
+        request: api_pb2.AppStopRequest = await stream.recv_message()
+        self.deployed_apps = {k: v for k, v in self.deployed_apps.items() if v != request.app_id}
         await stream.send_message(Empty())
 
     ### Checkpoint
@@ -318,7 +368,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ContainerCheckpoint(self, stream):
         request: api_pb2.ContainerCheckpointRequest = await stream.recv_message()
         self.requests.append(request)
-        self.container_checkpoint_requests += 1
+        self.container_snapshot_requests += 1
+        await stream.send_message(Empty())
+
+    async def ContainerExecPutInput(self, stream):
+        await stream.recv_message()
         await stream.send_message(Empty())
 
     ### Blob
@@ -331,8 +385,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             status_code = self.fail_blob_create.pop()
             raise GRPCError(status_code, "foobar")
         elif req.content_length > self.blob_multipart_threshold:
-            self.n_blobs += 1
-            blob_id = f"bl-{self.n_blobs}"
+            blob_id = await self.next_blob_id()
             num_parts = (req.content_length + self.blob_multipart_threshold - 1) // self.blob_multipart_threshold
             upload_urls = []
             for part_number in range(num_parts):
@@ -350,10 +403,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 )
             )
         else:
-            self.n_blobs += 1
-            blob_id = f"bl-{self.n_blobs}"
+            blob_id = await self.next_blob_id()
             upload_url = f"{self.blob_host}/upload?blob_id={blob_id}"
             await stream.send_message(api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url))
+
+    async def next_blob_id(self):
+        self.n_blobs += 1
+        blob_id = f"bl-{self.n_blobs}"
+        return blob_id
 
     async def BlobGet(self, stream):
         request: api_pb2.BlobGetRequest = await stream.recv_message()
@@ -390,29 +447,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.requests.append(request)
         self.client_create_metadata = stream.metadata
         client_version = stream.metadata["x-modal-client-version"]
+        image_builder_version = max(get_args(ImageBuilderVersion))
+        warning = ""
         assert stream.user_agent.startswith(f"modal-client/{__version__} ")
         if stream.metadata.get("x-modal-token-id") == "bad":
             raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
-        elif client_version == "timeout":
-            await asyncio.sleep(60)
-            await stream.send_message(api_pb2.ClientHelloResponse())
         elif client_version == "unauthenticated":
             raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
         elif client_version == "deprecated":
-            await stream.send_message(api_pb2.ClientHelloResponse(warning="SUPER OLD"))
+            warning = "SUPER OLD"
+        elif client_version == "timeout":
+            await asyncio.sleep(60)
         elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
             raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
-        else:
-            await stream.send_message(api_pb2.ClientHelloResponse())
+        resp = api_pb2.ClientHelloResponse(warning=warning, image_builder_version=image_builder_version)
+        await stream.send_message(resp)
 
     # Container
 
     async def ContainerHeartbeat(self, stream):
         request: api_pb2.ContainerHeartbeatRequest = await stream.recv_message()
         self.requests.append(request)
-        await asyncio.get_event_loop().run_in_executor(
-            None, self.container_heartbeat_abort.wait, HEARTBEAT_INTERVAL - 1
-        )
+        # Return earlier than the usual 15-second heartbeat to avoid suspending tests.
+        await asyncify(self.container_heartbeat_abort.wait)(5)
         if self.container_heartbeat_response:
             await stream.send_message(self.container_heartbeat_response)
             self.container_heartbeat_response = None
@@ -454,11 +511,25 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = self.deployed_dicts[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             dict_id = f"di-{len(self.dicts)}"
-            self.dicts[dict_id] = {}
+            self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
             self.deployed_dicts[k] = dict_id
+            self.deployed_apps[request.deployment_name] = f"ap-{dict_id}"
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            dict_id = f"di-{len(self.dicts)}"
+            self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
         else:
-            raise GRPCError(Status.NOT_FOUND, "Queue not found")
+            raise GRPCError(Status.NOT_FOUND, f"Dict {k} not found")
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
+
+    async def DictHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_dict_heartbeats += 1
+        await stream.send_message(Empty())
+
+    async def DictDelete(self, stream):
+        request: api_pb2.DictDeleteRequest = await stream.recv_message()
+        self.deployed_dicts = {k: v for k, v in self.deployed_dicts.items() if v != request.dict_id}
+        await stream.send_message(Empty())
 
     async def DictClear(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
@@ -474,22 +545,69 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.DictLenRequest = await stream.recv_message()
         await stream.send_message(api_pb2.DictLenResponse(len=len(self.dicts[request.dict_id])))
 
+    async def DictList(self, stream):
+        dicts = [
+            api_pb2.DictListResponse.DictInfo(name=name, created_at=1)
+            for name, _, _ in self.deployed_dicts
+            if name in self.deployed_apps
+        ]
+        await stream.send_message(api_pb2.DictListResponse(dicts=dicts))
+
     async def DictUpdate(self, stream):
         request: api_pb2.DictUpdateRequest = await stream.recv_message()
         for update in request.updates:
             self.dicts[request.dict_id][update.key] = update.value
         await stream.send_message(api_pb2.DictUpdateResponse())
 
+    async def DictContents(self, stream):
+        request: api_pb2.DictGetRequest = await stream.recv_message()
+        for k, v in self.dicts[request.dict_id].items():
+            await stream.send_message(api_pb2.DictEntry(key=k, value=v))
+
+    ### Environment
+
+    async def EnvironmentCreate(self, stream):
+        await stream.send_message(Empty())
+
+    async def EnvironmentUpdate(self, stream):
+        await stream.send_message(api_pb2.EnvironmentListItem())
+
     ### Function
 
     async def FunctionBindParams(self, stream):
+        from modal._serialization import deserialize
+
         request: api_pb2.FunctionBindParamsRequest = await stream.recv_message()
         assert request.function_id
         assert request.serialized_params
+        existing_func_id = self.bound_functions.get((request.function_id, request.serialized_params), None)
+        if existing_func_id:
+            return self.app_functions[existing_func_id]
+
         self.n_functions += 1
         function_id = f"fu-{self.n_functions}"
+        base_function = self.app_functions[request.function_id]
+        assert not base_function.use_method_name
 
-        await stream.send_message(api_pb2.FunctionBindParamsResponse(bound_function_id=function_id))
+        bound_func = api_pb2.Function()
+        bound_func.CopyFrom(base_function)
+        self.app_functions[function_id] = bound_func
+        self.bound_functions[(request.function_id, request.serialized_params)] = function_id
+        self.function_params[function_id] = deserialize(request.serialized_params, None)
+        self.function_options[function_id] = request.function_options
+
+        await stream.send_message(
+            api_pb2.FunctionBindParamsResponse(
+                bound_function_id=function_id,
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    function_name=base_function.function_name,
+                    function_type=base_function.function_type,
+                    web_url=base_function.web_url,
+                    use_function_id=function_id,
+                    use_method_name="",
+                ),
+            )
+        )
 
     @contextlib.contextmanager
     def input_lockstep(self) -> Iterator[threading.Barrier]:
@@ -504,7 +622,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.put_outputs_barrier = threading.Barrier(1)
 
     async def FunctionGetInputs(self, stream):
-        self.get_inputs_barrier.wait()
+        await asyncio.get_running_loop().run_in_executor(None, self.get_inputs_barrier.wait)
         request: api_pb2.FunctionGetInputsRequest = await stream.recv_message()
         assert request.function_id
         if self.fail_get_inputs:
@@ -514,13 +632,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.rate_limit_sleep_duration = None
             await stream.send_message(api_pb2.FunctionGetInputsResponse(rate_limit_sleep_duration=s))
         elif not self.container_inputs:
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(10.0)
             await stream.send_message(api_pb2.FunctionGetInputsResponse(inputs=[]))
         else:
             await stream.send_message(self.container_inputs.pop(0))
 
     async def FunctionPutOutputs(self, stream):
-        self.put_outputs_barrier.wait()
+        await asyncio.get_running_loop().run_in_executor(None, self.put_outputs_barrier.wait)
         request: api_pb2.FunctionPutOutputsRequest = await stream.recv_message()
         self.container_outputs.append(request)
         await stream.send_message(Empty())
@@ -543,6 +661,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     function_name=req.function_name,
                     function_type=req.function_type,
                     web_url=web_url,
+                    use_function_id=req.use_function_id or function_id,
+                    use_method_name=req.use_method_name,
                 ),
             )
         )
@@ -572,6 +692,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     function_name=function.function_name,
                     function_type=function.function_type,
                     web_url=function.web_url,
+                    use_function_id=function.use_function_id or function_id,
+                    use_method_name=function.use_method_name,
                 ),
             )
         )
@@ -599,7 +721,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         response_items = []
         function_call_inputs = self.client_calls.setdefault(request.function_call_id, [])
         for item in request.inputs:
-            args, kwargs = modal._serialization.deserialize(item.input.args, None) if item.input.args else ((), {})
+            if item.input.WhichOneof("args_oneof") == "args":
+                args, kwargs = modal._serialization.deserialize(item.input.args, None)
+            else:
+                args, kwargs = modal._serialization.deserialize(self.blobs[item.input.args_blob_id], None)
+
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
             response_items.append(api_pb2.FunctionPutInputsResponseItem(input_id=input_id, idx=item.idx))
@@ -655,19 +781,25 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if output_exc:
                 output = output_exc
             else:
+                serialized_data = serialize_data_format(result, result_data_format)
+                if self.use_blob_outputs:
+                    blob_id = await self.next_blob_id()
+                    self.blobs[blob_id] = serialized_data
+                    data_kwargs = {
+                        "data_blob_id": blob_id,
+                    }
+                else:
+                    data_kwargs = {"data": serialized_data}
                 output = api_pb2.FunctionGetOutputsItem(
                     input_id=input_id,
                     idx=idx,
-                    result=api_pb2.GenericResult(
-                        status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                        data=serialize_data_format(result, result_data_format),
-                    ),
+                    result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, **data_kwargs),
                     data_format=result_data_format,
                 )
 
             await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[output]))
         else:
-            await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[]))
+            await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[], num_unfinished_inputs=1))
 
     async def FunctionGetSerialized(self, stream):
         await stream.send_message(
@@ -700,28 +832,44 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await self.fc_data_out[req.function_call_id].put(chunk)
         await stream.send_message(Empty())
 
+    async def FunctionUpdateSchedulingParams(self, stream):
+        req: api_pb2.FunctionUpdateSchedulingParamsRequest = await stream.recv_message()
+        # update function definition
+        self.app_functions[req.function_id].warm_pool_size = req.warm_pool_size_override  # hacky
+        await stream.send_message(api_pb2.FunctionUpdateSchedulingParamsResponse())
+
     ### Image
 
     async def ImageGetOrCreate(self, stream):
         request: api_pb2.ImageGetOrCreateRequest = await stream.recv_message()
+        for k in self.images:
+            if request.image.SerializeToString() == self.images[k].SerializeToString():
+                await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=k))
+                return
         idx = len(self.images) + 1
         image_id = f"im-{idx}"
 
         self.images[image_id] = request.image
         self.image_build_function_ids[image_id] = request.build_function_id
+        self.image_builder_versions[image_id] = request.builder_version
         if request.force_build:
             self.force_built_images.append(image_id)
         await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=image_id))
 
     async def ImageJoinStreaming(self, stream):
         await stream.recv_message()
-        task_log_1 = api_pb2.TaskLogs(data="hello, world\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
+
+        if self.image_join_sleep_duration is not None:
+            await asyncio.sleep(self.image_join_sleep_duration)
+
+        task_log_1 = api_pb2.TaskLogs(data="build starting\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
         task_log_2 = api_pb2.TaskLogs(
             task_progress=api_pb2.TaskProgress(
                 len=1, pos=0, progress_type=api_pb2.IMAGE_SNAPSHOT_UPLOAD, description="xyz"
             )
         )
-        await stream.send_message(api_pb2.ImageJoinStreamingResponse(task_logs=[task_log_1, task_log_2]))
+        task_log_3 = api_pb2.TaskLogs(data="build finished\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
+        await stream.send_message(api_pb2.ImageJoinStreamingResponse(task_logs=[task_log_1, task_log_2, task_log_3]))
         await stream.send_message(
             api_pb2.ImageJoinStreamingResponse(
                 result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
@@ -739,37 +887,53 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.MountPutFileResponse(exists=False))
 
-    async def MountBuild(self, stream):
-        request: api_pb2.MountBuildRequest = await stream.recv_message()
-        mount_number = 123 + self.n_mounts
-        mount_id = f"mo-{mount_number}"
-
-        mount_content = self.mount_contents[mount_id] = {}
-
-        for file in request.files:
-            mount_content[file.filename] = self.files_name2sha[file.filename] = file.sha256_hex
-
-        self.n_mounts += 1
-        await stream.send_message(api_pb2.MountBuildResponse(mount_id=mount_id))
-
     async def MountGetOrCreate(self, stream):
         request: api_pb2.MountGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace)
-        if k in self.deployed_mounts:
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
+            if k not in self.deployed_mounts:
+                raise GRPCError(Status.NOT_FOUND, f"Mount {k} not found")
             mount_id = self.deployed_mounts[k]
-        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             self.n_mounts += 1
-            mount_id = f"qu-{self.n_mounts}"
+            mount_id = f"mo-{self.n_mounts}"
             self.deployed_mounts[k] = mount_id
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
+            self.n_mounts += 1
+            mount_id = f"mo-{self.n_mounts}"
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            self.n_mounts += 1
+            mount_id = f"mo-{self.n_mounts}"
+
         else:
-            raise GRPCError(Status.NOT_FOUND, "Mount not found")
+            raise Exception("unsupported creation type")
+
+        mount_content = self.mount_contents[mount_id] = {}
+        for file in request.files:
+            mount_content[file.filename] = self.files_name2sha[file.filename] = file.sha256_hex
+
         await stream.send_message(
             api_pb2.MountGetOrCreateResponse(
                 mount_id=mount_id, handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef")
             )
         )
 
+    ### Proxy
+
+    async def ProxyGetOrCreate(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.ProxyGetOrCreateResponse(proxy_id="pr-123"))
+
     ### Queue
+
+    async def QueueClear(self, stream):
+        request: api_pb2.QueueClearRequest = await stream.recv_message()
+        if request.all_partitions:
+            self.queue = {b"": []}
+        else:
+            if request.partition_key in self.queue:
+                self.queue[request.partition_key] = []
+        await stream.send_message(Empty())
 
     async def QueueCreate(self, stream):
         request: api_pb2.QueueCreateRequest = await stream.recv_message()
@@ -789,62 +953,128 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
             self.deployed_queues[k] = queue_id
+            self.deployed_apps[request.deployment_name] = f"ap-{queue_id}"
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            self.n_queues += 1
+            queue_id = f"qu-{self.n_queues}"
         else:
-            raise GRPCError(Status.NOT_FOUND, "Queue not found")
+            raise GRPCError(Status.NOT_FOUND, f"Queue {k} not found")
         await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
+
+    async def QueueDelete(self, stream):
+        request: api_pb2.QueueDeleteRequest = await stream.recv_message()
+        self.deployed_queues = {k: v for k, v in self.deployed_queues.items() if v != request.queue_id}
+        await stream.send_message(Empty())
+
+    async def QueueHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_queue_heartbeats += 1
+        await stream.send_message(Empty())
 
     async def QueuePut(self, stream):
         request: api_pb2.QueuePutRequest = await stream.recv_message()
-        if len(self.queue) >= self.queue_max_len:
+        if sum(map(len, self.queue.values())) >= self.queue_max_len:
             raise GRPCError(Status.RESOURCE_EXHAUSTED, f"Hit servicer's max len for Queues: {self.queue_max_len}")
-        self.queue += request.values
+        q = self.queue.setdefault(request.partition_key, [])
+        q += request.values
         await stream.send_message(Empty())
 
     async def QueueGet(self, stream):
-        await stream.recv_message()
-        if len(self.queue) > 0:
-            values = [self.queue.pop(0)]
+        request: api_pb2.QueueGetRequest = await stream.recv_message()
+        q = self.queue.get(request.partition_key, [])
+        if len(q) > 0:
+            values = [q.pop(0)]
         else:
             values = []
         await stream.send_message(api_pb2.QueueGetResponse(values=values))
 
     async def QueueLen(self, stream):
-        await stream.recv_message()
-        await stream.send_message(api_pb2.QueueLenResponse(len=len(self.queue)))
+        request = await stream.recv_message()
+        if request.total:
+            value = sum(map(len, self.queue.values()))
+        else:
+            q = self.queue.get(request.partition_key, [])
+            value = len(q)
+        await stream.send_message(api_pb2.QueueLenResponse(len=value))
+
+    async def QueueList(self, stream):
+        # TODO Note that the actual self.queue holding the data assumes we have a single queue
+        # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
+        queues = [
+            api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1)
+            for name, _, _ in self.deployed_queues
+            if name in self.deployed_apps
+        ]
+        await stream.send_message(api_pb2.QueueListResponse(queues=queues))
+
+    async def QueueNextItems(self, stream):
+        request: api_pb2.QueueNextItemsRequest = await stream.recv_message()
+        next_item_idx = int(request.last_entry_id) + 1 if request.last_entry_id else 0
+        q = self.queue.get(request.partition_key, [])
+        if next_item_idx < len(q):
+            item = api_pb2.QueueItem(value=q[next_item_idx], entry_id=f"{next_item_idx}")
+            await stream.send_message(api_pb2.QueueNextItemsResponse(items=[item]))
+        else:
+            if request.item_poll_timeout > 0:
+                await asyncio.sleep(0.1)
+            await stream.send_message(api_pb2.QueueNextItemsResponse(items=[]))
 
     ### Sandbox
 
     async def SandboxCreate(self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
-        # Not using asyncio.subprocess here for Python 3.7 compatibility.
-        self.sandbox = subprocess.Popen(
-            request.definition.entrypoint_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        if request.definition.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+            self.sandbox_is_interactive = True
+
+        self.sandbox = await asyncio.subprocess.create_subprocess_exec(
+            *request.definition.entrypoint_args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE,
         )
+
         self.sandbox_defs.append(request.definition)
+
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
-        if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
-            data = self.sandbox.stdout.read()
-        else:
-            data = self.sandbox.stderr.read()
-        await stream.send_message(
-            api_pb2.TaskLogsBatch(
-                items=[api_pb2.TaskLogs(data=data.decode("utf-8"), file_descriptor=request.file_descriptor)]
+        f: asyncio.StreamReader
+        if self.sandbox_is_interactive:
+            # sends an empty message to simulate PTY
+            await stream.send_message(
+                api_pb2.TaskLogsBatch(
+                    items=[api_pb2.TaskLogs(data=self.sandbox_shell_prompt, file_descriptor=request.file_descriptor)]
+                )
             )
-        )
+
+        if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            # Blocking read until EOF is returned.
+            f = self.sandbox.stdout
+        else:
+            f = self.sandbox.stderr
+
+        async for message in f:
+            await stream.send_message(
+                api_pb2.TaskLogsBatch(
+                    items=[api_pb2.TaskLogs(data=message.decode("utf-8"), file_descriptor=request.file_descriptor)]
+                )
+            )
+
         await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
 
     async def SandboxWait(self, stream):
         request: api_pb2.SandboxWaitRequest = await stream.recv_message()
         try:
-            self.sandbox.wait(timeout=request.timeout)
-        except subprocess.TimeoutExpired:
+            await asyncio.wait_for(self.sandbox.wait(), request.timeout)
+        except asyncio.TimeoutError:
+            pass
+
+        if self.sandbox.returncode is None:
+            # This happens when request.timeout is 0 and the sandbox hasn't completed.
             await stream.send_message(api_pb2.SandboxWaitResponse())
             return
-
-        if self.sandbox.returncode != 0:
+        elif self.sandbox.returncode != 0:
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=self.sandbox.returncode
             )
@@ -862,26 +1092,36 @@ class MockClientServicer(api_grpc.ModalClientBase):
         _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
         await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="modal_container_exec"))
 
-    ### Secret
+    async def SandboxStdinWrite(self, stream):
+        request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
 
-    async def SecretCreate(self, stream):
-        request: api_pb2.SecretCreateRequest = await stream.recv_message()
-        secret_id = "st-" + str(len(self.secrets))
-        self.secrets[secret_id] = request.env_dict
-        await stream.send_message(api_pb2.SecretCreateResponse(secret_id=secret_id))
+        self.sandbox.stdin.write(request.input)
+        await self.sandbox.stdin.drain()
+
+        if request.eof:
+            self.sandbox.stdin.close()
+        await stream.send_message(api_pb2.SandboxStdinWriteResponse())
+
+    ### Secret
 
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
-        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
+            secret_id = "st-" + str(len(self.secrets))
+            self.secrets[secret_id] = request.env_dict
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            secret_id = "st-" + str(len(self.secrets))
+            self.secrets[secret_id] = request.env_dict
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_secrets:
-                raise GRPCError(Status.ALREADY_EXISTS, "Already exists")
+                raise GRPCError(Status.ALREADY_EXISTS, f"Secret {k} already exists")
             secret_id = None
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_OVERWRITE_IF_EXISTS:
             secret_id = None
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_secrets:
-                raise GRPCError(Status.NOT_FOUND, "No such secret")
+                raise GRPCError(Status.NOT_FOUND, f"Secret {k} not found")
             secret_id = self.deployed_secrets[k]
         else:
             raise Exception("unsupported creation type")
@@ -905,6 +1145,40 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.nfs_files[nfs_id] = {}
         await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id=nfs_id))
 
+    async def SharedVolumeGetOrCreate(self, stream):
+        request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
+            if k not in self.deployed_nfss:
+                if k in self.deployed_volumes:
+                    raise GRPCError(Status.NOT_FOUND, "App has wrong entity vo")
+                raise GRPCError(Status.NOT_FOUND, f"NFS {k} not found")
+            nfs_id = self.deployed_nfss[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            nfs_id = f"sv-{len(self.nfs_files)}"
+            self.nfs_files[nfs_id] = {}
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+            if k not in self.deployed_nfss:
+                nfs_id = f"sv-{len(self.nfs_files)}"
+                self.nfs_files[nfs_id] = {}
+                self.deployed_nfss[k] = nfs_id
+            nfs_id = self.deployed_nfss[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+            if k in self.deployed_nfss:
+                raise GRPCError(Status.ALREADY_EXISTS, f"NFS {k} already exists")
+            nfs_id = f"sv-{len(self.nfs_files)}"
+            self.nfs_files[nfs_id] = {}
+            self.deployed_nfss[k] = nfs_id
+        else:
+            raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
+
+        await stream.send_message(api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id=nfs_id))
+
+    async def SharedVolumeHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_nfs_heartbeats += 1
+        await stream.send_message(Empty())
+
     async def SharedVolumePutFile(self, stream):
         req = await stream.recv_message()
         self.nfs_files[req.shared_volume_id][req.path] = req
@@ -919,6 +1193,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.SharedVolumeGetFileResponse(data_blob_id=put_req.data_blob_id))
         else:
             await stream.send_message(api_pb2.SharedVolumeGetFileResponse(data=put_req.data))
+
+    async def SharedVolumeListFilesStream(self, stream):
+        req: api_pb2.SharedVolumeListFilesRequest = await stream.recv_message()
+        for path in self.nfs_files[req.shared_volume_id].keys():
+            entry = api_pb2.FileEntry(path=path, type=api_pb2.FileEntry.FileType.FILE)
+            response = api_pb2.SharedVolumeListFilesResponse(entries=[entry])
+            if req.path == "**" or req.path == "/" or req.path == path:  # hack
+                await stream.send_message(response)
 
     ### Task
 
@@ -950,9 +1232,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def WorkspaceNameLookup(self, stream):
-        await stream.send_message(
-            api_pb2.WorkspaceNameLookupResponse(workspace_name="test-workspace", username="test-username")
-        )
+        await stream.send_message(api_pb2.WorkspaceNameLookupResponse(username="test-username"))
 
     ### Tunnel
 
@@ -975,6 +1255,48 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_files[volume_id] = {}
         await stream.send_message(api_pb2.VolumeCreateResponse(volume_id=volume_id))
 
+    async def VolumeGetOrCreate(self, stream):
+        request: api_pb2.VolumeGetOrCreateRequest = await stream.recv_message()
+        k = (request.deployment_name, request.namespace, request.environment_name)
+        if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
+            if k not in self.deployed_volumes:
+                raise GRPCError(Status.NOT_FOUND, f"Volume {k} not found")
+            volume_id = self.deployed_volumes[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            volume_id = f"vo-{len(self.volume_files)}"
+            self.volume_files[volume_id] = {}
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+            if k not in self.deployed_volumes:
+                volume_id = f"vo-{len(self.volume_files)}"
+                self.volume_files[volume_id] = {}
+                self.deployed_volumes[k] = volume_id
+            volume_id = self.deployed_volumes[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+            if k in self.deployed_volumes:
+                raise GRPCError(Status.ALREADY_EXISTS, f"Volume {k} already exists")
+            volume_id = f"vo-{len(self.volume_files)}"
+            self.volume_files[volume_id] = {}
+            self.deployed_volumes[k] = volume_id
+        else:
+            raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
+
+        await stream.send_message(api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id))
+
+    async def VolumeList(self, stream):
+        req = await stream.recv_message()
+        items = []
+        for (name, _, env_name), volume_id in self.deployed_volumes.items():
+            if env_name != req.environment_name:
+                continue
+            items.append(api_pb2.VolumeListItem(label=name, volume_id=volume_id, created_at=1))
+        resp = api_pb2.VolumeListResponse(items=items, environment_name=req.environment_name)
+        await stream.send_message(resp)
+
+    async def VolumeHeartbeat(self, stream):
+        await stream.recv_message()
+        self.n_vol_heartbeats += 1
+        await stream.send_message(Empty())
+
     async def VolumeCommit(self, stream):
         req = await stream.recv_message()
         self.requests.append(req)
@@ -982,6 +1304,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
             raise GRPCError(Status.NOT_FOUND, f"invalid volume ID {req.volume_id}")
         self.volume_commits[req.volume_id] += 1
         await stream.send_message(api_pb2.VolumeCommitResponse(skip_reload=False))
+
+    async def VolumeDelete(self, stream):
+        req: api_pb2.VolumeDeleteRequest = await stream.recv_message()
+        self.volume_files.pop(req.volume_id)
+        self.deployed_volumes = {k: vol_id for k, vol_id in self.deployed_volumes.items() if vol_id != req.volume_id}
+        await stream.send_message(Empty())
 
     async def VolumeReload(self, stream):
         req = await stream.recv_message()
@@ -991,32 +1319,46 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeGetFile(self, stream):
         req = await stream.recv_message()
-        if req.path.decode("utf-8") not in self.volume_files[req.volume_id]:
+        if req.path not in self.volume_files[req.volume_id]:
             raise GRPCError(Status.NOT_FOUND, "File not found")
-        vol_file = self.volume_files[req.volume_id][req.path.decode("utf-8")]
+        vol_file = self.volume_files[req.volume_id][req.path]
         if vol_file.data_blob_id:
             await stream.send_message(api_pb2.VolumeGetFileResponse(data_blob_id=vol_file.data_blob_id))
         else:
-            await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data))
+            size = len(vol_file.data)
+            if req.start or req.len:
+                start = req.start
+                len_ = req.len or len(vol_file.data)
+                await stream.send_message(
+                    api_pb2.VolumeGetFileResponse(data=vol_file.data[start : start + len_], size=size)
+                )
+            else:
+                await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data, size=size))
 
     async def VolumeRemoveFile(self, stream):
         req = await stream.recv_message()
-        if req.path.decode("utf-8") not in self.volume_files[req.volume_id]:
+        if req.path not in self.volume_files[req.volume_id]:
             raise GRPCError(Status.INVALID_ARGUMENT, "File not found")
-        del self.volume_files[req.volume_id][req.path.decode("utf-8")]
+        del self.volume_files[req.volume_id][req.path]
         await stream.send_message(Empty())
 
     async def VolumeListFiles(self, stream):
         req = await stream.recv_message()
-        if req.path != "**":
-            raise NotImplementedError("Only '**' listing is supported.")
+        path = req.path if req.path else "/"
+        if path.startswith("/"):
+            path = path[1:]
+        if path.endswith("/"):
+            path = path[:-1]
+
+        found_file = False  # empty directory detection is not handled here!
         for k, vol_file in self.volume_files[req.volume_id].items():
-            entries = [
-                api_pb2.VolumeListFilesEntry(
-                    path=k, type=api_pb2.VolumeListFilesEntry.FileType.FILE, size=len(vol_file.data)
-                )
-            ]
-            await stream.send_message(api_pb2.VolumeListFilesResponse(entries=entries))
+            if not path or k == path or (k.startswith(path + "/") and (req.recursive or "/" not in k[len(path) + 1 :])):
+                entry = api_pb2.FileEntry(path=k, type=api_pb2.FileEntry.FileType.FILE, size=len(vol_file.data))
+                await stream.send_message(api_pb2.VolumeListFilesResponse(entries=[entry]))
+                found_file = True
+
+        if path and not found_file:
+            raise GRPCError(Status.NOT_FOUND, "No such file")
 
     async def VolumePutFiles(self, stream):
         req = await stream.recv_message()
@@ -1026,7 +1368,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if file.filename in self.volume_files[req.volume_id] and req.disallow_overwrite_existing_files:
                 raise GRPCError(
                     Status.ALREADY_EXISTS,
-                    f"{file.filename}: already exists (disallow_overwrite_existing_files={req.disallow_overwrite_existing_files}",
+                    (
+                        f"{file.filename}: already exists "
+                        f"(disallow_overwrite_existing_files={req.disallow_overwrite_existing_files}"
+                    ),
                 )
 
             self.volume_files[req.volume_id][file.filename] = VolumeFile(
@@ -1039,26 +1384,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def VolumeCopyFiles(self, stream):
         req = await stream.recv_message()
         for src_path in req.src_paths:
-            if src_path.decode("utf-8") not in self.volume_files[req.volume_id]:
+            if src_path not in self.volume_files[req.volume_id]:
                 raise GRPCError(Status.NOT_FOUND, f"Source file not found: {src_path}")
-            src_file = self.volume_files[req.volume_id][src_path.decode("utf-8")]
+            src_file = self.volume_files[req.volume_id][src_path]
             if len(req.src_paths) > 1:
                 # check to make sure dst is a directory
-                if (
-                    req.dst_path.decode("utf-8").endswith(("/", "\\"))
-                    or not os.path.splitext(os.path.basename(req.dst_path))[1]
-                ):
+                if req.dst_path.endswith(("/", "\\")) or not os.path.splitext(os.path.basename(req.dst_path))[1]:
                     dst_path = os.path.join(req.dst_path, os.path.basename(src_path))
                 else:
                     raise GRPCError(Status.INVALID_ARGUMENT, f"{dst_path} is not a directory.")
             else:
                 dst_path = req.dst_path
-            self.volume_files[req.volume_id][dst_path.decode("utf-8")] = src_file
+            self.volume_files[req.volume_id][dst_path] = src_file
         await stream.send_message(Empty())
 
 
-@pytest_asyncio.fixture
-async def blob_server():
+@pytest.fixture
+def blob_server():
     blobs = {}
     blob_parts: Dict[str, Dict[int, bytes]] = defaultdict(dict)
 
@@ -1102,76 +1444,105 @@ async def blob_server():
     app.add_routes([aiohttp.web.get("/download", download)])
     app.add_routes([aiohttp.web.post("/complete_multipart", complete_multipart)])
 
-    async with run_temporary_http_server(app) as host:
-        yield host, blobs
+    started = threading.Event()
+    stop_server = threading.Event()
+
+    host = None
+
+    def run_server_other_thread():
+        loop = asyncio.new_event_loop()
+
+        async def async_main():
+            nonlocal host
+            async with run_temporary_http_server(app) as _host:
+                host = _host
+                started.set()
+                await loop.run_in_executor(None, stop_server.wait)
+
+        loop.run_until_complete(async_main())
+
+    # run server on separate thread to not lock up the server event loop in case of blocking calls in tests
+    thread = threading.Thread(target=run_server_other_thread)
+    thread.start()
+    started.wait()
+    yield host, blobs
+    stop_server.set()
+    thread.join()
 
 
 @pytest_asyncio.fixture(scope="function")
-async def servicer_factory(blob_server):
-    @contextlib.asynccontextmanager
-    async def create_server(host=None, port=None, path=None):
-        blob_host, blobs = blob_server
-        servicer = MockClientServicer(blob_host, blobs)  # type: ignore
-        server = None
-
-        async def _start_servicer():
-            nonlocal server
-            server = grpclib.server.Server([servicer])
-            await server.start(host=host, port=port, path=path)
-
-        async def _stop_servicer():
-            server.close()
-            # This is the proper way to close down the asyncio server,
-            # but it causes our tests to hang on 3.12+ because client connections
-            # for clients created through _Client.from_env don't get closed until
-            # asyncio event loop shutdown. Commenting out but perhaps revisit if we
-            # refactor the way that _Client cleanup happens.
-            # await server.wait_closed()
-
-        start_servicer = synchronize_api(_start_servicer)
-        stop_servicer = synchronize_api(_stop_servicer)
-
-        await start_servicer.aio()
-        try:
-            yield servicer
-        finally:
-            await stop_servicer.aio()
-
-    yield create_server
-
-
-@pytest_asyncio.fixture(scope="function")
-async def servicer(servicer_factory):
-    port = find_free_port()
-    async with servicer_factory(host="0.0.0.0", port=port) as servicer:
-        servicer.remote_addr = f"http://127.0.0.1:{port}"
-        yield servicer
-
-
-@pytest_asyncio.fixture(scope="function")
-async def unix_servicer(servicer_factory):
+def temporary_sock_path():
     with tempfile.TemporaryDirectory() as tmpdirname:
-        path = os.path.join(tmpdirname, "servicer.sock")
-        async with servicer_factory(path=path) as servicer:
-            servicer.remote_addr = f"unix://{path}"
-            yield servicer
+        yield os.path.join(tmpdirname, "servicer.sock")
+
+
+@contextlib.asynccontextmanager
+async def run_server(servicer, host=None, port=None, path=None):
+    server = None
+
+    async def _start_servicer():
+        nonlocal server
+        server = grpclib.server.Server([servicer])
+        await server.start(host=host, port=port, path=path)
+
+    async def _stop_servicer():
+        servicer.container_heartbeat_abort.set()
+        server.close()
+        # This is the proper way to close down the asyncio server,
+        # but it causes our tests to hang on 3.12+ because client connections
+        # for clients created through _Client.from_env don't get closed until
+        # asyncio event loop shutdown. Commenting out but perhaps revisit if we
+        # refactor the way that _Client cleanup happens.
+        # await server.wait_closed()
+
+    start_servicer = synchronize_api(_start_servicer)
+    stop_servicer = synchronize_api(_stop_servicer)
+
+    await start_servicer.aio()
+    try:
+        yield
+    finally:
+        await stop_servicer.aio()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def servicer(blob_server, temporary_sock_path):
+    port = find_free_port()
+
+    blob_host, blobs = blob_server
+    servicer = MockClientServicer(blob_host, blobs)  # type: ignore
+
+    if platform.system() != "Windows":
+        async with run_server(servicer, host="0.0.0.0", port=port):
+            async with run_server(servicer, path=temporary_sock_path):
+                servicer.client_addr = f"http://127.0.0.1:{port}"
+                servicer.container_addr = f"unix://{temporary_sock_path}"
+                yield servicer
+    else:
+        # Use a regular TCP socket for the container connection
+        container_port = find_free_port()
+        async with run_server(servicer, host="0.0.0.0", port=port):
+            async with run_server(servicer, host="0.0.0.0", port=container_port):
+                servicer.client_addr = f"http://127.0.0.1:{port}"
+                servicer.container_addr = f"http://127.0.0.1:{container_port}"
+                yield servicer
 
 
 @pytest_asyncio.fixture(scope="function")
 async def client(servicer):
-    with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         yield client
 
 
 @pytest_asyncio.fixture(scope="function")
-async def container_client(unix_servicer):
-    async with Client(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+async def container_client(servicer):
+    async with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
 
 
 @pytest_asyncio.fixture(scope="function")
 async def server_url_env(servicer, monkeypatch):
-    monkeypatch.setenv("MODAL_SERVER_URL", servicer.remote_addr)
+    monkeypatch.setenv("MODAL_SERVER_URL", servicer.client_addr)
     yield
 
 
@@ -1237,7 +1608,12 @@ def reset_container_app():
     try:
         yield
     finally:
-        _ContainerApp._reset_container()
+        _ContainerIOManager._reset_singleton()
+
+
+@pytest.fixture
+def repo_root(request):
+    return Path(request.config.rootdir)
 
 
 @pytest.fixture(scope="module")
@@ -1283,3 +1659,17 @@ def modal_config():
             os.remove(t.name)
 
     return mock_modal_toml
+
+
+@pytest.fixture
+def supports_dir(test_dir):
+    return test_dir / Path("supports")
+
+
+@pytest_asyncio.fixture
+async def set_env_client(client):
+    try:
+        Client.set_env_client(client)
+        yield
+    finally:
+        Client.set_env_client(None)

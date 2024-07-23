@@ -4,9 +4,9 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_new(servicer, client):
-    from modal import Stub
+    from modal import App
 
-    stub = Stub()
+    app = App()
 
-    async with stub.run(client=client):
+    async with app.run(client=client):
         pass

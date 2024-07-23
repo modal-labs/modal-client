@@ -6,7 +6,7 @@ def pytest_markdown_docs_globals():
 
     return {
         "modal": modal,
-        "stub": modal.Stub(),
+        "app": modal.App(),
         "math": math,
         "__name__": "runtest",
         "web_endpoint": modal.web_endpoint,

@@ -3,11 +3,14 @@ from typing import Optional
 
 import typer
 from click import UsageError
+from grpclib import GRPCError, Status
 from typing_extensions import Annotated
 
 from modal import environments
+from modal._utils.name_utils import check_environment_name
 from modal.cli.utils import display_table
 from modal.config import config
+from modal.exception import InvalidError
 
 ENVIRONMENT_HELP_TEXT = """Create and interact with Environments
 
@@ -48,7 +51,14 @@ ENVIRONMENT_CREATE_HELP = """Create a new environment in the current workspace""
 
 @environment_cli.command(name="create", help=ENVIRONMENT_CREATE_HELP)
 def create(name: Annotated[str, typer.Argument(help="Name of the new environment. Must be unique. Case sensitive")]):
-    environments.create_environment(name)
+    check_environment_name(name)
+
+    try:
+        environments.create_environment(name)
+    except GRPCError as exc:
+        if exc.status == Status.INVALID_ARGUMENT:
+            raise InvalidError(exc.message)
+        raise
     typer.echo(f"Environment created: {name}")
 
 
@@ -65,7 +75,10 @@ def delete(
 ):
     if not confirm:
         typer.confirm(
-            f"Are you sure you want to irrevocably delete the environment '{name}' and all its associated apps and secrets?",
+            (
+                f"Are you sure you want to irrevocably delete the environment '{name}' and"
+                " all its associated apps and secrets?"
+            ),
             default=False,
             abort=True,
         )
@@ -88,5 +101,14 @@ def update(
     if set_name is None and set_web_suffix is None:
         raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix)")
 
-    environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
+    if set_name:
+        check_environment_name(set_name)
+
+    try:
+        environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
+    except GRPCError as exc:
+        if exc.status == Status.INVALID_ARGUMENT:
+            raise InvalidError(exc.message)
+        raise
+
     typer.echo("Environment updated")

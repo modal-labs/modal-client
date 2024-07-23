@@ -2,42 +2,42 @@
 from datetime import datetime
 from typing import Optional, Union
 
-from modal import Stub, method
+from modal import App, method
 
-stub = Stub()
+app = App()
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def dt_arg(dt: datetime):
     print(f"the day is {dt.day}")
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def int_arg(i: int):
     print(repr(i), type(i))
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def default_arg(i: int = 10):
     print(repr(i), type(i))
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def unannotated_arg(i):
     print(repr(i), type(i))
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def unannotated_default_arg(i=10):
     print(repr(i), type(i))
 
 
-@stub.function()
+@app.function()
 def int_arg_fn(i: int):
     print(repr(i), type(i))
 
 
-@stub.cls()
+@app.cls()
 class ALifecycle:
     @method()
     def some_method(self, i):
@@ -48,26 +48,26 @@ class ALifecycle:
         print(repr(i), type(i))
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def optional_arg(i: Optional[int] = None):
     print(repr(i), type(i))
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def optional_arg_pep604(i: "int | None" = None):
     print(repr(i), type(i))
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def optional_arg_postponed(i: "Optional[int]" = None):
     print(repr(i), type(i))
 
 
-@stub.function()
+@app.function()
 def optional_arg_fn(i: Optional[int] = None):
     print(repr(i), type(i))
 
 
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def unparseable_annot(i: Union[int, str]):
     pass

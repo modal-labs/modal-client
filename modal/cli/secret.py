@@ -10,13 +10,13 @@ import typer
 from rich.console import Console
 from rich.syntax import Syntax
 
+from modal._utils.async_utils import synchronizer
+from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.secret import _Secret
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronizer
-from modal_utils.grpc_utils import retry_transient_errors
 
 secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=True)
 
@@ -34,8 +34,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
         rows.append(
             [
                 item.label,
-                timestamp_to_local(item.created_at),
-                timestamp_to_local(item.last_used_at) if item.last_used_at else "-",
+                timestamp_to_local(item.created_at, json),
+                timestamp_to_local(item.last_used_at, json) if item.last_used_at else "-",
             ]
         )
 
@@ -79,7 +79,7 @@ modal secret create my-credentials username=john password=-
     console = Console()
     env_var_code = "\n    ".join(f'os.getenv("{name}")' for name in env_dict.keys()) if env_dict else "..."
     example_code = f"""
-@stub.function(secrets=[modal.Secret.from_name("{secret_name}")])
+@app.function(secrets=[modal.Secret.from_name("{secret_name}")])
 def some_function():
     {env_var_code}
 """
@@ -105,7 +105,8 @@ def get_text_from_editor(key) -> str:
 
         if status_code != 0:
             raise ValueError(
-                "Something went wrong with the external editor. Try again, or use '--' as the value to pass input through stdin instead"
+                "Something went wrong with the external editor. "
+                "Try again, or use '--' as the value to pass input through stdin instead"
             )
 
         bufferfile.seek(0)

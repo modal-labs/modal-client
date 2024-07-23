@@ -1,5 +1,15 @@
 name: Check
-on: push
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# Cancel previous runs of the same PR but do not cancel previous runs on main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   link:
@@ -15,8 +25,10 @@ jobs:
 
       - run: inv lint
 
-  mypy:
-    name: Mypy
+      - run: inv lint-protos
+
+  type_check:
+    name: Static type checks
     runs-on: ubuntu-20.04
 
     steps:
@@ -33,7 +45,7 @@ jobs:
       - name: Build type stubs
         run: inv type-stubs
 
-      - run: inv mypy
+      - run: inv type-check
 
   check-copyright:
     name: Check copyright

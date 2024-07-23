@@ -1,32 +1,59 @@
 # Copyright Modal Labs 2022
+import asyncio
 import os
-from typing import Dict, List, Optional, Sequence, Union
+from typing import TYPE_CHECKING, AsyncIterator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
+from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
-from modal.s3mount import _S3Mount, s3_mounts_to_proto
 from modal.volume import _Volume
 from modal_proto import api_pb2
-from modal_utils.async_utils import synchronize_api
-from modal_utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 
 from ._location import parse_cloud_provider
-from ._mount_utils import validate_mount_points, validate_volumes
 from ._resolver import Resolver
+from ._resources import convert_fn_config_to_resources_config
+from ._utils.async_utils import synchronize_api
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
-from .gpu import GPU_T, parse_gpu_config
+from .exception import deprecation_error, deprecation_warning
+from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _Object
+from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
+
+_default_image: _Image = _Image.debian_slim()
+
+
+if TYPE_CHECKING:
+    import modal.app
 
 
 class _LogsReader:
-    """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`)."""
+    """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`).
+
+    As an asynchronous iterable, the object supports the async for statement.
+
+    **Usage**
+
+    ```python
+    from modal import Sandbox
+
+    sandbox = Sandbox.create(
+        "bash",
+        "-c",
+        "for i in $(seq 1 10); do echo foo; sleep 0.1; done"
+    )
+    for message in sandbox.stdout:
+        print(f"Message: {message}")
+    ```
+    """
 
     def __init__(self, file_descriptor: int, sandbox_id: str, client: _Client) -> None:
         """mdmd:hidden"""
@@ -34,64 +61,172 @@ class _LogsReader:
         self._file_descriptor = file_descriptor
         self._sandbox_id = sandbox_id
         self._client = client
+        self._stream = None
+        self._last_log_batch_entry_id = ""
+        # Whether the reader received an EOF. Once EOF is True, it returns
+        # an empty string for any subsequent reads (including async for)
+        self.eof = False
 
     async def read(self) -> str:
-        """Fetch and return contents of the entire stream.
+        """Fetch and return contents of the entire stream. If EOF was received,
+        return an empty string.
 
         **Usage**
 
         ```python
-        sandbox = stub.app.spawn_sandbox("echo", "hello")
+        from modal import Sandbox
+
+        sandbox = Sandbox.create("echo", "hello")
         sandbox.wait()
 
         print(sandbox.stdout.read())
         ```
 
         """
-
-        last_log_batch_entry_id = ""
-        completed = False
         data = ""
-
         # TODO: maybe combine this with get_app_logs_loop
+        async for message in self._get_logs():
+            if message is None:
+                break
+            data += message.data
 
-        async def _get_logs():
-            nonlocal last_log_batch_entry_id, completed, data
+        return data
 
+    async def _get_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogs]]:
+        """mdmd:hidden
+        Streams sandbox logs from the server to the reader.
+
+        When the stream receives an EOF, it yields None. Once an EOF is received,
+        subsequent invocations will not yield logs.
+        """
+        if self.eof:
+            yield None
+            return
+
+        completed = False
+
+        retries_remaining = 10
+        while not completed:
             req = api_pb2.SandboxGetLogsRequest(
                 sandbox_id=self._sandbox_id,
                 file_descriptor=self._file_descriptor,
                 timeout=55,
-                last_entry_id=last_log_batch_entry_id,
+                last_entry_id=self._last_log_batch_entry_id,
             )
-            log_batch: api_pb2.TaskLogsBatch
-            async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
-                if log_batch.entry_id:
-                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
-                    last_log_batch_entry_id = log_batch.entry_id
-
-                if log_batch.eof:
-                    completed = True
-                    break
-
-                for item in log_batch.items:
-                    data += item.data
-
-        while not completed:
             try:
-                await _get_logs()
+                async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
+                    self._last_log_batch_entry_id = log_batch.entry_id
+
+                    for message in log_batch.items:
+                        yield message
+                    if log_batch.eof:
+                        self.eof = True
+                        completed = True
+                        yield None
+                        break
             except (GRPCError, StreamTerminatedError) as exc:
-                if isinstance(exc, GRPCError):
-                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, GRPCError):
+                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                            await asyncio.sleep(1.0)
+                            continue
+                    elif isinstance(exc, StreamTerminatedError):
                         continue
-                elif isinstance(exc, StreamTerminatedError):
-                    continue
                 raise
 
-        return data
+    def __aiter__(self):
+        """mdmd:hidden"""
+        self._stream = self._get_logs()
+        return self
+
+    async def __anext__(self):
+        """mdmd:hidden"""
+        value = await self._stream.__anext__()
+
+        # The stream yields None if it receives an EOF batch.
+        if value is None:
+            raise StopAsyncIteration
+
+        return value.data
+
+
+MAX_BUFFER_SIZE = 128 * 1024
+
+
+class _StreamWriter:
+    """Provides an interface to buffer and write logs to a sandbox stream (`stdin`)."""
+
+    def __init__(self, sandbox_id: str, client: _Client):
+        self._index = 1
+        self._sandbox_id = sandbox_id
+        self._client = client
+        self._is_closed = False
+        self._buffer = bytearray()
+
+    def get_next_index(self):
+        """mdmd:hidden"""
+        index = self._index
+        self._index += 1
+        return index
+
+    def write(self, data: Union[bytes, bytearray, memoryview]):
+        """
+        Writes data to stream's internal buffer, but does not drain/flush the write.
+
+        This method needs to be used along with the `drain()` method which flushes the buffer.
+
+        **Usage**
+
+        ```python
+        from modal import Sandbox
+
+        sandbox = Sandbox.create(
+            "bash",
+            "-c",
+            "while read line; do echo $line; done",
+        )
+        sandbox.stdin.write(b"foo\\n")
+        sandbox.stdin.write(b"bar\\n")
+        sandbox.stdin.write_eof()
+
+        sandbox.stdin.drain()
+        sandbox.wait()
+        ```
+        """
+        if self._is_closed:
+            raise EOFError("Stdin is closed. Cannot write to it.")
+        if isinstance(data, (bytes, bytearray, memoryview)):
+            if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
+                raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
+            self._buffer.extend(data)
+        else:
+            raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
+
+    def write_eof(self):
+        """
+        Closes the write end of the stream after the buffered write data is drained.
+        If the sandbox process was blocked on input, it will become unblocked after `write_eof()`.
+
+        This method needs to be used along with the `drain()` method which flushes the EOF to the process.
+        """
+        self._is_closed = True
+
+    async def drain(self):
+        """
+        Flushes the write buffer and EOF to the running Sandbox process.
+        """
+        data = bytes(self._buffer)
+        self._buffer.clear()
+        index = self.get_next_index()
+        await retry_transient_errors(
+            self._client.stub.SandboxStdinWrite,
+            api_pb2.SandboxStdinWriteRequest(sandbox_id=self._sandbox_id, index=index, eof=self._is_closed, input=data),
+        )
 
 
 LogsReader = synchronize_api(_LogsReader)
+StreamWriter = synchronize_api(_StreamWriter)
 
 
 class _Sandbox(_Object, type_prefix="sb"):
@@ -104,6 +239,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _result: Optional[api_pb2.GenericResult]
     _stdout: _LogsReader
     _stderr: _LogsReader
+    _stdin: _StreamWriter
 
     @staticmethod
     def _new(
@@ -115,25 +251,33 @@ class _Sandbox(_Object, type_prefix="sb"):
         workdir: Optional[str] = None,
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,
         cpu: Optional[float] = None,
-        memory: Optional[int] = None,
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
-        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _S3Mount]] = {},
-        allow_background_volume_commits: bool = False,
+        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        _allow_background_volume_commits: Optional[bool] = None,
+        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
+        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
         if len(entrypoint_args) == 0:
             raise InvalidError("entrypoint_args must not be empty")
 
-        if not isinstance(network_file_systems, dict):
-            raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
-        validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+        validated_network_file_systems = validate_network_file_systems(network_file_systems)
+
+        scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
+        if region:
+            if scheduler_placement:
+                raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
+            scheduler_placement = SchedulerPlacement(region=region)
 
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
-        s3_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _S3Mount)]
+        cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         def _deps() -> List[_Object]:
@@ -142,30 +286,23 @@ class _Sandbox(_Object, type_prefix="sb"):
                 deps.append(vol)
             for _, vol in validated_volumes:
                 deps.append(vol)
-            for _, s3_mount in s3_mounts:
-                if s3_mount.secret:
-                    deps.append(s3_mount.secret)
+            for _, cloud_bucket_mount in cloud_bucket_mounts:
+                if cloud_bucket_mount.secret:
+                    deps.append(cloud_bucket_mount.secret)
             return deps
 
-        async def _load(provider: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
-            gpu_config = parse_gpu_config(gpu)
-
-            cloud_provider = parse_cloud_provider(cloud) if cloud else None
-
-            if cpu is not None and cpu < 0.25:
-                raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.25 CPU resources.")
-            milli_cpu = int(1000 * cpu) if cpu is not None else None
-
+        async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
                 api_pb2.VolumeMount(
                     mount_path=path,
                     volume_id=volume.object_id,
-                    allow_background_commits=allow_background_volume_commits,
+                    allow_background_commits=_allow_background_volume_commits,
                 )
                 for path, volume in validated_volumes
             ]
 
+            ephemeral_disk = None  # Ephemeral disk requests not supported on Sandboxes.
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
                 image_id=image.object_id,
@@ -173,31 +310,135 @@ class _Sandbox(_Object, type_prefix="sb"):
                 secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
                 workdir=workdir,
-                resources=api_pb2.Resources(gpu_config=gpu_config, milli_cpu=milli_cpu, memory_mb=memory),
-                cloud_provider=cloud_provider,
+                resources=convert_fn_config_to_resources_config(
+                    cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
+                ),
+                cloud_provider=parse_cloud_provider(cloud) if cloud else None,
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
                 block_network=block_network,
-                s3_mounts=s3_mounts_to_proto(s3_mounts),
+                cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
+                pty_info=pty_info,
+                scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
+                _experimental_resources=[
+                    convert_fn_config_to_resources_config(
+                        cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                    )
+                    for _experimental_gpu in _experimental_gpus
+                ],
             )
 
+            # Note - `resolver.app_id` will be `None` for app-less sandboxes
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
             create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
 
             sandbox_id = create_resp.sandbox_id
-            provider._hydrate(sandbox_id, resolver.client, None)
+            self._hydrate(sandbox_id, resolver.client, None)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
+
+    @staticmethod
+    async def create(
+        *entrypoint_args: str,
+        app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
+        environment_name: Optional[str] = None,  # Optionally override the default environment
+        image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
+        mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
+        secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
+        workdir: Optional[str] = None,  # Working directory of the sandbox.
+        gpu: GPU_T = None,
+        cloud: Optional[str] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in MiB, a memory request which is the minimum memory required.
+        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        block_network: bool = False,  # Whether to block network access
+        volumes: Dict[
+            Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
+        ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        _allow_background_volume_commits: None = None,
+        _experimental_scheduler_placement: Optional[
+            SchedulerPlacement
+        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        client: Optional[_Client] = None,
+        _experimental_gpus: Sequence[GPU_T] = [],
+    ) -> "_Sandbox":
+        if _allow_background_volume_commits is False:
+            deprecation_error(
+                (2024, 5, 13),
+                "Disabling volume background commits is now deprecated. "
+                "Remove _allow_background_volume_commits=False to enable the functionality.",
+            )
+        elif _allow_background_volume_commits is True:
+            deprecation_warning(
+                (2024, 7, 18),
+                "Setting volume background commits is deprecated. "
+                "The functionality is now unconditionally enabled (set to True).",
+            )
+        elif _allow_background_volume_commits is None:
+            _allow_background_volume_commits = True
+
+        if environment_name is None:
+            environment_name = config.get("environment")
+
+        # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
+        obj = _Sandbox._new(
+            entrypoint_args,
+            image=image or _default_image,
+            mounts=mounts,
+            secrets=secrets,
+            timeout=timeout,
+            workdir=workdir,
+            gpu=gpu,
+            cloud=cloud,
+            region=region,
+            cpu=cpu,
+            memory=memory,
+            network_file_systems=network_file_systems,
+            block_network=block_network,
+            volumes=volumes,
+            pty_info=pty_info,
+            _allow_background_volume_commits=_allow_background_volume_commits,
+            _experimental_scheduler_placement=_experimental_scheduler_placement,
+            _experimental_gpus=_experimental_gpus,
+        )
+        if client is None:
+            if app:
+                client = app._client
+            else:
+                client = await _Client.from_env()
+        app_id: Optional[str] = app.app_id if app else None
+        resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
+        await resolver.load(obj)
+        return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
         self._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, self._client)
         self._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, self._client)
-        if handle_metadata is not None:
-            assert isinstance(handle_metadata, api_pb2.SandboxHandleMetadata)
-            self._result = handle_metadata.result
-        else:
-            self._result = None
+        self._stdin = StreamWriter(self.object_id, self._client)
+        self._result = None
+
+    @staticmethod
+    async def from_id(sandbox_id: str, client: Optional[_Client] = None) -> "_Sandbox":
+        """Construct a Sandbox from an id and look up the sandbox result.
+
+        The ID of a Sandbox object can be accessed using `.object_id`.
+        """
+        if client is None:
+            client = await _Client.from_env()
+
+        req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=0)
+        resp = await retry_transient_errors(client.stub.SandboxWait, req)
+
+        obj = _Sandbox._new_hydrated(sandbox_id, client, None)
+        obj._result = resp.result
+
+        return obj
 
     # Live handle methods
 
@@ -251,6 +492,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         """`LogsReader` for the sandbox's stderr stream."""
 
         return self._stderr
+
+    @property
+    def stdin(self) -> _StreamWriter:
+        """`StreamWriter` for the sandbox's stdin stream."""
+
+        return self._stdin
 
     @property
     def returncode(self) -> Optional[int]:

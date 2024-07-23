@@ -4,9 +4,9 @@ import logging
 import sys
 from typing import Any
 
-from modal import Stub
+from modal import App
+from modal._utils.async_utils import run_coro_blocking
 from modal.config import config, logger
-from modal_utils.async_utils import run_coro_blocking
 
 app_ctx: Any
 
@@ -18,11 +18,11 @@ def load_ipython_extension(ipython):
     logger.addHandler(logging.StreamHandler(stream=sys.stdout))
     logger.setLevel(config["loglevel"])
 
-    # Create a app and provide it in the IPython app
-    stub = Stub()
-    ipython.push({"stub": stub})
+    # Create an app and provide it in the IPython app
+    app = App()
+    ipython.push({"app": app})
 
-    app_ctx = stub.run()
+    app_ctx = app.run()
 
     # Notebooks have an event loop present, but we want this function
     # to be blocking. This is fairly hacky.

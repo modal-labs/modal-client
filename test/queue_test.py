@@ -3,23 +3,43 @@ import pytest
 import queue
 import time
 
-from modal import Queue, Stub
+from modal import Queue
+from modal.exception import InvalidError, NotFoundError
 
 from .supports.skip import skip_macos, skip_windows
 
 
 def test_queue(servicer, client):
-    stub = Stub()
-    stub.q = Queue.new()
-    with stub.run(client=client):
-        assert isinstance(stub.q, Queue)
-        assert stub.q.len() == 0
-        stub.q.put(42)
-        assert stub.q.len() == 1
-        assert stub.q.get() == 42
-        with pytest.raises(queue.Empty):
-            stub.q.get(timeout=0)
-        assert stub.q.len() == 0
+    q = Queue.lookup("some-random-queue", create_if_missing=True, client=client)
+    assert isinstance(q, Queue)
+    assert q.len() == 0
+    q.put(42)
+    assert q.len() == 1
+    assert q.get() == 42
+    with pytest.raises(queue.Empty):
+        q.get(timeout=0)
+    assert q.len() == 0
+
+    # test iter
+    q.put_many([1, 2, 3])
+    t0 = time.time()
+    assert [v for v in q.iterate(item_poll_timeout=1.0)] == [1, 2, 3]
+    assert 1.0 < time.time() - t0 < 2.0
+    assert [v for v in q.iterate(item_poll_timeout=0.0)] == [1, 2, 3]
+
+    Queue.delete("some-random-queue", client=client)
+    with pytest.raises(NotFoundError):
+        Queue.lookup("some-random-queue", client=client)
+
+
+def test_queue_ephemeral(servicer, client):
+    with Queue.ephemeral(client=client, _heartbeat_sleep=1) as q:
+        q.put("hello")
+        assert q.len() == 1
+        assert q.get() == "hello"
+        time.sleep(1.5)  # enough to trigger two heartbeats
+
+    assert servicer.n_queue_heartbeats == 2
 
 
 @skip_macos("TODO(erikbern): this consistently fails on OSX. Unclear why.")
@@ -37,20 +57,18 @@ def test_queue_blocking_put(put_timeout_secs, min_queue_full_exc_count, max_queu
     import queue
     import threading
 
-    stub = Stub()
-    stub.q = Queue.new()
     producer_delay = 0.001
     consumer_delay = producer_delay * 5
 
     queue_full_exceptions = 0
-    with stub.run(client=client):
+    with Queue.ephemeral(client=client) as q:
 
         def producer():
             nonlocal queue_full_exceptions
             for i in range(servicer.queue_max_len * 2):
                 item = f"Item {i}"
                 try:
-                    stub.q.put(item, block=True, timeout=put_timeout_secs)  # type: ignore
+                    q.put(item, block=True, timeout=put_timeout_secs)  # type: ignore
                 except queue.Full:
                     queue_full_exceptions += 1
                 time.sleep(producer_delay)
@@ -58,7 +76,7 @@ def test_queue_blocking_put(put_timeout_secs, min_queue_full_exc_count, max_queu
         def consumer():
             while True:
                 time.sleep(consumer_delay)
-                item = stub.q.get(block=True)  # type: ignore
+                item = q.get(block=True)  # type: ignore
                 if item is None:
                     break  # Exit if a None item is received
 
@@ -68,25 +86,19 @@ def test_queue_blocking_put(put_timeout_secs, min_queue_full_exc_count, max_queu
         consumer_thread.start()
         producer_thread.join()
         # Stop the consumer by sending a None item
-        stub.q.put(None)  # type: ignore
+        q.put(None)  # type: ignore
         consumer_thread.join()
 
         assert queue_full_exceptions >= min_queue_full_exc_count
         assert queue_full_exceptions <= max_queue_full_exc_count
 
 
-def test_queue_nonblocking_put(
-    servicer,
-    client,
-):
-    stub = Stub()
-    stub.q = Queue.new()
-
-    with stub.run(client=client):
+def test_queue_nonblocking_put(servicer, client):
+    with Queue.ephemeral(client=client) as q:
         # Non-blocking PUTs don't tolerate a full queue and will raise exception.
         with pytest.raises(queue.Full) as excinfo:
             for i in range(servicer.queue_max_len + 1):
-                stub.q.put(i, block=False)  # type: ignore
+                q.put(i, block=False)  # type: ignore
 
     assert str(servicer.queue_max_len) in str(excinfo.value)
     assert i == servicer.queue_max_len
@@ -95,3 +107,15 @@ def test_queue_nonblocking_put(
 def test_queue_deploy(servicer, client):
     d = Queue.lookup("xyz", create_if_missing=True, client=client)
     d.put(123)
+
+
+def test_queue_lazy_hydrate_from_name(set_env_client):
+    q = Queue.from_name("foo", create_if_missing=True)
+    q.put(123)
+    assert q.get() == 123
+
+
+@pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
+def test_invalid_name(servicer, client, name):
+    with pytest.raises(InvalidError, match="Invalid Queue name"):
+        Queue.lookup(name)

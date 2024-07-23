@@ -2,9 +2,12 @@
 import asyncio
 import functools
 import inspect
+import platform
 import re
+import shlex
 import sys
 import time
+import typing
 from functools import partial
 from typing import Any, Callable, Dict, Optional, get_type_hints
 
@@ -13,16 +16,18 @@ import typer
 from rich.console import Console
 from typing_extensions import TypedDict
 
+from .. import Cls
+from .._output import enable_output
+from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
-from ..exception import ExecutionError, InvalidError
-from ..functions import Function, FunctionEnv
+from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
+from ..functions import Function, _FunctionSpec
 from ..image import Image
-from ..runner import deploy_stub, interactive_shell, run_stub
-from ..serving import serve_stub
-from ..stub import LocalEntrypoint, Stub
-from .import_refs import import_function, import_stub
-from .utils import ENV_OPTION, ENV_OPTION_HELP
+from ..runner import deploy_app, interactive_shell, run_app
+from ..serving import serve_app
+from .import_refs import import_app, import_function
+from .utils import ENV_OPTION, ENV_OPTION_HELP, stream_app_logs
 
 
 class ParameterMetadata(TypedDict):
@@ -118,7 +123,7 @@ def _add_click_options(func, signature: Dict[str, ParameterMetadata]):
     return func
 
 
-def _get_clean_stub_description(func_ref: str) -> str:
+def _get_clean_app_description(func_ref: str) -> str:
     # If possible, consider the 'ref' argument the start of the app's args. Everything
     # before it Modal CLI cruft (eg. `modal run --detach`).
     try:
@@ -128,15 +133,20 @@ def _get_clean_stub_description(func_ref: str) -> str:
         return " ".join(sys.argv)
 
 
-def _get_click_command_for_function(stub: Stub, function_tag):
-    function = stub[function_tag]
-
+def _get_click_command_for_function(app: App, function_tag):
+    function = app.indexed_objects[function_tag]
+    assert isinstance(function, Function)
+    function = typing.cast(Function, function)
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
     signature: Dict[str, ParameterMetadata]
-    if function.info.cls is not None:
-        cls_signature = _get_signature(function.info.cls)
+    cls: Optional[Cls] = None
+    method_name: Optional[str] = None
+    if function.info.user_cls is not None:
+        class_name, method_name = function_tag.rsplit(".", 1)
+        cls = typing.cast(Cls, app.indexed_objects[class_name])
+        cls_signature = _get_signature(function.info.user_cls)
         fun_signature = _get_signature(function.info.raw_f, is_method=True)
         signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
         # TODO(erikbern): assert there's no overlap?
@@ -145,27 +155,31 @@ def _get_click_command_for_function(stub: Stub, function_tag):
 
     @click.pass_context
     def f(ctx, **kwargs):
-        with run_stub(
-            stub,
-            detach=ctx.obj["detach"],
-            show_progress=ctx.obj["show_progress"],
-            environment_name=ctx.obj["env"],
-        ):
-            if function.info.cls is None:
-                function.remote(**kwargs)
-            else:
-                # unpool class and method arguments
-                # TODO(erikbern): this code is a bit hacky
-                cls_kwargs = {k: kwargs[k] for k in cls_signature}
-                fun_kwargs = {k: kwargs[k] for k in fun_signature}
-                method = function.from_parametrized(None, False, None, tuple(), cls_kwargs)
-                method.remote(**fun_kwargs)
+        show_progress: bool = ctx.obj["show_progress"]
+        with enable_output(show_progress):
+            with run_app(
+                app,
+                detach=ctx.obj["detach"],
+                environment_name=ctx.obj["env"],
+                interactive=ctx.obj["interactive"],
+            ):
+                if cls is None:
+                    function.remote(**kwargs)
+                else:
+                    # unpool class and method arguments
+                    # TODO(erikbern): this code is a bit hacky
+                    cls_kwargs = {k: kwargs[k] for k in cls_signature}
+                    fun_kwargs = {k: kwargs[k] for k in fun_signature}
+
+                    instance = cls(**cls_kwargs)
+                    method: Function = getattr(instance, method_name)
+                    method.remote(**fun_kwargs)
 
     with_click_options = _add_click_options(f, signature)
     return click.command(with_click_options)
 
 
-def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypoint):
+def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoint):
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
@@ -173,19 +187,25 @@ def _get_click_command_for_local_entrypoint(stub: Stub, entrypoint: LocalEntrypo
     def f(ctx, *args, **kwargs):
         if ctx.obj["detach"]:
             print(
-                "Note that running a local entrypoint in detached mode only keeps the last triggered Modal function alive after the parent process has been killed or disconnected."
+                "Note that running a local entrypoint in detached mode only keeps the last "
+                "triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
-        with run_stub(
-            stub,
-            detach=ctx.obj["detach"],
-            show_progress=ctx.obj["show_progress"],
-            environment_name=ctx.obj["env"],
-        ):
-            if isasync:
-                asyncio.run(func(*args, **kwargs))
-            else:
-                func(*args, **kwargs)
+        show_progress: bool = ctx.obj["show_progress"]
+        with enable_output(show_progress):
+            with run_app(
+                app,
+                detach=ctx.obj["detach"],
+                environment_name=ctx.obj["env"],
+                interactive=ctx.obj["interactive"],
+            ):
+                try:
+                    if isasync:
+                        asyncio.run(func(*args, **kwargs))
+                    else:
+                        func(*args, **kwargs)
+                except Exception as exc:
+                    raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
 
     with_click_options = _add_click_options(f, _get_signature(func))
     return click.command(with_click_options)
@@ -199,14 +219,14 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
         function_or_entrypoint = import_function(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
-        stub: Stub = function_or_entrypoint.stub
-        if stub.description is None:
-            stub.set_description(_get_clean_stub_description(func_ref))
+        app: App = function_or_entrypoint.app
+        if app.description is None:
+            app.set_description(_get_clean_app_description(func_ref))
         if isinstance(function_or_entrypoint, LocalEntrypoint):
-            click_command = _get_click_command_for_local_entrypoint(stub, function_or_entrypoint)
+            click_command = _get_click_command_for_local_entrypoint(app, function_or_entrypoint)
         else:
             tag = function_or_entrypoint.info.get_tag()
-            click_command = _get_click_command_for_function(stub, tag)
+            click_command = _get_click_command_for_function(app, tag)
 
         return click_command
 
@@ -217,15 +237,16 @@ class RunGroup(click.Group):
 )
 @click.option("-q", "--quiet", is_flag=True, help="Don't show Modal progress indicators.")
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
+@click.option("-i", "--interactive", is_flag=True, help="Run the app in interactive mode.")
 @click.option("-e", "--env", help=ENV_OPTION_HELP, default=None)
 @click.pass_context
-def run(ctx, detach, quiet, env):
+def run(ctx, detach, quiet, interactive, env):
     """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
-    Alternatively, you can refer to the function via the stub:
+    Alternatively, you can refer to the function via the app:
 
-    `{file or module}::{stub variable name}.{function name}`
+    `{file or module}::{app variable name}.{function name}`
 
     **Examples:**
 
@@ -235,8 +256,8 @@ def run(ctx, detach, quiet, env):
     modal run my_app.py::hello_world
     ```
 
-    If your module only has a single stub called `stub` and your stub has a
-    single local entrypoint (or single function), you can omit the stub and
+    If your module only has a single app called `app` and your app has a
+    single local entrypoint (or single function), you can omit the app and
     function parts:
 
     ```bash
@@ -252,42 +273,37 @@ def run(ctx, detach, quiet, env):
     ctx.ensure_object(dict)
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
+    ctx.obj["interactive"] = interactive
 
 
 def deploy(
-    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
+    app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     name: str = typer.Option(None, help="Name of the deployment."),
     env: str = ENV_OPTION,
-    public: bool = typer.Option(
-        False, help="[beta] Publicize the deployment so other workspaces can lookup the function."
-    ),
-    skip_confirm: bool = typer.Option(False, help="Skip public app confirmation dialog."),
+    stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
+    tag: str = typer.Option(None, help="Tag the deployment with a version."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
 
-    stub = import_stub(stub_ref)
+    app = import_app(app_ref)
 
     if name is None:
-        name = stub.name
+        name = app.name
 
-    if public and not skip_confirm:
-        if not click.confirm(
-            "⚠️ Public apps are a beta feature. ⚠️\n"
-            "Making an app public will allow any user (including from outside your workspace) to look up and use your functions.\n"
-            "Are you sure you want your app to be public?"
-        ):
-            return
+    with enable_output():
+        res = deploy_app(app, name=name, environment_name=env, tag=tag)
 
-    deploy_stub(stub, name=name, environment_name=env, public=public)
+    if stream_logs:
+        stream_app_logs(res.app_id)
 
 
 def serve(
-    stub_ref: str = typer.Argument(..., help="Path to a Python file with a stub."),
+    app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     timeout: Optional[float] = None,
     env: str = ENV_OPTION,
 ):
-    """Run a web endpoint(s) associated with a Modal stub and hot-reload code.
+    """Run a web endpoint(s) associated with a Modal app and hot-reload code.
 
     **Examples:**
 
@@ -297,25 +313,26 @@ def serve(
     """
     env = ensure_env(env)
 
-    stub = import_stub(stub_ref)
-    if stub.description is None:
-        stub.set_description(_get_clean_stub_description(stub_ref))
+    app = import_app(app_ref)
+    if app.description is None:
+        app.set_description(_get_clean_app_description(app_ref))
 
-    with serve_stub(stub, stub_ref, environment_name=env):
-        if timeout is None:
-            timeout = config["serve_timeout"]
-        if timeout is None:
-            timeout = float("inf")
-        while timeout > 0:
-            t = min(timeout, 3600)
-            time.sleep(t)
-            timeout -= t
+    with enable_output():
+        with serve_app(app, app_ref, environment_name=env):
+            if timeout is None:
+                timeout = config["serve_timeout"]
+            if timeout is None:
+                timeout = float("inf")
+            while timeout > 0:
+                t = min(timeout, 3600)
+                time.sleep(t)
+                timeout -= t
 
 
 def shell(
     func_ref: Optional[str] = typer.Argument(
         default=None,
-        help="Path to a Python file with a Stub or Modal function whose container to run.",
+        help="Path to a Python file with an App or Modal function whose container to run.",
         metavar="FUNC_REF",
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
@@ -336,7 +353,17 @@ def shell(
     ),
     cloud: Optional[str] = typer.Option(
         default=None,
-        help="Cloud provider to run the function on. Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF).",
+        help=(
+            "Cloud provider to run the shell on. "
+            "Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF)."
+        ),
+    ),
+    region: Optional[str] = typer.Option(
+        default=None,
+        help=(
+            "Region(s) to run the shell on. "
+            "Can be a single region or a comma-separated list to choose from (if not using FUNC_REF)."
+        ),
     ),
 ):
     """Run an interactive shell inside a Modal image.
@@ -349,7 +376,7 @@ def shell(
     modal shell
     ```
 
-    Start a bash shell using the spec for `my_function` in your stub:
+    Start a bash shell using the spec for `my_function` in your app:
 
     ```bash
     modal shell hello_world.py::my_function
@@ -367,32 +394,41 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
-    stub = Stub("modal shell")
+    if platform.system() == "Windows":
+        raise InvalidError("`modal shell` is currently not supported on Windows")
+
+    app = App("modal shell")
 
     if func_ref is not None:
         function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
         assert isinstance(function, Function)
-        function_env: FunctionEnv = function.env
+        function_spec: _FunctionSpec = function.spec
         start_shell = partial(
             interactive_shell,
-            image=function_env.image,
-            mounts=function_env.mounts,
-            secrets=function_env.secrets,
-            network_file_systems=function_env.network_file_systems,
-            gpu=function_env.gpu,
-            cloud=function_env.cloud,
-            cpu=function_env.cpu,
-            memory=function_env.memory,
-            volumes=function_env.volumes,
-            _allow_background_volume_commits=True,
+            image=function_spec.image,
+            mounts=function_spec.mounts,
+            secrets=function_spec.secrets,
+            network_file_systems=function_spec.network_file_systems,
+            gpu=function_spec.gpu,
+            cloud=function_spec.cloud,
+            cpu=function_spec.cpu,
+            memory=function_spec.memory,
+            volumes=function_spec.volumes,
+            region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
+            _experimental_gpus=function_spec._experimental_gpus,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
-        start_shell = partial(interactive_shell, image=modal_image, cpu=cpu, memory=memory, gpu=gpu, cloud=cloud)
+        start_shell = partial(
+            interactive_shell,
+            image=modal_image,
+            cpu=cpu,
+            memory=memory,
+            gpu=gpu,
+            cloud=cloud,
+            region=region.split(",") if region else [],
+        )
 
-    start_shell(
-        stub,
-        cmd=[cmd],
-        environment_name=env,
-        timeout=3600,
-    )
+    # NB: invoking under bash makes --cmd a lot more flexible.
+    cmds = shlex.split(f'/bin/bash -c "{cmd}"')
+    start_shell(app, cmds=cmds, environment_name=env, timeout=3600)
