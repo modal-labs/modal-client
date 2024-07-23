@@ -28,6 +28,7 @@ from ._asgi import (
     webhook_asgi_app,
     wsgi_app_wrapper,
 )
+from ._checkpoint_utils import patch_socket_close
 from ._container_io_manager import ContainerIOManager, LocalInput, UserException, _ContainerIOManager
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_proto_params
@@ -696,10 +697,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     service: Service
     function_def = container_args.function_def
     is_auto_snapshot: bool = function_def.is_auto_snapshot
+    is_checkpointing_function: bool = function_def.is_checkpointing_function
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
 
-    with container_io_manager.heartbeats(function_def.is_checkpointing_function), UserCodeEventLoop() as event_loop:
+    with container_io_manager.heartbeats(is_checkpointing_function), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = container_io_manager.get_serialized_function()
@@ -752,6 +754,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             app: App = synchronizer._translate_out(active_app, Interface.BLOCKING)
             app._init_container(client, container_app)
 
+        # Patch socket.close() to prevent lingering open connections due to TIME_WAIT.
+        # Refer to modal._contaienr_utils.patch_socket_close() for full extent of patch.
+        if is_checkpointing_function:
+            logger.debug("patching socket.close() for memory snapshots")
+            patch_socket_close()
+
         # Hydrate all function dependencies.
         # TODO(erikbern): we an remove this once we
         # 1. Enable lazy hydration for all objects
@@ -776,7 +784,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and innitialization. Checkpointed containers run from this point onwards.
-        if function_def.is_checkpointing_function:
+        if is_checkpointing_function:
             container_io_manager.memory_snapshot()
 
         # Install hooks for interactive functions.
