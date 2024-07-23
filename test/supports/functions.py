@@ -426,6 +426,16 @@ class SnapshottingClsNetworkConnectionOpen:
         self._socket.connect((remote_ip, 80))
 
 
+@app.cls(enable_memory_snapshot=True)
+class SnapshottingClsNetworkConnectionClosed:
+    @enter(snap=True)
+    def open_connection(self):
+        remote_ip = "94.140.14.14"  # AdGuard DNS
+        _socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        _socket.connect((remote_ip, 80))
+        _socket.close()
+
+
 @app.function(enable_memory_snapshot=True)
 def snapshotting_square(x):
     return x * x
