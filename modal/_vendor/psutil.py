@@ -383,9 +383,8 @@ class Connections:
         return list(ret)
 
 
-_connections = Connections()
-
 
 def net_connections(kind="inet"):
     """Return system-wide open connections."""
-    return _connections.retrieve(kind)
+    connections = Connections()
+    return connections.retrieve(kind)
