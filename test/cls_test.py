@@ -107,7 +107,7 @@ def test_class_with_options(client, servicer):
 
 def test_class_with_options_need_hydrating(client, servicer):
     with pytest.raises(ExecutionError, match="hydrate"):
-        Foo.with_options()
+        Foo.with_options()  # type: ignore
 
 
 # Reusing the app runs into an issue with stale function handles.
