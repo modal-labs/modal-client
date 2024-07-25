@@ -401,7 +401,7 @@ def use_md5(url: str) -> bool:
     https://github.com/spulec/moto/issues/816
     """
     host = urlparse(url).netloc.split(":")[0]
-    if host.endswith(".amazonaws.com"):
+    if host.endswith(".amazonaws.com") or host.endswith(".r2.cloudflarestorage.com"):
         return True
     elif host in ["127.0.0.1", "localhost", "172.21.0.1"]:
         return False
