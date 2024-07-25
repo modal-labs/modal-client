@@ -161,15 +161,15 @@ async def _publish_app(
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
 ) -> str:
-    def filter_dict(full_dict: Dict[str, V], condition: Callable[[str, V], bool]) -> Dict[str, V]:
-        return {k: v for k, v in full_dict.items() if condition(k, v)}
+    def filter_dict(full_dict: Dict[str, V], condition: Callable[[V], bool]) -> Dict[str, V]:
+        return {k: v for k, v in full_dict.items() if condition(v)}
 
     # The entity prefixes are defined in the monorepo; is there any way to share them here?
-    function_ids = filter_dict(running_app.tag_to_object_id, lambda k, v: v.startswith("fu-"))
-    class_ids = filter_dict(running_app.tag_to_object_id, lambda k, v: v.startswith("cs-"))
+    function_ids = filter_dict(running_app.tag_to_object_id, lambda v: v.startswith("fu-"))
+    class_ids = filter_dict(running_app.tag_to_object_id, lambda v: v.startswith("cs-"))
 
-    function_objs = filter_dict(indexed_objects, lambda k, v: k in function_ids.values())
-    definition_ids = {obj_id: obj.handle_metadata.definition_id for obj_id, obj in function_objs.items()}
+    function_objs = filter_dict(indexed_objects, lambda v: v.object_id in function_ids.values())
+    definition_ids = {obj.object_id: obj._definition_id for obj in function_objs.values()}
 
     request = api_pb2.AppPublishRequest(
         app_id=running_app.app_id,

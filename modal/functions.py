@@ -1100,6 +1100,7 @@ class _Function(_Object, type_prefix="fu"):
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
+        self._definition_id = metadata.definition_id
 
     def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id
