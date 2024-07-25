@@ -120,10 +120,7 @@ class _Object:
         # Transient use case, see Dict, Queue, and SharedVolume
         self._init(other._rep, other._load, other._is_another_app, other._preload)
 
-    def clone(self: O) -> O:
-        """mdmd:hidden Clone a given hydrated object."""
-
-        # Object to clone must already be hydrated, otherwise from_loader is more suitable.
+    def _validate_is_hydrated(self: O):
         if not self._is_hydrated:
             object_type = self.__class__.__name__.strip("_")
             if hasattr(self, "_app") and getattr(self._app, "_running_app", "") is None:
@@ -136,6 +133,11 @@ class _Object:
                 f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}."
             )
 
+    def clone(self: O) -> O:
+        """mdmd:hidden Clone a given hydrated object."""
+
+        # Object to clone must already be hydrated, otherwise from_loader is more suitable.
+        self._validate_is_hydrated()
         obj = _Object.__new__(type(self))
         obj._initialize_from_other(self)
         return obj
@@ -214,16 +216,7 @@ class _Object:
         if self._is_hydrated:
             return
         elif not self._hydrate_lazily:
-            object_type = self.__class__.__name__.strip("_")
-            if hasattr(self, "_app") and getattr(self._app, "_running_app", "") is None:
-                # The most common cause of this error: e.g., user called a Function without using App.run()
-                reason = ", because the App it is defined on is not running."
-            else:
-                # Technically possible, but with an ambiguous cause.
-                reason = ""
-            raise ExecutionError(
-                f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}."
-            )
+            self._validate_is_hydrated()
         else:
             # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
             resolver = Resolver(await _Client.from_env())
