@@ -9,6 +9,7 @@ from modal import (
     App,
     Sandbox,
     asgi_app,
+    batch,
     build,
     current_function_call_id,
     current_input_id,
@@ -328,6 +329,25 @@ def sleep_700_sync(x):
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
+
+
+@app.function()
+@batch(batch_max_size=4, batch_linger_ms=500)
+def batched_function_sync(x, y=1):
+    outputs = []
+    for x_i, y_i in zip(x, y):
+        outputs.append(x_i / y_i)
+    return outputs
+
+
+@app.function()
+@batch(batch_max_size=4, batch_linger_ms=500)
+async def batched_function_async(x, y=1):
+    outputs = []
+    for x_i, y_i in zip(x, y):
+        outputs.append(x_i / y_i)
+    await asyncio.sleep(0.1)
+    return outputs
 
 
 def unassociated_function(x):

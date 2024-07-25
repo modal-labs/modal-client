@@ -9,7 +9,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple, Union
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -47,8 +47,7 @@ class LocalInput:
     input_id: str
     function_call_id: str
     method_name: str
-    args: Any
-    kwargs: Any
+    input_args: Any
 
 
 class _ContainerIOManager:
@@ -350,7 +349,9 @@ class _ContainerIOManager:
         return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
 
     @synchronizer.no_io_translation
-    async def _generate_inputs(self) -> AsyncIterator[Tuple[str, str, api_pb2.FunctionInput]]:
+    async def _generate_inputs(
+        self,
+    ) -> AsyncIterator[Union[Tuple[str, str, api_pb2.FunctionInput], List[Tuple[str, str, api_pb2.FunctionInput]]]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         iteration = 0
@@ -358,6 +359,8 @@ class _ContainerIOManager:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self._input_concurrency
+            request.batch_max_size = self._batch_max_size
+            request.batch_linger_ms = self._batch_linger_ms
 
             await self._semaphore.acquire()
             yielded = False
@@ -375,11 +378,11 @@ class _ContainerIOManager:
                     )
                     await asyncio.sleep(response.rate_limit_sleep_duration)
                 elif response.inputs:
-                    # for input cancellations and concurrency logic we currently assume
-                    # that there is no input buffering in the container
-                    assert len(response.inputs) == 1
-
-                    for item in response.inputs:
+                    if self._batch_max_size == 0:
+                        # for input cancellations and concurrency logic we currently assume
+                        # that there is no input buffering in the container
+                        assert len(response.inputs) == 1
+                        item = response.inputs[0]
                         if item.kill_switch:
                             logger.debug(f"Task {self.task_id} input kill signal input.")
                             eof_received = True
@@ -401,48 +404,133 @@ class _ContainerIOManager:
                         if item.input.final_input or self.function_def.max_inputs == 1:
                             eof_received = True
                             break
+
+                    else:
+                        assert len(response.inputs) <= request.batch_max_size
+
+                        inputs_list = []
+                        for item in response.inputs:
+                            if item.kill_switch:
+                                assert len(response.inputs) == 1
+                                logger.debug(f"Task {self.task_id} input kill signal input.")
+                                eof_received = True
+                                break
+                            assert item.input_id not in self.cancelled_input_ids
+
+                            # If we got a pointer to a blob, download it from S3.
+                            if item.input.WhichOneof("args_oneof") == "args_blob_id":
+                                input_pb = await self.populate_input_blobs(item.input)
+                            else:
+                                input_pb = item.input
+
+                            inputs_list.append((item.input_id, item.function_call_id, input_pb))
+                            if item.input.final_input:
+                                eof_received = True
+                                logger.error("Final input not expected in batched input stream")
+                                break
+
+                        if not eof_received:
+                            yield inputs_list
+                            yielded = True
+
+                            # We only support max_inputs = 1 at the moment
+                            if self.function_def.max_inputs == 1:
+                                eof_received = True
+
             finally:
                 if not yielded:
                     self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[LocalInput]:
+    async def run_inputs_outputs(
+        self,
+        input_concurrency: int = 1,
+        batch_max_size: int = 0,
+        batch_linger_ms: int = 0,
+    ) -> AsyncIterator[Union[LocalInput, List[LocalInput]]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
         # - or, when the output for the fetched input is sent, release the semaphore.
         self._input_concurrency = input_concurrency
+        self._batch_max_size = batch_max_size
+        self._batch_linger_ms = batch_linger_ms
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
-        async for input_id, function_call_id, input_pb in self._generate_inputs():
-            args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
-            self.current_input_id, self.current_input_started_at = (input_id, time.time())
-            yield LocalInput(input_id, function_call_id, input_pb.method_name, args, kwargs)
-            self.current_input_id, self.current_input_started_at = (None, None)
+        if batch_max_size == 0:
+            async for input_id, function_call_id, input_pb in self._generate_inputs():
+                self.current_input_id, self.current_input_started_at = (input_id, time.time())
+                yield LocalInput(input_id, function_call_id, input_pb.method_name, input_pb.args)
+                self.current_input_id, self.current_input_started_at = (None, None)
+        else:
+            async for inputs_list in self._generate_inputs():
+                local_inputs_list = []
+                for input_id, function_call_id, input_pb in inputs_list:
+                    self.current_input_id, self.current_input_started_at = (input_id, time.time())
+                    local_inputs_list.append(
+                        LocalInput(input_id, function_call_id, input_pb.method_name, input_pb.args)
+                    )
+                    self.current_input_id, self.current_input_started_at = (None, None)
+                yield local_inputs_list
 
         # collect all active input slots, meaning all inputs have wrapped up.
         for _ in range(input_concurrency):
             await self._semaphore.acquire()
 
-    async def _push_output(self, input_id, started_at: float, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs):
-        # upload data to S3 if too big.
-        if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
-            data_blob_id = await blob_upload(kwargs["data"], self._client.stub)
-            # mutating kwargs.
-            del kwargs["data"]
-            kwargs["data_blob_id"] = data_blob_id
+    async def _push_output(
+        self, input_ids: Union[str, List[str]], started_at: float, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs
+    ):
+        outputs = []
+        if isinstance(input_ids, list):
+            data_list = []
+            if "data" in kwargs and kwargs["data"]:
+                # split the list of data in kwargs to respective input_ids
+                data_list = self.deserialize_data_format(kwargs.pop("data"), data_format)
+                assert isinstance(data_list, list), "Output of batched function must be a list"
+                assert len(data_list) == len(
+                    input_ids
+                ), "Output of batched function must be a list of the same length as its list of inputs."
+            for i, input_id in enumerate(input_ids):
+                data = self.serialize_data_format(data_list[i], data_format) if data_list else None
+                result = (
+                    (
+                        # upload data to S3 if too big.
+                        api_pb2.GenericResult(data_blob_id=await blob_upload(data, self._client.stub), **kwargs)
+                        if len(data) > MAX_OBJECT_SIZE_BYTES
+                        else api_pb2.GenericResult(data=data, **kwargs)
+                    )
+                    if data
+                    else api_pb2.GenericResult(**kwargs)
+                )
+                outputs.append(
+                    api_pb2.FunctionPutOutputsItem(
+                        input_id=input_id,
+                        input_started_at=started_at,
+                        output_created_at=time.time(),
+                        result=result,
+                        data_format=data_format,
+                    )
+                )
+        else:
+            # upload data to S3 if too big.
+            if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
+                data_blob_id = await blob_upload(kwargs["data"], self._client.stub)
+                # mutating kwargs.
+                del kwargs["data"]
+                kwargs["data_blob_id"] = data_blob_id
 
-        output = api_pb2.FunctionPutOutputsItem(
-            input_id=input_id,
-            input_started_at=started_at,
-            output_created_at=time.time(),
-            result=api_pb2.GenericResult(**kwargs),
-            data_format=data_format,
-        )
-
+            outputs.append(
+                api_pb2.FunctionPutOutputsItem(
+                    input_id=input_ids,
+                    input_started_at=started_at,
+                    output_created_at=time.time(),
+                    result=api_pb2.GenericResult(**kwargs),
+                    data_format=data_format,
+                )
+            )
         await retry_transient_errors(
             self._client.stub.FunctionPutOutputs,
-            api_pb2.FunctionPutOutputsRequest(outputs=[output]),
+            api_pb2.FunctionPutOutputsRequest(outputs=outputs),
             additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             max_retries=None,  # Retry indefinitely, trying every 1s.
         )
@@ -502,7 +590,9 @@ class _ContainerIOManager:
             raise UserException()
 
     @asynccontextmanager
-    async def handle_input_exception(self, input_id, started_at: float) -> AsyncGenerator[None, None]:
+    async def handle_input_exception(
+        self, input_ids: Union[str, List[str]], started_at: float
+    ) -> AsyncGenerator[None, None]:
         """Handle an exception while processing a function input."""
         try:
             yield
@@ -517,7 +607,7 @@ class _ContainerIOManager:
             # just skip creating any output for this input and keep going with the next instead
             # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
-            logger.warning(f"The current input ({input_id=}) was cancelled by a user request")
+            logger.warning(f"The current input ({input_ids=}) was cancelled by a user request")
             await self.complete_call(started_at)
             return
         except BaseException as exc:
@@ -541,11 +631,15 @@ class _ContainerIOManager:
                 repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
 
             await self._push_output(
-                input_id,
+                input_ids,
                 started_at=started_at,
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-                data=self.serialize_exception(exc),
+                data=(
+                    self.serialize_exception([exc] for _ in input_ids)
+                    if isinstance(input_ids, list)
+                    else self.serialize_exception(exc)
+                ),
                 exception=repr_exc,
                 traceback=traceback.format_exc(),
                 serialized_tb=serialized_tb,

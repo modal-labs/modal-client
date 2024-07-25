@@ -584,13 +584,15 @@ class _App:
                 )
 
             if isinstance(f, _PartialFunction):
-                # typically for @function-wrapped @web_endpoint and @asgi_app
+                # typically for @function-wrapped @web_endpoint, @asgi_app, or @batch
                 f.wrapped = True
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
                 is_generator = f.is_generator
                 keep_warm = f.keep_warm or keep_warm
+                batch_max_size = f.batch_max_size
+                batch_linger_ms = f.batch_linger_ms
 
                 if webhook_config and interactive:
                     raise InvalidError("interactive=True is not supported with web endpoint functions")
@@ -626,6 +628,8 @@ class _App:
 
                 info = FunctionInfo(f, serialized=serialized, name_override=name)
                 webhook_config = None
+                batch_max_size = None
+                batch_linger_ms = None
                 raw_f = f
 
             if info.function_name.endswith(".app"):
@@ -663,6 +667,8 @@ class _App:
                 retries=retries,
                 concurrency_limit=concurrency_limit,
                 allow_concurrent_inputs=allow_concurrent_inputs,
+                batch_max_size=batch_max_size,
+                batch_linger_ms=batch_linger_ms,
                 container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
                 keep_warm=keep_warm,

@@ -359,6 +359,8 @@ class _Cls(_Object, type_prefix="cs"):
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
+        batch_max_size: Optional[int] = None,
+        batch_linger_ms: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         allow_background_volume_commits: Optional[bool] = None,
     ) -> "_Cls":
@@ -404,6 +406,8 @@ class _Cls(_Object, type_prefix="cs"):
             replace_volume_mounts=replace_volume_mounts,
             volume_mounts=volume_mounts,
             allow_concurrent_inputs=allow_concurrent_inputs,
+            batch_max_size=batch_max_size,
+            batch_linger_ms=batch_linger_ms,
         )
 
         return cls
