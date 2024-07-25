@@ -114,8 +114,6 @@ class BytesIOSegmentPayload(BytesIOPayload):
             await writer.write(chunk)
             self.progress_report_cb(advance=len(chunk))
 
-        self.progress_report_cb(complete=True)
-
     def remaining_bytes(self):
         return self.segment_length - self.num_bytes_read
 
@@ -282,6 +280,9 @@ async def _blob_upload(
             content_md5_b64=upload_hashes.md5_base64,
         )
 
+    if progress_report_cb:
+        progress_report_cb(complete=True)
+
     return blob_id
 
 
@@ -420,7 +421,7 @@ def use_md5(url: str) -> bool:
     https://github.com/spulec/moto/issues/816
     """
     host = urlparse(url).netloc.split(":")[0]
-    if host.endswith(".amazonaws.com"):
+    if host.endswith(".amazonaws.com") or host.endswith(".r2.cloudflarestorage.com"):
         return True
     elif host in ["127.0.0.1", "localhost", "172.21.0.1"]:
         return False

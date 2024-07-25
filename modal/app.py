@@ -549,7 +549,7 @@ class _App:
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
         _allow_background_volume_commits: None = None,
-        _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
+        _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -565,6 +565,11 @@ class _App:
         if interactive:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+            )
+
+        if _experimental_boost is not None:
+            deprecation_warning(
+                (2024, 7, 23), "`_experimental_boost` is now always-on. This argument is no longer needed."
             )
 
         if image is None:
@@ -730,7 +735,7 @@ class _App:
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
-        _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
+        _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -742,6 +747,11 @@ class _App:
         if interactive:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+            )
+
+        if _experimental_boost is not None:
+            deprecation_warning(
+                (2024, 7, 23), "`_experimental_boost` is now always-on. This argument is no longer needed."
             )
 
         if image is None:

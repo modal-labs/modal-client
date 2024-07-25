@@ -151,7 +151,7 @@ class _LogsReader:
         return value.data
 
 
-MAX_BUFFER_SIZE = 128 * 1024
+MAX_BUFFER_SIZE = 2 * 1024 * 1024
 
 
 class _StreamWriter:
