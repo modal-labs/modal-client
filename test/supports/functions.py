@@ -7,8 +7,7 @@ from typing import List
 
 from modal import (
     App,
-    Image,
-    Volume,
+    Sandbox,
     asgi_app,
     build,
     current_function_call_id,
@@ -261,13 +260,19 @@ class LifecycleCls:
         await asyncio.sleep(self.async_exit_duration)
 
     @method()
+    def local(self):
+        self.events.append("local")
+
+    @method()
     def f_sync(self):
         self.events.append("f_sync")
+        self.local.local()
         return self.events
 
     @method()
     async def f_async(self):
         self.events.append("f_async")
+        self.local.local()
         return self.events
 
     @method()
@@ -359,20 +364,6 @@ def function_calling_method(x, y, z):
     return obj.f.remote(z)
 
 
-image = Image.debian_slim().pip_install("xyz")
-other_image = Image.debian_slim().pip_install("abc")
-volume = Volume.from_name("vol", create_if_missing=True)
-other_volume = Volume.from_name("other-vol", create_if_missing=True)
-
-
-@app.function(image=image, volumes={"/tmp/xyz": volume})
-def check_dep_hydration(x):
-    assert image.is_hydrated
-    assert other_image.is_hydrated
-    assert volume.is_hydrated
-    assert other_volume.is_hydrated
-
-
 @app.cls()
 class BuildCls:
     def __init__(self):
@@ -402,7 +393,7 @@ class BuildCls:
 
 
 @app.cls(enable_memory_snapshot=True)
-class CheckpointingCls:
+class SnapshottingCls:
     def __init__(self):
         self._vals = []
 
@@ -423,6 +414,11 @@ class CheckpointingCls:
         return "".join(self._vals) + x
 
 
+@app.function(enable_memory_snapshot=True)
+def snapshotting_square(x):
+    return x * x
+
+
 @app.cls()
 class EventLoopCls:
     @enter()
@@ -436,10 +432,17 @@ class EventLoopCls:
 
 @app.function()
 def sandbox_f(x):
-    sb = app.spawn_sandbox("echo", str(x))
+    # TODO(erikbern): maybe inside containers, `app=app` should be automatic?
+    sb = Sandbox.create("echo", str(x), app=app)
     return sb.object_id
 
 
 @app.function()
 def is_local_f(x):
     return is_local()
+
+
+@app.function()
+def raise_large_unicode_exception():
+    byte_str = (b"k" * 120_000_000) + b"\x99"
+    byte_str.decode("utf-8")

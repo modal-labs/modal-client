@@ -7,6 +7,7 @@ import dataclasses
 import hashlib
 import inspect
 import os
+import platform
 import pytest
 import shutil
 import sys
@@ -49,9 +50,14 @@ class VolumeFile:
 
 
 # TODO: Isolate all test config from the host
-@pytest.fixture(scope="session", autouse=True)
-def set_env():
-    os.environ["MODAL_ENVIRONMENT"] = "main"
+@pytest.fixture(scope="function", autouse=True)
+def set_env(monkeypatch):
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "main")
+
+
+@pytest.fixture(scope="function", autouse=True)
+def disable_app_run_warning(monkeypatch):
+    monkeypatch.setenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING", "1")
 
 
 @patch_mock_servicer
@@ -61,6 +67,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     container_outputs: list[api_pb2.FunctionPutOutputsRequest]
     fc_data_in: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
     fc_data_out: defaultdict[str, asyncio.Queue[api_pb2.DataChunk]]
+
+    # Set when the server runs
+    client_addr: str
+    container_addr: str
 
     def __init__(self, blob_host, blobs):
         self.use_blob_outputs = False
@@ -134,6 +144,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_functions: Dict[str, api_pb2.Function] = {}
         self.bound_functions: Dict[Tuple[str, bytes], str] = {}
         self.function_params: Dict[str, Tuple[Tuple, Dict[str, Any]]] = {}
+        self.function_options: Dict[str, api_pb2.FunctionOptions] = {}
         self.fcidx = 0
 
         self.function_serialized = None
@@ -226,14 +237,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     def get_class_metadata(self, object_id: str) -> api_pb2.ClassHandleMetadata:
-        class_function_id = self.classes[object_id]["*"]
-        class_handle_metadata = api_pb2.ClassHandleMetadata(
-            class_function_id=self.classes[object_id]["*"],
-            class_function_metadata=self.get_function_metadata(class_function_id),
-        )
+        class_handle_metadata = api_pb2.ClassHandleMetadata()
         for f_name, f_id in self.classes[object_id].items():
-            if f_name == "*":
-                continue
             function_handle_metadata = self.get_function_metadata(f_id)
             class_handle_metadata.methods.append(
                 api_pb2.ClassMethod(
@@ -366,6 +371,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_snapshot_requests += 1
         await stream.send_message(Empty())
 
+    async def ContainerExecPutInput(self, stream):
+        await stream.recv_message()
+        await stream.send_message(Empty())
+
     ### Blob
 
     async def BlobCreate(self, stream):
@@ -414,7 +423,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ClassCreateRequest = await stream.recv_message()
         assert request.app_id
         methods: dict[str, str] = {method.function_name: method.function_id for method in request.methods}
-        methods["*"] = request.class_function_id
         class_id = "cs-" + str(len(self.classes))
         self.classes[class_id] = methods
         await stream.send_message(
@@ -510,7 +518,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
         else:
-            raise GRPCError(Status.NOT_FOUND, "Dict not found")
+            raise GRPCError(Status.NOT_FOUND, f"Dict {k} not found")
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
 
     async def DictHeartbeat(self, stream):
@@ -556,9 +564,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for k, v in self.dicts[request.dict_id].items():
             await stream.send_message(api_pb2.DictEntry(key=k, value=v))
 
+    ### Environment
+
+    async def EnvironmentCreate(self, stream):
+        await stream.send_message(Empty())
+
+    async def EnvironmentUpdate(self, stream):
+        await stream.send_message(api_pb2.EnvironmentListItem())
+
     ### Function
 
     async def FunctionBindParams(self, stream):
+        from modal._serialization import deserialize
+
         request: api_pb2.FunctionBindParamsRequest = await stream.recv_message()
         assert request.function_id
         assert request.serialized_params
@@ -575,9 +593,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         bound_func.CopyFrom(base_function)
         self.app_functions[function_id] = bound_func
         self.bound_functions[(request.function_id, request.serialized_params)] = function_id
-        from modal._serialization import deserialize
-
         self.function_params[function_id] = deserialize(request.serialized_params, None)
+        self.function_options[function_id] = request.function_options
 
         await stream.send_message(
             api_pb2.FunctionBindParamsResponse(
@@ -825,6 +842,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ImageGetOrCreate(self, stream):
         request: api_pb2.ImageGetOrCreateRequest = await stream.recv_message()
+        for k in self.images:
+            if request.image.SerializeToString() == self.images[k].SerializeToString():
+                await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=k))
+                return
         idx = len(self.images) + 1
         image_id = f"im-{idx}"
 
@@ -841,13 +862,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if self.image_join_sleep_duration is not None:
             await asyncio.sleep(self.image_join_sleep_duration)
 
-        task_log_1 = api_pb2.TaskLogs(data="hello, world\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
+        task_log_1 = api_pb2.TaskLogs(data="build starting\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
         task_log_2 = api_pb2.TaskLogs(
             task_progress=api_pb2.TaskProgress(
                 len=1, pos=0, progress_type=api_pb2.IMAGE_SNAPSHOT_UPLOAD, description="xyz"
             )
         )
-        await stream.send_message(api_pb2.ImageJoinStreamingResponse(task_logs=[task_log_1, task_log_2]))
+        task_log_3 = api_pb2.TaskLogs(data="build finished\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
+        await stream.send_message(api_pb2.ImageJoinStreamingResponse(task_logs=[task_log_1, task_log_2, task_log_3]))
         await stream.send_message(
             api_pb2.ImageJoinStreamingResponse(
                 result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
@@ -870,13 +892,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         k = (request.deployment_name, request.namespace)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_mounts:
-                raise GRPCError(Status.NOT_FOUND, "Mount not found")
+                raise GRPCError(Status.NOT_FOUND, f"Mount {k} not found")
             mount_id = self.deployed_mounts[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             self.n_mounts += 1
             mount_id = f"mo-{self.n_mounts}"
             self.deployed_mounts[k] = mount_id
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
+            self.n_mounts += 1
+            mount_id = f"mo-{self.n_mounts}"
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             self.n_mounts += 1
             mount_id = f"mo-{self.n_mounts}"
 
@@ -933,7 +958,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
         else:
-            raise GRPCError(Status.NOT_FOUND, "Queue not found")
+            raise GRPCError(Status.NOT_FOUND, f"Queue {k} not found")
         await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
 
     async def QueueDelete(self, stream):
@@ -1085,15 +1110,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            secret_id = "st-" + str(len(self.secrets))
+            self.secrets[secret_id] = request.env_dict
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_secrets:
-                raise GRPCError(Status.ALREADY_EXISTS, "Already exists")
+                raise GRPCError(Status.ALREADY_EXISTS, f"Secret {k} already exists")
             secret_id = None
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_OVERWRITE_IF_EXISTS:
             secret_id = None
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_secrets:
-                raise GRPCError(Status.NOT_FOUND, "No such secret")
+                raise GRPCError(Status.NOT_FOUND, f"Secret {k} not found")
             secret_id = self.deployed_secrets[k]
         else:
             raise Exception("unsupported creation type")
@@ -1122,7 +1150,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         k = (request.deployment_name, request.namespace, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_nfss:
-                raise GRPCError(Status.NOT_FOUND, "NFS not found")
+                if k in self.deployed_volumes:
+                    raise GRPCError(Status.NOT_FOUND, "App has wrong entity vo")
+                raise GRPCError(Status.NOT_FOUND, f"NFS {k} not found")
             nfs_id = self.deployed_nfss[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             nfs_id = f"sv-{len(self.nfs_files)}"
@@ -1135,7 +1165,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             nfs_id = self.deployed_nfss[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_nfss:
-                raise GRPCError(Status.ALREADY_EXISTS, "NFS already exists")
+                raise GRPCError(Status.ALREADY_EXISTS, f"NFS {k} already exists")
             nfs_id = f"sv-{len(self.nfs_files)}"
             self.nfs_files[nfs_id] = {}
             self.deployed_nfss[k] = nfs_id
@@ -1230,7 +1260,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         k = (request.deployment_name, request.namespace, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_volumes:
-                raise GRPCError(Status.NOT_FOUND, "Volume not found")
+                raise GRPCError(Status.NOT_FOUND, f"Volume {k} not found")
             volume_id = self.deployed_volumes[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             volume_id = f"vo-{len(self.volume_files)}"
@@ -1243,7 +1273,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             volume_id = self.deployed_volumes[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_volumes:
-                raise GRPCError(Status.ALREADY_EXISTS, "Volume already exists")
+                raise GRPCError(Status.ALREADY_EXISTS, f"Volume {k} already exists")
             volume_id = f"vo-{len(self.volume_files)}"
             self.volume_files[volume_id] = {}
             self.deployed_volumes[k] = volume_id
@@ -1289,9 +1319,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeGetFile(self, stream):
         req = await stream.recv_message()
-        if req.path.decode("utf-8") not in self.volume_files[req.volume_id]:
+        if req.path not in self.volume_files[req.volume_id]:
             raise GRPCError(Status.NOT_FOUND, "File not found")
-        vol_file = self.volume_files[req.volume_id][req.path.decode("utf-8")]
+        vol_file = self.volume_files[req.volume_id][req.path]
         if vol_file.data_blob_id:
             await stream.send_message(api_pb2.VolumeGetFileResponse(data_blob_id=vol_file.data_blob_id))
         else:
@@ -1307,9 +1337,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeRemoveFile(self, stream):
         req = await stream.recv_message()
-        if req.path.decode("utf-8") not in self.volume_files[req.volume_id]:
+        if req.path not in self.volume_files[req.volume_id]:
             raise GRPCError(Status.INVALID_ARGUMENT, "File not found")
-        del self.volume_files[req.volume_id][req.path.decode("utf-8")]
+        del self.volume_files[req.volume_id][req.path]
         await stream.send_message(Empty())
 
     async def VolumeListFiles(self, stream):
@@ -1354,26 +1384,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def VolumeCopyFiles(self, stream):
         req = await stream.recv_message()
         for src_path in req.src_paths:
-            if src_path.decode("utf-8") not in self.volume_files[req.volume_id]:
+            if src_path not in self.volume_files[req.volume_id]:
                 raise GRPCError(Status.NOT_FOUND, f"Source file not found: {src_path}")
-            src_file = self.volume_files[req.volume_id][src_path.decode("utf-8")]
+            src_file = self.volume_files[req.volume_id][src_path]
             if len(req.src_paths) > 1:
                 # check to make sure dst is a directory
-                if (
-                    req.dst_path.decode("utf-8").endswith(("/", "\\"))
-                    or not os.path.splitext(os.path.basename(req.dst_path))[1]
-                ):
+                if req.dst_path.endswith(("/", "\\")) or not os.path.splitext(os.path.basename(req.dst_path))[1]:
                     dst_path = os.path.join(req.dst_path, os.path.basename(src_path))
                 else:
                     raise GRPCError(Status.INVALID_ARGUMENT, f"{dst_path} is not a directory.")
             else:
                 dst_path = req.dst_path
-            self.volume_files[req.volume_id][dst_path.decode("utf-8")] = src_file
+            self.volume_files[req.volume_id][dst_path] = src_file
         await stream.send_message(Empty())
 
 
-@pytest_asyncio.fixture
-async def blob_server():
+@pytest.fixture
+def blob_server():
     blobs = {}
     blob_parts: Dict[str, Dict[int, bytes]] = defaultdict(dict)
 
@@ -1417,77 +1444,105 @@ async def blob_server():
     app.add_routes([aiohttp.web.get("/download", download)])
     app.add_routes([aiohttp.web.post("/complete_multipart", complete_multipart)])
 
-    async with run_temporary_http_server(app) as host:
-        yield host, blobs
+    started = threading.Event()
+    stop_server = threading.Event()
+
+    host = None
+
+    def run_server_other_thread():
+        loop = asyncio.new_event_loop()
+
+        async def async_main():
+            nonlocal host
+            async with run_temporary_http_server(app) as _host:
+                host = _host
+                started.set()
+                await loop.run_in_executor(None, stop_server.wait)
+
+        loop.run_until_complete(async_main())
+
+    # run server on separate thread to not lock up the server event loop in case of blocking calls in tests
+    thread = threading.Thread(target=run_server_other_thread)
+    thread.start()
+    started.wait()
+    yield host, blobs
+    stop_server.set()
+    thread.join()
 
 
 @pytest_asyncio.fixture(scope="function")
-async def servicer_factory(blob_server):
-    @contextlib.asynccontextmanager
-    async def create_server(host=None, port=None, path=None):
-        blob_host, blobs = blob_server
-        servicer = MockClientServicer(blob_host, blobs)  # type: ignore
-        server = None
-
-        async def _start_servicer():
-            nonlocal server
-            server = grpclib.server.Server([servicer])
-            await server.start(host=host, port=port, path=path)
-
-        async def _stop_servicer():
-            servicer.container_heartbeat_abort.set()
-            server.close()
-            # This is the proper way to close down the asyncio server,
-            # but it causes our tests to hang on 3.12+ because client connections
-            # for clients created through _Client.from_env don't get closed until
-            # asyncio event loop shutdown. Commenting out but perhaps revisit if we
-            # refactor the way that _Client cleanup happens.
-            # await server.wait_closed()
-
-        start_servicer = synchronize_api(_start_servicer)
-        stop_servicer = synchronize_api(_stop_servicer)
-
-        await start_servicer.aio()
-        try:
-            yield servicer
-        finally:
-            await stop_servicer.aio()
-
-    yield create_server
-
-
-@pytest_asyncio.fixture(scope="function")
-async def servicer(servicer_factory):
-    port = find_free_port()
-    async with servicer_factory(host="0.0.0.0", port=port) as servicer:
-        servicer.remote_addr = f"http://127.0.0.1:{port}"
-        yield servicer
-
-
-@pytest_asyncio.fixture(scope="function")
-async def unix_servicer(servicer_factory):
+def temporary_sock_path():
     with tempfile.TemporaryDirectory() as tmpdirname:
-        path = os.path.join(tmpdirname, "servicer.sock")
-        async with servicer_factory(path=path) as servicer:
-            servicer.remote_addr = f"unix://{path}"
-            yield servicer
+        yield os.path.join(tmpdirname, "servicer.sock")
+
+
+@contextlib.asynccontextmanager
+async def run_server(servicer, host=None, port=None, path=None):
+    server = None
+
+    async def _start_servicer():
+        nonlocal server
+        server = grpclib.server.Server([servicer])
+        await server.start(host=host, port=port, path=path)
+
+    async def _stop_servicer():
+        servicer.container_heartbeat_abort.set()
+        server.close()
+        # This is the proper way to close down the asyncio server,
+        # but it causes our tests to hang on 3.12+ because client connections
+        # for clients created through _Client.from_env don't get closed until
+        # asyncio event loop shutdown. Commenting out but perhaps revisit if we
+        # refactor the way that _Client cleanup happens.
+        # await server.wait_closed()
+
+    start_servicer = synchronize_api(_start_servicer)
+    stop_servicer = synchronize_api(_stop_servicer)
+
+    await start_servicer.aio()
+    try:
+        yield
+    finally:
+        await stop_servicer.aio()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def servicer(blob_server, temporary_sock_path):
+    port = find_free_port()
+
+    blob_host, blobs = blob_server
+    servicer = MockClientServicer(blob_host, blobs)  # type: ignore
+
+    if platform.system() != "Windows":
+        async with run_server(servicer, host="0.0.0.0", port=port):
+            async with run_server(servicer, path=temporary_sock_path):
+                servicer.client_addr = f"http://127.0.0.1:{port}"
+                servicer.container_addr = f"unix://{temporary_sock_path}"
+                yield servicer
+    else:
+        # Use a regular TCP socket for the container connection
+        container_port = find_free_port()
+        async with run_server(servicer, host="0.0.0.0", port=port):
+            async with run_server(servicer, host="0.0.0.0", port=container_port):
+                servicer.client_addr = f"http://127.0.0.1:{port}"
+                servicer.container_addr = f"http://127.0.0.1:{container_port}"
+                yield servicer
 
 
 @pytest_asyncio.fixture(scope="function")
 async def client(servicer):
-    with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         yield client
 
 
 @pytest_asyncio.fixture(scope="function")
-async def container_client(unix_servicer):
-    async with Client(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+async def container_client(servicer):
+    async with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         yield client
 
 
 @pytest_asyncio.fixture(scope="function")
 async def server_url_env(servicer, monkeypatch):
-    monkeypatch.setenv("MODAL_SERVER_URL", servicer.remote_addr)
+    monkeypatch.setenv("MODAL_SERVER_URL", servicer.client_addr)
     yield
 
 

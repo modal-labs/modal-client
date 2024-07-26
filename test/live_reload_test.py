@@ -5,7 +5,7 @@ import threading
 import time
 from unittest import mock
 
-from modal import Function
+from modal import Function, enable_output
 from modal.serving import serve_app
 
 from .supports.app_run_tests.webhook import app
@@ -21,6 +21,16 @@ def app_ref(test_dir):
 async def test_live_reload(app_ref, server_url_env, servicer):
     async with serve_app.aio(app, app_ref):
         await asyncio.sleep(3.0)
+    assert servicer.app_set_objects_count == 1
+    assert servicer.app_client_disconnect_count == 1
+    assert servicer.app_get_logs_initial_count == 0
+
+
+@pytest.mark.asyncio
+async def test_live_reload_with_logs(app_ref, server_url_env, servicer):
+    with enable_output():
+        async with serve_app.aio(app, app_ref):
+            await asyncio.sleep(3.0)
     assert servicer.app_set_objects_count == 1
     assert servicer.app_client_disconnect_count == 1
     assert servicer.app_get_logs_initial_count == 1
@@ -44,7 +54,6 @@ def test_file_changes_trigger_reloads(app_ref, server_url_env, servicer):
     # assert servicer.app_set_objects_count == 4  # 1 + number of file changes
     assert servicer.app_set_objects_count > 1
     assert servicer.app_client_disconnect_count == 1
-    assert servicer.app_get_logs_initial_count == 1
     foo = app.indexed_objects["foo"]
     assert isinstance(foo, Function)
     assert foo.web_url.startswith("http://")
@@ -62,7 +71,6 @@ async def test_no_change(app_ref, server_url_env, servicer):
 
     assert servicer.app_set_objects_count == 1  # Should create the initial app once
     assert servicer.app_client_disconnect_count == 1
-    assert servicer.app_get_logs_initial_count == 1
 
 
 @pytest.mark.asyncio

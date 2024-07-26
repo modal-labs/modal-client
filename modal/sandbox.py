@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import AsyncIterator, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, AsyncIterator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -16,9 +16,10 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
-from ._utils.mount_utils import validate_mount_points, validate_volumes
+from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
+from .exception import deprecation_error, deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -26,6 +27,12 @@ from .network_file_system import _NetworkFileSystem, network_file_system_mount_p
 from .object import _Object
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
+
+_default_image: _Image = _Image.debian_slim()
+
+
+if TYPE_CHECKING:
+    import modal.app
 
 
 class _LogsReader:
@@ -36,15 +43,15 @@ class _LogsReader:
     **Usage**
 
     ```python
-    @app.function()
-    async def my_fn():
-        sandbox = app.spawn_sandbox(
-            "bash",
-            "-c",
-            "while true; do echo foo; sleep 1; done"
-        )
-        async for message in sandbox.stdout:
-            print(f"Message: {message}")
+    from modal import Sandbox
+
+    sandbox = Sandbox.create(
+        "bash",
+        "-c",
+        "for i in $(seq 1 10); do echo foo; sleep 0.1; done"
+    )
+    for message in sandbox.stdout:
+        print(f"Message: {message}")
     ```
     """
 
@@ -67,7 +74,9 @@ class _LogsReader:
         **Usage**
 
         ```python
-        sandbox = app.app.spawn_sandbox("echo", "hello")
+        from modal import Sandbox
+
+        sandbox = Sandbox.create("echo", "hello")
         sandbox.wait()
 
         print(sandbox.stdout.read())
@@ -142,7 +151,7 @@ class _LogsReader:
         return value.data
 
 
-MAX_BUFFER_SIZE = 128 * 1024
+MAX_BUFFER_SIZE = 2 * 1024 * 1024
 
 
 class _StreamWriter:
@@ -170,19 +179,19 @@ class _StreamWriter:
         **Usage**
 
         ```python
-        @app.local_entrypoint()
-        def main():
-            sandbox = app.spawn_sandbox(
-                "bash",
-                "-c",
-                "while read line; do echo $line; done",
-            )
-            sandbox.stdin.write(b"foo\\n")
-            sandbox.stdin.write(b"bar\\n")
-            sandbox.stdin.write_eof()
+        from modal import Sandbox
 
-            sandbox.stdin.drain()
-            sandbox.wait()
+        sandbox = Sandbox.create(
+            "bash",
+            "-c",
+            "while read line; do echo $line; done",
+        )
+        sandbox.stdin.write(b"foo\\n")
+        sandbox.stdin.write(b"bar\\n")
+        sandbox.stdin.write_eof()
+
+        sandbox.stdin.drain()
+        sandbox.wait()
         ```
         """
         if self._is_closed:
@@ -248,19 +257,17 @@ class _Sandbox(_Object, type_prefix="sb"):
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
-        allow_background_volume_commits: Optional[bool] = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
-        _experimental_scheduler: bool = False,
+        _allow_background_volume_commits: Optional[bool] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
+        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
         if len(entrypoint_args) == 0:
             raise InvalidError("entrypoint_args must not be empty")
 
-        if not isinstance(network_file_systems, dict):
-            raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
-        validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+        validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
         scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
         if region:
@@ -290,7 +297,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 api_pb2.VolumeMount(
                     mount_path=path,
                     volume_id=volume.object_id,
-                    allow_background_commits=allow_background_volume_commits,
+                    allow_background_commits=_allow_background_volume_commits,
                 )
                 for path, volume in validated_volumes
             ]
@@ -313,10 +320,16 @@ class _Sandbox(_Object, type_prefix="sb"):
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
                 pty_info=pty_info,
-                _experimental_scheduler=_experimental_scheduler,
                 scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
+                _experimental_resources=[
+                    convert_fn_config_to_resources_config(
+                        cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                    )
+                    for _experimental_gpu in _experimental_gpus
+                ],
             )
 
+            # Note - `resolver.app_id` will be `None` for app-less sandboxes
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
             create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
 
@@ -324,6 +337,85 @@ class _Sandbox(_Object, type_prefix="sb"):
             self._hydrate(sandbox_id, resolver.client, None)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
+
+    @staticmethod
+    async def create(
+        *entrypoint_args: str,
+        app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
+        environment_name: Optional[str] = None,  # Optionally override the default environment
+        image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
+        mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
+        secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
+        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
+        workdir: Optional[str] = None,  # Working directory of the sandbox.
+        gpu: GPU_T = None,
+        cloud: Optional[str] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
+        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in MiB, a memory request which is the minimum memory required.
+        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        block_network: bool = False,  # Whether to block network access
+        volumes: Dict[
+            Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
+        ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        _allow_background_volume_commits: None = None,
+        _experimental_scheduler_placement: Optional[
+            SchedulerPlacement
+        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        client: Optional[_Client] = None,
+        _experimental_gpus: Sequence[GPU_T] = [],
+    ) -> "_Sandbox":
+        if _allow_background_volume_commits is False:
+            deprecation_error(
+                (2024, 5, 13),
+                "Disabling volume background commits is now deprecated. "
+                "Remove _allow_background_volume_commits=False to enable the functionality.",
+            )
+        elif _allow_background_volume_commits is True:
+            deprecation_warning(
+                (2024, 7, 18),
+                "Setting volume background commits is deprecated. "
+                "The functionality is now unconditionally enabled (set to True).",
+            )
+        elif _allow_background_volume_commits is None:
+            _allow_background_volume_commits = True
+
+        if environment_name is None:
+            environment_name = config.get("environment")
+
+        # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
+        obj = _Sandbox._new(
+            entrypoint_args,
+            image=image or _default_image,
+            mounts=mounts,
+            secrets=secrets,
+            timeout=timeout,
+            workdir=workdir,
+            gpu=gpu,
+            cloud=cloud,
+            region=region,
+            cpu=cpu,
+            memory=memory,
+            network_file_systems=network_file_systems,
+            block_network=block_network,
+            volumes=volumes,
+            pty_info=pty_info,
+            _allow_background_volume_commits=_allow_background_volume_commits,
+            _experimental_scheduler_placement=_experimental_scheduler_placement,
+            _experimental_gpus=_experimental_gpus,
+        )
+        if client is None:
+            if app:
+                client = app._client
+            else:
+                client = await _Client.from_env()
+        app_id: Optional[str] = app.app_id if app else None
+        resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
+        await resolver.load(obj)
+        return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
         self._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, self._client)

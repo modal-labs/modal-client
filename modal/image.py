@@ -9,13 +9,14 @@ import warnings
 from dataclasses import dataclass
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, get_args
+from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, get_args
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
 
+from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
@@ -28,7 +29,7 @@ from .exception import InvalidError, NotFoundError, RemoteError, VersionError, d
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
-from .object import _Object
+from .object import _Object, live_method_gen
 from .secret import _Secret
 from .volume import _Volume
 
@@ -156,11 +157,29 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, 
     return ret
 
 
+def _validate_packages(packages: List[str]) -> bool:
+    """Validates that a list of packages does not contain any command-line options."""
+    return not any(pkg.startswith("-") for pkg in packages)
+
+
+def _warn_invalid_packages(old_command: str) -> None:
+    deprecation_warning(
+        (2024, 7, 3),
+        "Passing flags to `pip` via the `packages` argument of `pip_install` is deprecated."
+        " Please pass flags via the `extra_options` argument instead."
+        "\nNote that this will cause a rebuild of this image layer."
+        " To avoid rebuilding, you can pass the following to `run_commands` instead:"
+        f'\n`image.run_commands("{old_command}")`',
+        show_source=False,
+    )
+
+
 def _make_pip_install_args(
     find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
     index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
     extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
     pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+    extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
 ) -> str:
     flags = [
         ("--find-links", find_links),  # TODO(erikbern): allow multiple?
@@ -170,7 +189,12 @@ def _make_pip_install_args(
 
     args = " ".join(f"{flag} {shlex.quote(value)}" for flag, value in flags if value is not None)
     if pre:
-        args += " --pre"
+        args += " --pre"  # TODO: remove extra whitespace in future image builder version
+
+    if extra_options:
+        if args:
+            args += " "
+        args += f"{extra_options}"
 
     return args
 
@@ -322,6 +346,8 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id = build_function.object_id
 
                 globals = build_function._get_info().get_globals()
+                attrs = build_function._get_info().get_cls_var_attrs()
+                globals = {**globals, **attrs}
                 filtered_globals = {}
                 for k, v in globals.items():
                     if isfunction(v):
@@ -395,10 +421,13 @@ class _Image(_Object, type_prefix="im"):
                     for task_log in response.task_logs:
                         if task_log.task_progress.pos or task_log.task_progress.len:
                             assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
-                            resolver.image_snapshot_update(image_id, task_log.task_progress)
+                            if output_mgr := OutputManager.get():
+                                output_mgr.update_snapshot_progress(image_id, task_log.task_progress)
                         elif task_log.data:
-                            await resolver.console_write(task_log)
-                resolver.console_flush()
+                            if output_mgr := OutputManager.get():
+                                await output_mgr.put_log_content(task_log)
+                if output_mgr := OutputManager.get():
+                    output_mgr.flush_lines()
 
             # Handle up to n exceptions while fetching logs
             retry_count = 0
@@ -517,16 +546,36 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of Python packages using pip.
 
-        **Example**
+        **Examples**
 
+        Simple installation:
         ```python
         image = modal.Image.debian_slim().pip_install("click", "httpx~=0.23.3")
+        ```
+
+        More complex installation:
+        ```python
+        image = (
+            modal.Image.from_registry(
+                "nvidia/cuda:12.2.0-devel-ubuntu22.04", add_python="3.11"
+            )
+            .pip_install(
+                "ninja",
+                "packaging",
+                "wheel",
+                "transformers==4.40.2",
+            )
+            .pip_install(
+                "flash-attn==2.5.8", extra_options="--no-build-isolation"
+            )
+        )
         ```
         """
         pkgs = _flatten_str_args("pip_install", "packages", packages)
@@ -535,8 +584,10 @@ class _Image(_Object, type_prefix="im"):
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
-            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
             commands = ["FROM base", f"RUN python -m pip install {package_args} {extra_args}"]
+            if not _validate_packages(pkgs):
+                _warn_invalid_packages(commands[-1].split("RUN ")[-1])
             if version > "2023.12":  # Back-compat for legacy trailing space with empty extra_args
                 commands = [cmd.strip() for cmd in commands]
             return DockerfileSpec(commands=commands, context_files={})
@@ -558,6 +609,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         gpu: GPU_T = None,
         secrets: Sequence[_Secret] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
@@ -633,7 +685,7 @@ class _Image(_Object, type_prefix="im"):
                     f"(echo 'GITLAB_TOKEN env var not set by provided modal.Secret(s): {secret_names}' && exit 1)\"",
                 )
 
-            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
             commands.extend(["RUN apt-get update && apt-get install -y git"])
             commands.extend([f'RUN python3 -m pip install "{url}" {extra_args}' for url in install_urls])
             if version > "2023.12":  # Back-compat for legacy trailing space with empty extra_args
@@ -658,6 +710,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -670,7 +723,7 @@ class _Image(_Object, type_prefix="im"):
 
             null_find_links_arg = " " if version == "2023.12" else ""
             find_links_arg = f" -f {find_links}" if find_links else null_find_links_arg
-            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
 
             commands = [
                 "FROM base",
@@ -698,6 +751,7 @@ class _Image(_Object, type_prefix="im"):
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -734,7 +788,7 @@ class _Image(_Object, type_prefix="im"):
                     if dep_group_name in optionals:
                         dependencies.extend(optionals[dep_group_name])
 
-            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre)
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
             package_args = " ".join(shlex.quote(pkg) for pkg in sorted(dependencies))
             commands = ["FROM base", f"RUN python -m pip install {package_args} {extra_args}"]
             if version > "2023.12":  # Back-compat for legacy trailing space
@@ -853,7 +907,7 @@ class _Image(_Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
             secrets=secrets,
-            gpu_config=parse_gpu_config(gpu, raise_on_true=False),
+            gpu_config=parse_gpu_config(gpu),
             context_mount=context_mount,
             force_build=self.force_build or force_build,
         )
@@ -899,7 +953,7 @@ class _Image(_Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
             secrets=secrets,
-            gpu_config=parse_gpu_config(gpu, raise_on_true=False),
+            gpu_config=parse_gpu_config(gpu),
             force_build=self.force_build or force_build,
         )
 
@@ -1321,11 +1375,13 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def from_dockerfile(
+        # Filepath to Dockerfile.
         path: Union[str, Path],
-        context_mount: Optional[
-            _Mount
-        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
-        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        # modal.Mount with local files to supply as build context for COPY commands.
+        # NOTE: The remote_path of the Mount should match the Dockerfile's WORKDIR.
+        context_mount: Optional[_Mount] = None,
+        # Ignore cached builds, similar to 'docker build --no-cache'
+        force_build: bool = False,
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -1341,6 +1397,22 @@ class _Image(_Object, type_prefix="im"):
 
         ```python
         image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.12")
+        ```
+
+        If your Dockerfile uses `COPY` instructions which copy data from the local context of the
+        build into the image, this local data must be uploaded to Modal via a context mount:
+
+        ```python
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            context_mount=modal.Mount.from_local_dir(
+                local_path="src",
+                remote_path=".",  # to current WORKDIR
+            ),
+        )
+        ```
+
+        The context mount will allow a `COPY src/ src/` instruction to succeed in Modal's remote builder.
         ```
         """
 
@@ -1387,6 +1459,8 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """Default image, based on the official `python` Docker images."""
+        if isinstance(python_version, float):
+            raise TypeError("The `python_version` argument should be a string, not a float.")
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             requirements_path = _get_modal_requirements_path(version, python_version)
@@ -1623,6 +1697,26 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         deprecation_error((2023, 12, 15), Image.run_inside.__doc__)
+
+    @live_method_gen
+    async def _logs(self) -> AsyncGenerator[str, None]:
+        """Streams logs from an image, or returns logs from an already completed image.
+
+        This method is considered private since its interface may change - use it at your own risk!
+        """
+        last_entry_id: Optional[str] = None
+
+        request = api_pb2.ImageJoinStreamingRequest(
+            image_id=self._object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
+        )
+        async for response in unary_stream(self._client.stub.ImageJoinStreaming, request):
+            if response.result.status:
+                return
+            if response.entry_id:
+                last_entry_id = response.entry_id
+            for task_log in response.task_logs:
+                if task_log.data:
+                    yield task_log.data
 
 
 Image = synchronize_api(_Image)

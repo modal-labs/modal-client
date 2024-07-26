@@ -162,7 +162,7 @@ async def retry_transient_errors(
             timeout = None
         try:
             return await fn(*args, metadata=metadata, timeout=timeout)
-        except (StreamTerminatedError, GRPCError, socket.gaierror, asyncio.TimeoutError) as exc:
+        except (StreamTerminatedError, GRPCError, socket.gaierror, asyncio.TimeoutError, AttributeError) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 raise exc
 
@@ -172,6 +172,14 @@ async def retry_transient_errors(
             if total_deadline and time.time() + delay + attempt_timeout_floor >= total_deadline:
                 # no point sleeping if that's going to push us past the deadline
                 raise exc
+
+            if isinstance(exc, AttributeError) and "_write_appdata" not in str(exc):
+                # StreamTerminatedError are not properly raised in grpclib<=0.4.7
+                # fixed in https://github.com/vmagamedov/grpclib/issues/185
+                # TODO: update to newer version (>=0.4.8) once stable
+                raise exc
+
+            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name}")
 
             n_retries += 1
 

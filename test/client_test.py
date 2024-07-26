@@ -11,7 +11,7 @@ from modal import Client
 from modal.exception import AuthError, ConnectionError, DeprecationError, InvalidError, VersionError
 from modal_proto import api_pb2
 
-from .supports.skip import skip_windows_unix_socket
+from .supports.skip import skip_windows, skip_windows_unix_socket
 
 TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
 
@@ -35,11 +35,10 @@ def test_client_platform_string(servicer, client):
 
 
 @pytest.mark.asyncio
-@skip_windows_unix_socket
-async def test_container_client_type(unix_servicer, container_client):
-    assert len(unix_servicer.requests) == 1  # no heartbeat, just ClientHello
-    assert isinstance(unix_servicer.requests[0], Empty)
-    assert unix_servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
+async def test_container_client_type(servicer, container_client):
+    assert len(servicer.requests) == 1  # no heartbeat, just ClientHello
+    assert isinstance(servicer.requests[0], Empty)
+    assert servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
 
 @pytest.mark.asyncio
@@ -53,7 +52,7 @@ async def test_client_dns_failure():
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
-@skip_windows_unix_socket
+@skip_windows("Windows test crashes on connection failure")
 async def test_client_connection_failure():
     with pytest.raises(ConnectionError) as excinfo:
         async with Client("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None):
@@ -73,12 +72,11 @@ async def test_client_connection_failure_unix_socket():
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
-@skip_windows_unix_socket
-async def test_client_connection_timeout(unix_servicer, monkeypatch):
+async def test_client_connection_timeout(servicer, monkeypatch):
     monkeypatch.setattr("modal.client.CLIENT_CREATE_ATTEMPT_TIMEOUT", 1.0)
     monkeypatch.setattr("modal.client.CLIENT_CREATE_TOTAL_TIMEOUT", 3.0)
     with pytest.raises(ConnectionError) as excinfo:
-        async with Client(unix_servicer.remote_addr, api_pb2.CLIENT_TYPE_CONTAINER, None, version="timeout"):
+        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CONTAINER, None, version="timeout"):
             pass
 
     # The HTTP lookup will return 400 because the GRPC server rejects the http request
@@ -98,7 +96,7 @@ async def test_client_server_error(servicer):
 @pytest.mark.asyncio
 async def test_client_old_version(servicer):
     with pytest.raises(VersionError):
-        async with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="0.0.0"):
+        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="0.0.0"):
             pass
 
 
@@ -106,7 +104,7 @@ async def test_client_old_version(servicer):
 async def test_client_deprecated(servicer):
     with pytest.warns(modal.exception.DeprecationError):
         async with Client(
-            servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="deprecated"
+            servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="deprecated"
         ):
             pass
 
@@ -114,13 +112,13 @@ async def test_client_deprecated(servicer):
 @pytest.mark.asyncio
 async def test_client_unauthenticated(servicer):
     with pytest.raises(AuthError):
-        async with Client(servicer.remote_addr, api_pb2.CLIENT_TYPE_CLIENT, None, version="unauthenticated"):
+        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, None, version="unauthenticated"):
             pass
 
 
-def client_from_env(remote_addr):
+def client_from_env(client_addr):
     _override_config = {
-        "server_url": remote_addr,
+        "server_url": client_addr,
         "token_id": "foo-id",
         "token_secret": "foo-secret",
         "task_id": None,
@@ -136,8 +134,8 @@ def test_client_from_env(servicer):
             client_from_env("https://foo.invalid")
 
         # Make sure later clients can still succeed
-        client_1 = client_from_env(servicer.remote_addr)
-        client_2 = client_from_env(servicer.remote_addr)
+        client_1 = client_from_env(servicer.client_addr)
+        client_2 = client_from_env(servicer.client_addr)
         assert isinstance(client_1, Client)
         assert isinstance(client_2, Client)
         assert client_1 == client_2
@@ -147,8 +145,8 @@ def test_client_from_env(servicer):
 
     try:
         # After stopping, creating a new client should return a new one
-        client_3 = client_from_env(servicer.remote_addr)
-        client_4 = client_from_env(servicer.remote_addr)
+        client_3 = client_from_env(servicer.client_addr)
+        client_4 = client_from_env(servicer.client_addr)
         assert client_3 != client_1
         assert client_4 == client_3
     finally:
@@ -169,7 +167,7 @@ def test_multiple_profile_error(servicer, modal_config):
     """
     with modal_config(config):
         with pytest.raises(InvalidError, match="More than one Modal profile is active"):
-            Client.verify(servicer.remote_addr, None)
+            Client.verify(servicer.client_addr, None)
 
 
 def test_implicit_default_profile_warning(servicer, modal_config):
@@ -183,8 +181,8 @@ def test_implicit_default_profile_warning(servicer, modal_config):
     token_secret = 'as_xyz'
     """
     with modal_config(config):
-        with pytest.warns(DeprecationError, match="Support for using an implicit 'default' profile is deprecated."):
-            Client.verify(servicer.remote_addr, None)
+        with pytest.raises(DeprecationError, match="Support for using an implicit 'default' profile is deprecated."):
+            Client.verify(servicer.client_addr, None)
 
     config = """
     [default]
@@ -193,7 +191,7 @@ def test_implicit_default_profile_warning(servicer, modal_config):
     """
     with modal_config(config):
         # A single profile should be fine, even if not explicitly active and named 'default'
-        Client.verify(servicer.remote_addr, None)
+        Client.verify(servicer.client_addr, None)
 
 
 def test_import_modal_from_thread(supports_dir):

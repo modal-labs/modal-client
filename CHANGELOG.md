@@ -10,6 +10,71 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.63.87 (2024-07-24)
+
+* The `_experimental_boost` argument can now be removed. Boost is now enabled on all modal Functions.
+
+
+
+### 0.63.77 (2024-07-18)
+
+* Setting `_allow_background_volume_commits` is no longer necessary and has been deprecated. Remove this argument in your decorators.
+
+
+
+###
+
+
+### 0.63.36 (2024-07-05)
+
+- Image layers defined with a `@modal.build` method will now include the values of any _class variables_ that are referenced within the method as part of the layer cache key. That means that the layer will rebuild when the class variables change or are overridden by a subclass.
+
+
+### 0.63.22 (2024-07-01)
+
+* Fixed an error when running `@modal.build` methods that was introduced in v0.63.19
+
+
+
+### 0.63.20 (2024-07-01)
+
+* Fixed bug where `self.method.local()` would re-trigger lifecycle methods in classes
+
+
+
+### 0.63.14 (2024-06-28)
+
+* Adds `Cls.lookup()` backwards compatibility with classes created by clients prior to `v0.63`.
+
+**Important**: When updating (to >=v0.63) an app with a Modal `class` that's accessed using `Cls.lookup()` - make sure to update the client of the app/service **using** `Cls.lookup()` first, and **then** update the app containing the class being looked up.
+
+
+
+### 0.63.12 (2024-06-27)
+
+- Fixed a bug introduced in 0.63.0 that broke `modal.Cls.with_options`
+
+
+
+### 0.63.10 (2024-06-26)
+
+- Adds warning about future deprecation of `retries` for generators. Retries are being deprecated as they can lead to nondetermistic generator behavior.
+
+
+
+### 0.63.9 (2024-06-26)
+
+- Fixed a bug in `Volume.copy_files()` where some source paths may be ignored if passed as `bytes`.
+- `Volume.read_file`, `Volume.read_file_into_fileobj`, `Volume.remove_file`, and `Volume.copy_files` can no longer take both string or bytes for their paths. They now only accept `str`.
+
+
+
+### 0.63.2 (2024-06-25)
+
+* Fixes issue with `Cls.lookup` not working (at all) after upgrading to v0.63.0. **Note**: this doesn't fix the cross-version lookup incompatibility introduced in 0.63.0.
+
+
+
 ### 0.63.0 (2024-06-24)
 
 * Changes how containers are associated with methods of `@app.cls()`-decorated Modal "classes".
@@ -18,6 +83,11 @@ We appreciate your patience while we speedily work towards a stable release of t
 Previously each `@method` and web endpoint of a class would get its own set of isolated containers and never run in the same container as other sibling methods. 
 Starting in this version, all `@methods` and web endpoints will be part of the same container pool. Notably, this means all methods will scale up/down together, and options like `keep_warm` and `concurrency_limit` will affect the total number of containers for all methods in the class combined, rather than individually.
 
+**Version incompatibility warning:** Older clients (below 0.63) can't use classes deployed by new clients (0.63 and above), and vice versa. Apps or standalone clients using `Cls.lookup(...)` to invoke Modal classes need to be upgraded to version `0.63` at the same time as the deployed app that's being called into.
+
+
+
+## 0.62
 
 
 ### 0.62.236 (2024-06-21)
@@ -26,7 +96,7 @@ Starting in this version, all `@methods` and web endpoints will be part of the s
 
 
 
-### v0.62.230 (2024-06-18)
+### 0.62.230 (2024-06-18)
 
 - It is now an error to create or lookup Modal objects (`Volume`, `Dict`, `Secret`, etc.) with an invalid name. Object names must be shorter than 64 characters and may contain only alphanumeric characters, dashes, periods, and underscores. The name check had inadvertently been removed for a brief time following an internal refactor and then reintroduced as a warning. It is once more a hard error. Please get in touch if this is blocking access to your data.
 
@@ -71,12 +141,6 @@ Starting in this version, all `@methods` and web endpoints will be part of the s
 
 - `web_endpoint`s now have the option to include interactive SwaggerUI/redoc docs by setting `docs=True`
 - `web_endpoint`s no longer include an OpenAPI JSON spec route by default
-
-
-
-### 0.62.197 (2024-05-31)
-
-Adds Source to PyPI metadata
 
 
 

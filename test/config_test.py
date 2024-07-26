@@ -45,7 +45,7 @@ def test_config_env_override():
 
 def test_config_store_user(servicer, modal_config):
     with modal_config(show_on_error=True) as config_file_path:
-        env = {"MODAL_SERVER_URL": servicer.remote_addr}
+        env = {"MODAL_SERVER_URL": servicer.client_addr}
 
         # No token by default
         config = _get_config(env=env)
@@ -133,7 +133,7 @@ def test_config_env_override_arbitrary_env():
 
 @pytest.mark.asyncio
 async def test_workspace_lookup(servicer, server_url_env):
-    resp = await _lookup_workspace(servicer.remote_addr, "ak-abc", "as-xyz")
+    resp = await _lookup_workspace(servicer.client_addr, "ak-abc", "as-xyz")
     assert resp.username == "test-username"
 
 

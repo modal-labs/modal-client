@@ -12,8 +12,8 @@ from .supports.skip import skip_windows_unix_socket
 
 @pytest.mark.asyncio
 async def test_http_channel(servicer):
-    assert servicer.remote_addr.startswith("http://")
-    channel = create_channel(servicer.remote_addr)
+    assert servicer.client_addr.startswith("http://")
+    channel = create_channel(servicer.client_addr)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
@@ -25,9 +25,9 @@ async def test_http_channel(servicer):
 
 @skip_windows_unix_socket
 @pytest.mark.asyncio
-async def test_unix_channel(unix_servicer):
-    assert unix_servicer.remote_addr.startswith("unix://")
-    channel = create_channel(unix_servicer.remote_addr)
+async def test_unix_channel(servicer):
+    assert servicer.container_addr.startswith("unix://")
+    channel = create_channel(servicer.container_addr)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
@@ -39,7 +39,7 @@ async def test_unix_channel(unix_servicer):
 
 @pytest.mark.asyncio
 async def test_retry_transient_errors(servicer):
-    channel = create_channel(servicer.remote_addr)
+    channel = create_channel(servicer.client_addr)
     client_stub = api_grpc.ModalClientStub(channel)
 
     # Use the BlobCreate request for retries

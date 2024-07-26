@@ -4,8 +4,10 @@ import json
 import math
 import os
 import signal
+import sys
 import time
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple
 
@@ -40,6 +42,15 @@ class Sentinel:
     """Used to get type-stubs to work with this object."""
 
 
+@dataclass
+class LocalInput:
+    input_id: str
+    function_call_id: str
+    method_name: str
+    args: Any
+    kwargs: Any
+
+
 class _ContainerIOManager:
     """Synchronizes all RPC calls and network operations for a running container.
 
@@ -62,8 +73,9 @@ class _ContainerIOManager:
     _input_concurrency: Optional[int]
     _semaphore: Optional[asyncio.Semaphore]
     _environment_name: str
-    _waiting_for_memory_snapshot: bool
     _heartbeat_loop: Optional[asyncio.Task]
+    _heartbeat_condition: asyncio.Condition
+    _waiting_for_memory_snapshot: bool
 
     _is_interactivity_enabled: bool
     _fetching_inputs: bool
@@ -90,8 +102,9 @@ class _ContainerIOManager:
 
         self._semaphore = None
         self._environment_name = container_args.environment_name
-        self._waiting_for_memory_snapshot = False
         self._heartbeat_loop = None
+        self._heartbeat_condition = asyncio.Condition()
+        self._waiting_for_memory_snapshot = False
 
         self._is_interactivity_enabled = False
         self._fetching_inputs = True
@@ -135,22 +148,24 @@ class _ContainerIOManager:
         # Return True if a cancellation event was received, in that case
         # we shouldn't wait too long for another heartbeat
 
-        # Don't send heartbeats for tasks waiting to be checkpointed.
-        # Calling gRPC methods open new connections which block the
-        # checkpointing process.
-        if self._waiting_for_memory_snapshot:
-            return False
-
         request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
         if self.current_input_id is not None:
             request.current_input_id = self.current_input_id
         if self.current_input_started_at is not None:
             request.current_input_started_at = self.current_input_started_at
 
-        # TODO(erikbern): capture exceptions?
-        response = await retry_transient_errors(
-            self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
-        )
+        async with self._heartbeat_condition:
+            # Continuously wait until `waiting_for_memory_snapshot` is false.
+            # TODO(matt): Verify that a `while` is necessary over an `if`. Spurious
+            # wakeups could allow execution to continue despite `_waiting_for_memory_snapshot`
+            # being true.
+            while self._waiting_for_memory_snapshot:
+                await self._heartbeat_condition.wait()
+
+            # TODO(erikbern): capture exceptions?
+            response = await retry_transient_errors(
+                self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
+            )
 
         if response.HasField("cancel_input_event"):
             # Pause processing of the current input by signaling self a SIGUSR1.
@@ -185,10 +200,11 @@ class _ContainerIOManager:
         return False
 
     @asynccontextmanager
-    async def heartbeats(self) -> AsyncGenerator[None, None]:
+    async def heartbeats(self, wait_for_mem_snap: bool) -> AsyncGenerator[None, None]:
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")
+            self._waiting_for_memory_snapshot = wait_for_mem_snap
             try:
                 yield
             finally:
@@ -390,7 +406,7 @@ class _ContainerIOManager:
                     self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[Tuple[str, str, str, Any, Any]]:
+    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[LocalInput]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
@@ -401,7 +417,7 @@ class _ContainerIOManager:
         async for input_id, function_call_id, input_pb in self._generate_inputs():
             args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
             self.current_input_id, self.current_input_started_at = (input_id, time.time())
-            yield input_id, function_call_id, input_pb.method_name, args, kwargs
+            yield LocalInput(input_id, function_call_id, input_pb.method_name, args, kwargs)
             self.current_input_id, self.current_input_started_at = (None, None)
 
         # collect all active input slots, meaning all inputs have wrapped up.
@@ -514,13 +530,23 @@ class _ContainerIOManager:
             # serializing the exception, which may have some issues (there
             # was an earlier note about it that it might not be possible
             # to unpickle it in some cases). Let's watch out for issues.
+
+            repr_exc = repr(exc)
+            if len(repr_exc) >= MAX_OBJECT_SIZE_BYTES:
+                # We prevent large exception messages to avoid
+                # unhandled exceptions causing inf loops
+                # and just send backa trimmed version
+                trimmed_bytes = len(repr_exc) - MAX_OBJECT_SIZE_BYTES - 1000
+                repr_exc = repr_exc[: MAX_OBJECT_SIZE_BYTES - 1000]
+                repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
+
             await self._push_output(
                 input_id,
                 started_at=started_at,
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                 data=self.serialize_exception(exc),
-                exception=repr(exc),
+                exception=repr_exc,
                 traceback=traceback.format_exc(),
                 serialized_tb=serialized_tb,
                 tb_line_cache=tb_line_cache,
@@ -581,23 +607,47 @@ class _ContainerIOManager:
         self.current_input_id = None
         self.current_input_started_at = None
 
+        # Patch torch to ensure it doesn't return CUDA unavailibility due to
+        # cached queries that executed during snapshot process. ref: MOD-3257
+        #
+        # perf: scanning sys.modules keys before import to avoid slow PYTHONPATH scanning.
+        if "torch" in sys.modules:
+            try:
+                sys.modules["torch"].cuda.device_count = sys.modules["torch"].cuda._device_count_nvml
+            # Wide-open except to catch anything. We don't want to crash here.
+            except Exception as exc:
+                logger.warning(
+                    f"failed to patch 'torch.cuda.device_count' during snapshot restore: {exc}. "
+                    "CUDA device availability may be inaccurate."
+                )
+
         self._client = await _Client.from_env()
-        self._waiting_for_memory_snapshot = False
 
     async def memory_snapshot(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
 
-        await self._client.stub.ContainerCheckpoint(
-            api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
-        )
+        # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
+        async with self._heartbeat_condition:
+            # Notify the heartbeat loop that the snapshot phase has begun in order to
+            # prevent it from sending heartbeat RPCs
+            self._waiting_for_memory_snapshot = True
+            self._heartbeat_condition.notify_all()
 
-        self._waiting_for_memory_snapshot = True
-        await self._client._close(forget_credentials=True)
+            await self._client.stub.ContainerCheckpoint(
+                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+            )
 
-        logger.debug("Memory snapshot request sent. Connection closed.")
-        await self.memory_restore()
+            await self._client._close(forget_credentials=True)
+
+            logger.debug("Memory snapshot request sent. Connection closed.")
+            await self.memory_restore()
+
+            # Turn heartbeats back on. This is safe since the snapshot RPC
+            # and the restore phase has finished.
+            self._waiting_for_memory_snapshot = False
+            self._heartbeat_condition.notify_all()
 
     async def volume_commit(self, volume_ids: List[str]) -> None:
         """

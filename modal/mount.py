@@ -301,7 +301,8 @@ class _Mount(_Object, type_prefix="mo"):
         *,
         # Where the directory is placed within in the mount
         remote_path: Union[str, PurePosixPath, None] = None,
-        # Filter function for file selection; defaults to including all files
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
+        # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
         # add files from subdirectories as well
         recursive: bool = True,
@@ -335,7 +336,8 @@ class _Mount(_Object, type_prefix="mo"):
         *,
         # Where the directory is placed within in the mount
         remote_path: Union[str, PurePosixPath, None] = None,
-        # Filter function for file selection - default all files
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
+        # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
         # add files from subdirectories as well
         recursive: bool = True,
@@ -499,12 +501,19 @@ class _Mount(_Object, type_prefix="mo"):
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
                 files=files,
             )
-        else:
+        elif resolver.app_id is not None:
             req = api_pb2.MountGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 files=files,
                 app_id=resolver.app_id,
             )
+        else:
+            req = api_pb2.MountGetOrCreateRequest(
+                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+                files=files,
+                environment_name=resolver.environment_name,
+            )
+
         resp = await retry_transient_errors(resolver.client.stub.MountGetOrCreate, req, base_delay=1)
         status_row.finish(f"Created mount {message_label}")
 
@@ -515,6 +524,8 @@ class _Mount(_Object, type_prefix="mo"):
     def from_local_python_packages(
         *module_names: str,
         remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
+        # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
     ) -> "_Mount":
         """

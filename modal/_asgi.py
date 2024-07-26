@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import Any, AsyncGenerator, Callable, Dict, Optional, cast
+from typing import Any, AsyncGenerator, Callable, Dict, NoReturn, Optional, cast
 
 import aiohttp
 
@@ -79,7 +79,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
             if msg["type"] == "http.response.body":
                 body_chunk_size = MAX_OBJECT_SIZE_BYTES - 1024  # reserve 1 KiB for framing
                 body_chunk_limit = 20 * body_chunk_size
-                s3_chunk_size = 150 * body_chunk_size
+                s3_chunk_size = 50 * body_chunk_size
 
                 size = len(msg.get("body", b""))
                 if size <= body_chunk_limit:
@@ -193,9 +193,9 @@ def wait_for_web_server(host: str, port: int, *, timeout: float) -> None:
 
 
 async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, send) -> None:
-    proxy_response: Optional[aiohttp.ClientResponse] = None
+    proxy_response: aiohttp.ClientResponse
 
-    async def request_generator():
+    async def request_generator() -> AsyncGenerator[bytes, None]:
         while True:
             message = await receive()
             if message["type"] == "http.request":
@@ -205,8 +205,7 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
                 if not message.get("more_body", False):
                     break
             elif message["type"] == "http.disconnect":
-                proxy_response.connection.transport.abort()  # Abort the connection.
-                break
+                raise ConnectionAbortedError("Disconnect message received")
             else:
                 raise ExecutionError(f"Unexpected message type: {message['type']}")
 
@@ -214,15 +213,22 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
     if scope.get("query_string"):
         path += "?" + scope["query_string"].decode()
 
-    proxy_response = await session.request(
-        method=scope["method"],
-        url=path,
-        headers=[(k.decode(), v.decode()) for k, v in scope["headers"]],
-        data=None if scope["method"] in aiohttp.ClientRequest.GET_METHODS else request_generator(),
-        allow_redirects=False,
-    )
+    try:
+        proxy_response = await session.request(
+            method=scope["method"],
+            url=path,
+            headers=[(k.decode(), v.decode()) for k, v in scope["headers"]],
+            data=None if scope["method"] in aiohttp.ClientRequest.GET_METHODS else request_generator(),
+            allow_redirects=False,
+        )
+    except ConnectionAbortedError:
+        return
+    except aiohttp.ClientConnectionError as e:  # some versions of aiohttp wrap the error
+        if isinstance(e.__cause__, ConnectionAbortedError):
+            return
+        raise
 
-    async def send_response():
+    async def send_response() -> None:
         msg = {
             "type": "http.response.start",
             "status": proxy_response.status,
@@ -234,10 +240,14 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
             await send(msg)
         await send({"type": "http.response.body"})
 
-    async def listen_for_disconnect():
+    async def listen_for_disconnect() -> NoReturn:
         while True:
             message = await receive()
-            if message["type"] == "http.disconnect":
+            if (
+                message["type"] == "http.disconnect"
+                and proxy_response.connection is not None
+                and proxy_response.connection.transport is not None
+            ):
                 proxy_response.connection.transport.abort()
 
     async with TaskContext() as tc:

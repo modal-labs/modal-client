@@ -83,15 +83,31 @@ def test_call_class_sync(client, servicer):
     function_creates_requests: typing.List[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
     assert len(function_creates_requests) == 2
     (class_create,) = ctx.get_requests("ClassCreate")
-    assert class_create.class_function_id
     function_creates = {fc.function.function_name: fc for fc in function_creates_requests}
     assert function_creates.keys() == {"Foo.*", "Foo.bar"}
     foobar_def = function_creates["Foo.bar"].function
+    service_function_id = servicer.app_objects["ap-1"]["Foo.*"]
     assert foobar_def.is_method
     assert foobar_def.use_method_name == "bar"
-    assert foobar_def.use_function_id == class_create.class_function_id
+    assert foobar_def.use_function_id == service_function_id
     (function_map_request,) = ctx.get_requests("FunctionMap")
-    assert function_map_request.function_id == class_create.class_function_id
+    assert function_map_request.function_id == service_function_id
+
+
+def test_class_with_options(client, servicer):
+    with app.run(client=client):
+        foo = Foo.with_options(cpu=48, retries=5)()  # type: ignore
+        res = foo.bar.remote(2)
+        assert res == 4
+        assert len(servicer.function_options) == 1
+        options: api_pb2.FunctionOptions = list(servicer.function_options.values())[0]
+        assert options.resources.milli_cpu == 48_000
+        assert options.retry_policy.retries == 5
+
+
+def test_class_with_options_need_hydrating(client, servicer):
+    with pytest.raises(ExecutionError, match="hydrate"):
+        Foo.with_options()  # type: ignore
 
 
 # Reusing the app runs into an issue with stale function handles.
@@ -651,22 +667,16 @@ def test_disallow_lifecycle_decorators_with_method(decorator):
 
 
 def test_deprecated_sync_methods():
-    with pytest.warns(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
+    class ClsWithDeprecatedSyncMethods:
+        def __enter__(self):
+            return 42
 
-        class ClsWithDeprecatedSyncMethods:
-            def __enter__(self):
-                return 42
+        @enter()
+        def my_enter(self):
+            return 43
 
-            @enter()
-            def my_enter(self):
-                return 43
-
-            def __exit__(self, exc_type, exc, tb):
-                return 44
-
-            @exit()
-            def my_exit(self, exc_type, exc, tb):
-                return 45
+        def __exit__(self, exc_type, exc, tb):
+            return 44
 
     obj = ClsWithDeprecatedSyncMethods()
 
@@ -676,25 +686,26 @@ def test_deprecated_sync_methods():
     with pytest.raises(DeprecationError, match="Using `__exit__`.+`modal.exit` decorator"):
         _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
 
+    with pytest.raises(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
+
+        class ClsWithDeprecatedSyncExitMethod:
+            @exit()
+            def my_exit(self, exc_type, exc, tb):
+                return 45
+
 
 @pytest.mark.asyncio
 async def test_deprecated_async_methods():
-    with pytest.warns(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
+    class ClsWithDeprecatedAsyncMethods:
+        async def __aenter__(self):
+            return 42
 
-        class ClsWithDeprecatedAsyncMethods:
-            async def __aenter__(self):
-                return 42
+        @enter()
+        async def my_enter(self):
+            return 43
 
-            @enter()
-            async def my_enter(self):
-                return 43
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return 44
-
-            @exit()
-            async def my_exit(self, exc_type, exc, tb):
-                return 45
+        async def __aexit__(self, exc_type, exc, tb):
+            return 44
 
     obj = ClsWithDeprecatedAsyncMethods()
 
@@ -703,6 +714,13 @@ async def test_deprecated_async_methods():
 
     with pytest.raises(DeprecationError, match=r"Using `__aexit__`.+`modal.exit` decorator \(on an async method\)"):
         _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+
+    with pytest.raises(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
+
+        class ClsWithDeprecatedAsyncExitMethod:
+            @exit()
+            async def my_exit(self, exc_type, exc, tb):
+                return 45
 
 
 class HasSnapMethod:
@@ -769,3 +787,83 @@ def test_cross_process_userclass_serde(supports_dir):
     method_without_descriptor_protocol = revived_cls.__dict__["method"]
     assert isinstance(method_without_descriptor_protocol, modal.partial_function.PartialFunction)
     assert revived_cls().method() == "a"  # this should be bound to the object
+
+
+def test_cls_strict_parameters_added_to_definition(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+
+    strict_param_cls_app = App("strict-param-app")
+
+    @strict_param_cls_app.cls(serialized=True)
+    class StrictParamCls:
+        def __init__(self, x: str, y: int):
+            pass
+
+    deploy_app(strict_param_cls_app, "my-cls-app", client=client)
+
+    definition: api_pb2.Function
+    (definition,) = servicer.app_functions.values()
+    assert definition.function_name == "StrictParamCls.*"
+    assert definition.class_parameter_info == api_pb2.ClassParameterInfo(
+        format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
+        schema=[
+            api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING),
+            api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_INT),
+        ],
+    )
+
+
+def test_cls_strict_parameters_unsupported_type(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+
+    strict_param_cls_app = App("strict-param-app")
+
+    @strict_param_cls_app.cls(serialized=True)
+    class StrictParamCls:
+        def __init__(self, x: float):
+            pass
+
+    with pytest.raises(InvalidError, match="class parameters"):
+        deploy_app(strict_param_cls_app, "my-cls-app", client=client)
+
+
+def test_cls_strict_parameters_without_type(client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+
+    strict_param_cls_app = App("strict-param-app")
+
+    @strict_param_cls_app.cls(serialized=True)
+    class StrictParamCls:
+        def __init__(self, x):
+            pass
+
+    with pytest.raises(InvalidError, match="class parameters"):
+        deploy_app(strict_param_cls_app, "my-cls-app", client=client)
+
+
+class ParameterizedClass1:
+    def __init__(self, a):
+        pass
+
+
+class ParameterizedClass2:
+    def __init__(self, a: int = 1):
+        pass
+
+
+class ParameterizedClass3:
+    def __init__(self):
+        pass
+
+
+def test_disabled_parameterized_snap_cls():
+    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
+        app.cls(enable_memory_snapshot=True)(ParameterizedClass1)
+
+    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
+        app.cls(enable_memory_snapshot=True)(ParameterizedClass2)
+
+    app.cls(enable_memory_snapshot=True)(ParameterizedClass3)

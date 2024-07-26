@@ -37,7 +37,7 @@ from ._output import OutputManager
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
-from ._serialization import serialize
+from ._serialization import serialize, serialize_proto_params
 from ._utils.async_utils import (
     TaskContext,
     synchronize_api,
@@ -51,11 +51,10 @@ from ._utils.function_utils import (
     _create_input,
     _process_result,
     _stream_function_call_data,
-    get_referred_objects,
     is_async,
 )
 from ._utils.grpc_utils import retry_transient_errors
-from ._utils.mount_utils import validate_mount_points, validate_volumes
+from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
@@ -73,7 +72,7 @@ from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import Object, _get_environment_name, _Object, live_method, live_method_gen
+from .object import _get_environment_name, _Object, live_method, live_method_gen
 from .parallel_map import (
     _for_each_async,
     _for_each_sync,
@@ -238,7 +237,7 @@ class FunctionStats:
 
 def _parse_retries(
     retries: Optional[Union[int, Retries]],
-    object_name: str,
+    source: str = "",
 ) -> Optional[api_pb2.FunctionRetryPolicy]:
     if isinstance(retries, int):
         return Retries(
@@ -251,9 +250,9 @@ def _parse_retries(
     elif retries is None:
         return None
     else:
-        raise InvalidError(
-            f"{object_name} retries must be an integer or instance of modal.Retries. Found: {type(retries)}"
-        )
+        extra = f" on {source}" if source else ""
+        msg = f"Retries parameter must be an integer or instance of modal.Retries. Found: {type(retries)}{extra}."
+        raise InvalidError(msg)
 
 
 @dataclass
@@ -275,6 +274,7 @@ class _FunctionSpec:
     memory: Optional[Union[int, Tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
+    _experimental_gpus: Sequence[GPU_T]
 
 
 P = typing_extensions.ParamSpec("P")
@@ -295,10 +295,9 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
     _app: Optional["modal.app._App"] = None
     _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
     _web_url: Optional[str]
-    _is_remote_cls_method: bool = False  # TODO(erikbern): deprecated
     _function_name: Optional[str]
     _is_method: bool
-    _spec: _FunctionSpec
+    _spec: Optional[_FunctionSpec] = None
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
@@ -313,6 +312,8 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
     # TODO (elias): remove _parent. In case of instance functions, and methods bound on those,
     #  this references the parent class-function and is used to infer the client for lazy-loaded methods
     _parent: Optional["_Function"] = None
+
+    _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
 
     def _bind_method(
         self,
@@ -393,7 +394,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         fun._tag = full_name
         fun._raw_f = partial_function.raw_f
         fun._info = FunctionInfo(
-            partial_function.raw_f, cls=user_cls, serialized=class_service_function.info.is_serialized()
+            partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
         )  # needed for .local()
         fun._use_method_name = method_name
         fun._app = class_service_function._app
@@ -401,8 +402,6 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         fun._all_mounts = class_service_function._all_mounts
         fun._spec = class_service_function._spec
         fun._is_method = True
-        # TODO: set more attributes?
-
         return fun
 
     def _bind_instance_method(self, class_bound_method: "_Function"):
@@ -413,28 +412,39 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         it does it forward invocations to the underlying instance_service_function with the specified method,
         and we don't support web_config for parameterized methods at the moment.
         """
+        # TODO(elias): refactor to not use `_from_loader()` as a crutch for lazy-loading the
+        #   underlying instance_service_function. It's currently used in order to take advantage
+        #   of resolver logic and get "chained" resolution of lazy loads, even though this thin
+        #   object itself doesn't need any "loading"
         instance_service_function = self
         assert instance_service_function._obj
         method_name = class_bound_method._use_method_name
         full_function_name = f"{class_bound_method._function_name}[parameterized]"
 
-        def hydrate_from_instance_function(obj):
-            obj._hydrate_from_other(instance_service_function)
-            obj._obj = instance_service_function._obj
-            obj._web_url = class_bound_method._web_url  # TODO: this shouldn't be set when actual parameters are used
-            obj._function_name = full_function_name
-            obj._is_generator = class_bound_method._is_generator
-            obj._use_method_name = method_name
-            obj._use_function_id = instance_service_function.object_id
+        def hydrate_from_instance_service_function(method_placeholder_fun):
+            method_placeholder_fun._hydrate_from_other(instance_service_function)
+            method_placeholder_fun._obj = instance_service_function._obj
+            method_placeholder_fun._web_url = (
+                class_bound_method._web_url
+            )  # TODO: this shouldn't be set when actual parameters are used
+            method_placeholder_fun._function_name = full_function_name
+            method_placeholder_fun._is_generator = class_bound_method._is_generator
+            method_placeholder_fun._use_method_name = method_name
+            method_placeholder_fun._use_function_id = instance_service_function.object_id
+            method_placeholder_fun._is_method = True
 
         async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
             # there is currently no actual loading logic executed to create each method on
             # the *parameterized* instance of a class - it uses the parameter-bound service-function
             # for the instance. This load method just makes sure to set all attributes after the
             # `instance_service_function` has been loaded (it's in the `_deps`)
-            hydrate_from_instance_function(fun)
+            hydrate_from_instance_service_function(fun)
 
         def _deps():
+            if instance_service_function.is_hydrated:
+                # without this check, the common instance_service_function will be reloaded by all methods
+                # TODO(elias): Investigate if we can fix this multi-loader in the resolver - feels like a bug?
+                return []
             return [instance_service_function]
 
         rep = f"Method({full_function_name})"
@@ -445,13 +455,9 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             deps=_deps,
             hydrate_lazily=True,
         )
-        if instance_service_function._can_use_base_function and instance_service_function.is_hydrated:
-            # Eager hydration (skip load) if both the instance service function is already loaded
-            # This should only happen when default arguments are used to the constructor, since
-            # that will trigger similar eager hydration of the instance service function.
-            # In other cases, the instance service function will have to be lazy-loaded, as a dependency
-            # of this "fake" Function.
-            hydrate_from_instance_function(fun)
+        if instance_service_function.is_hydrated:
+            # Eager hydration (skip load) if the instance service function is already loaded
+            hydrate_from_instance_service_function(fun)
 
         fun._info = class_bound_method._info
         fun._obj = instance_service_function._obj
@@ -459,6 +465,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         fun._parent = instance_service_function._parent
         fun._app = class_bound_method._app
         fun._all_mounts = class_bound_method._all_mounts  # TODO: only used for mount-watching/modal serve
+        fun._spec = class_bound_method._spec
         return fun
 
     @staticmethod
@@ -487,8 +494,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
         cloud: Optional[str] = None,
-        _experimental_boost: bool = False,
-        _experimental_scheduler: bool = False,
+        _experimental_boost: None = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
@@ -498,6 +504,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         block_network: bool = False,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
+        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -511,7 +518,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
                 )
         else:
             # must be a "class service function"
-            assert info.cls
+            assert info.user_cls
             assert not webhook_config
             assert not schedule
 
@@ -529,9 +536,16 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             enable_memory_snapshot = checkpointing_enabled
 
         if allow_background_volume_commits is False:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
-                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+                "Disabling volume background commits is now deprecated. "
+                "Remove _allow_background_volume_commits=False to enable the functionality.",
+            )
+        elif allow_background_volume_commits is True:
+            deprecation_warning(
+                (2024, 7, 18),
+                "Setting volume background commits is deprecated. "
+                "The functionality is now unconditionally enabled (set to True).",
             )
         elif allow_background_volume_commits is None:
             allow_background_volume_commits = True
@@ -555,10 +569,19 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             all_mounts = []
 
         retry_policy = _parse_retries(
-            retries, f"Function {info.get_tag()}" if info.raw_f else f"Class {info.get_tag()}"
+            retries, f"Function '{info.get_tag()}'" if info.raw_f else f"Class '{info.get_tag()}'"
         )
 
-        gpu_config = parse_gpu_config(gpu)
+        if webhook_config is not None and retry_policy is not None:
+            raise InvalidError(
+                "Web endpoints do not support retries.",
+            )
+
+        if is_generator and retry_policy is not None:
+            deprecation_warning(
+                (2024, 6, 25),
+                "Retries for generator functions are deprecated and will soon be removed.",
+            )
 
         if proxy:
             # HACK: remove this once we stop using ssh tunnels for this.
@@ -577,15 +600,16 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             memory=memory,
             ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
+            _experimental_gpus=_experimental_gpus,
         )
 
-        if info.cls and not is_auto_snapshot:
+        if info.user_cls and not is_auto_snapshot:
             # Needed to avoid circular imports
             from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
 
-            build_functions = list(_find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD).values())
+            build_functions = list(_find_callables_for_cls(info.user_cls, _PartialFunctionFlags.BUILD).values())
             for build_function in build_functions:
-                snapshot_info = FunctionInfo(build_function, cls=info.cls)
+                snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)
                 snapshot_function = _Function.from_args(
                     snapshot_info,
                     app=None,
@@ -602,6 +626,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
+                    _experimental_gpus=_experimental_gpus,
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
@@ -643,9 +668,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         # Validate NFS
-        if not isinstance(network_file_systems, dict):
-            raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
-        validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+        validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
         # Validate image
         if image is not None and not isinstance(image, _Image):
@@ -676,22 +699,6 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
                 if cloud_bucket_mount.secret:
                     deps.append(cloud_bucket_mount.secret)
 
-            # Add implicit dependencies from the function's code
-            if info.raw_f:
-                # TODO(elias): Remove this branch since we shouldn't need closure vars inspection anymore?
-                objs: list[Object] = get_referred_objects(info.raw_f)
-                _objs: list[_Object] = synchronizer._translate_in(objs)  # type: ignore
-            else:
-                _objs = []
-
-            if info.cls:
-                from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
-
-                for method_callable in _find_callables_for_cls(info.cls, _PartialFunctionFlags.all()).values():
-                    method_objs: list[Object] = get_referred_objects(method_callable)
-                    _objs += synchronizer._translate_in(method_objs)  # type: ignore
-
-            deps += _objs
             return deps
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -701,6 +708,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             else:
                 function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
+            assert resolver.app_id
             req = api_pb2.FunctionPrecreateRequest(
                 app_id=resolver.app_id,
                 function_name=info.function_name,
@@ -731,7 +739,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
                     # serialize at _load time, not function decoration time
                     # otherwise we can't capture a surrounding class for lifetime methods etc.
                     function_serialized = info.serialized_function()
-                    class_serialized = serialize(info.cls) if info.cls is not None else None
+                    class_serialized = serialize(info.user_cls) if info.user_cls is not None else None
                     # Ensure that large data in global variables does not blow up the gRPC payload,
                     # which has maximum size 100 MiB. We set the limit lower for performance reasons.
                     if len(function_serialized) > 16 << 20:  # 16 MiB
@@ -808,18 +816,25 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
                     allow_concurrent_inputs=allow_concurrent_inputs or 0,
                     worker_id=config.get("worker_id"),
                     is_auto_snapshot=is_auto_snapshot,
-                    is_method=bool(info.cls),
+                    is_method=bool(info.user_cls) and not info.is_service_class(),
                     checkpointing_enabled=enable_memory_snapshot,
                     is_checkpointing_function=False,
                     object_dependencies=object_dependencies,
                     block_network=block_network,
                     max_inputs=max_inputs or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
-                    _experimental_boost=_experimental_boost,
-                    _experimental_scheduler=_experimental_scheduler,
+                    _experimental_boost=bool(_experimental_boost),
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
+                    class_parameter_info=info.class_parameter_info(),
+                    _experimental_resources=[
+                        convert_fn_config_to_resources_config(
+                            cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                        )
+                        for _experimental_gpu in _experimental_gpus
+                    ],
                 )
+                assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
                     app_id=resolver.app_id,
                     function=function_definition,
@@ -860,10 +875,14 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         # hash. We can't use the cloudpickle hash because it's not very stable.
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
-            gpu_config=repr(gpu_config),
+            gpu_config=repr(parse_gpu_config(gpu)),
             mounts=repr(mounts),
             network_file_systems=repr(network_file_systems),
         )
+        if _experimental_gpus:
+            obj._build_args["experimental_gpus"] = repr(
+                [parse_gpu_config(_experimental_gpu) for _experimental_gpu in _experimental_gpus]
+            )
 
         return obj
 
@@ -897,7 +916,17 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
                     f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
                 )
             assert self._parent._client.stub
-            serialized_params = serialize((args, kwargs))
+            if (
+                self._parent._class_parameter_info
+                and self._parent._class_parameter_info.format
+                == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
+            ):
+                if args:
+                    # TODO(elias) - We could potentially support positional args as well, if we want to?
+                    raise InvalidError("Can't use positional arguments with strict parameter classes")
+                serialized_params = serialize_proto_params(kwargs, self._parent._class_parameter_info.schema)
+            else:
+                serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
             assert self._parent is not None
             req = api_pb2.FunctionBindParamsRequest(
@@ -907,6 +936,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
                 environment_name=environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
+
             response = await retry_transient_errors(self._parent._client.stub.FunctionBindParams, req)
             self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
 
@@ -919,11 +949,8 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             # if the instance didn't use explicit constructor arguments
             fun._hydrate_from_other(self)
 
-        fun._is_remote_cls_method = True  # TODO(erikbern): deprecated
         fun._info = self._info
         fun._obj = obj
-        fun._is_generator = self._is_generator  # TODO(elias): remove - this doesn't apply to "service functions"
-        fun._is_method = False
         fun._parent = self
         return fun
 
@@ -948,9 +975,9 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             raise InvalidError(
                 textwrap.dedent(
                     """
-                The `.keep_warm()` method can no longer be used on Modal class methods.
-                For classes, all methods now share the same set of containers.
-                Use class_instance.keep_warm(...) instead for classes.
+                The `.keep_warm()` method can not be used on Modal class *methods* deployed using Modal >v0.63.
+
+                Call `.keep_warm()` on the class *instance* instead.
             """
                 )
             )
@@ -1046,6 +1073,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
     @property
     def spec(self) -> _FunctionSpec:
         """mdmd:hidden"""
+        assert self._spec
         return self._spec
 
     def get_build_def(self) -> str:
@@ -1060,7 +1088,6 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         self._progress = None
         self._is_generator = None
         self._web_url = None
-        self._output_mgr: Optional[OutputManager] = None
         self._mute_cancellation = (
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
@@ -1078,6 +1105,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         self._is_method = metadata.is_method
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
+        self._class_parameter_info = metadata.class_parameter_info
 
     def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id
@@ -1095,13 +1123,12 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             web_url=self._web_url or "",
             use_method_name=self._use_method_name,
             use_function_id=self._use_function_id,
+            is_method=self._is_method,
+            class_parameter_info=self._class_parameter_info,
         )
 
     def _set_mute_cancellation(self, value: bool = True):
         self._mute_cancellation = value
-
-    def _set_output_mgr(self, output_mgr: OutputManager):
-        self._output_mgr = output_mgr
 
     @property
     def web_url(self) -> str:
@@ -1141,9 +1168,10 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         assert self._function_name
-        count_update_callback = (
-            self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
-        )
+        if output_mgr := OutputManager.get():
+            count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
+        else:
+            count_update_callback = None
 
         async for item in _map_invocation(
             self,  # type: ignore
@@ -1227,15 +1255,12 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         else:
             await self._call_function(args, kwargs)
 
-    def _get_is_remote_cls_method(self):
-        return self._is_remote_cls_method
-
     def _get_info(self) -> FunctionInfo:
         if not self._info:
             raise ExecutionError("Can't get info for a function that isn't locally defined")
         return self._info
 
-    def _get_obj(self) -> Optional[Any]:
+    def _get_obj(self) -> Optional["modal.cls._Obj"]:
         if not self._is_method:
             return None
         elif not self._obj:
@@ -1255,6 +1280,12 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
         info = self._get_info()
+
+        if is_local() and self.spec.volumes or self.spec.network_file_systems:
+            warnings.warn(
+                f"The {info.function_name} function is executing locally "
+                + "and will not have access to the mounted Volume or NetworkFileSystem data"
+            )
         if not info or not info.raw_f:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "
@@ -1262,16 +1293,16 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             )
             raise ExecutionError(msg)
 
-        obj = self._get_obj()
+        obj: Optional["modal.cls._Obj"] = self._get_obj()
 
         if not obj:
             fun = info.raw_f
             return fun(*args, **kwargs)
         else:
             # This is a method on a class, so bind the self to the function
-            local_obj = obj.get_local_obj()
+            user_cls_instance = obj._get_user_cls_instance()
 
-            fun = info.raw_f.__get__(local_obj)
+            fun = info.raw_f.__get__(user_cls_instance)
 
             if is_async(info.raw_f):
                 # We want to run __aenter__ and fun in the same coroutine

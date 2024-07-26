@@ -168,7 +168,9 @@ class TaskContext:
         task.add_done_callback(self._tasks.discard)
         return task
 
-    def infinite_loop(self, async_f, timeout: Optional[float] = 90, sleep: float = 10) -> asyncio.Task:
+    def infinite_loop(
+        self, async_f, timeout: Optional[float] = 90, sleep: float = 10, log_exception: bool = True
+    ) -> asyncio.Task:
         function_name = async_f.__qualname__
 
         async def loop_coro() -> None:
@@ -179,7 +181,8 @@ class TaskContext:
                     await asyncio.wait_for(async_f(), timeout=timeout)
                 except Exception:
                     time_elapsed = time.time() - t0
-                    logger.exception(f"Loop attempt failed for {function_name} (time_elapsed={time_elapsed})")
+                    if log_exception:
+                        logger.exception(f"Loop attempt failed for {function_name} (time_elapsed={time_elapsed})")
                 try:
                     await asyncio.wait_for(self._exited.wait(), timeout=sleep)
                 except asyncio.TimeoutError:
@@ -340,7 +343,7 @@ def warn_if_generator_is_not_consumed(function_name: Optional[str] = None):
     return decorator
 
 
-class AsyncOrSyncIteratable:
+class AsyncOrSyncIterable:
     """Compatibility class for non-synchronicity wrapped async iterables to get
     both async and sync interfaces in the same way that synchronicity does (but on the main thread)
     so they can be "lazily" iterated using either `for _ in x` or `async for _ in x`

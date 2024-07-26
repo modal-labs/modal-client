@@ -5,7 +5,7 @@ import hashlib
 import io
 import os
 import platform
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Union
 from urllib.parse import urlparse
@@ -19,7 +19,7 @@ from ..exception import ExecutionError
 from .async_utils import TaskContext, retry
 from .grpc_utils import retry_transient_errors
 from .hash_utils import UploadHashes, get_sha256_hex, get_upload_hashes
-from .http_utils import http_client_with_tls
+from .http_utils import ClientSessionRegistry
 from .logger import logger
 
 # Max size for function inputs and outputs.
@@ -53,6 +53,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
         segment_start: int,
         segment_length: int,
         chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
+        progress_report_cb: Optional[Callable] = None,
     ):
         # not thread safe constructor!
         super().__init__(bytes_io)
@@ -63,6 +64,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
         self._value.seek(self.initial_seek_pos + segment_start)
         assert self.segment_length <= super().size
         self.chunk_size = chunk_size
+        self.progress_report_cb = progress_report_cb or (lambda *_, **__: None)
         self.reset_state()
 
     def reset_state(self):
@@ -74,6 +76,12 @@ class BytesIOSegmentPayload(BytesIOPayload):
     def reset_on_error(self):
         try:
             yield
+        except Exception as exc:
+            try:
+                self.progress_report_cb(reset=True)
+            except Exception as cb_exc:
+                raise cb_exc from exc
+            raise exc
         finally:
             self.reset_state()
 
@@ -100,9 +108,11 @@ class BytesIOSegmentPayload(BytesIOPayload):
         chunk = await safe_read()
         while chunk and self.remaining_bytes() > 0:
             await writer.write(chunk)
+            self.progress_report_cb(advance=len(chunk))
             chunk = await safe_read()
         if chunk:
             await writer.write(chunk)
+            self.progress_report_cb(advance=len(chunk))
 
     def remaining_bytes(self):
         return self.segment_length - self.num_bytes_read
@@ -117,47 +127,44 @@ async def _upload_to_s3_url(
 ) -> str:
     """Returns etag of s3 object which is a md5 hex checksum of the uploaded content"""
     with payload.reset_on_error():  # ensure retries read the same data
-        async with http_client_with_tls(timeout=None) as session:
-            headers = {}
-            if content_md5_b64 and use_md5(upload_url):
-                headers["Content-MD5"] = content_md5_b64
-            if content_type:
-                headers["Content-Type"] = content_type
+        headers = {}
+        if content_md5_b64 and use_md5(upload_url):
+            headers["Content-MD5"] = content_md5_b64
+        if content_type:
+            headers["Content-Type"] = content_type
 
-            async with session.put(
-                upload_url,
-                data=payload,
-                headers=headers,
-                skip_auto_headers=["content-type"] if content_type is None else [],
-            ) as resp:
-                # S3 signal to slow down request rate.
-                if resp.status == 503:
-                    logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
-                    await asyncio.sleep(1)
+        async with ClientSessionRegistry.get_session().put(
+            upload_url,
+            data=payload,
+            headers=headers,
+            skip_auto_headers=["content-type"] if content_type is None else [],
+        ) as resp:
+            # S3 signal to slow down request rate.
+            if resp.status == 503:
+                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+                await asyncio.sleep(1)
 
-                if resp.status != 200:
-                    try:
-                        text = await resp.text()
-                    except Exception:
-                        text = "<no body>"
-                    raise ExecutionError(f"Put to url {upload_url} failed with status {resp.status}: {text}")
+            if resp.status != 200:
+                try:
+                    text = await resp.text()
+                except Exception:
+                    text = "<no body>"
+                raise ExecutionError(f"Put to url {upload_url} failed with status {resp.status}: {text}")
 
-                # client side ETag checksum verification
-                # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
-                etag = resp.headers["ETag"].strip()
-                if etag.startswith(("W/", "w/")):  # see https://www.rfc-editor.org/rfc/rfc7232#section-2.3
-                    etag = etag[2:]
-                if etag[0] == '"' and etag[-1] == '"':
-                    etag = etag[1:-1]
-                remote_md5 = etag
+            # client side ETag checksum verification
+            # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
+            etag = resp.headers["ETag"].strip()
+            if etag.startswith(("W/", "w/")):  # see https://www.rfc-editor.org/rfc/rfc7232#section-2.3
+                etag = etag[2:]
+            if etag[0] == '"' and etag[-1] == '"':
+                etag = etag[1:-1]
+            remote_md5 = etag
 
-                local_md5_hex = payload.md5_checksum().hexdigest()
-                if local_md5_hex != remote_md5:
-                    raise ExecutionError(
-                        f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})"
-                    )
+            local_md5_hex = payload.md5_checksum().hexdigest()
+            if local_md5_hex != remote_md5:
+                raise ExecutionError(f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})")
 
-                return remote_md5
+            return remote_md5
 
 
 async def perform_multipart_upload(
@@ -168,6 +175,7 @@ async def perform_multipart_upload(
     part_urls: List[str],
     completion_url: str,
     upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
+    progress_report_cb: Optional[Callable] = None,
 ):
     upload_coros = []
     file_offset = 0
@@ -190,6 +198,7 @@ async def perform_multipart_upload(
             segment_start=file_offset,
             segment_length=part_length_bytes,
             chunk_size=upload_chunk_size,
+            progress_report_cb=progress_report_cb,
         )
         upload_coros.append(_upload_to_s3_url(part_url, payload=part_payload, content_type=None))
         num_bytes_left -= part_length_bytes
@@ -207,22 +216,21 @@ async def perform_multipart_upload(
     bin_hash_parts = [bytes.fromhex(etag) for etag in part_etags]
 
     expected_multipart_etag = hashlib.md5(b"".join(bin_hash_parts)).hexdigest() + f"-{len(part_etags)}"
-    async with http_client_with_tls(timeout=None) as session:
-        resp = await session.post(
-            completion_url, data=completion_body.encode("ascii"), skip_auto_headers=["content-type"]
-        )
-        if resp.status != 200:
-            try:
-                msg = await resp.text()
-            except Exception:
-                msg = "<no body>"
-            raise ExecutionError(f"Error when completing multipart upload: {resp.status}\n{msg}")
-        else:
-            response_body = await resp.text()
-            if expected_multipart_etag not in response_body:
-                raise ExecutionError(
-                    f"Hash mismatch on multipart upload assembly: {expected_multipart_etag} not in {response_body}"
-                )
+    resp = await ClientSessionRegistry.get_session().post(
+        completion_url, data=completion_body.encode("ascii"), skip_auto_headers=["content-type"]
+    )
+    if resp.status != 200:
+        try:
+            msg = await resp.text()
+        except Exception:
+            msg = "<no body>"
+        raise ExecutionError(f"Error when completing multipart upload: {resp.status}\n{msg}")
+    else:
+        response_body = await resp.text()
+        if expected_multipart_etag not in response_body:
+            raise ExecutionError(
+                f"Hash mismatch on multipart upload assembly: {expected_multipart_etag} not in {response_body}"
+            )
 
 
 def get_content_length(data: BinaryIO):
@@ -234,7 +242,9 @@ def get_content_length(data: BinaryIO):
     return content_length - pos
 
 
-async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub) -> str:
+async def _blob_upload(
+    upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub, progress_report_cb: Optional[Callable] = None
+) -> str:
     if isinstance(data, bytes):
         data = io.BytesIO(data)
 
@@ -257,15 +267,21 @@ async def _blob_upload(upload_hashes: UploadHashes, data: Union[bytes, BinaryIO]
             part_urls=resp.multipart.upload_urls,
             completion_url=resp.multipart.completion_url,
             upload_chunk_size=DEFAULT_SEGMENT_CHUNK_SIZE,
+            progress_report_cb=progress_report_cb,
         )
     else:
-        payload = BytesIOSegmentPayload(data, segment_start=0, segment_length=content_length)
+        payload = BytesIOSegmentPayload(
+            data, segment_start=0, segment_length=content_length, progress_report_cb=progress_report_cb
+        )
         await _upload_to_s3_url(
             resp.upload_url,
             payload,
             # for single part uploads, we use server side md5 checksums
             content_md5_b64=upload_hashes.md5_base64,
         )
+
+    if progress_report_cb:
+        progress_report_cb(complete=True)
 
     return blob_id
 
@@ -278,24 +294,23 @@ async def blob_upload(payload: bytes, stub) -> str:
     return await _blob_upload(upload_hashes, payload, stub)
 
 
-async def blob_upload_file(file_obj: BinaryIO, stub) -> str:
+async def blob_upload_file(file_obj: BinaryIO, stub, progress_report_cb: Optional[Callable] = None) -> str:
     upload_hashes = get_upload_hashes(file_obj)
-    return await _blob_upload(upload_hashes, file_obj, stub)
+    return await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
 
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
 async def _download_from_url(download_url) -> bytes:
-    async with http_client_with_tls(timeout=None) as session:
-        async with session.get(download_url) as resp:
-            # S3 signal to slow down request rate.
-            if resp.status == 503:
-                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
-                await asyncio.sleep(1)
+    async with ClientSessionRegistry.get_session().get(download_url) as resp:
+        # S3 signal to slow down request rate.
+        if resp.status == 503:
+            logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+            await asyncio.sleep(1)
 
-            if resp.status != 200:
-                text = await resp.text()
-                raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
-            return await resp.read()
+        if resp.status != 200:
+            text = await resp.text()
+            raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
+        return await resp.read()
 
 
 async def blob_download(blob_id, stub) -> bytes:
@@ -310,24 +325,23 @@ async def blob_iter(blob_id, stub) -> AsyncIterator[bytes]:
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await retry_transient_errors(stub.BlobGet, req)
     download_url = resp.download_url
-    async with http_client_with_tls(timeout=None) as session:
-        async with session.get(download_url) as resp:
-            # S3 signal to slow down request rate.
-            if resp.status == 503:
-                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
-                await asyncio.sleep(1)
+    async with ClientSessionRegistry.get_session().get(download_url) as resp:
+        # S3 signal to slow down request rate.
+        if resp.status == 503:
+            logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+            await asyncio.sleep(1)
 
-            if resp.status != 200:
-                text = await resp.text()
-                raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
+        if resp.status != 200:
+            text = await resp.text()
+            raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
 
-            async for chunk in resp.content.iter_any():
-                yield chunk
+        async for chunk in resp.content.iter_any():
+            yield chunk
 
 
 @dataclasses.dataclass
 class FileUploadSpec:
-    source: Callable[[], BinaryIO]
+    source: Callable[[], Union[AbstractContextManager, BinaryIO]]
     source_description: Any
     mount_filename: str
 
@@ -339,7 +353,10 @@ class FileUploadSpec:
 
 
 def _get_file_upload_spec(
-    source: Callable[[], BinaryIO], source_description: Any, mount_filename: PurePosixPath, mode: int
+    source: Callable[[], Union[AbstractContextManager, BinaryIO]],
+    source_description: Any,
+    mount_filename: PurePosixPath,
+    mode: int,
 ) -> FileUploadSpec:
     with source() as fp:
         # Current position is ignored - we always upload from position 0
@@ -383,10 +400,11 @@ def get_file_upload_spec_from_path(
 
 
 def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPath, mode: int) -> FileUploadSpec:
+    @contextmanager
     def source():
         # We ignore position in stream and always upload from position 0
         fp.seek(0)
-        return fp
+        yield fp
 
     return _get_file_upload_spec(
         source,
@@ -403,7 +421,7 @@ def use_md5(url: str) -> bool:
     https://github.com/spulec/moto/issues/816
     """
     host = urlparse(url).netloc.split(":")[0]
-    if host.endswith(".amazonaws.com"):
+    if host.endswith(".amazonaws.com") or host.endswith(".r2.cloudflarestorage.com"):
         return True
     elif host in ["127.0.0.1", "localhost", "172.21.0.1"]:
         return False

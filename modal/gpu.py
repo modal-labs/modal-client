@@ -216,25 +216,19 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
         else:
             return STRING_TO_GPU_CONFIG[value.lower()](count=count)
     elif value is True:
-        if raise_on_true:
-            deprecation_error(
-                (2022, 12, 19), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
-            )
-        else:
-            # We didn't support targeting a GPU type for run_function until 2023-12-12
-            deprecation_warning(
-                (2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
-            )
-        return Any()
+        deprecation_error(
+            (2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
+        )
+        return None
     elif value is None or value is False:
         return None
     else:
         raise InvalidError(f"Invalid GPU config: {value}. Value must be a string, a `GPUConfig` object, or `None`.")
 
 
-def parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> api_pb2.GPUConfig:
+def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
     """mdmd:hidden"""
-    gpu_config = _parse_gpu_config(value, raise_on_true)
+    gpu_config = _parse_gpu_config(value)
     if gpu_config is None:
         return api_pb2.GPUConfig()
     return gpu_config._to_proto()
@@ -242,4 +236,4 @@ def parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> api_pb2.GPUCon
 
 def display_gpu_config(value: GPU_T) -> str:
     """mdmd:hidden"""
-    return repr(_parse_gpu_config(value, False))
+    return repr(_parse_gpu_config(value))

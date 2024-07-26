@@ -6,11 +6,10 @@ from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
 
 from grpclib import GRPCError, Status
 
-from modal_proto import api_pb2
-
 from ._utils.async_utils import TaskContext
 from .client import _Client
-from .exception import ExecutionError, NotFoundError
+from .config import logger
+from .exception import NotFoundError
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -55,7 +54,6 @@ class Resolver:
         self,
         client=None,
         *,
-        output_mgr=None,
         environment_name: Optional[str] = None,
         app_id: Optional[str] = None,
     ):
@@ -63,7 +61,6 @@ class Resolver:
 
         from ._output import step_progress
 
-        self._output_mgr = output_mgr
         self._local_uuid_to_future = {}
         self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
         self._client = client
@@ -72,9 +69,7 @@ class Resolver:
         self._deduplication_cache = {}
 
     @property
-    def app_id(self) -> str:
-        if self._app_id is None:
-            raise ExecutionError("Resolver has no app")
+    def app_id(self) -> Optional[str]:
         return self._app_id
 
     @property
@@ -148,8 +143,11 @@ class Resolver:
             self._local_uuid_to_future[obj.local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
-
-        return await cached_future
+        try:
+            return await cached_future
+        except:
+            logger.exception(f"Exception when resolving {obj}")
+            raise
 
     def objects(self) -> List["_Object"]:
         unique_objects: Dict[str, "_Object"] = {}
@@ -165,27 +163,16 @@ class Resolver:
 
     @contextlib.contextmanager
     def display(self):
-        from ._output import step_completed
+        # TODO(erikbern): get rid of this wrapper
+        from ._output import OutputManager, step_completed
 
-        if self._output_mgr is None:
-            yield
-        else:
-            with self._output_mgr.ctx_if_visible(self._output_mgr.make_live(self._tree)):
+        if output_mgr := OutputManager.get():
+            with output_mgr.make_live(self._tree):
                 yield
             self._tree.label = step_completed("Created objects.")
-            self._output_mgr.print_if_visible(self._tree)
+            output_mgr.print(self._tree)
+        else:
+            yield
 
     def add_status_row(self) -> StatusRow:
         return StatusRow(self._tree)
-
-    async def console_write(self, log: api_pb2.TaskLogs):
-        if self._output_mgr is not None:
-            await self._output_mgr.put_log_content(log)
-
-    def console_flush(self):
-        if self._output_mgr is not None:
-            self._output_mgr.flush_lines()
-
-    def image_snapshot_update(self, image_id: str, task_progress: api_pb2.TaskProgress):
-        if self._output_mgr is not None:
-            self._output_mgr.update_snapshot_progress(image_id, task_progress)

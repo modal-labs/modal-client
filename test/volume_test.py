@@ -78,12 +78,12 @@ async def test_volume_get(servicer, client, tmp_path):
     vol = await modal.Volume.lookup.aio("my-vol", client=client)  # type: ignore
 
     file_contents = b"hello world"
-    file_path = b"foo.txt"
-    local_file_path = tmp_path / file_path.decode("utf-8")
+    file_path = "foo.txt"
+    local_file_path = tmp_path / file_path
     local_file_path.write_bytes(file_contents)
 
     async with vol.batch_upload() as batch:
-        batch.put_file(local_file_path, file_path.decode("utf-8"))
+        batch.put_file(local_file_path, file_path)
 
     data = b""
     for chunk in vol.read_file(file_path):
@@ -207,6 +207,22 @@ async def test_volume_upload_large_file(client, tmp_path, servicer, blob_server,
         _, blobs = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
+@pytest.mark.asyncio
+async def test_volume_upload_large_stream(client, servicer, blob_server, *args):
+    with mock.patch("modal._utils.blob_utils.LARGE_FILE_LIMIT", 10):
+        stream = io.BytesIO(b"hello world, this is a lot of text")
+
+        async with modal.Volume.ephemeral(client=client) as vol:
+            async with vol.batch_upload() as batch:
+                batch.put_file(stream, "/a")
+            object_id = vol.object_id
+
+        assert servicer.volume_files[object_id].keys() == {"/a"}
+        assert servicer.volume_files[object_id]["/a"].data == b""
+        assert servicer.volume_files[object_id]["/a"].data_blob_id == "bl-1"
+
+        _, blobs = blob_server
+        assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
 @pytest.mark.asyncio
 async def test_volume_upload_file_timeout(client, tmp_path, servicer, blob_server, *args):

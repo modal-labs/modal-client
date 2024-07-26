@@ -2,6 +2,7 @@
 import asyncio
 import concurrent.futures
 import enum
+import functools
 import os
 import platform
 import re
@@ -46,7 +47,7 @@ from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Ob
 
 # Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
-VOLUME_PUT_FILE_CLIENT_TIMEOUT = 30 * 60
+VOLUME_PUT_FILE_CLIENT_TIMEOUT = 60 * 60
 
 
 class FileEntryType(enum.IntEnum):
@@ -376,7 +377,7 @@ class _Volume(_Object, type_prefix="vo"):
         return [entry async for entry in self.iterdir(path, recursive=recursive)]
 
     @live_method_gen
-    async def read_file(self, path: Union[str, bytes]) -> AsyncIterator[bytes]:
+    async def read_file(self, path: str) -> AsyncIterator[bytes]:
         """
         Read a file from the modal.Volume.
 
@@ -390,8 +391,6 @@ class _Volume(_Object, type_prefix="vo"):
         print(len(data))  # == 1024 * 1024
         ```
         """
-        if isinstance(path, str):
-            path = path.encode("utf-8")
         req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
         try:
             response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
@@ -406,14 +405,12 @@ class _Volume(_Object, type_prefix="vo"):
                 yield data
 
     @live_method
-    async def read_file_into_fileobj(self, path: Union[str, bytes], fileobj: IO[bytes]) -> int:
+    async def read_file_into_fileobj(self, path: str, fileobj: IO[bytes]) -> int:
         """mdmd:hidden
 
         Read volume file into file-like IO object.
         In the future, this will replace the current generator implementation of the `read_file` method.
         """
-        if isinstance(path, str):
-            path = path.encode("utf-8")
 
         chunk_size_bytes = 8 * 1024 * 1024
         start = 0
@@ -456,15 +453,13 @@ class _Volume(_Object, type_prefix="vo"):
         return written
 
     @live_method
-    async def remove_file(self, path: Union[str, bytes], recursive: bool = False) -> None:
+    async def remove_file(self, path: str, recursive: bool = False) -> None:
         """Remove a file or directory from a volume."""
-        if isinstance(path, str):
-            path = path.encode("utf-8")
         req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
         await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
 
     @live_method
-    async def copy_files(self, src_paths: Sequence[Union[str, bytes]], dst_path: Union[str, bytes]) -> None:
+    async def copy_files(self, src_paths: Sequence[str], dst_path: str) -> None:
         """
         Copy files within the volume from src_paths to dst_path.
         The semantics of the copy operation follow those of the UNIX cp command.
@@ -488,10 +483,6 @@ class _Volume(_Object, type_prefix="vo"):
         like `os.rename()` and then `commit()` the volume. The `copy_files()` method is useful when you don't have
         the volume mounted as a filesystem, e.g. when running a script on your local computer.
         """
-        src_paths = [path.encode("utf-8") for path in src_paths if isinstance(path, str)]
-        if isinstance(dst_path, str):
-            dst_path = dst_path.encode("utf-8")
-
         request = api_pb2.VolumeCopyFilesRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
         await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
 
@@ -556,13 +547,15 @@ class _VolumeUploadContextManager:
     _volume_id: str
     _client: _Client
     _force: bool
+    progress_cb: Callable
     _upload_generators: List[Generator[Callable[[], FileUploadSpec], None, None]]
 
-    def __init__(self, volume_id: str, client: _Client, force: bool = False):
+    def __init__(self, volume_id: str, client: _Client, progress_cb: Optional[Callable] = None, force: bool = False):
         """mdmd:hidden"""
         self._volume_id = volume_id
         self._client = client
         self._upload_generators = []
+        self._progress_cb = progress_cb or (lambda *_, **__: None)
         self._force = force
 
     async def __aenter__(self):
@@ -589,6 +582,7 @@ class _VolumeUploadContextManager:
             # Upload files
             uploads_stream = aiostream.stream.map(files_stream, self._upload_file, task_limit=20)
             files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
+            self._progress_cb(complete=True)
 
             request = api_pb2.VolumePutFilesRequest(
                 volume_id=self._volume_id,
@@ -654,7 +648,7 @@ class _VolumeUploadContextManager:
 
     async def _upload_file(self, file_spec: FileUploadSpec) -> api_pb2.MountFile:
         remote_filename = file_spec.mount_filename
-
+        progress_task_id = self._progress_cb(name=remote_filename, size=file_spec.size)
         request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
         response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
 
@@ -663,7 +657,9 @@ class _VolumeUploadContextManager:
             if file_spec.use_blob:
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
                 with file_spec.source() as fp:
-                    blob_id = await blob_upload_file(fp, self._client.stub)
+                    blob_id = await blob_upload_file(
+                        fp, self._client.stub, functools.partial(self._progress_cb, progress_task_id)
+                    )
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
@@ -671,6 +667,7 @@ class _VolumeUploadContextManager:
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
+                self._progress_cb(task_id=progress_task_id, complete=True)
 
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
                 response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
@@ -679,7 +676,8 @@ class _VolumeUploadContextManager:
 
             if not response.exists:
                 raise VolumeUploadTimeoutError(f"Uploading of {file_spec.source_description} timed out")
-
+        else:
+            self._progress_cb(task_id=progress_task_id, complete=True)
         return api_pb2.MountFile(
             filename=remote_filename,
             sha256_hex=file_spec.sha256_hex,

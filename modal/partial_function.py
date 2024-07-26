@@ -67,7 +67,7 @@ class _PartialFunction:
             else:
                 # special edge case: referencing a method of an instance of an
                 # unwrapped class (not using app.cls()) with @methods
-                # not sure what would be useful here, but lets return a bound version of the underlying function,
+                # not sure what would be useful here, but let's return a bound version of the underlying function,
                 # since the class is just a vanilla class at this point
                 # This wouldn't let the user access `.remote()` and `.local()` etc. on the function
                 return self.raw_f.__get__(obj, objtype)
@@ -546,9 +546,9 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
         if method_has_params(f):
             message = (
                 "Support for decorating parameterized methods with `@exit` has been deprecated."
-                " To avoid future errors, please update your code by removing the parameters."
+                " Please update your code by removing the parameters."
             )
-            deprecation_warning((2024, 2, 23), message)
+            deprecation_error((2024, 2, 23), message)
         return _PartialFunction(f, _PartialFunctionFlags.EXIT)
 
     return wrapper
