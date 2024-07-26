@@ -779,7 +779,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         if function_def.is_checkpointing_function:
             container_io_manager.memory_snapshot()
 
-
         # Install hooks for interactive functions.
         if function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
 
