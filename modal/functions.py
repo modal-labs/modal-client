@@ -1092,7 +1092,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
-        assert metadata and isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata)
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
