@@ -161,15 +161,21 @@ async def _publish_app(
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
 ) -> str:
-    def filter_dict(full_dict: Dict[str, V], condition: Callable[[V], bool]) -> Dict[str, V]:
+    """Wrapper for AppPublish RPC."""
+
+    # Could simplify this function some changing the internal representation to use
+    # function_ids / class_ids rather than the current tag_to_object_id (i.e. "indexed_objects")
+    def filter_values(full_dict: Dict[str, V], condition: Callable[[V], bool]) -> Dict[str, V]:
         return {k: v for k, v in full_dict.items() if condition(v)}
 
     # The entity prefixes are defined in the monorepo; is there any way to share them here?
-    function_ids = filter_dict(running_app.tag_to_object_id, lambda v: v.startswith("fu-"))
-    class_ids = filter_dict(running_app.tag_to_object_id, lambda v: v.startswith("cs-"))
+    function_ids = filter_values(running_app.tag_to_object_id, lambda v: v.startswith("fu-"))
+    class_ids = filter_values(running_app.tag_to_object_id, lambda v: v.startswith("cs-"))
+    function_objs = filter_values(indexed_objects, lambda v: v.object_id in function_ids.values())
 
-    function_objs = filter_dict(indexed_objects, lambda v: v.object_id in function_ids.values())
-    definition_ids = {obj.object_id: obj._definition_id for obj in function_objs.values()}
+    function_metadata = {obj.object_id: obj._get_metadata() for obj in function_objs.values()}
+    assert all(isinstance(obj, api_pb2.FunctionHandleMetadata) for obj in function_objs.values())
+    definition_ids = {object_id: metadata.definition_id for object_id, metadata in function_metadata}
 
     request = api_pb2.AppPublishRequest(
         app_id=running_app.app_id,
@@ -183,9 +189,7 @@ async def _publish_app(
     try:
         response = await retry_transient_errors(client.stub.AppPublish, request)
     except GRPCError as exc:
-        if exc.status == Status.INVALID_ARGUMENT:
-            raise InvalidError(exc.message)
-        if exc.status == Status.FAILED_PRECONDITION:
+        if exc.status == Status.INVALID_ARGUMENT or exc.status == Status.FAILED_PRECONDITION:
             raise InvalidError(exc.message)
         raise
 
@@ -462,7 +466,6 @@ async def _deploy_app(
                 client, running_app, api_pb2.APP_STATE_DEPLOYED, app._indexed_objects, name, tag
             )
         except Exception as e:
-            # TODO(michael) figure out if we need to change anything in the disconnection logic
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
             await _disconnect(client, running_app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
