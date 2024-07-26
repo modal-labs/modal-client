@@ -1120,6 +1120,7 @@ class _Function(_Object, type_prefix="fu"):
             use_function_id=self._use_function_id,
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
+            definition_id=self._definition_id,
         )
 
     def _set_mute_cancellation(self, value: bool = True):
