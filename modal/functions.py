@@ -519,7 +519,6 @@ class _Function(_Object, type_prefix="fu"):
             assert info.user_cls
             assert not webhook_config
             assert not schedule
-            assert batch_max_size is None
 
         if secret is not None:
             deprecation_error(

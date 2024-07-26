@@ -107,17 +107,6 @@ class _PartialFunction:
             batch_linger_ms=self.batch_linger_ms,
         )
 
-    def set_batch_params(self, batch_max_size, batch_linger_ms) -> "_PartialFunction":
-        self.wrapped = True
-        return _PartialFunction(
-            raw_f=self.raw_f,
-            flags=(self.flags | _PartialFunctionFlags.BATCH),
-            webhook_config=self.webhook_config,
-            keep_warm=self.keep_warm,
-            batch_max_size=batch_max_size,
-            batch_linger_ms=batch_linger_ms,
-        )
-
 
 PartialFunction = synchronize_api(_PartialFunction)
 
@@ -213,10 +202,16 @@ def _method(
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         nonlocal is_generator
-        if isinstance(raw_f, _PartialFunction) and (raw_f.webhook_config or (raw_f.batch_max_size is not None)):
+        if isinstance(raw_f, _PartialFunction) and (raw_f.webhook_config):
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
                 "Web endpoints on classes should not be wrapped by `@method`. "
+                "Suggestion: remove the `@method` decorator."
+            )
+        if isinstance(raw_f, _PartialFunction) and (raw_f.batch_max_size is not None):
+            raw_f.wrapped = True  # suppress later warning
+            raise InvalidError(
+                "Batched function on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
         if is_generator is None:
@@ -594,14 +589,19 @@ def _batch(
     if batch_linger_ms > MAX_BATCH_LINGER_MS:
         raise InvalidError(f"batch_linger_ms must be less than or equal to {MAX_BATCH_LINGER_MS}.")
 
-    def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
-        if isinstance(f, _PartialFunction):
-            _disallow_wrapping_method(f, "batch")
-            return f.set_batch_params(batch_max_size, batch_linger_ms)
-        else:
-            return _PartialFunction(
-                f, _PartialFunctionFlags.BATCH, batch_max_size=batch_max_size, batch_linger_ms=batch_linger_ms
+    def wrapper(raw_f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
+        if isinstance(raw_f, _Function):
+            raw_f = raw_f.get_raw_f()
+            raise InvalidError(
+                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
+                "@app.function()\n@modal.batch()\ndef batched_function():\n    ..."
             )
+        return _PartialFunction(
+            raw_f,
+            _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.BATCH,
+            batch_max_size=batch_max_size,
+            batch_linger_ms=batch_linger_ms,
+        )
 
     return wrapper
 

@@ -139,13 +139,6 @@ def get_func_signature_info(func, ignore_self=False):
     signature_params = list(inspect.signature(func).parameters.values())
     function_name = func.__name__
 
-    if ignore_self:
-        if len(signature_params) == 0:
-            raise ValueError(
-                "Methods must take a 'self' argument, but the " f"method '{func.__name__}' does not have one."
-            )
-        signature_params = signature_params[1:]
-
     param_names_and_defaults = [(param.name, param.default) for param in signature_params]
     return FuncSignatureInfo(function_name, param_names_and_defaults)
 
@@ -224,7 +217,7 @@ class ImportedClass(Service):
                     is_async=is_async,
                     is_generator=is_generator,
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
-                    signature_info=get_func_signature_info(bound_func, ignore_self=True),
+                    signature_info=get_func_signature_info(bound_func),
                 )
             else:
                 web_callable = construct_webhook_callable(bound_func, webhook_config, container_io_manager)
@@ -233,7 +226,7 @@ class ImportedClass(Service):
                     is_async=True,
                     is_generator=True,
                     data_format=api_pb2.DATA_FORMAT_ASGI,
-                    signature_info=get_func_signature_info(bound_func, ignore_self=True),
+                    signature_info=get_func_signature_info(bound_func),
                 )
             finalized_functions[method_name] = finalized_function
         return finalized_functions
@@ -367,7 +360,7 @@ def _aggregate_ids_and_args(
                 for local_input in local_inputs
             ]
         )
-        args_and_kwargs_dict = [{} for _ in input_ids]
+        args_and_kwargs_dict: List[Dict[str, Any]] = [{} for _ in input_ids]
         for i, (args, kwargs) in enumerate(zip(args_list, kwargs_list)):
             for j, arg in enumerate(args):
                 if j < len(signature_info.params_and_defaults):
@@ -500,6 +493,10 @@ def call_function(
             if finalized_function.is_generator:
                 if not inspect.isgenerator(res):
                     raise InvalidError(f"Generator function returned value of type {type(res)}")
+                if isinstance(function_call_ids, list):
+                    raise InvalidError(
+                        f"Batched function {finalized_function.signature_info.func_name} cannot return generators."
+                    )
 
                 # Send up to this many outputs at a time.
                 generator_queue: asyncio.Queue[Any] = container_io_manager._queue_create(1024)

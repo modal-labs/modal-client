@@ -84,7 +84,7 @@ def _get_inputs_batched(
         *([api_pb2.FunctionGetInputsItem(kill_switch=True)] if kill_switch else []),
     ]
     response_list = []
-    current_batch = []
+    current_batch: List[Any] = []
     while inputs:
         input = inputs.pop(0)
         if input.kill_switch:
@@ -1120,7 +1120,7 @@ def test_batched_sync_function(servicer):
 
 @skip_github_non_linux
 def test_batched_sync_function_inputs_error(servicer):
-    args_list = [((3,), {"y": 5}) for _ in range(3)] + [(tuple(), {"y": 5})]
+    args_list: List[Any] = [((3,), {"y": 5}) for _ in range(3)] + [(tuple(), {"y": 5})]
     with pytest.raises(InvalidError) as err:
         batch_max_size = 4
         batch_linger_ms = 500
