@@ -346,6 +346,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def AppPublish(self, stream):
         request: api_pb2.AppPublishRequest = await stream.recv_message()
+        for key, val in request.definition_ids.items():
+            assert key.startswith("fu-")
+            assert val.startswith("de-")
+        # TODO(michael) add some other assertions once we make the mock server represent real RPCs more accurately
         self.app_publish_count += 1
         self.app_objects[request.app_id] = {**request.function_ids, **request.class_ids}
         self.app_state_history[request.app_id].append(request.app_state)
@@ -715,6 +719,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     web_url=function.web_url,
                     use_function_id=function.use_function_id or function_id,
                     use_method_name=function.use_method_name,
+                    definition_id=f"de-{self.n_functions}",
                 ),
             )
         )
