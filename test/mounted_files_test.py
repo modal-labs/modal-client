@@ -166,7 +166,7 @@ def symlinked_python_installation_venv_path(tmp_path, repo_root):
     symlink_python_install.symlink_to(python_install_dir)
 
     # use a python executable specified via the above symlink
-    symlink_python_executable = symlink_python_install / "bin" / "python"
+    symlink_python_executable = symlink_python_install / "bin" / actual_executable.name
     # create a new venv
     subprocess.check_call([symlink_python_executable, "-m", "venv", venv_path, "--copies"])
     # check that a builtin module, like ast, is indeed identified to be in the non-resolved install path
