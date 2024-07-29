@@ -70,14 +70,12 @@ def step_progress_update(spinner: Spinner, message: str):
     spinner.update(text=message)
 
 
-def step_completed(message: str, is_substep: bool = False) -> RenderableType:
-    """Returns the element to be rendered when a step is completed."""
+def step_completed(message: str) -> RenderableType:
+    return f"[green]✓[/green] {message}"
 
-    STEP_COMPLETED = "[green]✓[/green]"
-    SUBSTEP_COMPLETED = "🔨"
 
-    symbol = SUBSTEP_COMPLETED if is_substep else STEP_COMPLETED
-    return f"{symbol} {message}"
+def substep_completed(message: str) -> RenderableType:
+    return f"🔨 {message}"
 
 
 def download_progress_bar() -> Progress:

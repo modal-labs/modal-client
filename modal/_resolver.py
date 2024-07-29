@@ -36,11 +36,11 @@ class StatusRow:
             step_progress_update(self._spinner, message)
 
     def finish(self, message):
-        from ._output import step_completed, step_progress_update
+        from ._output import step_progress_update, substep_completed
 
         if self._step_node is not None:
             step_progress_update(self._spinner, message)
-            self._step_node.label = step_completed(message, is_substep=True)
+            self._step_node.label = substep_completed(message)
 
 
 class Resolver:
