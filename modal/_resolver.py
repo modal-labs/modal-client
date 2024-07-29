@@ -30,16 +30,14 @@ class StatusRow:
             self._step_node = progress.add(self._spinner)
 
     def message(self, message):
-        from ._output import step_progress_update
-
         if self._spinner is not None:
-            step_progress_update(self._spinner, message)
+            self._spinner.update(text=message)
 
     def finish(self, message):
-        from ._output import step_progress_update, substep_completed
+        from ._output import substep_completed
 
         if self._step_node is not None:
-            step_progress_update(self._spinner, message)
+            self._spinner.update(text=message)
             self._step_node.label = substep_completed(message)
 
 
