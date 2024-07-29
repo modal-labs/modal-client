@@ -171,11 +171,9 @@ async def _publish_app(
     # The entity prefixes are defined in the monorepo; is there any way to share them here?
     function_ids = filter_values(running_app.tag_to_object_id, lambda v: v.startswith("fu-"))
     class_ids = filter_values(running_app.tag_to_object_id, lambda v: v.startswith("cs-"))
-    function_objs = filter_values(indexed_objects, lambda v: v.object_id in function_ids.values())
 
-    function_metadata = {obj.object_id: obj._get_metadata() for obj in function_objs.values()}
-    assert all(isinstance(obj, api_pb2.FunctionHandleMetadata) for obj in function_objs.values())
-    definition_ids = {object_id: metadata.definition_id for object_id, metadata in function_metadata}
+    function_objs = filter_values(indexed_objects, lambda v: v.object_id in function_ids.values())
+    definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in function_objs.values()}  # type: ignore
 
     request = api_pb2.AppPublishRequest(
         app_id=running_app.app_id,
