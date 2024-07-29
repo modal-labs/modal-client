@@ -434,7 +434,7 @@ class _App:
 
     def local_entrypoint(
         self, _warn_parentheses_missing: Any = None, *, name: Optional[str] = None
-    ) -> Callable[[Callable[..., Any]], None]:
+    ) -> Callable[[Callable[..., Any]], _LocalEntrypoint]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -488,7 +488,7 @@ class _App:
         if name is not None and not isinstance(name, str):
             raise InvalidError("Invalid value for `name`: Must be string.")
 
-        def wrapped(raw_f: Callable[..., Any]) -> None:
+        def wrapped(raw_f: Callable[..., Any]) -> _LocalEntrypoint:
             info = FunctionInfo(raw_f)
             tag = name if name is not None else raw_f.__qualname__
             if tag in self._local_entrypoints:

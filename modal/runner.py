@@ -171,7 +171,7 @@ async def _disconnect(
     client: _Client,
     app_id: str,
     reason: "api_pb2.AppDisconnectReason.ValueType",
-    exc_str: Optional[str] = None,
+    exc_str: str = "",
 ) -> None:
     """Tell the server the client has disconnected for this app. Terminates all running tasks
     for ephemeral apps."""

@@ -232,6 +232,15 @@ def type_stubs(ctx):
     # We only generate type stubs for modules that contain synchronicity wrapped types
     from synchronicity.synchronizer import SYNCHRONIZER_ATTR
 
+    stubs_to_remove = []
+    for root, _, files in os.walk("modal"):
+        for file in files:
+            if file.endswith(".pyi"):
+                stubs_to_remove.append(os.path.abspath(os.path.join(root, file)))
+    for path in sorted(stubs_to_remove):
+        os.remove(path)
+        print(f"Removed {path}")
+
     def find_modal_modules(root: str = "modal"):
         modules = []
         path = importlib.import_module(root).__path__
