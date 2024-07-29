@@ -127,15 +127,12 @@ class Resolver:
                     raise
 
                 # Check that the id of functions and classes didn't change
-                # TODO(erikbern): revisit this once stub assignments have been disallowed
-                if not obj._is_another_app and (obj.object_id.startswith("fu-") or obj.object_id.startswith("cs-")):
-                    # Persisted refs are ignored because their life cycle is managed independently.
-                    # The same tag on an app can be pointed at different objects.
-                    if existing_object_id is not None and obj.object_id != existing_object_id:
-                        raise Exception(
-                            f"Tried creating an object using existing id {existing_object_id}"
-                            f" but it has id {obj.object_id}"
-                        )
+                # Persisted refs are ignored because their life cycle is managed independently.
+                if not obj._is_another_app and existing_object_id is not None and obj.object_id != existing_object_id:
+                    raise Exception(
+                        f"Tried creating an object using existing id {existing_object_id}"
+                        f" but it has id {obj.object_id}"
+                    )
 
                 return obj
 
