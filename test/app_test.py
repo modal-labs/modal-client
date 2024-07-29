@@ -302,8 +302,8 @@ def test_hydrated_other_app_object_gets_referenced(servicer, client):
         with Volume.ephemeral(client=client) as vol:
             app.function(volumes={"/vol": vol})(dummy)  # implicitly load vol
             deploy_app(app, client=client)
-            function_create_req: api_pb2.FunctionCreateRequest = ctx.pop_request("FunctionCreate")
-            assert vol.object_id in {obj.object_id for obj in function_create_req.function.object_dependencies}
+            app_set_objects_req = ctx.pop_request("AppSetObjects")
+            assert vol.object_id in app_set_objects_req.unindexed_object_ids
 
 
 def test_hasattr():
