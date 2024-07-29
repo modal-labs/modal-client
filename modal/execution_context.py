@@ -32,7 +32,7 @@ async def _interact() -> None:
 interact = synchronize_api(_interact)
 
 
-def current_input_id() -> Optional[Union[str, List[str]]]:
+def current_input_id() -> Optional[str]:
     """Returns the input ID for the current input.
 
     Can only be called from Modal function (i.e. in a container context).
@@ -73,8 +73,15 @@ def current_function_call_id() -> Optional[str]:
 def _set_current_context_ids(
     input_ids: Union[str, List[str]], function_call_ids: Union[str, List[str]]
 ) -> Callable[[], None]:
-    input_token = _current_input_id.set(input_ids)
-    function_call_token = _current_function_call_id.set(function_call_ids)
+    if isinstance(input_ids, list):
+        assert len(input_ids) == len(function_call_ids) and len(input_ids) > 0
+        input_id = input_ids[0]
+        function_call_id = function_call_ids[0]
+    else:
+        input_id = input_ids
+        function_call_id = function_call_ids
+    input_token = _current_input_id.set(input_id)
+    function_call_token = _current_function_call_id.set(function_call_id)
 
     def _reset_current_context_ids():
         _current_input_id.reset(input_token)

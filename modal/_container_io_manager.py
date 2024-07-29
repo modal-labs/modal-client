@@ -9,7 +9,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple, Union
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -47,7 +47,8 @@ class LocalInput:
     input_id: str
     function_call_id: str
     method_name: str
-    input_args: Any
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
 
 
 class _ContainerIOManager:
@@ -459,17 +460,17 @@ class _ContainerIOManager:
 
         if batch_max_size == 0:
             async for input_id, function_call_id, input_pb in self._generate_inputs():
+                args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
                 self.current_input_id, self.current_input_started_at = (input_id, time.time())
-                yield LocalInput(input_id, function_call_id, input_pb.method_name, input_pb.args)
+                yield LocalInput(input_id, function_call_id, input_pb.method_name, args, kwargs)
                 self.current_input_id, self.current_input_started_at = (None, None)
         else:
             async for inputs_list in self._generate_inputs():
                 local_inputs_list = []
                 for input_id, function_call_id, input_pb in inputs_list:
+                    args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
                     self.current_input_id, self.current_input_started_at = (input_id, time.time())
-                    local_inputs_list.append(
-                        LocalInput(input_id, function_call_id, input_pb.method_name, input_pb.args)
-                    )
+                    local_inputs_list.append(LocalInput(input_id, function_call_id, input_pb.method_name, args, kwargs))
                     self.current_input_id, self.current_input_started_at = (None, None)
                 yield local_inputs_list
 

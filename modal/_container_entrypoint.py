@@ -354,12 +354,7 @@ def _aggregate_ids_and_args(
             [param for param in signature_info.params_and_defaults if param[1] == inspect.Parameter.empty]
         )
         num_args = len(signature_info.params_and_defaults)
-        args_list, kwargs_list = zip(
-            *[
-                container_io_manager.deserialize(local_input.input_args) if local_input.input_args else ((), {})
-                for local_input in local_inputs
-            ]
-        )
+        args_list, kwargs_list = zip(*[(local_input.args, local_input.kwargs) for local_input in local_inputs])
         args_and_kwargs_dict: List[Dict[str, Any]] = [{} for _ in input_ids]
         for i, (args, kwargs) in enumerate(zip(args_list, kwargs_list)):
             for j, arg in enumerate(args):
@@ -407,9 +402,7 @@ def _aggregate_ids_and_args(
     else:
         input_id = local_inputs.input_id
         function_call_id = local_inputs.function_call_id
-        args, kwargs = (
-            container_io_manager.deserialize(local_inputs.input_args) if local_inputs.input_args else ((), {})
-        )
+        args, kwargs = local_inputs.args, local_inputs.kwargs
         return input_id, function_call_id, args, kwargs
 
 
