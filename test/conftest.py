@@ -171,7 +171,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_client_disconnect_count = 0
         self.app_get_logs_initial_count = 0
         self.app_set_objects_count = 0
-        self.app_publish_count = 0
 
         self.volume_counter = 0
         # Volume-id -> commit/reload count
@@ -311,17 +310,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         object_ids = self.app_objects.get(request.app_id, {})
         objects = list(object_ids.items())
         if request.include_unindexed:
-            unindexed_object_ids = set()
-            for object_id in object_ids.values():
-                if object_id.startswith("fu-"):
-                    definition = self.app_functions[object_id]
-                    unindexed_object_ids |= {obj.object_id for obj in definition.object_dependencies}
+            unindexed_object_ids = self.app_unindexed_objects.get(request.app_id, [])
             objects += [(None, object_id) for object_id in unindexed_object_ids]
-            # TODO(michael) This perpetuates a hack! The container_test tests rely on hardcoded unindexed_object_ids
-            # but we now look those up dynamically from the indexed objects in (the real) AppGetObjects. But the
-            # container tests never actually set indexed objects on the app. We need a total rewrite here.
-            if (None, "im-1") not in objects:
-                objects.append((None, "im-1"))
         items = [
             api_pb2.AppGetObjectsItem(tag=tag, object=self.get_object_metadata(object_id)) for tag, object_id in objects
         ]
@@ -343,21 +333,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_apps[request.name] = request.app_id
         self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
         await stream.send_message(api_pb2.AppDeployResponse(url="http://test.modal.com/foo/bar"))
-
-    async def AppPublish(self, stream):
-        request: api_pb2.AppPublishRequest = await stream.recv_message()
-        for key, val in request.definition_ids.items():
-            assert key.startswith("fu-")
-            assert val.startswith("de-")
-        # TODO(michael) add some other assertions once we make the mock server represent real RPCs more accurately
-        self.app_publish_count += 1
-        self.app_objects[request.app_id] = {**request.function_ids, **request.class_ids}
-        self.app_state_history[request.app_id].append(request.app_state)
-        if request.app_state == api_pb2.AppState.APP_STATE_DEPLOYED:
-            self.deployed_apps[request.name] = request.app_id
-            await stream.send_message(api_pb2.AppPublishResponse(url="http://test.modal.com/foo/bar"))
-        else:
-            await stream.send_message(api_pb2.AppPublishResponse())
 
     async def AppGetByDeploymentName(self, stream):
         request: api_pb2.AppGetByDeploymentNameRequest = await stream.recv_message()
@@ -719,7 +694,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     web_url=function.web_url,
                     use_function_id=function.use_function_id or function_id,
                     use_method_name=function.use_method_name,
-                    definition_id=f"de-{self.n_functions}",
                 ),
             )
         )
@@ -868,9 +842,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ImageGetOrCreate(self, stream):
         request: api_pb2.ImageGetOrCreateRequest = await stream.recv_message()
-        for image_id, image in self.images.items():
-            if request.image.SerializeToString() == image.SerializeToString():
-                await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=image_id))
+        for k in self.images:
+            if request.image.SerializeToString() == self.images[k].SerializeToString():
+                await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=k))
                 return
         idx = len(self.images) + 1
         image_id = f"im-{idx}"

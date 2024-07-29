@@ -21,7 +21,7 @@ def app_ref(test_dir):
 async def test_live_reload(app_ref, server_url_env, servicer):
     async with serve_app.aio(app, app_ref):
         await asyncio.sleep(3.0)
-    assert servicer.app_publish_count == 1
+    assert servicer.app_set_objects_count == 1
     assert servicer.app_client_disconnect_count == 1
     assert servicer.app_get_logs_initial_count == 0
 
@@ -31,7 +31,7 @@ async def test_live_reload_with_logs(app_ref, server_url_env, servicer):
     with enable_output():
         async with serve_app.aio(app, app_ref):
             await asyncio.sleep(3.0)
-    assert servicer.app_publish_count == 1
+    assert servicer.app_set_objects_count == 1
     assert servicer.app_client_disconnect_count == 1
     assert servicer.app_get_logs_initial_count == 1
 
@@ -51,8 +51,8 @@ def test_file_changes_trigger_reloads(app_ref, server_url_env, servicer):
     # TODO ideally we would assert the specific expected number here, but this test
     # is consistently flaking in CI and I cannot reproduce locally to debug.
     # I'm relaxing the assertion for now to stop the test from blocking deployments.
-    # assert servicer.app_publish_count == 4  # 1 + number of file changes
-    assert servicer.app_publish_count > 1
+    # assert servicer.app_set_objects_count == 4  # 1 + number of file changes
+    assert servicer.app_set_objects_count > 1
     assert servicer.app_client_disconnect_count == 1
     foo = app.indexed_objects["foo"]
     assert isinstance(foo, Function)
@@ -69,7 +69,7 @@ async def test_no_change(app_ref, server_url_env, servicer):
     async with serve_app.aio(app, app_ref, _watcher=fake_watch()):
         pass
 
-    assert servicer.app_publish_count == 1  # Should create the initial app once
+    assert servicer.app_set_objects_count == 1  # Should create the initial app once
     assert servicer.app_client_disconnect_count == 1
 
 

@@ -18,7 +18,7 @@ def test_run_app(servicer, client):
             pass
 
     ctx.pop_request("AppCreate")
-    ctx.pop_request("AppPublish")
+    ctx.pop_request("AppSetObjects")
     ctx.pop_request("AppClientDisconnect")
 
 
