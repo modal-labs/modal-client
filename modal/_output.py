@@ -167,6 +167,7 @@ class OutputManager:
     _app_page_url: Optional[str]
     _show_image_logs: bool
     _status_spinner_live: Optional[Live]
+    _tree: Optional[Tree]
 
     def __init__(
         self,
@@ -187,6 +188,7 @@ class OutputManager:
         self._app_page_url = None
         self._show_image_logs = False
         self._status_spinner_live = None
+        self._tree = None
 
     @classmethod
     def disable(cls):
@@ -384,6 +386,21 @@ class OutputManager:
         self._status_spinner_live = self.make_live(self._status_spinner)
         with self._status_spinner_live:
             yield
+
+    @contextlib.contextmanager
+    def make_tree(self):
+        self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
+
+        try:
+            with self.make_live(self._tree):
+                yield
+            self._tree.label = step_completed("Created objects.")
+            self.print(self._tree)
+        finally:
+            self._tree = None
+
+    def add_status_row(self) -> "StatusRow":
+        return StatusRow(self._tree)
 
 
 class ProgressHandler:
@@ -677,13 +694,15 @@ class FunctionCreationStatus:
     tag: str
     response: Optional[api_pb2.FunctionCreateResponse] = None
 
-    def __init__(self, resolver, tag):
-        self.resolver = resolver
+    def __init__(self, tag):
         self.tag = tag
 
     def __enter__(self):
-        self.status_row = self.resolver.add_status_row()
-        self.status_row.message(f"Creating function {self.tag}...")
+        if output_mgr := OutputManager.get():
+            self.status_row = output_mgr.add_status_row()
+            self.status_row.message(f"Creating function {self.tag}...")
+        else:
+            self.status_row = None
         return self
 
     def set_response(self, resp: api_pb2.FunctionCreateResponse):
@@ -694,7 +713,8 @@ class FunctionCreationStatus:
             raise exc_val
 
         if not self.response:
-            self.status_row.finish(f"Unknown error when creating function {self.tag}")
+            if self.status_row:
+                self.status_row.finish(f"Unknown error when creating function {self.tag}")
 
         elif self.response.function.web_url:
             url_info = self.response.function.web_url_info
@@ -707,19 +727,22 @@ class FunctionCreationStatus:
                 suffix = ""
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
             web_url = self.response.handle_metadata.web_url
-            self.status_row.finish(
-                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]{suffix}"
-            )
+            if self.status_row:
+                self.status_row.finish(
+                    f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]{suffix}"
+                )
 
             # Print custom domain in terminal
             for custom_domain in self.response.function.custom_domain_info:
-                custom_domain_status_row = self.resolver.add_status_row()
-                custom_domain_status_row.finish(
-                    f"Custom domain for {self.tag} => [magenta underline]"
-                    f"{custom_domain.url}[/magenta underline]{suffix}"
-                )
+                if output_mgr := OutputManager.get():
+                    custom_domain_status_row = output_mgr.add_status_row()
+                    custom_domain_status_row.finish(
+                        f"Custom domain for {self.tag} => [magenta underline]"
+                        f"{custom_domain.url}[/magenta underline]{suffix}"
+                    )
         else:
-            self.status_row.finish(f"Created function {self.tag}.")
+            if self.status_row:
+                self.status_row.finish(f"Created function {self.tag}.")
 
 
 @contextlib.contextmanager

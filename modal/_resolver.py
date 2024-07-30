@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2023
 import asyncio
-import contextlib
 from asyncio import Future
 from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
 
@@ -12,7 +11,6 @@ from .config import logger
 from .exception import NotFoundError
 
 if TYPE_CHECKING:
-    from modal._output import StatusRow
     from modal.object import _Object
 
 
@@ -30,12 +28,7 @@ class Resolver:
         environment_name: Optional[str] = None,
         app_id: Optional[str] = None,
     ):
-        from rich.tree import Tree
-
-        from ._output import step_progress
-
         self._local_uuid_to_future = {}
-        self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
         self._client = client
         self._app_id = app_id
         self._environment_name = environment_name
@@ -130,21 +123,3 @@ class Resolver:
             obj = fut.result()
             unique_objects.setdefault(obj.object_id, obj)
         return list(unique_objects.values())
-
-    @contextlib.contextmanager
-    def display(self):
-        # TODO(erikbern): get rid of this wrapper
-        from ._output import OutputManager, step_completed
-
-        if output_mgr := OutputManager.get():
-            with output_mgr.make_live(self._tree):
-                yield
-            self._tree.label = step_completed("Created objects.")
-            output_mgr.print(self._tree)
-        else:
-            yield
-
-    def add_status_row(self) -> "StatusRow":
-        from ._output import StatusRow
-
-        return StatusRow(self._tree)

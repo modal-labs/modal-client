@@ -2,6 +2,7 @@
 import asyncio
 import dataclasses
 import os
+from contextlib import contextmanager
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Coroutine, Dict, List, Optional, TypeVar
 
@@ -100,6 +101,15 @@ async def _init_local_app_from_name(
         )
 
 
+@contextmanager
+def display():
+    if output_mgr := OutputManager.get():
+        with output_mgr.make_tree():
+            yield
+    else:
+        yield
+
+
 async def _create_all_objects(
     client: _Client,
     running_app: RunningApp,
@@ -116,7 +126,7 @@ async def _create_all_objects(
         environment_name=environment_name,
         app_id=running_app.app_id,
     )
-    with resolver.display():
+    with display():
         # Get current objects, and reset all objects
         tag_to_object_id = running_app.tag_to_object_id
         running_app.tag_to_object_id = {}
