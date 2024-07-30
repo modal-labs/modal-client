@@ -12,33 +12,8 @@ from .config import logger
 from .exception import NotFoundError
 
 if TYPE_CHECKING:
-    from rich.tree import Tree
-
+    from modal._output import StatusRow
     from modal.object import _Object
-
-
-class StatusRow:
-    def __init__(self, progress: "Optional[Tree]"):
-        from ._output import (
-            step_progress,
-        )
-
-        self._spinner = None
-        self._step_node = None
-        if progress is not None:
-            self._spinner = step_progress()
-            self._step_node = progress.add(self._spinner)
-
-    def message(self, message):
-        if self._spinner is not None:
-            self._spinner.update(text=message)
-
-    def finish(self, message):
-        from ._output import substep_completed
-
-        if self._step_node is not None:
-            self._spinner.update(text=message)
-            self._step_node.label = substep_completed(message)
 
 
 class Resolver:
@@ -169,5 +144,7 @@ class Resolver:
         else:
             yield
 
-    def add_status_row(self) -> StatusRow:
+    def add_status_row(self) -> "StatusRow":
+        from ._output import StatusRow
+
         return StatusRow(self._tree)

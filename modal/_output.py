@@ -30,6 +30,7 @@ from rich.progress import (
 )
 from rich.spinner import Spinner
 from rich.text import Text
+from rich.tree import Tree
 
 from modal_proto import api_pb2
 
@@ -72,6 +73,24 @@ def step_completed(message: str) -> RenderableType:
 
 def substep_completed(message: str) -> RenderableType:
     return f"🔨 {message}"
+
+
+class StatusRow:
+    def __init__(self, progress: "Optional[Tree]"):
+        self._spinner = None
+        self._step_node = None
+        if progress is not None:
+            self._spinner = step_progress()
+            self._step_node = progress.add(self._spinner)
+
+    def message(self, message):
+        if self._spinner is not None:
+            self._spinner.update(text=message)
+
+    def finish(self, message):
+        if self._step_node is not None:
+            self._spinner.update(text=message)
+            self._step_node.label = substep_completed(message)
 
 
 def download_progress_bar() -> Progress:
