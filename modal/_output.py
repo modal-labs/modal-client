@@ -66,10 +66,6 @@ def step_progress(text: str = "") -> Spinner:
     return Spinner(default_spinner, text, style="blue")
 
 
-def step_progress_update(spinner: Spinner, message: str):
-    spinner.update(text=message)
-
-
 def step_completed(message: str) -> RenderableType:
     return f"[green]✓[/green] {message}"
 
@@ -311,7 +307,7 @@ class OutputManager:
         message = f"[blue]{message}[/blue] [grey70]View app at [underline]{self._app_page_url}[/underline][/grey70]"
 
         # Set the new message
-        step_progress_update(self._status_spinner, message)
+        self._status_spinner.update(text=message)
 
     def update_snapshot_progress(self, image_id: str, task_progress: api_pb2.TaskProgress) -> None:
         # TODO(erikbern): move this to sit on the resolver object, mostly
