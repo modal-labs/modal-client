@@ -389,7 +389,7 @@ class OutputManager:
     @classmethod
     @contextlib.contextmanager
     def make_tree(cls):
-        # Construct a tree even if the output isn't visible, but don't show it
+        # Note: If the output isn't enabled, don't actually show the tree.
         cls._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
 
         if output_mgr := OutputManager.get():
@@ -402,6 +402,8 @@ class OutputManager:
 
     @classmethod
     def add_status_row(cls) -> "StatusRow":
+        # Return a status row to be used for object creation.
+        # If output isn't enabled, the status row might be invisible.
         assert cls._tree, "Output manager has no tree yet"
         return StatusRow(cls._tree)
 
