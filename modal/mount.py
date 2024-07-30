@@ -430,16 +430,12 @@ class _Mount(_Object, type_prefix="mo"):
         accounted_hashes: set[str] = set()
         message_label = _Mount._description(self._entries)
         blob_upload_concurrency = asyncio.Semaphore(16)  # Limit uploads of large files.
-        if output_mgr := OutputManager.get():
-            status_row = output_mgr.add_status_row()
-        else:
-            status_row = None
+        status_row = OutputManager.add_status_row()
 
         async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
             nonlocal n_seen, n_finished, total_uploads, total_bytes
             n_seen += 1
-            if status_row:
-                status_row.message(f"Creating mount {message_label}: Uploaded {n_finished}/{n_seen} files")
+            status_row.message(f"Creating mount {message_label}: Uploaded {n_finished}/{n_seen} files")
 
             remote_filename = file_spec.mount_filename
             mount_file = api_pb2.MountFile(
@@ -497,8 +493,7 @@ class _Mount(_Object, type_prefix="mo"):
             logger.warning(f"Mount of '{message_label}' is empty.")
 
         # Build the mount.
-        if status_row:
-            status_row.message(f"Creating mount {message_label}: Finalizing index of {len(files)} files")
+        status_row.message(f"Creating mount {message_label}: Finalizing index of {len(files)} files")
         if self._deployment_name:
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=self._deployment_name,
@@ -521,8 +516,7 @@ class _Mount(_Object, type_prefix="mo"):
             )
 
         resp = await retry_transient_errors(resolver.client.stub.MountGetOrCreate, req, base_delay=1)
-        if status_row:
-            status_row.finish(f"Created mount {message_label}")
+        status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {total_uploads} new files and {total_bytes} bytes in {time.monotonic() - t0}s")
         self._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
