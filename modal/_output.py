@@ -154,6 +154,7 @@ class LineBufferedOutput(io.StringIO):
 
 class OutputManager:
     _instance: ClassVar[Optional["OutputManager"]] = None
+    _tree: ClassVar[Optional[Tree]] = None
 
     _console: Console
     _task_states: Dict[str, int]
@@ -167,7 +168,6 @@ class OutputManager:
     _app_page_url: Optional[str]
     _show_image_logs: bool
     _status_spinner_live: Optional[Live]
-    _tree: Optional[Tree]
 
     def __init__(
         self,
@@ -188,7 +188,6 @@ class OutputManager:
         self._app_page_url = None
         self._show_image_logs = False
         self._status_spinner_live = None
-        self._tree = None
 
     @classmethod
     def disable(cls):
@@ -387,17 +386,22 @@ class OutputManager:
         with self._status_spinner_live:
             yield
 
+    @classmethod
     @contextlib.contextmanager
-    def make_tree(self):
-        self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
+    def make_tree(cls):
+        # Construct a tree even if the output isn't visible, but don't show it
+        cls._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
 
         try:
-            with self.make_live(self._tree):
+            if output_mgr := OutputManager.get():
+                with output_mgr.make_live(cls._tree):
+                    yield
+                cls._tree.label = step_completed("Created objects.")
+                output_mgr.print(output_mgr._tree)
+            else:
                 yield
-            self._tree.label = step_completed("Created objects.")
-            self.print(self._tree)
         finally:
-            self._tree = None
+            cls._tree = None
 
     def add_status_row(self) -> "StatusRow":
         return StatusRow(self._tree)
