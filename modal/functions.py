@@ -657,7 +657,7 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 raise InvalidError("Webhooks cannot be generators")
         if is_generator and batch_max_size:
-            raise InvalidError("Batched functions cannot be generators")
+            raise InvalidError(f"Batch functions {info.raw_f.__name__} cannot return a generator")
 
         if container_idle_timeout is not None and container_idle_timeout <= 0:
             raise InvalidError("`container_idle_timeout` must be > 0")

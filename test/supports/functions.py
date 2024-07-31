@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import List
+from typing import List, Tuple
 
 from modal import (
     App,
@@ -333,7 +333,7 @@ async def sleep_700_async(x):
 
 @app.function()
 @batch(batch_max_size=4, batch_linger_ms=500)
-def batched_function_sync(x, y=1):
+def batch_function_sync(x: Tuple[int], y: Tuple[int]):
     outputs = []
     for x_i, y_i in zip(x, y):
         outputs.append(x_i / y_i)
@@ -342,7 +342,19 @@ def batched_function_sync(x, y=1):
 
 @app.function()
 @batch(batch_max_size=4, batch_linger_ms=500)
-async def batched_function_async(x, y=1):
+def batch_function_outputs_not_list(x: Tuple[int], y: Tuple[int]):
+    return str(x)
+
+
+@app.function()
+@batch(batch_max_size=4, batch_linger_ms=500)
+def batch_function_outputs_wrong_len(x: Tuple[int], y: Tuple[int]):
+    return list(x) + [0]
+
+
+@app.function()
+@batch(batch_max_size=4, batch_linger_ms=500)
+async def batch_function_async(x: Tuple[int], y: Tuple[int]):
     outputs = []
     for x_i, y_i in zip(x, y):
         outputs.append(x_i / y_i)

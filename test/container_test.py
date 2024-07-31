@@ -64,7 +64,7 @@ def _get_inputs(
     return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
 
 
-def _get_inputs_batched(
+def _get_inputs_batch(
     args_list: List[Tuple[Tuple, Dict]],
     batch_max_size: int,
     kill_switch=True,
@@ -315,7 +315,7 @@ def _unwrap_scalar(ret: ContainerResult):
     return deserialize(ret.items[0].result.data, ret.client)
 
 
-def _unwrap_batched_scalar(ret: ContainerResult, batch_size):
+def _unwrap_batch_scalar(ret: ContainerResult, batch_size):
     assert len(ret.items) == batch_size
     outputs = []
     for item in ret.items:
@@ -332,7 +332,7 @@ def _unwrap_exception(ret: ContainerResult):
     return ret.items[0].result.exception
 
 
-def _unwrap_batched_exception(ret: ContainerResult, batch_size):
+def _unwrap_batch_exception(ret: ContainerResult, batch_size):
     assert len(ret.items) == batch_size
     outputs = []
     for item in ret.items:
@@ -1088,94 +1088,95 @@ def test_concurrent_inputs_async_function(servicer):
         assert function_call_id and function_call_id == outputs[i - 1][2]
 
 
-def _batched_sync_function_helper(servicer, args_list, expected_outputs):
+def _batch_function_test_helper(batch_func, servicer, args_list, expected_outputs, expected_status="success"):
     batch_max_size = 4
     batch_linger_ms = 500
-    inputs = _get_inputs_batched(args_list, batch_max_size)
+    inputs = _get_inputs_batch(args_list, batch_max_size)
 
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "batched_function_sync",
+        batch_func,
         inputs=inputs,
         batch_max_size=batch_max_size,
         batch_linger_ms=batch_linger_ms,
     )
-
-    outputs = _unwrap_batched_scalar(ret, len(expected_outputs))
+    if expected_status == "success":
+        outputs = _unwrap_batch_scalar(ret, len(expected_outputs))
+    else:
+        outputs = _unwrap_batch_exception(ret, len(expected_outputs))
     assert outputs == expected_outputs
 
 
 @skip_github_non_linux
-def test_batched_sync_function(servicer):
-    # full batch
-    _batched_sync_function_helper(servicer, [((10,), {"y": 5}) for _ in range(4)], [2] * 4)
-    # partial batch
-    _batched_sync_function_helper(servicer, [((10,), {"y": 5}) for _ in range(2)], [2] * 6)
-    # kwarg / arg mix
-    _batched_sync_function_helper(
-        servicer, [(tuple(), {"x": 10, "y": 5}), ((10, 5), {}), ((10,), {}), (tuple(), {"x": 10})], [2] * 8 + [10] * 2
-    )
+def test_batch_sync_function_full_batch(servicer):
+    inputs = [((10, 5), {}) for _ in range(4)]
+    expected_outputs = [2] * 4
+    _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
 
 @skip_github_non_linux
-def test_batched_sync_function_inputs_error(servicer):
-    args_list: List[Any] = [((3,), {"y": 5}) for _ in range(3)] + [(tuple(), {"y": 5})]
+def test_batch_sync_function_partial_batch(servicer):
+    inputs = [((10, 5), {}) for _ in range(2)]
+    expected_outputs = [2] * 2
+    _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
+
+
+def test_batch_sync_function_keyword_args(servicer):
+    inputs = [((10,), {"y": 5}) for _ in range(4)]
+    expected_outputs = [2] * 4
+    _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
+
+
+@skip_github_non_linux
+def test_batch_sync_function_inputs_outputs_error(servicer):
+    # argument length does not match
+    inputs = [((10, 5), {}), ((10, 5, 1), {})]
     with pytest.raises(InvalidError) as err:
-        batch_max_size = 4
-        batch_linger_ms = 500
-        inputs = _get_inputs_batched(args_list, batch_max_size)
+        _batch_function_test_helper("batch_function_sync", servicer, inputs, [])
+    assert "Modal batch function batch_function_sync takes 2 positional arguments, but one call has 3." in str(err)
 
-        _run_container(
-            servicer,
-            "test.supports.functions",
-            "batched_function_sync",
-            inputs=inputs,
-            batch_max_size=batch_max_size,
-            batch_linger_ms=batch_linger_ms,
-        )
-    assert "Batched function batched_function_sync missing required positional argument" in str(err)
+    # Unexpected keyword arg
+    inputs = [((10, 5), {}), ((10,), {"z": 5})]
+    with pytest.raises(InvalidError) as err:
+        _batch_function_test_helper("batch_function_sync", servicer, inputs, [])
+    assert "Modal batch function batch_function_sync got an unexpected keyword argument z in one call." in str(err)
+
+    # Multiple values with keyword arg
+    inputs = [((10, 5), {}), ((10,), {"x": 1})]
+    with pytest.raises(InvalidError) as err:
+        _batch_function_test_helper("batch_function_sync", servicer, inputs, [])
+    assert "Modal batch function batch_function_sync got multiple values for argument x in one call." in str(err)
+
+    # output must be list
+    inputs = [((10, 5), {})]
+    with pytest.raises(InvalidError) as err:
+        _batch_function_test_helper("batch_function_outputs_not_list", servicer, inputs, [])
+    assert "Output of batch function batch_function_outputs_not_list must be a list." in str(err)
+
+    # outputs must match length of inputs
+    inputs = [((10, 5), {})]
+    with pytest.raises(InvalidError) as err:
+        _batch_function_test_helper("batch_function_outputs_wrong_len", servicer, inputs, [])
+    assert (
+        "Output of batch function batch_function_outputs_wrong_len must be \
+            a list of the same length as its list of inputs."
+        in str(err)
+    )
 
 
 @skip_github_non_linux
-def test_batched_sync_function_generic_error(servicer):
-    args_list = [((10,), {"y": 0}) for _ in range(4)]
-    batch_max_size = 4
-    batch_linger_ms = 500
-    inputs = _get_inputs_batched(args_list, batch_max_size)
-
-    ret = _run_container(
-        servicer,
-        "test.supports.functions",
-        "batched_function_sync",
-        inputs=inputs,
-        batch_max_size=batch_max_size,
-        batch_linger_ms=batch_linger_ms,
-    )
-    outputs = _unwrap_batched_exception(ret, batch_max_size)
-    for output in outputs:
-        assert output == "ZeroDivisionError('division by zero')"
+def test_batch_sync_function_generic_error(servicer):
+    inputs = [((10, 0), {}) for _ in range(4)]
+    expected_ouputs = ["ZeroDivisionError('division by zero')"] * 4
+    _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_ouputs, expected_status="failure")
 
 
 @skip_github_non_linux
-def test_batched_async_function(servicer):
-    batch_max_size = 4
-    batch_linger_ms = 500
-    args = [((10,), {"y": 5}) for _ in range(4)]
-    inputs = _get_inputs_batched(args, batch_max_size)
-
-    ret = _run_container(
-        servicer,
-        "test.supports.functions",
-        "batched_function_async",
-        inputs=inputs,
-        batch_max_size=batch_max_size,
-        batch_linger_ms=batch_linger_ms,
-    )
-
-    outputs = _unwrap_batched_scalar(ret, batch_max_size)
-    for output in outputs:
-        assert output == 2
+def test_batch_async_function(servicer):
+    inputs = [((10, 5), {}) for _ in range(4)]
+    expected_outputs = [2] * 4
+    _batch_function_test_helper("batch_function_async", servicer, inputs, expected_outputs)
 
 
 @skip_github_non_linux

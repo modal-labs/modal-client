@@ -781,11 +781,12 @@ class _App:
 
             batch_functions = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.BATCH)
             if batch_functions:
-                if (
-                    len(batch_functions) > 1
-                    or len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION)) > 1
-                ):
-                    raise InvalidError("A class with batch functions cannot have other modal methods.")
+                if len(batch_functions) > 1:
+                    raise InvalidError(f"Modal class {user_cls.__name__} can only have one batch function.")
+                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION)) > 1:
+                    raise InvalidError(
+                        f"Modal class {user_cls.__name__} with a modal batch function cannot have other modal methods."
+                    )
                 batch_function = next(iter(batch_functions.values()))
                 batch_max_size = batch_function.batch_max_size
                 batch_linger_ms = batch_function.batch_linger_ms

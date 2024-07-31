@@ -405,7 +405,6 @@ class _ContainerIOManager:
                         if item.input.final_input or self.function_def.max_inputs == 1:
                             eof_received = True
                             break
-
                     else:
                         assert len(response.inputs) <= request.batch_max_size
 
@@ -427,7 +426,7 @@ class _ContainerIOManager:
                             inputs_list.append((item.input_id, item.function_call_id, input_pb))
                             if item.input.final_input:
                                 eof_received = True
-                                logger.error("Final input not expected in batched input stream")
+                                logger.error("Final input not expected in batch input stream")
                                 break
 
                         if not eof_received:
@@ -471,28 +470,41 @@ class _ContainerIOManager:
                     args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
                     self.current_input_id, self.current_input_started_at = (input_id, time.time())
                     local_inputs_list.append(LocalInput(input_id, function_call_id, input_pb.method_name, args, kwargs))
-                    self.current_input_id, self.current_input_started_at = (None, None)
                 yield local_inputs_list
+                self.current_input_id, self.current_input_started_at = (None, None)
 
         # collect all active input slots, meaning all inputs have wrapped up.
         for _ in range(input_concurrency):
             await self._semaphore.acquire()
 
     async def _push_output(
-        self, input_ids: Union[str, List[str]], started_at: float, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs
+        self,
+        input_ids: Union[str, List[str]],
+        started_at: float,
+        function_name: str,
+        data_format=api_pb2.DATA_FORMAT_UNSPECIFIED,
+        **kwargs,
     ):
         outputs = []
         if isinstance(input_ids, list):
-            data_list = []
+            formatted_data = None
             if "data" in kwargs and kwargs["data"]:
                 # split the list of data in kwargs to respective input_ids
-                data_list = self.deserialize_data_format(kwargs.pop("data"), data_format)
-                assert isinstance(data_list, list), "Output of batched function must be a list"
-                assert len(data_list) == len(
-                    input_ids
-                ), "Output of batched function must be a list of the same length as its list of inputs."
+                # report error for every input_id in batch call
+                if "status" in kwargs and kwargs["status"] == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+                    formatted_data = [kwargs.pop("data")] * len(input_ids)
+                else:
+                    data = self.deserialize_data_format(kwargs.pop("data"), data_format)
+                    if not isinstance(data, list):
+                        raise InvalidError(f"Output of batch function {function_name} must be a list.")
+                    if len(data) != len(input_ids):
+                        raise InvalidError(
+                            f"Output of batch function {function_name} must be \
+                               a list of the same length as its list of inputs."
+                        )
+                    formatted_data = [self.serialize_data_format(d, data_format) for d in data]
             for i, input_id in enumerate(input_ids):
-                data = self.serialize_data_format(data_list[i], data_format) if data_list else None
+                data = formatted_data[i] if formatted_data else None
                 result = (
                     (
                         # upload data to S3 if too big.
@@ -592,7 +604,7 @@ class _ContainerIOManager:
 
     @asynccontextmanager
     async def handle_input_exception(
-        self, input_ids: Union[str, List[str]], started_at: float
+        self, input_ids: Union[str, List[str]], started_at: float, function_name: str
     ) -> AsyncGenerator[None, None]:
         """Handle an exception while processing a function input."""
         try:
@@ -611,6 +623,10 @@ class _ContainerIOManager:
             logger.warning(f"The current input ({input_ids=}) was cancelled by a user request")
             await self.complete_call(started_at)
             return
+        except InvalidError as exc:
+            # If there is an error in batch function output, we need to explicitly raise it
+            if "Output of batch function" in exc.args[0]:
+                raise
         except BaseException as exc:
             # print exception so it's logged
             traceback.print_exc()
@@ -634,13 +650,10 @@ class _ContainerIOManager:
             await self._push_output(
                 input_ids,
                 started_at=started_at,
+                function_name=function_name,
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-                data=(
-                    self.serialize_exception([exc] for _ in input_ids)
-                    if isinstance(input_ids, list)
-                    else self.serialize_exception(exc)
-                ),
+                data=self.serialize_exception(exc),
                 exception=repr_exc,
                 traceback=traceback.format_exc(),
                 serialized_tb=serialized_tb,
@@ -654,10 +667,11 @@ class _ContainerIOManager:
         self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def push_output(self, input_id, started_at: float, data: Any, data_format: int) -> None:
+    async def push_output(self, input_id, started_at: float, function_name: str, data: Any, data_format: int) -> None:
         await self._push_output(
             input_id,
             started_at=started_at,
+            function_name=function_name,
             data_format=data_format,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
             data=self.serialize_data_format(data, data_format),

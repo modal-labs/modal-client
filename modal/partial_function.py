@@ -20,8 +20,8 @@ from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 
-MAX_BATCH_SIZE = 49
-MAX_BATCH_LINGER_MS = 12000
+MAX_BATCH_SIZE = 1000
+MAX_BATCH_LINGER_MS = 10 * 60 * 1000  # 10 minutes
 
 
 class _PartialFunctionFlags(enum.IntFlag):
@@ -211,7 +211,7 @@ def _method(
         if isinstance(raw_f, _PartialFunction) and (raw_f.batch_max_size is not None):
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
-                "Batched function on classes should not be wrapped by `@method`. "
+                "Batch function on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
         if is_generator is None:
@@ -582,12 +582,12 @@ def _batch(
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batch()`.")
     if batch_max_size < 1:
         raise InvalidError("batch_max_size must be a positive integer.")
-    if batch_max_size > MAX_BATCH_SIZE:
-        raise InvalidError(f"batch_max_size must be less than or equal to {MAX_BATCH_SIZE}.")
+    if batch_max_size >= MAX_BATCH_SIZE:
+        raise InvalidError(f"batch_max_size must be less than {MAX_BATCH_SIZE}.")
     if batch_linger_ms < 0:
         raise InvalidError("batch_linger_ms must be a non-negative integer.")
-    if batch_linger_ms > MAX_BATCH_LINGER_MS:
-        raise InvalidError(f"batch_linger_ms must be less than or equal to {MAX_BATCH_LINGER_MS}.")
+    if batch_linger_ms >= MAX_BATCH_LINGER_MS:
+        raise InvalidError(f"batch_linger_ms must be less than {MAX_BATCH_LINGER_MS}.")
 
     def wrapper(raw_f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(raw_f, _Function):

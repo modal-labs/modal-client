@@ -107,7 +107,6 @@ class FinalizedFunction:
     is_async: bool
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
-    signature_info: "FuncSignatureInfo"
 
 
 class Service(metaclass=ABCMeta):
@@ -127,20 +126,6 @@ class Service(metaclass=ABCMeta):
         self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
     ) -> Dict[str, "FinalizedFunction"]:
         ...
-
-
-@dataclass
-class FuncSignatureInfo:
-    func_name: str
-    params_and_defaults: List[Tuple[str, Any]]
-
-
-def get_func_signature_info(func, ignore_self=False):
-    signature_params = list(inspect.signature(func).parameters.values())
-    function_name = func.__name__
-
-    param_names_and_defaults = [(param.name, param.default) for param in signature_params]
-    return FuncSignatureInfo(function_name, param_names_and_defaults)
 
 
 @dataclass
@@ -168,7 +153,6 @@ class ImportedFunction(Service):
                     is_async=is_async,
                     is_generator=is_generator,
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
-                    signature_info=get_func_signature_info(self._user_defined_callable),
                 )
             }
 
@@ -182,7 +166,6 @@ class ImportedFunction(Service):
                 is_async=True,
                 is_generator=True,
                 data_format=api_pb2.DATA_FORMAT_ASGI,
-                signature_info=get_func_signature_info(self._user_defined_callable),
             )
         }
 
@@ -217,7 +200,6 @@ class ImportedClass(Service):
                     is_async=is_async,
                     is_generator=is_generator,
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
-                    signature_info=get_func_signature_info(bound_func),
                 )
             else:
                 web_callable = construct_webhook_callable(bound_func, webhook_config, container_io_manager)
@@ -226,7 +208,6 @@ class ImportedClass(Service):
                     is_async=True,
                     is_generator=True,
                     data_format=api_pb2.DATA_FORMAT_ASGI,
-                    signature_info=get_func_signature_info(bound_func),
                 )
             finalized_functions[method_name] = finalized_function
         return finalized_functions
@@ -342,68 +323,44 @@ class UserCodeEventLoop:
                 self.loop.remove_signal_handler(signal.SIGINT)
 
 
-def _aggregate_ids_and_args(
+def _aggregate_args_and_kwargs(
     local_inputs: Union[LocalInput, List[LocalInput]],
-    container_io_manager: "modal._container_io_manager.ContainerIOManager",
-    signature_info: FuncSignatureInfo,
-) -> Tuple[Union[str, List[str]], Union[str, List[str]], List[Any], Dict[str, Any]]:
+    callable: Callable[..., Any],
+) -> Tuple[List[Any], Dict[str, Any]]:
     if isinstance(local_inputs, list):
-        input_ids = [local_input.input_id for local_input in local_inputs]
-        function_call_ids = [local_input.function_call_id for local_input in local_inputs]
-        num_required_args = len(
-            [param for param in signature_info.params_and_defaults if param[1] == inspect.Parameter.empty]
-        )
-        num_args = len(signature_info.params_and_defaults)
-        args_list, kwargs_list = zip(*[(local_input.args, local_input.kwargs) for local_input in local_inputs])
-        args_and_kwargs_dict: List[Dict[str, Any]] = [{} for _ in input_ids]
-        for i, (args, kwargs) in enumerate(zip(args_list, kwargs_list)):
-            for j, arg in enumerate(args):
-                if j < len(signature_info.params_and_defaults):
-                    args_and_kwargs_dict[i][signature_info.params_and_defaults[j][0]] = arg
-                else:
-                    raise (
-                        InvalidError(
-                            f"Batched function {signature_info.func_name} takes {num_required_args} \
-                                positional arguments but {len(args)} were given"
-                        )
-                        if num_args == num_required_args
-                        else InvalidError(
-                            f"Batched function {signature_info.func_name} takes from {num_required_args} to {num_args} \
-                                positional arguments but {len(args)} were given"
-                        )
-                    )
-            for k, v in kwargs.items():
-                if k in [param[0] for param in signature_info.params_and_defaults]:
-                    if k in args_and_kwargs_dict[i]:
-                        raise InvalidError(
-                            f"Batched function {signature_info.func_name} got multiple values for argument {k}"
-                        )
-                    args_and_kwargs_dict[i][k] = v
-                else:
-                    raise InvalidError(
-                        f"Batched function {signature_info.func_name} got an unexpected keyword argument: {k}"
-                    )
+        param_names = list(inspect.signature(callable).parameters.keys())
+        for param in inspect.signature(callable).parameters.values():
+            if param.default is not inspect.Parameter.empty:
+                raise InvalidError(f"Modal batch function {callable.__name__} does not accept default arguments.")
 
-        formatted_args = []
-        for arg_name, _ in signature_info.params_and_defaults[:num_required_args]:
-            if any(arg_name not in args_and_kwargs_dict[i] for i in range(len(input_ids))):
+        args_by_inputs = [{} for _ in range(len(local_inputs))]
+        for i, local_input in enumerate(local_inputs):
+            params_len = len(local_input.args) + len(local_input.kwargs)
+            if params_len != len(param_names):
                 raise InvalidError(
-                    f"Batched function {signature_info.func_name} missing required positional argument {arg_name}"
+                    f"Modal batch function {callable.__name__} takes {len(param_names)} positional arguments, \
+                        but one call has {params_len}."
                 )
-            formatted_args.append([args_and_kwargs_dict[i][arg_name] for i in range(len(input_ids))])
+            for j, arg in enumerate(local_input.args):
+                args_by_inputs[i][param_names[j]] = arg
+            for k, v in local_input.kwargs.items():
+                if k not in param_names:
+                    raise InvalidError(
+                        f"Modal batch function {callable.__name__} got an unexpected keyword argument {k} in one call."
+                    )
+                if k in args_by_inputs[i]:
+                    raise InvalidError(
+                        f"Modal batch function {callable.__name__} got multiple values for argument {k} in one call."
+                    )
+                args_by_inputs[i][k] = v
 
         formatted_kwargs = {
-            kwarg_name: [args_and_kwargs_dict[j].get(kwarg_name, default) for j in range(len(input_ids))]
-            for kwarg_name, default in signature_info.params_and_defaults[num_required_args:]
+            param_name: [args_by_inputs[i][param_name] for i in range(len(local_inputs))] for param_name in param_names
         }
-
-        return input_ids, function_call_ids, formatted_args, formatted_kwargs
+        return tuple(), formatted_kwargs
 
     else:
-        input_id = local_inputs.input_id
-        function_call_id = local_inputs.function_call_id
-        args, kwargs = local_inputs.args, local_inputs.kwargs
-        return input_id, function_call_id, args, kwargs
+        return local_inputs.args, local_inputs.kwargs
 
 
 def call_function(
@@ -420,11 +377,21 @@ def call_function(
         container_io_manager: "modal._container_io_manager.ContainerIOManager",
     ) -> None:
         started_at = time.time()
-        input_ids, function_call_ids, args, kwargs = _aggregate_ids_and_args(
-            local_inputs, container_io_manager, finalized_function.signature_info
+        input_ids = (
+            local_inputs.input_id
+            if isinstance(local_inputs, LocalInput)
+            else [local_input.input_id for local_input in local_inputs]
         )
+        function_call_ids = (
+            local_inputs.function_call_id
+            if isinstance(local_inputs, LocalInput)
+            else [local_input.function_call_id for local_input in local_inputs]
+        )
+        args, kwargs = _aggregate_args_and_kwargs(local_inputs, finalized_function.callable)
         reset_context = _set_current_context_ids(input_ids, function_call_ids)
-        async with container_io_manager.handle_input_exception.aio(input_ids, started_at):
+        async with container_io_manager.handle_input_exception.aio(
+            input_ids, started_at, finalized_function.callable.__name__
+        ):
             logger.debug(f"Starting input {input_ids} (async)")
             res = finalized_function.callable(*args, **kwargs)
             logger.debug(f"Finished input {input_ids} (async)")
@@ -434,7 +401,9 @@ def call_function(
                 if not inspect.isasyncgen(res):
                     raise InvalidError(f"Async generator function returned value of type {type(res)}")
                 if isinstance(input_ids, list) or isinstance(function_call_ids, list):
-                    raise InvalidError("Batched functions cannot return generators.")
+                    raise InvalidError(
+                        f"Batch function {finalized_function.callable.__name__} cannot return a generator."
+                    )
 
                 # Send up to this many outputs at a time.
                 generator_queue: asyncio.Queue[Any] = await container_io_manager._queue_create.aio(1024)
@@ -455,7 +424,11 @@ def call_function(
                 await generator_output_task  # Wait to finish sending generator outputs.
                 message = api_pb2.GeneratorDone(items_total=item_count)
                 await container_io_manager.push_output.aio(
-                    input_ids, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE
+                    input_ids,
+                    started_at,
+                    finalized_function.callable.__name__,
+                    message,
+                    api_pb2.DATA_FORMAT_GENERATOR_DONE,
                 )
             else:
                 if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
@@ -464,7 +437,9 @@ def call_function(
                         " You might need to use @app.function(..., is_generator=True)."
                     )
                 value = await res
-                await container_io_manager.push_output.aio(input_ids, started_at, value, finalized_function.data_format)
+                await container_io_manager.push_output.aio(
+                    input_ids, started_at, finalized_function.callable.__name__, value, finalized_function.data_format
+                )
         reset_context()
 
     def run_input_sync(
@@ -473,11 +448,19 @@ def call_function(
         container_io_manager: "modal._container_io_manager.ContainerIOManager",
     ) -> None:
         started_at = time.time()
-        input_ids, function_call_ids, args, kwargs = _aggregate_ids_and_args(
-            local_inputs, container_io_manager, finalized_function.signature_info
+        input_ids = (
+            local_inputs.input_id
+            if isinstance(local_inputs, LocalInput)
+            else [local_input.input_id for local_input in local_inputs]
         )
+        function_call_ids = (
+            local_inputs.function_call_id
+            if isinstance(local_inputs, LocalInput)
+            else [local_input.function_call_id for local_input in local_inputs]
+        )
+        args, kwargs = _aggregate_args_and_kwargs(local_inputs, finalized_function.callable)
         reset_context = _set_current_context_ids(input_ids, function_call_ids)
-        with container_io_manager.handle_input_exception(input_ids, started_at):
+        with container_io_manager.handle_input_exception(input_ids, started_at, finalized_function.callable.__name__):
             logger.debug(f"Starting input {input_ids} (sync)")
             res = finalized_function.callable(*args, **kwargs)
             logger.debug(f"Finished input {input_ids} (sync)")
@@ -488,7 +471,7 @@ def call_function(
                     raise InvalidError(f"Generator function returned value of type {type(res)}")
                 if isinstance(function_call_ids, list):
                     raise InvalidError(
-                        f"Batched function {finalized_function.signature_info.func_name} cannot return generators."
+                        f"Batch function {finalized_function.callable.__name__} cannot return generators."
                     )
 
                 # Send up to this many outputs at a time.
@@ -508,20 +491,28 @@ def call_function(
                 container_io_manager._queue_put(generator_queue, _ContainerIOManager._GENERATOR_STOP_SENTINEL)
                 generator_output_task.result()  # Wait to finish sending generator outputs.
                 message = api_pb2.GeneratorDone(items_total=item_count)
-                container_io_manager.push_output(input_ids, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
+                container_io_manager.push_output(
+                    input_ids,
+                    started_at,
+                    finalized_function.callable.__name__,
+                    message,
+                    api_pb2.DATA_FORMAT_GENERATOR_DONE,
+                )
             else:
                 if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                     raise InvalidError(
                         f"Sync (non-generator) function return value of type {type(res)}."
                         " You might need to use @app.function(..., is_generator=True)."
                     )
-                container_io_manager.push_output(input_ids, started_at, res, finalized_function.data_format)
+                container_io_manager.push_output(
+                    input_ids, started_at, finalized_function.callable.__name__, res, finalized_function.data_format
+                )
         reset_context()
 
     def _get_finalized_functions(local_inputs: Union[LocalInput, List[LocalInput]]) -> FinalizedFunction:
         if isinstance(local_inputs, list):
             assert len(local_inputs) > 0
-            assert all(local_input.method_name == local_inputs[0].method_name for local_input in local_inputs)
+            assert len(set([local_input.method_name for local_input in local_inputs])) == 1
             return finalized_functions[local_inputs[0].method_name]
         else:
             return finalized_functions[local_inputs.method_name]
