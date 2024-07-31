@@ -355,7 +355,7 @@ class _Function(_Object, type_prefix="fu"):
                 existing_function_id=existing_object_id or method_bound_function.object_id or "",
             )
             assert resolver.client.stub is not None  # client should be connected when load is called
-            with FunctionCreationStatus(full_name) as function_creation_status:
+            with FunctionCreationStatus(resolver, full_name) as function_creation_status:
                 response = await resolver.client.stub.FunctionCreate(request)
                 method_bound_function._hydrate(
                     response.function_id,
@@ -721,7 +721,7 @@ class _Function(_Object, type_prefix="fu"):
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
-            with FunctionCreationStatus(tag) as function_creation_status:
+            with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 if is_generator:
                     function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
                 else:
