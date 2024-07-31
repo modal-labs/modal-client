@@ -499,8 +499,7 @@ class _ContainerIOManager:
                         raise InvalidError(f"Output of batch function {function_name} must be a list.")
                     if len(data) != len(input_ids):
                         raise InvalidError(
-                            f"Output of batch function {function_name} must be \
-                               a list of the same length as its list of inputs."
+                            f"Output of batch function {function_name} must be a list of the same length as its inputs."
                         )
                     formatted_data = [self.serialize_data_format(d, data_format) for d in data]
             for i, input_id in enumerate(input_ids):

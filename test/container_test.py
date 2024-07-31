@@ -1110,20 +1110,20 @@ def _batch_function_test_helper(batch_func, servicer, args_list, expected_output
 
 @skip_github_non_linux
 def test_batch_sync_function_full_batch(servicer):
-    inputs = [((10, 5), {}) for _ in range(4)]
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
     expected_outputs = [2] * 4
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
 
 @skip_github_non_linux
 def test_batch_sync_function_partial_batch(servicer):
-    inputs = [((10, 5), {}) for _ in range(2)]
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(2)]
     expected_outputs = [2] * 2
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
 
 def test_batch_sync_function_keyword_args(servicer):
-    inputs = [((10,), {"y": 5}) for _ in range(4)]
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10,), {"y": 5}) for _ in range(4)]
     expected_outputs = [2] * 4
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
@@ -1131,7 +1131,7 @@ def test_batch_sync_function_keyword_args(servicer):
 @skip_github_non_linux
 def test_batch_sync_function_inputs_outputs_error(servicer):
     # argument length does not match
-    inputs = [((10, 5), {}), ((10, 5, 1), {})]
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10, 5, 1), {})]
     with pytest.raises(InvalidError) as err:
         _batch_function_test_helper("batch_function_sync", servicer, inputs, [])
     assert "Modal batch function batch_function_sync takes 2 positional arguments, but one call has 3." in str(err)
@@ -1159,22 +1159,21 @@ def test_batch_sync_function_inputs_outputs_error(servicer):
     with pytest.raises(InvalidError) as err:
         _batch_function_test_helper("batch_function_outputs_wrong_len", servicer, inputs, [])
     assert (
-        "Output of batch function batch_function_outputs_wrong_len must be \
-            a list of the same length as its list of inputs."
+        "Output of batch function batch_function_outputs_wrong_len must be a list of the same length as its inputs."
         in str(err)
     )
 
 
 @skip_github_non_linux
 def test_batch_sync_function_generic_error(servicer):
-    inputs = [((10, 0), {}) for _ in range(4)]
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 0), {}) for _ in range(4)]
     expected_ouputs = ["ZeroDivisionError('division by zero')"] * 4
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_ouputs, expected_status="failure")
 
 
 @skip_github_non_linux
 def test_batch_async_function(servicer):
-    inputs = [((10, 5), {}) for _ in range(4)]
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
     expected_outputs = [2] * 4
     _batch_function_test_helper("batch_function_async", servicer, inputs, expected_outputs)
 
