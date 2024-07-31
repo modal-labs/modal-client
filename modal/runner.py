@@ -116,7 +116,7 @@ async def _create_all_objects(
         environment_name=environment_name,
         app_id=running_app.app_id,
     )
-    with resolver.display():
+    with OutputManager.make_tree():
         # Get current objects, and reset all objects
         tag_to_object_id = running_app.tag_to_object_id
         running_app.tag_to_object_id = {}

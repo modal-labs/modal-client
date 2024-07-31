@@ -19,6 +19,7 @@ import modal.exception
 from modal_proto import api_pb2
 from modal_version import __version__
 
+from ._output import OutputManager
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
@@ -429,7 +430,7 @@ class _Mount(_Object, type_prefix="mo"):
         accounted_hashes: set[str] = set()
         message_label = _Mount._description(self._entries)
         blob_upload_concurrency = asyncio.Semaphore(16)  # Limit uploads of large files.
-        status_row = resolver.add_status_row()
+        status_row = OutputManager.add_status_row()
 
         async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
             nonlocal n_seen, n_finished, total_uploads, total_bytes
