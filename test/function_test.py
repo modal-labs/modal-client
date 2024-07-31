@@ -819,7 +819,7 @@ def test_batch_function_invalid_error():
     with pytest.raises(InvalidError, match="must be less than"):
         app.function(batch(batch_max_size=1, batch_linger_ms=10 * 60 * 1000))(dummy)
 
-    with pytest.raises(InvalidError, match="cannot return a generator"):
+    with pytest.raises(InvalidError, match="cannot return generators"):
 
         @app.function(serialized=True)
         @batch(batch_max_size=1, batch_linger_ms=1)

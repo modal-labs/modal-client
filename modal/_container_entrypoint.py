@@ -401,7 +401,7 @@ def call_function(
                     raise InvalidError(f"Async generator function returned value of type {type(res)}")
                 if isinstance(input_ids, list) or isinstance(function_call_ids, list):
                     raise InvalidError(
-                        f"Batch function {finalized_function.callable.__name__} cannot return a generator."
+                        f"Batch function {finalized_function.callable.__name__} cannot return generators."
                     )
 
                 # Send up to this many outputs at a time.
