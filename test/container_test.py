@@ -1122,6 +1122,7 @@ def test_batch_sync_function_partial_batch(servicer):
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
 
+@skip_github_non_linux
 def test_batch_sync_function_keyword_args(servicer):
     inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10,), {"y": 5}) for _ in range(4)]
     expected_outputs = [2] * 4
