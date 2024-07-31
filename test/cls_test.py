@@ -105,6 +105,11 @@ def test_class_with_options(client, servicer):
         assert options.retry_policy.retries == 5
 
 
+def test_class_with_options_need_hydrating(client, servicer):
+    with pytest.raises(ExecutionError, match="hydrate"):
+        Foo.with_options()  # type: ignore
+
+
 # Reusing the app runs into an issue with stale function handles.
 # TODO (akshat): have all the client tests use separate apps, and throw
 # an exception if the user tries to reuse an app.
