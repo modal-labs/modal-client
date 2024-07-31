@@ -30,7 +30,6 @@ from rich.progress import (
 )
 from rich.spinner import Spinner
 from rich.text import Text
-from rich.tree import Tree
 
 from modal_proto import api_pb2
 
@@ -73,24 +72,6 @@ def step_completed(message: str) -> RenderableType:
 
 def substep_completed(message: str) -> RenderableType:
     return f"🔨 {message}"
-
-
-class StatusRow:
-    def __init__(self, progress: "Optional[Tree]"):
-        self._spinner = None
-        self._step_node = None
-        if progress is not None:
-            self._spinner = step_progress()
-            self._step_node = progress.add(self._spinner)
-
-    def message(self, message):
-        if self._spinner is not None:
-            self._spinner.update(text=message)
-
-    def finish(self, message):
-        if self._step_node is not None:
-            self._spinner.update(text=message)
-            self._step_node.label = substep_completed(message)
 
 
 def download_progress_bar() -> Progress:
@@ -167,7 +148,6 @@ class OutputManager:
     _app_page_url: Optional[str]
     _show_image_logs: bool
     _status_spinner_live: Optional[Live]
-    _tree: Optional[Tree]
 
     def __init__(
         self,
@@ -188,7 +168,6 @@ class OutputManager:
         self._app_page_url = None
         self._show_image_logs = False
         self._status_spinner_live = None
-        self._tree = None
 
     @classmethod
     def disable(cls):
@@ -386,30 +365,6 @@ class OutputManager:
         self._status_spinner_live = self.make_live(self._status_spinner)
         with self._status_spinner_live:
             yield
-
-    @classmethod
-    @contextlib.contextmanager
-    def make_tree(cls):
-        if output_mgr := OutputManager.get():
-            tree = output_mgr._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
-            with output_mgr.make_live(tree):
-                try:
-                    yield
-                finally:
-                    output_mgr._tree = None
-            tree.label = step_completed("Created objects.")
-            output_mgr.print(tree)
-        else:
-            yield
-
-    @classmethod
-    def add_status_row(cls) -> "StatusRow":
-        # Return a status row to be used for object creation.
-        # If output isn't enabled, just create a hidden tree
-        if cls._instance and cls._instance._tree:
-            return StatusRow(cls._instance._tree)
-        else:
-            return StatusRow(Tree(""))
 
 
 class ProgressHandler:
@@ -703,11 +658,12 @@ class FunctionCreationStatus:
     tag: str
     response: Optional[api_pb2.FunctionCreateResponse] = None
 
-    def __init__(self, tag):
+    def __init__(self, resolver, tag):
+        self.resolver = resolver
         self.tag = tag
 
     def __enter__(self):
-        self.status_row = OutputManager.add_status_row()
+        self.status_row = self.resolver.add_status_row()
         self.status_row.message(f"Creating function {self.tag}...")
         return self
 
@@ -738,7 +694,7 @@ class FunctionCreationStatus:
 
             # Print custom domain in terminal
             for custom_domain in self.response.function.custom_domain_info:
-                custom_domain_status_row = OutputManager.add_status_row()
+                custom_domain_status_row = self.resolver.add_status_row()
                 custom_domain_status_row.finish(
                     f"Custom domain for {self.tag} => [magenta underline]"
                     f"{custom_domain.url}[/magenta underline]{suffix}"
