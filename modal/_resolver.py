@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2023
 import asyncio
-import contextlib
 from asyncio import Future
 from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
 
@@ -12,35 +11,7 @@ from .config import logger
 from .exception import NotFoundError
 
 if TYPE_CHECKING:
-    from rich.tree import Tree
-
     from modal.object import _Object
-
-
-class StatusRow:
-    def __init__(self, progress: "Optional[Tree]"):
-        from ._output import (
-            step_progress,
-        )
-
-        self._spinner = None
-        self._step_node = None
-        if progress is not None:
-            self._spinner = step_progress()
-            self._step_node = progress.add(self._spinner)
-
-    def message(self, message):
-        from ._output import step_progress_update
-
-        if self._spinner is not None:
-            step_progress_update(self._spinner, message)
-
-    def finish(self, message):
-        from ._output import step_completed, step_progress_update
-
-        if self._step_node is not None:
-            step_progress_update(self._spinner, message)
-            self._step_node.label = step_completed(message, is_substep=True)
 
 
 class Resolver:
@@ -57,12 +28,7 @@ class Resolver:
         environment_name: Optional[str] = None,
         app_id: Optional[str] = None,
     ):
-        from rich.tree import Tree
-
-        from ._output import step_progress
-
         self._local_uuid_to_future = {}
-        self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
         self._client = client
         self._app_id = app_id
         self._environment_name = environment_name
@@ -127,15 +93,12 @@ class Resolver:
                     raise
 
                 # Check that the id of functions and classes didn't change
-                # TODO(erikbern): revisit this once stub assignments have been disallowed
-                if not obj._is_another_app and (obj.object_id.startswith("fu-") or obj.object_id.startswith("cs-")):
-                    # Persisted refs are ignored because their life cycle is managed independently.
-                    # The same tag on an app can be pointed at different objects.
-                    if existing_object_id is not None and obj.object_id != existing_object_id:
-                        raise Exception(
-                            f"Tried creating an object using existing id {existing_object_id}"
-                            f" but it has id {obj.object_id}"
-                        )
+                # Persisted refs are ignored because their life cycle is managed independently.
+                if not obj._is_another_app and existing_object_id is not None and obj.object_id != existing_object_id:
+                    raise Exception(
+                        f"Tried creating an object using existing id {existing_object_id}"
+                        f" but it has id {obj.object_id}"
+                    )
 
                 return obj
 
@@ -160,19 +123,3 @@ class Resolver:
             obj = fut.result()
             unique_objects.setdefault(obj.object_id, obj)
         return list(unique_objects.values())
-
-    @contextlib.contextmanager
-    def display(self):
-        # TODO(erikbern): get rid of this wrapper
-        from ._output import OutputManager, step_completed
-
-        if output_mgr := OutputManager.get():
-            with output_mgr.make_live(self._tree):
-                yield
-            self._tree.label = step_completed("Created objects.")
-            output_mgr.print(self._tree)
-        else:
-            yield
-
-    def add_status_row(self) -> StatusRow:
-        return StatusRow(self._tree)
