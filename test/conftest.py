@@ -1555,7 +1555,6 @@ async def reset_default_client():
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def reset_output_manager():
     OutputManager._instance = None
-    OutputManager._tree = None
 
 
 @pytest.fixture(name="mock_dir", scope="session")
