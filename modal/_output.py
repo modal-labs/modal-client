@@ -154,7 +154,6 @@ class LineBufferedOutput(io.StringIO):
 
 class OutputManager:
     _instance: ClassVar[Optional["OutputManager"]] = None
-    _tree: ClassVar[Optional[Tree]] = None
 
     _console: Console
     _task_states: Dict[str, int]
@@ -168,6 +167,7 @@ class OutputManager:
     _app_page_url: Optional[str]
     _show_image_logs: bool
     _status_spinner_live: Optional[Live]
+    _tree: Optional[Tree]
 
     def __init__(
         self,
@@ -188,6 +188,7 @@ class OutputManager:
         self._app_page_url = None
         self._show_image_logs = False
         self._status_spinner_live = None
+        self._tree = None
 
     @classmethod
     def disable(cls):
@@ -389,23 +390,26 @@ class OutputManager:
     @classmethod
     @contextlib.contextmanager
     def make_tree(cls):
-        # Note: If the output isn't enabled, don't actually show the tree.
-        cls._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
-
         if output_mgr := OutputManager.get():
-            with output_mgr.make_live(cls._tree):
-                yield
-            cls._tree.label = step_completed("Created objects.")
-            output_mgr.print(output_mgr._tree)
+            tree = output_mgr._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
+            with output_mgr.make_live(tree):
+                try:
+                    yield
+                finally:
+                    output_mgr._tree = None
+            tree.label = step_completed("Created objects.")
+            output_mgr.print(tree)
         else:
             yield
 
     @classmethod
     def add_status_row(cls) -> "StatusRow":
         # Return a status row to be used for object creation.
-        # If output isn't enabled, the status row might be invisible.
-        assert cls._tree, "Output manager has no tree yet"
-        return StatusRow(cls._tree)
+        # If output isn't enabled, just create a hidden tree
+        if cls._instance and cls._instance._tree:
+            return StatusRow(cls._instance._tree)
+        else:
+            return StatusRow(Tree(""))
 
 
 class ProgressHandler:

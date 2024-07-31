@@ -30,6 +30,7 @@ from grpclib import GRPCError, Status
 import modal._serialization
 from modal import __version__, config
 from modal._container_io_manager import _ContainerIOManager
+from modal._output import OutputManager
 from modal._serialization import serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.grpc_testing import patch_mock_servicer
@@ -1549,6 +1550,11 @@ async def server_url_env(servicer, monkeypatch):
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def reset_default_client():
     Client.set_env_client(None)
+
+
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def reset_output_manager():
+    OutputManager._instance = None
 
 
 @pytest.fixture(name="mock_dir", scope="session")
