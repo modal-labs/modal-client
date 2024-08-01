@@ -7,7 +7,6 @@ import signal
 import sys
 import time
 import traceback
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Set, Tuple, Union
 
@@ -42,13 +41,24 @@ class Sentinel:
     """Used to get type-stubs to work with this object."""
 
 
-@dataclass
 class LocalInput:
-    input_id: str
-    function_call_id: str
-    method_name: str
-    args: Tuple[Any, ...]
-    kwargs: Dict[str, Any]
+    def __init__(
+        self,
+        container_io_manager: "_ContainerIOManager",
+        input_id: str,
+        function_call_id: str,
+        input_pb: api_pb2.FunctionInput,
+    ):
+        self.input_id: str = input_id
+        self.function_call_id: str = function_call_id
+        self.method_name: str = input_pb.method_name
+
+        args, kwargs = container_io_manager.deserialize(input_pb.args) if input_pb.args else ((), {})
+        self.args: Tuple[Any, ...] = args
+        self.kwargs: Dict[str, Any] = kwargs
+
+        container_io_manager.current_input_id = input_id
+        container_io_manager.current_input_started_at = time.time()
 
 
 class _ContainerIOManager:
@@ -459,23 +469,54 @@ class _ContainerIOManager:
 
         if batch_max_size == 0:
             async for input_id, function_call_id, input_pb in self._generate_inputs():
-                args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
-                self.current_input_id, self.current_input_started_at = (input_id, time.time())
-                yield LocalInput(input_id, function_call_id, input_pb.method_name, args, kwargs)
+                yield LocalInput(self, input_id, function_call_id, input_pb)
                 self.current_input_id, self.current_input_started_at = (None, None)
         else:
             async for inputs_list in self._generate_inputs():
                 local_inputs_list = []
                 for input_id, function_call_id, input_pb in inputs_list:
-                    args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
-                    self.current_input_id, self.current_input_started_at = (input_id, time.time())
-                    local_inputs_list.append(LocalInput(input_id, function_call_id, input_pb.method_name, args, kwargs))
+                    local_inputs_list.append(LocalInput(self, input_id, function_call_id, input_pb))
                 yield local_inputs_list
                 self.current_input_id, self.current_input_started_at = (None, None)
 
         # collect all active input slots, meaning all inputs have wrapped up.
         for _ in range(input_concurrency):
             await self._semaphore.acquire()
+
+    async def _get_kwargs_process_blob_data(self, data: bytes, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        if len(data) > MAX_OBJECT_SIZE_BYTES:
+            kwargs["data_blob_id"] = await blob_upload(data, self._client.stub)
+        else:
+            kwargs["data"] = data
+        return kwargs
+
+    async def _get_kwargs(
+        self, kwargs: Dict[str, Any], input_ids: Union[str, List[str]], function_name: str, data_format: int
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        if "data" not in kwargs or not kwargs["data"]:
+            return kwargs if isinstance(input_ids, str) else [kwargs] * len(input_ids)
+        # data is not batched, return a single kwargs.
+        if isinstance(input_ids, str):
+            return await self._get_kwargs_process_blob_data(kwargs.pop("data"), kwargs)
+        # data is batched, return a list of kwargs
+        # split the list of data in kwargs to respective input_ids and report error for every input_id in batch call.
+        if "status" in kwargs and kwargs["status"] == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+            error_data = kwargs.pop("data")
+            return [await self._get_kwargs_process_blob_data(error_data, kwargs) for _ in input_ids]
+        else:
+            data = self.deserialize_data_format(kwargs.pop("data"), data_format)
+            if not isinstance(data, list):
+                raise InvalidError(f"Output of batch function {function_name} must be a list.")
+            if len(data) != len(input_ids):
+                raise InvalidError(
+                    f"Output of batch function {function_name} must be a list of the same length as its inputs."
+                )
+            return await asyncio.gather(
+                *[
+                    self._get_kwargs_process_blob_data(self.serialize_data_format(d, data_format), kwargs.copy())
+                    for d in data
+                ]
+            )
 
     async def _push_output(
         self,
@@ -485,53 +526,20 @@ class _ContainerIOManager:
         data_format=api_pb2.DATA_FORMAT_UNSPECIFIED,
         **kwargs,
     ):
-        outputs = []
-        if isinstance(input_ids, list):
-            formatted_data = None
-            if "data" in kwargs and kwargs["data"]:
-                # split the list of data in kwargs to respective input_ids
-                # report error for every input_id in batch call
-                if "status" in kwargs and kwargs["status"] == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-                    formatted_data = [kwargs.pop("data")] * len(input_ids)
-                else:
-                    data = self.deserialize_data_format(kwargs.pop("data"), data_format)
-                    if not isinstance(data, list):
-                        raise InvalidError(f"Output of batch function {function_name} must be a list.")
-                    if len(data) != len(input_ids):
-                        raise InvalidError(
-                            f"Output of batch function {function_name} must be a list of the same length as its inputs."
-                        )
-                    formatted_data = [self.serialize_data_format(d, data_format) for d in data]
-            for i, input_id in enumerate(input_ids):
-                data = formatted_data[i] if formatted_data else None
-                result = (
-                    (
-                        # upload data to S3 if too big.
-                        api_pb2.GenericResult(data_blob_id=await blob_upload(data, self._client.stub), **kwargs)
-                        if len(data) > MAX_OBJECT_SIZE_BYTES
-                        else api_pb2.GenericResult(data=data, **kwargs)
-                    )
-                    if data
-                    else api_pb2.GenericResult(**kwargs)
+        kwargs = await self._get_kwargs(kwargs, input_ids, function_name, data_format)
+        if isinstance(input_ids, list) and isinstance(kwargs, list):
+            outputs = [
+                api_pb2.FunctionPutOutputsItem(
+                    input_id=input_id,
+                    input_started_at=started_at,
+                    output_created_at=time.time(),
+                    result=api_pb2.GenericResult(**kwargs),
+                    data_format=data_format,
                 )
-                outputs.append(
-                    api_pb2.FunctionPutOutputsItem(
-                        input_id=input_id,
-                        input_started_at=started_at,
-                        output_created_at=time.time(),
-                        result=result,
-                        data_format=data_format,
-                    )
-                )
+                for input_id, kwargs in zip(input_ids, kwargs)
+            ]
         else:
-            # upload data to S3 if too big.
-            if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
-                data_blob_id = await blob_upload(kwargs["data"], self._client.stub)
-                # mutating kwargs.
-                del kwargs["data"]
-                kwargs["data_blob_id"] = data_blob_id
-
-            outputs.append(
+            outputs = [
                 api_pb2.FunctionPutOutputsItem(
                     input_id=input_ids,
                     input_started_at=started_at,
@@ -539,7 +547,7 @@ class _ContainerIOManager:
                     result=api_pb2.GenericResult(**kwargs),
                     data_format=data_format,
                 )
-            )
+            ]
         await retry_transient_errors(
             self._client.stub.FunctionPutOutputs,
             api_pb2.FunctionPutOutputsRequest(outputs=outputs),
