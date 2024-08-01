@@ -7,6 +7,7 @@ import signal
 import sys
 import time
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Set, Tuple, Union
 
@@ -41,7 +42,14 @@ class Sentinel:
     """Used to get type-stubs to work with this object."""
 
 
+@dataclass
 class LocalInput:
+    input_id: str
+    function_call_id: str
+    method_name: str
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
+
     def __init__(
         self,
         container_io_manager: "_ContainerIOManager",
@@ -49,13 +57,10 @@ class LocalInput:
         function_call_id: str,
         input_pb: api_pb2.FunctionInput,
     ):
-        self.input_id: str = input_id
-        self.function_call_id: str = function_call_id
-        self.method_name: str = input_pb.method_name
-
-        args, kwargs = container_io_manager.deserialize(input_pb.args) if input_pb.args else ((), {})
-        self.args: Tuple[Any, ...] = args
-        self.kwargs: Dict[str, Any] = kwargs
+        self.input_id = input_id
+        self.function_call_id = function_call_id
+        self.method_name = input_pb.method_name
+        self.args, self.kwargs = container_io_manager.deserialize(input_pb.args) if input_pb.args else ((), {})
 
         container_io_manager.current_input_id = input_id
         container_io_manager.current_input_started_at = time.time()
