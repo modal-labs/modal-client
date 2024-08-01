@@ -144,7 +144,7 @@ class _Volume(_Object, type_prefix="vo"):
 
         Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes.
         """
-        deprecation_error((2024, 3, 20), Volume.new.__doc__)
+        deprecation_error((2024, 3, 20), Volume.new.__doc__)  # type: ignore
 
     @staticmethod
     def from_name(
