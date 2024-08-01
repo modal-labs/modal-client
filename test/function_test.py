@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import App, Image, Mount, NetworkFileSystem, Proxy, batch, web_endpoint
+from modal import App, Image, Mount, NetworkFileSystem, Proxy, batched, web_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import ExecutionError, InvalidError
@@ -808,20 +808,20 @@ def test_batch_function_invalid_error():
     app = App()
 
     with pytest.raises(InvalidError, match="must be a positive integer"):
-        app.function(batch(batch_max_size=0, batch_linger_ms=1))(dummy)
+        app.function(batched(max_batch_size=0, max_wait_ms=1))(dummy)
 
     with pytest.raises(InvalidError, match="must be a non-negative integer"):
-        app.function(batch(batch_max_size=1, batch_linger_ms=-1))(dummy)
+        app.function(batched(max_batch_size=1, max_wait_ms=-1))(dummy)
 
     with pytest.raises(InvalidError, match="must be less than"):
-        app.function(batch(batch_max_size=1000, batch_linger_ms=1))(dummy)
+        app.function(batched(max_batch_size=1000, max_wait_ms=1))(dummy)
 
     with pytest.raises(InvalidError, match="must be less than"):
-        app.function(batch(batch_max_size=1, batch_linger_ms=10 * 60 * 1000))(dummy)
+        app.function(batched(max_batch_size=1, max_wait_ms=10 * 60 * 1000))(dummy)
 
     with pytest.raises(InvalidError, match="cannot return generators"):
 
         @app.function(serialized=True)
-        @batch(batch_max_size=1, batch_linger_ms=1)
+        @batched(max_batch_size=1, max_wait_ms=1)
         def f(x):
             yield [x_i**2 for x_i in x]

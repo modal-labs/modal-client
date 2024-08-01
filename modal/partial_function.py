@@ -21,7 +21,7 @@ from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 
 MAX_BATCH_SIZE = 1000
-MAX_BATCH_LINGER_MS = 10 * 60 * 1000  # 10 minutes
+MAX_BATCH_WAIT_MS = 10 * 60 * 1000  # 10 minutes
 
 
 class _PartialFunctionFlags(enum.IntFlag):
@@ -38,7 +38,7 @@ class _PartialFunctionFlags(enum.IntFlag):
 
 
 class _PartialFunction:
-    """Intermediate function, produced by @method, @web_endpoint, or @batch"""
+    """Intermediate function, produced by @method, @web_endpoint, or @batched"""
 
     raw_f: Callable[..., Any]
     flags: _PartialFunctionFlags
@@ -46,7 +46,7 @@ class _PartialFunction:
     is_generator: Optional[bool]
     keep_warm: Optional[int]
     batch_max_size: Optional[int]
-    batch_linger_ms: Optional[int]
+    batch_wait_ms: Optional[int]
 
     def __init__(
         self,
@@ -56,7 +56,7 @@ class _PartialFunction:
         is_generator: Optional[bool] = None,
         keep_warm: Optional[int] = None,
         batch_max_size: Optional[int] = None,
-        batch_linger_ms: Optional[int] = None,
+        batch_wait_ms: Optional[int] = None,
     ):
         self.raw_f = raw_f
         self.flags = flags
@@ -65,7 +65,7 @@ class _PartialFunction:
         self.keep_warm = keep_warm
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
         self.batch_max_size = batch_max_size
-        self.batch_linger_ms = batch_linger_ms
+        self.batch_wait_ms = batch_wait_ms
 
     def __get__(self, obj, objtype=None) -> _Function:
         k = self.raw_f.__name__
@@ -104,7 +104,7 @@ class _PartialFunction:
             webhook_config=self.webhook_config,
             keep_warm=self.keep_warm,
             batch_max_size=self.batch_max_size,
-            batch_linger_ms=self.batch_linger_ms,
+            batch_wait_ms=self.batch_wait_ms,
         )
 
 
@@ -572,35 +572,37 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
     return wrapper
 
 
-def _batch(
+def _batched(
     _warn_parentheses_missing=None,
     *,
-    batch_max_size: int,
-    batch_linger_ms: int,
+    max_batch_size: int,
+    max_wait_ms: int,
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     if _warn_parentheses_missing:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batch()`.")
-    if batch_max_size < 1:
-        raise InvalidError("batch_max_size must be a positive integer.")
-    if batch_max_size >= MAX_BATCH_SIZE:
-        raise InvalidError(f"batch_max_size must be less than {MAX_BATCH_SIZE}.")
-    if batch_linger_ms < 0:
-        raise InvalidError("batch_linger_ms must be a non-negative integer.")
-    if batch_linger_ms >= MAX_BATCH_LINGER_MS:
-        raise InvalidError(f"batch_linger_ms must be less than {MAX_BATCH_LINGER_MS}.")
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batched()`."
+        )
+    if max_batch_size < 1:
+        raise InvalidError("max_batch_size must be a positive integer.")
+    if max_batch_size >= MAX_BATCH_SIZE:
+        raise InvalidError(f"max_batch_size must be less than {MAX_BATCH_SIZE}.")
+    if max_wait_ms < 0:
+        raise InvalidError("max_wait_ms must be a non-negative integer.")
+    if max_wait_ms >= MAX_BATCH_WAIT_MS:
+        raise InvalidError(f"max_wait_ms must be less than {MAX_BATCH_WAIT_MS}.")
 
     def wrapper(raw_f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
             raw_f = raw_f.get_raw_f()
             raise InvalidError(
                 f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
-                "@app.function()\n@modal.batch()\ndef batched_function():\n    ..."
+                "@app.function()\n@modal.batched()\ndef batched_function():\n    ..."
             )
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.BATCH,
-            batch_max_size=batch_max_size,
-            batch_linger_ms=batch_linger_ms,
+            batch_max_size=max_batch_size,
+            batch_wait_ms=max_wait_ms,
         )
 
     return wrapper
@@ -614,4 +616,4 @@ web_server = synchronize_api(_web_server)
 build = synchronize_api(_build)
 enter = synchronize_api(_enter)
 exit = synchronize_api(_exit)
-batch = synchronize_api(_batch)
+batched = synchronize_api(_batched)

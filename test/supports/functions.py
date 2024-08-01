@@ -9,7 +9,7 @@ from modal import (
     App,
     Sandbox,
     asgi_app,
-    batch,
+    batched,
     build,
     current_function_call_id,
     current_input_id,
@@ -332,7 +332,7 @@ async def sleep_700_async(x):
 
 
 @app.function()
-@batch(batch_max_size=4, batch_linger_ms=500)
+@batched(max_batch_size=4, max_wait_ms=500)
 def batch_function_sync(x: Tuple[int], y: Tuple[int]):
     outputs = []
     for x_i, y_i in zip(x, y):
@@ -341,19 +341,19 @@ def batch_function_sync(x: Tuple[int], y: Tuple[int]):
 
 
 @app.function()
-@batch(batch_max_size=4, batch_linger_ms=500)
+@batched(max_batch_size=4, max_wait_ms=500)
 def batch_function_outputs_not_list(x: Tuple[int], y: Tuple[int]):
     return str(x)
 
 
 @app.function()
-@batch(batch_max_size=4, batch_linger_ms=500)
+@batched(max_batch_size=4, max_wait_ms=500)
 def batch_function_outputs_wrong_len(x: Tuple[int], y: Tuple[int]):
     return list(x) + [0]
 
 
 @app.function()
-@batch(batch_max_size=4, batch_linger_ms=500)
+@batched(max_batch_size=4, max_wait_ms=500)
 async def batch_function_async(x: Tuple[int], y: Tuple[int]):
     outputs = []
     for x_i, y_i in zip(x, y):

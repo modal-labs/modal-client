@@ -64,7 +64,7 @@ def _get_inputs(
     return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
 
 
-def _get_inputs_batch(
+def _get_inputs_batched(
     args_list: List[Tuple[Tuple, Dict]],
     batch_max_size: int,
     kill_switch=True,
@@ -152,7 +152,7 @@ def _container_args(
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
     batch_max_size: Optional[int] = None,
-    batch_linger_ms: Optional[int] = None,
+    batch_wait_ms: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
     is_checkpointing_function: bool = False,
     deps: List[str] = ["im-1"],
@@ -185,7 +185,7 @@ def _container_args(
         is_auto_snapshot=is_auto_snapshot,
         allow_concurrent_inputs=allow_concurrent_inputs,
         batch_max_size=batch_max_size,
-        batch_linger_ms=batch_linger_ms,
+        batch_wait_ms=batch_wait_ms,
         is_checkpointing_function=is_checkpointing_function,
         object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         max_inputs=max_inputs,
@@ -223,7 +223,7 @@ def _run_container(
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
     batch_max_size: int = 0,
-    batch_linger_ms: int = 0,
+    batch_wait_ms: int = 0,
     serialized_params: Optional[bytes] = None,
     is_checkpointing_function: bool = False,
     deps: List[str] = ["im-1"],
@@ -245,7 +245,7 @@ def _run_container(
         is_builder_function,
         allow_concurrent_inputs,
         batch_max_size,
-        batch_linger_ms,
+        batch_wait_ms,
         serialized_params,
         is_checkpointing_function,
         deps,
@@ -1090,8 +1090,8 @@ def test_concurrent_inputs_async_function(servicer):
 
 def _batch_function_test_helper(batch_func, servicer, args_list, expected_outputs, expected_status="success"):
     batch_max_size = 4
-    batch_linger_ms = 500
-    inputs = _get_inputs_batch(args_list, batch_max_size)
+    batch_wait_ms = 500
+    inputs = _get_inputs_batched(args_list, batch_max_size)
 
     ret = _run_container(
         servicer,
@@ -1099,7 +1099,7 @@ def _batch_function_test_helper(batch_func, servicer, args_list, expected_output
         batch_func,
         inputs=inputs,
         batch_max_size=batch_max_size,
-        batch_linger_ms=batch_linger_ms,
+        batch_wait_ms=batch_wait_ms,
     )
     if expected_status == "success":
         outputs = _unwrap_batch_scalar(ret, len(expected_outputs))
@@ -1109,14 +1109,14 @@ def _batch_function_test_helper(batch_func, servicer, args_list, expected_output
 
 
 @skip_github_non_linux
-def test_batch_sync_function_full_batch(servicer):
+def test_batch_sync_function_full_batched(servicer):
     inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
     expected_outputs = [2] * 4
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
 
 @skip_github_non_linux
-def test_batch_sync_function_partial_batch(servicer):
+def test_batch_sync_function_partial_batched(servicer):
     inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(2)]
     expected_outputs = [2] * 2
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
@@ -1135,32 +1135,32 @@ def test_batch_sync_function_inputs_outputs_error(servicer):
     inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10, 5, 1), {})]
     with pytest.raises(InvalidError) as err:
         _batch_function_test_helper("batch_function_sync", servicer, inputs, [])
-    assert "Modal batch function batch_function_sync takes 2 positional arguments, but one call has 3." in str(err)
+    assert "Modal batched function batch_function_sync takes 2 positional arguments, but one call has 3." in str(err)
 
     # Unexpected keyword arg
     inputs = [((10, 5), {}), ((10,), {"z": 5})]
     with pytest.raises(InvalidError) as err:
         _batch_function_test_helper("batch_function_sync", servicer, inputs, [])
-    assert "Modal batch function batch_function_sync got an unexpected keyword argument z in one call." in str(err)
+    assert "Modal batched function batch_function_sync got an unexpected keyword argument z in one call." in str(err)
 
     # Multiple values with keyword arg
     inputs = [((10, 5), {}), ((10,), {"x": 1})]
     with pytest.raises(InvalidError) as err:
         _batch_function_test_helper("batch_function_sync", servicer, inputs, [])
-    assert "Modal batch function batch_function_sync got multiple values for argument x in one call." in str(err)
+    assert "Modal batched function batch_function_sync got multiple values for argument x in one call." in str(err)
 
     # output must be list
     inputs = [((10, 5), {})]
     with pytest.raises(InvalidError) as err:
         _batch_function_test_helper("batch_function_outputs_not_list", servicer, inputs, [])
-    assert "Output of batch function batch_function_outputs_not_list must be a list." in str(err)
+    assert "Output of batched function batch_function_outputs_not_list must be a list." in str(err)
 
     # outputs must match length of inputs
     inputs = [((10, 5), {})]
     with pytest.raises(InvalidError) as err:
         _batch_function_test_helper("batch_function_outputs_wrong_len", servicer, inputs, [])
     assert (
-        "Output of batch function batch_function_outputs_wrong_len must be a list of the same length as its inputs."
+        "Output of batched function batch_function_outputs_wrong_len must be a list of the same length as its inputs."
         in str(err)
     )
 

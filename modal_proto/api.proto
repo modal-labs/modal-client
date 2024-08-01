@@ -1002,7 +1002,7 @@ message Function {
   reserved 58;
   reserved 59;
   uint32 batch_max_size = 60; // Maximum number of inputs to fetch at once
-  uint64 batch_linger_ms = 61; // Miliseconds to block before a response is needed
+  uint64 batch_wait_ms = 61; // Miliseconds to block before a response is needed
 }
 
 message FunctionBindParamsRequest {
@@ -1108,7 +1108,7 @@ message FunctionGetInputsRequest {
   reserved 9;
   reserved 10;
   uint32 batch_max_size = 11; // Maximum number of inputs to fetch at once
-  uint64 batch_linger_ms = 12; // Miliseconds to block before a response is needed
+  uint64 batch_wait_ms = 12; // Miliseconds to block before a response is needed
 }
 
 message FunctionGetInputsResponse {

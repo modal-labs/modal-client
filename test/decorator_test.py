@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import App, asgi_app, batch, method, web_endpoint, wsgi_app
+from modal import App, asgi_app, batched, method, web_endpoint, wsgi_app
 from modal.exception import InvalidError
 
 
@@ -93,6 +93,6 @@ def test_batch_method():
         @app.cls()
         class Container:
             @method()  # type: ignore
-            @batch(batch_max_size=2, batch_linger_ms=0)
+            @batched(max_batch_size=2, max_wait_ms=0)
             def generate(self):
                 pass

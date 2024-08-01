@@ -869,32 +869,32 @@ def test_disabled_parameterized_snap_cls():
     app.cls(enable_memory_snapshot=True)(ParameterizedClass3)
 
 
-app_batch = App()
+app_batched = App()
 
 
-def test_batch_method_duplicate_error(client):
+def test_batched_method_duplicate_error(client):
     with pytest.raises(
-        InvalidError, match="Modal class BatchClass_1 with a modal batch function cannot have other modal methods."
+        InvalidError, match="Modal class BatchedClass_1 with a modal batched function cannot have other modal methods."
     ):
 
-        @app_batch.cls(serialized=True)
-        class BatchClass_1:
+        @app_batched.cls(serialized=True)
+        class BatchedClass_1:
             @modal.method()
             def method(self):
                 pass
 
-            @modal.batch(batch_max_size=2, batch_linger_ms=0)
-            def batch_method(self):
+            @modal.batched(max_batch_size=2, max_wait_ms=0)
+            def batched_method(self):
                 pass
 
-    with pytest.raises(InvalidError, match="Modal class BatchClass_2 can only have one batch function."):
+    with pytest.raises(InvalidError, match="Modal class BatchedClass_2 can only have one batched function."):
 
-        @app_batch.cls(serialized=True)
-        class BatchClass_2:
-            @modal.batch(batch_max_size=2, batch_linger_ms=0)
-            def batch_method_1(self):
+        @app_batched.cls(serialized=True)
+        class BatchedClass_2:
+            @modal.batched(max_batch_size=2, max_wait_ms=0)
+            def batched_method_1(self):
                 pass
 
-            @modal.batch(batch_max_size=2, batch_linger_ms=0)
-            def batch_method_2(self):
+            @modal.batched(max_batch_size=2, max_wait_ms=0)
+            def batched_method_2(self):
                 pass

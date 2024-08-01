@@ -336,25 +336,25 @@ def _aggregate_args_and_kwargs(
     param_names = list(inspect.signature(callable).parameters.keys())
     for param in inspect.signature(callable).parameters.values():
         if param.default is not inspect.Parameter.empty:
-            raise InvalidError(f"Modal batch function {callable.__name__} does not accept default arguments.")
+            raise InvalidError(f"Modal batched function {callable.__name__} does not accept default arguments.")
 
     args_by_inputs: List[Dict[str, Any]] = [{} for _ in range(len(local_inputs))]
     for i, local_input in enumerate(local_inputs):
         params_len = len(local_input.args) + len(local_input.kwargs)
         if params_len != len(param_names):
             raise InvalidError(
-                f"Modal batch function {callable.__name__} takes {len(param_names)} positional arguments, but one call has {params_len}."  # noqa
+                f"Modal batched function {callable.__name__} takes {len(param_names)} positional arguments, but one call has {params_len}."  # noqa
             )
         for j, arg in enumerate(local_input.args):
             args_by_inputs[i][param_names[j]] = arg
         for k, v in local_input.kwargs.items():
             if k not in param_names:
                 raise InvalidError(
-                    f"Modal batch function {callable.__name__} got an unexpected keyword argument {k} in one call."
+                    f"Modal batched function {callable.__name__} got an unexpected keyword argument {k} in one call."
                 )
             if k in args_by_inputs[i]:
                 raise InvalidError(
-                    f"Modal batch function {callable.__name__} got multiple values for argument {k} in one call."
+                    f"Modal batched function {callable.__name__} got multiple values for argument {k} in one call."
                 )
             args_by_inputs[i][k] = v
 
@@ -371,7 +371,7 @@ def call_function(
     finalized_functions: Dict[str, FinalizedFunction],
     input_concurrency: int,
     batch_max_size: Optional[int],
-    batch_linger_ms: Optional[int],
+    batch_wait_ms: Optional[int],
 ):
     async def run_input_async(
         finalized_function: FinalizedFunction,
@@ -512,7 +512,7 @@ def call_function(
                 # for them to resolve gracefully:
                 async with TaskContext(0.01) as task_context:
                     async for local_inputs in container_io_manager.run_inputs_outputs.aio(
-                        input_concurrency, batch_max_size, batch_linger_ms
+                        input_concurrency, batch_max_size, batch_wait_ms
                     ):
                         finalized_function = _get_finalized_functions(local_inputs)
                         # Note that run_inputs_outputs will not return until the concurrency semaphore has
@@ -529,7 +529,7 @@ def call_function(
 
             user_code_event_loop.run(run_concurrent_inputs())
     else:
-        for local_inputs in container_io_manager.run_inputs_outputs(input_concurrency, batch_max_size, batch_linger_ms):
+        for local_inputs in container_io_manager.run_inputs_outputs(input_concurrency, batch_max_size, batch_wait_ms):
             finalized_function = _get_finalized_functions(local_inputs)
             if finalized_function.is_async:
                 user_code_event_loop.run(run_input_async(finalized_function, local_inputs, container_io_manager))
@@ -831,11 +831,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             # Concurrency and batching doesn't apply for `modal shell`.
             input_concurrency = 1
             batch_max_size = 0
-            batch_linger_ms = 0
+            batch_wait_ms = 0
         else:
             input_concurrency = function_def.allow_concurrent_inputs or 1
             batch_max_size = function_def.batch_max_size or 0
-            batch_linger_ms = function_def.batch_linger_ms or 0
+            batch_wait_ms = function_def.batch_wait_ms or 0
 
         # Get ids and metadata for objects (primarily functions and classes) on the app
         container_app: RunningApp = container_io_manager.get_app_objects()
@@ -903,7 +903,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 finalized_functions,
                 input_concurrency,
                 batch_max_size,
-                batch_linger_ms,
+                batch_wait_ms,
             )
         finally:
             # Run exit handlers. From this point onward, ignore all SIGINT signals that come from

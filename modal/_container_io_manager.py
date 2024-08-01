@@ -376,7 +376,7 @@ class _ContainerIOManager:
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self._input_concurrency
             request.batch_max_size = self._batch_max_size
-            request.batch_linger_ms = self._batch_linger_ms
+            request.batch_wait_ms = self._batch_wait_ms
 
             await self._semaphore.acquire()
             yielded = False
@@ -441,7 +441,7 @@ class _ContainerIOManager:
                             inputs_list.append((item.input_id, item.function_call_id, input_pb))
                             if item.input.final_input:
                                 eof_received = True
-                                logger.error("Final input not expected in batch input stream")
+                                logger.error("Final input not expected in batched input stream")
                                 break
 
                         if not eof_received:
@@ -461,7 +461,7 @@ class _ContainerIOManager:
         self,
         input_concurrency: int = 1,
         batch_max_size: int = 0,
-        batch_linger_ms: int = 0,
+        batch_wait_ms: int = 0,
     ) -> AsyncIterator[Union[LocalInput, List[LocalInput]]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
@@ -469,7 +469,7 @@ class _ContainerIOManager:
         # - or, when the output for the fetched input is sent, release the semaphore.
         self._input_concurrency = input_concurrency
         self._batch_max_size = batch_max_size
-        self._batch_linger_ms = batch_linger_ms
+        self._batch_wait_ms = batch_wait_ms
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
         if batch_max_size == 0:
@@ -504,17 +504,17 @@ class _ContainerIOManager:
         if isinstance(input_ids, str):
             return await self._get_kwargs_process_blob_data(kwargs.pop("data"), kwargs)
         # data is batched, return a list of kwargs
-        # split the list of data in kwargs to respective input_ids and report error for every input_id in batch call.
+        # split the list of data in kwargs to respective input_ids and report error for every input_id in batched call.
         if "status" in kwargs and kwargs["status"] == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
             error_data = kwargs.pop("data")
             return [await self._get_kwargs_process_blob_data(error_data, kwargs) for _ in input_ids]
         else:
             data = self.deserialize_data_format(kwargs.pop("data"), data_format)
             if not isinstance(data, list):
-                raise InvalidError(f"Output of batch function {function_name} must be a list.")
+                raise InvalidError(f"Output of batched function {function_name} must be a list.")
             if len(data) != len(input_ids):
                 raise InvalidError(
-                    f"Output of batch function {function_name} must be a list of the same length as its inputs."
+                    f"Output of batched function {function_name} must be a list of the same length as its inputs."
                 )
             return await asyncio.gather(
                 *[
@@ -636,8 +636,8 @@ class _ContainerIOManager:
             await self.complete_call(started_at)
             return
         except InvalidError as exc:
-            # If there is an error in batch function output, we need to explicitly raise it
-            if "Output of batch function" in exc.args[0]:
+            # If there is an error in batched function output, we need to explicitly raise it
+            if "Output of batched function" in exc.args[0]:
                 raise
         except BaseException as exc:
             # print exception so it's logged

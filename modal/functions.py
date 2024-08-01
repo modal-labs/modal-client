@@ -345,7 +345,7 @@ class _Function(_Object, type_prefix="fu"):
                 use_function_id=class_service_function.object_id,
                 use_method_name=method_name,
                 batch_max_size=partial_function.batch_max_size or 0,
-                batch_linger_ms=partial_function.batch_linger_ms or 0,
+                batch_wait_ms=partial_function.batch_wait_ms or 0,
             )
             assert resolver.app_id
             request = api_pb2.FunctionCreateRequest(
@@ -487,7 +487,7 @@ class _Function(_Object, type_prefix="fu"):
         concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
         batch_max_size: Optional[int] = None,
-        batch_linger_ms: Optional[int] = None,
+        batch_wait_ms: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
@@ -815,7 +815,7 @@ class _Function(_Object, type_prefix="fu"):
                     is_builder_function=is_builder_function,
                     allow_concurrent_inputs=allow_concurrent_inputs or 0,
                     batch_max_size=batch_max_size or 0,
-                    batch_linger_ms=batch_linger_ms or 0,
+                    batch_wait_ms=batch_wait_ms or 0,
                     worker_id=config.get("worker_id"),
                     is_auto_snapshot=is_auto_snapshot,
                     is_method=bool(info.user_cls) and not info.is_service_class(),
