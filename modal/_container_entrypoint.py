@@ -327,39 +327,42 @@ def _aggregate_args_and_kwargs(
     local_inputs: Union[LocalInput, List[LocalInput]],
     callable: Callable[..., Any],
 ) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
-    if isinstance(local_inputs, list):
-        param_names = list(inspect.signature(callable).parameters.keys())
-        for param in inspect.signature(callable).parameters.values():
-            if param.default is not inspect.Parameter.empty:
-                raise InvalidError(f"Modal batch function {callable.__name__} does not accept default arguments.")
+    if isinstance(local_inputs, LocalInput):
+        return local_inputs.input_id, local_inputs.function_call_id, local_inputs.args, local_inputs.kwargs
 
-        args_by_inputs: List[Dict[str, Any]] = [{} for _ in range(len(local_inputs))]
-        for i, local_input in enumerate(local_inputs):
-            params_len = len(local_input.args) + len(local_input.kwargs)
-            if params_len != len(param_names):
+    # aggregate args and kwargs for batched input
+    input_ids = [local_input.input_id for local_input in local_inputs]
+    function_call_ids = [local_input.function_call_id for local_input in local_inputs]
+    param_names = list(inspect.signature(callable).parameters.keys())
+    for param in inspect.signature(callable).parameters.values():
+        if param.default is not inspect.Parameter.empty:
+            raise InvalidError(f"Modal batch function {callable.__name__} does not accept default arguments.")
+
+    args_by_inputs: List[Dict[str, Any]] = [{} for _ in range(len(local_inputs))]
+    for i, local_input in enumerate(local_inputs):
+        params_len = len(local_input.args) + len(local_input.kwargs)
+        if params_len != len(param_names):
+            raise InvalidError(
+                f"Modal batch function {callable.__name__} takes {len(param_names)} positional arguments, but one call has {params_len}."  # noqa
+            )
+        for j, arg in enumerate(local_input.args):
+            args_by_inputs[i][param_names[j]] = arg
+        for k, v in local_input.kwargs.items():
+            if k not in param_names:
                 raise InvalidError(
-                    f"Modal batch function {callable.__name__} takes {len(param_names)} positional arguments, but one call has {params_len}."  # noqa
+                    f"Modal batch function {callable.__name__} got an unexpected keyword argument {k} in one call."
                 )
-            for j, arg in enumerate(local_input.args):
-                args_by_inputs[i][param_names[j]] = arg
-            for k, v in local_input.kwargs.items():
-                if k not in param_names:
-                    raise InvalidError(
-                        f"Modal batch function {callable.__name__} got an unexpected keyword argument {k} in one call."
-                    )
-                if k in args_by_inputs[i]:
-                    raise InvalidError(
-                        f"Modal batch function {callable.__name__} got multiple values for argument {k} in one call."
-                    )
-                args_by_inputs[i][k] = v
+            if k in args_by_inputs[i]:
+                raise InvalidError(
+                    f"Modal batch function {callable.__name__} got multiple values for argument {k} in one call."
+                )
+            args_by_inputs[i][k] = v
 
-        formatted_kwargs = {
-            param_name: [args_by_inputs[i][param_name] for i in range(len(local_inputs))] for param_name in param_names
-        }
-        return tuple(), formatted_kwargs
-
-    else:
-        return local_inputs.args, local_inputs.kwargs
+    # put all arg / args into a kwargs dict, with items being param name -> list of values of length len(local_inputs)
+    formatted_kwargs = {
+        param_name: [args_by_inputs[i][param_name] for i in range(len(local_inputs))] for param_name in param_names
+    }
+    return input_ids, function_call_ids, tuple(), formatted_kwargs
 
 
 def call_function(
@@ -376,17 +379,9 @@ def call_function(
         container_io_manager: "modal._container_io_manager.ContainerIOManager",
     ) -> None:
         started_at = time.time()
-        input_ids: Union[str, List[str]] = (
-            local_inputs.input_id
-            if isinstance(local_inputs, LocalInput)
-            else [local_input.input_id for local_input in local_inputs]
+        input_ids, function_call_ids, args, kwargs = _aggregate_args_and_kwargs(
+            local_inputs, finalized_function.callable
         )
-        function_call_ids: Union[str, List[str]] = (
-            local_inputs.function_call_id
-            if isinstance(local_inputs, LocalInput)
-            else [local_input.function_call_id for local_input in local_inputs]
-        )
-        args, kwargs = _aggregate_args_and_kwargs(local_inputs, finalized_function.callable)
         reset_context = _set_current_context_ids(input_ids, function_call_ids)
         async with container_io_manager.handle_input_exception.aio(
             input_ids, started_at, finalized_function.callable.__name__
@@ -447,17 +442,9 @@ def call_function(
         container_io_manager: "modal._container_io_manager.ContainerIOManager",
     ) -> None:
         started_at = time.time()
-        input_ids: Union[str, List[str]] = (
-            local_inputs.input_id
-            if isinstance(local_inputs, LocalInput)
-            else [local_input.input_id for local_input in local_inputs]
+        input_ids, function_call_ids, args, kwargs = _aggregate_args_and_kwargs(
+            local_inputs, finalized_function.callable
         )
-        function_call_ids: Union[str, List[str]] = (
-            local_inputs.function_call_id
-            if isinstance(local_inputs, LocalInput)
-            else [local_input.function_call_id for local_input in local_inputs]
-        )
-        args, kwargs = _aggregate_args_and_kwargs(local_inputs, finalized_function.callable)
         reset_context = _set_current_context_ids(input_ids, function_call_ids)
         with container_io_manager.handle_input_exception(input_ids, started_at, finalized_function.callable.__name__):
             logger.debug(f"Starting input {input_ids} (sync)")
