@@ -326,7 +326,7 @@ class UserCodeEventLoop:
 def _aggregate_args_and_kwargs(
     local_inputs: Union[LocalInput, List[LocalInput]],
     callable: Callable[..., Any],
-) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
+) -> Tuple[Union[str, List[str]], Union[str, List[str]], Tuple[Any, ...], Dict[str, Any]]:
     if isinstance(local_inputs, LocalInput):
         return local_inputs.input_id, local_inputs.function_call_id, local_inputs.args, local_inputs.kwargs
 
