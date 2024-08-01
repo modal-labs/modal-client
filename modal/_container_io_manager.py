@@ -9,7 +9,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Set, Tuple
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -114,6 +114,8 @@ class _ContainerIOManager:
         self.current_input_started_at = None
 
         self._input_concurrency = None
+        self._batch_max_size = None
+        self._batch_linger_ms = None
 
         self._semaphore = None
         self._environment_name = container_args.environment_name
@@ -136,6 +138,9 @@ class _ContainerIOManager:
     def _reset_singleton(cls):
         """Only used for tests."""
         cls._singleton = None
+
+    def is_batched(self) -> bool:
+        return self.function_def.batch_max_size > 0
 
     async def _run_heartbeat_loop(self):
         while 1:
@@ -367,7 +372,7 @@ class _ContainerIOManager:
     @synchronizer.no_io_translation
     async def _generate_inputs(
         self,
-    ) -> AsyncIterator[Union[Tuple[str, str, api_pb2.FunctionInput], List[Tuple[str, str, api_pb2.FunctionInput]]]]:
+    ) -> AsyncIterator[List[Tuple[str, str, api_pb2.FunctionInput]]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         eof_received = False
         iteration = 0
@@ -394,16 +399,18 @@ class _ContainerIOManager:
                     )
                     await asyncio.sleep(response.rate_limit_sleep_duration)
                 elif response.inputs:
-                    if self._batch_max_size == 0:
-                        # for input cancellations and concurrency logic we currently assume
-                        # that there is no input buffering in the container
-                        assert len(response.inputs) == 1
-                        item = response.inputs[0]
+                    # for input cancellations and concurrency logic we currently assume
+                    # that there is no input buffering in the container
+                    assert 0 < len(response.inputs) <= max(1, request.batch_max_size)
+                    inputs_list = []
+                    for item in response.inputs:
                         if item.kill_switch:
+                            assert len(response.inputs) == 1
                             logger.debug(f"Task {self.task_id} input kill signal input.")
                             eof_received = True
                             break
                         if item.input_id in self.cancelled_input_ids:
+                            assert request.batch_max_size == 0
                             continue
 
                         # If we got a pointer to a blob, download it from S3.
@@ -412,45 +419,20 @@ class _ContainerIOManager:
                         else:
                             input_pb = item.input
 
-                        # If yielded, allow semaphore to be released via complete_call
-                        yield (item.input_id, item.function_call_id, input_pb)
-                        yielded = True
+                        inputs_list.append((item.input_id, item.function_call_id, input_pb))
 
-                        # We only support max_inputs = 1 at the moment
-                        if item.input.final_input or self.function_def.max_inputs == 1:
+                        if item.input.final_input:
                             eof_received = True
-                            break
-                    else:
-                        assert len(response.inputs) <= request.batch_max_size
-
-                        inputs_list = []
-                        for item in response.inputs:
-                            if item.kill_switch:
-                                assert len(response.inputs) == 1
-                                logger.debug(f"Task {self.task_id} input kill signal input.")
-                                eof_received = True
-                                break
-                            assert item.input_id not in self.cancelled_input_ids
-
-                            # If we got a pointer to a blob, download it from S3.
-                            if item.input.WhichOneof("args_oneof") == "args_blob_id":
-                                input_pb = await self.populate_input_blobs(item.input)
-                            else:
-                                input_pb = item.input
-
-                            inputs_list.append((item.input_id, item.function_call_id, input_pb))
-                            if item.input.final_input:
-                                eof_received = True
+                            if request.batch_max_size != 0:
                                 logger.error("Final input not expected in batch input stream")
-                                break
+                            break
 
-                        if not eof_received:
-                            yield inputs_list
-                            yielded = True
-
-                            # We only support max_inputs = 1 at the moment
-                            if self.function_def.max_inputs == 1:
-                                eof_received = True
+                    if not eof_received:
+                        yield inputs_list
+                        yielded = True
+                        # We only support max_inputs = 1 at the moment
+                        if self.function_def.max_inputs == 1:
+                            eof_received = True
 
             finally:
                 if not yielded:
@@ -462,7 +444,7 @@ class _ContainerIOManager:
         input_concurrency: int = 1,
         batch_max_size: int = 0,
         batch_linger_ms: int = 0,
-    ) -> AsyncIterator[Union[LocalInput, List[LocalInput]]]:
+    ) -> AsyncIterator[List[LocalInput]]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
@@ -472,17 +454,12 @@ class _ContainerIOManager:
         self._batch_linger_ms = batch_linger_ms
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
-        if batch_max_size == 0:
-            async for input_id, function_call_id, input_pb in self._generate_inputs():
-                yield LocalInput(self, input_id, function_call_id, input_pb)
-                self.current_input_id, self.current_input_started_at = (None, None)
-        else:
-            async for inputs_list in self._generate_inputs():
-                local_inputs_list = []
-                for input_id, function_call_id, input_pb in inputs_list:
-                    local_inputs_list.append(LocalInput(self, input_id, function_call_id, input_pb))
-                yield local_inputs_list
-                self.current_input_id, self.current_input_started_at = (None, None)
+        async for inputs_list in self._generate_inputs():
+            local_inputs_list = []
+            for input_id, function_call_id, input_pb in inputs_list:
+                local_inputs_list.append(LocalInput(self, input_id, function_call_id, input_pb))
+            yield local_inputs_list
+            self.current_input_id, self.current_input_started_at = (None, None)
 
         # collect all active input slots, meaning all inputs have wrapped up.
         for _ in range(input_concurrency):
@@ -496,13 +473,13 @@ class _ContainerIOManager:
         return kwargs
 
     async def _get_kwargs(
-        self, kwargs: Dict[str, Any], input_ids: Union[str, List[str]], function_name: str, data_format: int
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        self, kwargs: Dict[str, Any], input_ids: List[str], function_name: str, data_format: int, is_batched: bool
+    ) -> List[Dict[str, Any]]:
         if "data" not in kwargs or not kwargs["data"]:
-            return kwargs if isinstance(input_ids, str) else [kwargs] * len(input_ids)
+            return [kwargs] * len(input_ids)
         # data is not batched, return a single kwargs.
-        if isinstance(input_ids, str):
-            return await self._get_kwargs_process_blob_data(kwargs.pop("data"), kwargs)
+        if not is_batched:
+            return [await self._get_kwargs_process_blob_data(kwargs.pop("data"), kwargs)]
         # data is batched, return a list of kwargs
         # split the list of data in kwargs to respective input_ids and report error for every input_id in batch call.
         if "status" in kwargs and kwargs["status"] == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
@@ -525,34 +502,24 @@ class _ContainerIOManager:
 
     async def _push_output(
         self,
-        input_ids: Union[str, List[str]],
+        input_ids: List[str],
+        is_batched: bool,
         started_at: float,
         function_name: str,
         data_format=api_pb2.DATA_FORMAT_UNSPECIFIED,
         **kwargs,
     ):
-        kwargs = await self._get_kwargs(kwargs, input_ids, function_name, data_format)
-        if isinstance(input_ids, list) and isinstance(kwargs, list):
-            outputs = [
-                api_pb2.FunctionPutOutputsItem(
-                    input_id=input_id,
-                    input_started_at=started_at,
-                    output_created_at=time.time(),
-                    result=api_pb2.GenericResult(**kwargs),
-                    data_format=data_format,
-                )
-                for input_id, kwargs in zip(input_ids, kwargs)
-            ]
-        else:
-            outputs = [
-                api_pb2.FunctionPutOutputsItem(
-                    input_id=input_ids,
-                    input_started_at=started_at,
-                    output_created_at=time.time(),
-                    result=api_pb2.GenericResult(**kwargs),
-                    data_format=data_format,
-                )
-            ]
+        kwargs = await self._get_kwargs(kwargs, input_ids, function_name, data_format, is_batched)
+        outputs = [
+            api_pb2.FunctionPutOutputsItem(
+                input_id=input_ids,
+                input_started_at=started_at,
+                output_created_at=time.time(),
+                result=api_pb2.GenericResult(**kwargs),
+                data_format=data_format,
+            )
+            for input_ids, kwargs in zip(input_ids, kwargs)
+        ]
         await retry_transient_errors(
             self._client.stub.FunctionPutOutputs,
             api_pb2.FunctionPutOutputsRequest(outputs=outputs),
@@ -616,7 +583,7 @@ class _ContainerIOManager:
 
     @asynccontextmanager
     async def handle_input_exception(
-        self, input_ids: Union[str, List[str]], started_at: float, function_name: str
+        self, input_ids: List[str], started_at: float, function_name: str, is_batched: bool
     ) -> AsyncGenerator[None, None]:
         """Handle an exception while processing a function input."""
         try:
@@ -661,6 +628,7 @@ class _ContainerIOManager:
 
             await self._push_output(
                 input_ids,
+                is_batched=is_batched,
                 started_at=started_at,
                 function_name=function_name,
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
@@ -679,9 +647,12 @@ class _ContainerIOManager:
         self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def push_output(self, input_id, started_at: float, function_name: str, data: Any, data_format: int) -> None:
+    async def push_output(
+        self, input_id, is_batched: bool, started_at: float, function_name: str, data: Any, data_format: int
+    ) -> None:
         await self._push_output(
             input_id,
+            is_batched=is_batched,
             started_at=started_at,
             function_name=function_name,
             data_format=data_format,
