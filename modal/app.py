@@ -33,7 +33,12 @@ from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
-from .partial_function import _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
+from .partial_function import (
+    _find_callables_for_cls,
+    _find_partial_methods_for_user_cls,
+    _PartialFunction,
+    _PartialFunctionFlags,
+)
 from .proxy import _Proxy
 from .retries import Retries
 from .runner import _run_app
@@ -589,13 +594,15 @@ class _App:
                 )
 
             if isinstance(f, _PartialFunction):
-                # typically for @function-wrapped @web_endpoint and @asgi_app
+                # typically for @function-wrapped @web_endpoint, @asgi_app, or @batch
                 f.wrapped = True
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
                 is_generator = f.is_generator
                 keep_warm = f.keep_warm or keep_warm
+                batch_max_size = f.batch_max_size
+                batch_linger_ms = f.batch_linger_ms
 
                 if webhook_config and interactive:
                     raise InvalidError("interactive=True is not supported with web endpoint functions")
@@ -631,6 +638,8 @@ class _App:
 
                 info = FunctionInfo(f, serialized=serialized, name_override=name)
                 webhook_config = None
+                batch_max_size = None
+                batch_linger_ms = None
                 raw_f = f
 
             if info.function_name.endswith(".app"):
@@ -668,6 +677,8 @@ class _App:
                 retries=retries,
                 concurrency_limit=concurrency_limit,
                 allow_concurrent_inputs=allow_concurrent_inputs,
+                batch_max_size=batch_max_size,
+                batch_linger_ms=batch_linger_ms,
                 container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
                 keep_warm=keep_warm,
@@ -768,6 +779,21 @@ class _App:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
 
+            batch_functions = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.BATCH)
+            if batch_functions:
+                if len(batch_functions) > 1:
+                    raise InvalidError(f"Modal class {user_cls.__name__} can only have one batch function.")
+                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION)) > 1:
+                    raise InvalidError(
+                        f"Modal class {user_cls.__name__} with a modal batch function cannot have other modal methods."
+                    )
+                batch_function = next(iter(batch_functions.values()))
+                batch_max_size = batch_function.batch_max_size
+                batch_linger_ms = batch_function.batch_linger_ms
+            else:
+                batch_max_size = None
+                batch_linger_ms = None
+
             cls_func = _Function.from_args(
                 info,
                 app=self,
@@ -785,6 +811,8 @@ class _App:
                 retries=retries,
                 concurrency_limit=concurrency_limit,
                 allow_concurrent_inputs=allow_concurrent_inputs,
+                batch_max_size=batch_max_size,
+                batch_linger_ms=batch_linger_ms,
                 container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
                 cpu=cpu,

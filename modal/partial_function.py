@@ -20,6 +20,9 @@ from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 
+MAX_BATCH_SIZE = 1000
+MAX_BATCH_LINGER_MS = 10 * 60 * 1000  # 10 minutes
+
 
 class _PartialFunctionFlags(enum.IntFlag):
     FUNCTION: int = 1
@@ -27,6 +30,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     ENTER_PRE_SNAPSHOT: int = 4
     ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
+    BATCH: int = 32
 
     @staticmethod
     def all() -> "_PartialFunctionFlags":
@@ -34,13 +38,15 @@ class _PartialFunctionFlags(enum.IntFlag):
 
 
 class _PartialFunction:
-    """Intermediate function, produced by @method or @web_endpoint"""
+    """Intermediate function, produced by @method, @web_endpoint, or @batch"""
 
     raw_f: Callable[..., Any]
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
     is_generator: Optional[bool]
     keep_warm: Optional[int]
+    batch_max_size: Optional[int]
+    batch_linger_ms: Optional[int]
 
     def __init__(
         self,
@@ -49,6 +55,8 @@ class _PartialFunction:
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
         keep_warm: Optional[int] = None,
+        batch_max_size: Optional[int] = None,
+        batch_linger_ms: Optional[int] = None,
     ):
         self.raw_f = raw_f
         self.flags = flags
@@ -56,6 +64,8 @@ class _PartialFunction:
         self.is_generator = is_generator
         self.keep_warm = keep_warm
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
+        self.batch_max_size = batch_max_size
+        self.batch_linger_ms = batch_linger_ms
 
     def __get__(self, obj, objtype=None) -> _Function:
         k = self.raw_f.__name__
@@ -93,6 +103,8 @@ class _PartialFunction:
             flags=(self.flags | flags),
             webhook_config=self.webhook_config,
             keep_warm=self.keep_warm,
+            batch_max_size=self.batch_max_size,
+            batch_linger_ms=self.batch_linger_ms,
         )
 
 
@@ -190,10 +202,16 @@ def _method(
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         nonlocal is_generator
-        if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
+        if isinstance(raw_f, _PartialFunction) and (raw_f.webhook_config):
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
                 "Web endpoints on classes should not be wrapped by `@method`. "
+                "Suggestion: remove the `@method` decorator."
+            )
+        if isinstance(raw_f, _PartialFunction) and (raw_f.batch_max_size is not None):
+            raw_f.wrapped = True  # suppress later warning
+            raise InvalidError(
+                "Batch function on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
         if is_generator is None:
@@ -554,6 +572,40 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
     return wrapper
 
 
+def _batch(
+    _warn_parentheses_missing=None,
+    *,
+    batch_max_size: int,
+    batch_linger_ms: int,
+) -> Callable[[Callable[..., Any]], _PartialFunction]:
+    if _warn_parentheses_missing:
+        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batch()`.")
+    if batch_max_size < 1:
+        raise InvalidError("batch_max_size must be a positive integer.")
+    if batch_max_size >= MAX_BATCH_SIZE:
+        raise InvalidError(f"batch_max_size must be less than {MAX_BATCH_SIZE}.")
+    if batch_linger_ms < 0:
+        raise InvalidError("batch_linger_ms must be a non-negative integer.")
+    if batch_linger_ms >= MAX_BATCH_LINGER_MS:
+        raise InvalidError(f"batch_linger_ms must be less than {MAX_BATCH_LINGER_MS}.")
+
+    def wrapper(raw_f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
+        if isinstance(raw_f, _Function):
+            raw_f = raw_f.get_raw_f()
+            raise InvalidError(
+                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
+                "@app.function()\n@modal.batch()\ndef batched_function():\n    ..."
+            )
+        return _PartialFunction(
+            raw_f,
+            _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.BATCH,
+            batch_max_size=batch_max_size,
+            batch_linger_ms=batch_linger_ms,
+        )
+
+    return wrapper
+
+
 method = synchronize_api(_method)
 web_endpoint = synchronize_api(_web_endpoint)
 asgi_app = synchronize_api(_asgi_app)
@@ -562,3 +614,4 @@ web_server = synchronize_api(_web_server)
 build = synchronize_api(_build)
 enter = synchronize_api(_enter)
 exit = synchronize_api(_exit)
+batch = synchronize_api(_batch)

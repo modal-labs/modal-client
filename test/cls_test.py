@@ -867,3 +867,34 @@ def test_disabled_parameterized_snap_cls():
         app.cls(enable_memory_snapshot=True)(ParameterizedClass2)
 
     app.cls(enable_memory_snapshot=True)(ParameterizedClass3)
+
+
+app_batch = App()
+
+
+def test_batch_method_duplicate_error(client):
+    with pytest.raises(
+        InvalidError, match="Modal class BatchClass_1 with a modal batch function cannot have other modal methods."
+    ):
+
+        @app_batch.cls(serialized=True)
+        class BatchClass_1:
+            @modal.method()
+            def method(self):
+                pass
+
+            @modal.batch(batch_max_size=2, batch_linger_ms=0)
+            def batch_method(self):
+                pass
+
+    with pytest.raises(InvalidError, match="Modal class BatchClass_2 can only have one batch function."):
+
+        @app_batch.cls(serialized=True)
+        class BatchClass_2:
+            @modal.batch(batch_max_size=2, batch_linger_ms=0)
+            def batch_method_1(self):
+                pass
+
+            @modal.batch(batch_max_size=2, batch_linger_ms=0)
+            def batch_method_2(self):
+                pass
