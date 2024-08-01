@@ -351,6 +351,7 @@ class _Function(_Object, type_prefix="fu"):
                 function=function_definition,
                 #  method_bound_function.object_id usually gets set by preload
                 existing_function_id=existing_object_id or method_bound_function.object_id or "",
+                defer_updates=True,
             )
             assert resolver.client.stub is not None  # client should be connected when load is called
             with FunctionCreationStatus(resolver, full_name) as function_creation_status:
@@ -834,6 +835,7 @@ class _Function(_Object, type_prefix="fu"):
                     function=function_definition,
                     schedule=schedule.proto_message if schedule is not None else None,
                     existing_function_id=existing_object_id or "",
+                    defer_updates=True,
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
