@@ -278,10 +278,10 @@ def run(ctx, detach, quiet, interactive, env):
 
 def deploy(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
-    name: str = typer.Option(None, help="Name of the deployment."),
+    name: str = typer.Option("", help="Name of the deployment."),
     env: str = ENV_OPTION,
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
-    tag: str = typer.Option(None, help="Tag the deployment with a version."),
+    tag: str = typer.Option("", help="Tag the deployment with a version."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -292,7 +292,7 @@ def deploy(
         name = app.name
 
     with enable_output():
-        res = deploy_app(app, name=name, environment_name=env, tag=tag)
+        res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
 
     if stream_logs:
         stream_app_logs(res.app_id)
