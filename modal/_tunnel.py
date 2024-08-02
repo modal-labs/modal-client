@@ -152,7 +152,7 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
         with modal.forward(port=22, unencrypted=True) as tunnel:
             hostname, port = tunnel.tcp_socket
             connection_cmd = f'ssh -p {port} root@{hostname}'
-            print(f"ssh into container using:\n{connection_cmd}")
+            print(f"ssh into container using: {connection_cmd}")
             time.sleep(3600)  # keep alive for 1 hour or until killed
     ```
 
