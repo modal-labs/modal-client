@@ -434,7 +434,7 @@ class _App:
 
     def local_entrypoint(
         self, _warn_parentheses_missing: Any = None, *, name: Optional[str] = None
-    ) -> Callable[[Callable[..., Any]], None]:
+    ) -> Callable[[Callable[..., Any]], _LocalEntrypoint]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -488,7 +488,7 @@ class _App:
         if name is not None and not isinstance(name, str):
             raise InvalidError("Invalid value for `name`: Must be string.")
 
-        def wrapped(raw_f: Callable[..., Any]) -> None:
+        def wrapped(raw_f: Callable[..., Any]) -> _LocalEntrypoint:
             info = FunctionInfo(raw_f)
             tag = name if name is not None else raw_f.__qualname__
             if tag in self._local_entrypoints:
@@ -549,7 +549,7 @@ class _App:
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
         _allow_background_volume_commits: None = None,
-        _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
+        _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -565,6 +565,11 @@ class _App:
         if interactive:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+            )
+
+        if _experimental_boost is not None:
+            deprecation_warning(
+                (2024, 7, 23), "`_experimental_boost` is now always-on. This argument is no longer needed."
             )
 
         if image is None:
@@ -724,7 +729,7 @@ class _App:
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
-        _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
+        _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -736,6 +741,11 @@ class _App:
         if interactive:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+            )
+
+        if _experimental_boost is not None:
+            deprecation_warning(
+                (2024, 7, 23), "`_experimental_boost` is now always-on. This argument is no longer needed."
             )
 
         if image is None:

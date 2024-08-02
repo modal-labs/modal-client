@@ -351,6 +351,7 @@ class _Function(_Object, type_prefix="fu"):
                 function=function_definition,
                 #  method_bound_function.object_id usually gets set by preload
                 existing_function_id=existing_object_id or method_bound_function.object_id or "",
+                defer_updates=True,
             )
             assert resolver.client.stub is not None  # client should be connected when load is called
             with FunctionCreationStatus(resolver, full_name) as function_creation_status:
@@ -488,7 +489,7 @@ class _Function(_Object, type_prefix="fu"):
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
         cloud: Optional[str] = None,
-        _experimental_boost: bool = False,
+        _experimental_boost: None = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
@@ -817,7 +818,7 @@ class _Function(_Object, type_prefix="fu"):
                     block_network=block_network,
                     max_inputs=max_inputs or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
-                    _experimental_boost=_experimental_boost,
+                    _experimental_boost=bool(_experimental_boost),
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
@@ -834,6 +835,7 @@ class _Function(_Object, type_prefix="fu"):
                     function=function_definition,
                     schedule=schedule.proto_message if schedule is not None else None,
                     existing_function_id=existing_object_id or "",
+                    defer_updates=True,
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
@@ -1092,7 +1094,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
-        assert metadata and isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata)
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
@@ -1100,6 +1102,7 @@ class _Function(_Object, type_prefix="fu"):
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
+        self._definition_id = metadata.definition_id
 
     def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id
@@ -1119,6 +1122,7 @@ class _Function(_Object, type_prefix="fu"):
             use_function_id=self._use_function_id,
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
+            definition_id=self._definition_id,
         )
 
     def _set_mute_cancellation(self, value: bool = True):

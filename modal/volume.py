@@ -47,7 +47,7 @@ from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Ob
 
 # Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
-VOLUME_PUT_FILE_CLIENT_TIMEOUT = 30 * 60
+VOLUME_PUT_FILE_CLIENT_TIMEOUT = 60 * 60
 
 
 class FileEntryType(enum.IntEnum):
@@ -144,7 +144,7 @@ class _Volume(_Object, type_prefix="vo"):
 
         Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes.
         """
-        deprecation_error((2024, 3, 20), Volume.new.__doc__)
+        deprecation_error((2024, 3, 20), Volume.new.__doc__)  # type: ignore
 
     @staticmethod
     def from_name(

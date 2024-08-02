@@ -10,6 +10,34 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.2 (2024-08-02)
+
+- Volumes can now be mounted to an ad hoc modal shell session:
+    
+    ```
+    modal shell --volume my-vol-name
+    ```
+    When the shell starts, the volume will be mounted at `/mnt/my-vol-name`. This may be helpful for shell-based exploration or manipulation of volume contents.
+
+    Note that the option can be used multiple times to mount additional models:
+    ```
+    modal shell --volume models --volume data
+    ```
+
+
+
+### 0.64.0 (2024-07-29)
+
+- App deployment events are now atomic, reducing the risk that a failed deploy will leave the App in a bad state.
+
+
+
+### 0.63.87 (2024-07-24)
+
+* The `_experimental_boost` argument can now be removed. Boost is now enabled on all modal Functions.
+
+
+
 ### 0.63.77 (2024-07-18)
 
 * Setting `_allow_background_volume_commits` is no longer necessary and has been deprecated. Remove this argument in your decorators.
@@ -90,7 +118,7 @@ Starting in this version, all `@methods` and web endpoints will be part of the s
 
 
 
-### v0.62.230 (2024-06-18)
+### 0.62.230 (2024-06-18)
 
 - It is now an error to create or lookup Modal objects (`Volume`, `Dict`, `Secret`, etc.) with an invalid name. Object names must be shorter than 64 characters and may contain only alphanumeric characters, dashes, periods, and underscores. The name check had inadvertently been removed for a brief time following an internal refactor and then reintroduced as a warning. It is once more a hard error. Please get in touch if this is blocking access to your data.
 
