@@ -152,7 +152,6 @@ class IOContext:
         logger.debug(f"Finished input {self.input_ids} (async)")
         return res
 
-    @synchronizer.no_io_translation
     async def format_outputs(
         self, container_io_manager: "_ContainerIOManager", started_at: float, data_format: int, **kwargs
     ) -> List[api_pb2.FunctionPutOutputsItem]:
@@ -575,7 +574,6 @@ class _ContainerIOManager:
         for _ in range(input_concurrency):
             await self._semaphore.acquire()
 
-    @synchronizer.no_io_translation
     async def _push_output(
         self,
         outputs: List[api_pb2.FunctionPutOutputsItem],
