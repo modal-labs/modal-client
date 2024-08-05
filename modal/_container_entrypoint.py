@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence,
 from google.protobuf.message import Message
 from synchronicity import Interface
 
-from modal._container_io_manager import FinalizedFunction, IOContext
 from modal_proto import api_pb2
 
 from ._asgi import (
@@ -29,7 +28,7 @@ from ._asgi import (
     webhook_asgi_app,
     wsgi_app_wrapper,
 )
-from ._container_io_manager import ContainerIOManager, UserException, _ContainerIOManager
+from ._container_io_manager import ContainerIOManager, FinalizedFunction, IOContext, UserException, _ContainerIOManager
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_proto_params
 from ._utils.async_utils import TaskContext, synchronizer
