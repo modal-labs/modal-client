@@ -132,7 +132,6 @@ def _container_args(
         )
     else:
         webhook_config = None
-
     function_def = api_pb2.Function(
         module_name=module_name,
         function_name=function_name,
@@ -723,7 +722,7 @@ def test_cls_web_endpoint(servicer):
 @skip_github_non_linux
 def test_cls_web_asgi_construction(servicer):
     servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
-    servicer.app_functions["fu-2"] = api_pb2.FunctionHandleMetadata()
+    servicer.app_functions["fu-2"] = api_pb2.Function()
 
     inputs = _get_web_inputs(method_name="asgi_web")
     ret = _run_container(
@@ -1313,7 +1312,7 @@ def test_cancellation_aborts_current_input_on_match(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
     stdout, stderr = container_process.communicate()
-    assert stderr.decode().count("was cancelled by a user request") == live_cancellations
+    assert stderr.decode().count("Received a cancellation signal") == live_cancellations
     assert "Traceback" not in stderr.decode()
     assert container_process.returncode == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit

@@ -585,6 +585,11 @@ message ClassParameterSet {
 message ClassParameterSpec {
   string name = 1;
   ParameterType type = 2;
+  bool has_default = 3;
+  oneof default_oneof {
+    string string_default = 4;
+    int64 int_default = 5;
+  }
 }
 
 message ClassParameterValue {
