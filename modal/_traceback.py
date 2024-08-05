@@ -38,6 +38,8 @@ def extract_traceback(exc: BaseException, task_id: str) -> Tuple[TBDictType, Lin
         # container. This means we've reached the end of the local traceback.
         if file.startswith("<"):
             break
+        # We rely on this specific filename format when inferring where the exception was raised
+        # in various other exception-related code
         cur.tb_frame.f_code.co_filename = f"<{task_id}>:{file}"
         cur = cur.tb_next
 
@@ -96,6 +98,7 @@ def reduce_traceback_to_user_code(tb: Optional[TracebackType], user_source: str)
 
 
 def traceback_contains_remote_call(tb: Optional[TracebackType]) -> bool:
+    """Inspect the traceback stack to determine whether an error was raised locally or remotely."""
     while tb is not None:
         if re.match(r"^<ta-[0-9A-Z]{26}>:", tb.tb_frame.f_code.co_filename):
             return True
