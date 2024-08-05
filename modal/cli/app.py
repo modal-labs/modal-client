@@ -8,9 +8,9 @@ from rich.text import Text
 from typer import Argument, Option
 
 from modal._utils.async_utils import synchronizer
-from modal.app_utils import _list_apps
 from modal.client import _Client
 from modal.environments import ensure_env
+from modal.object import _get_environment_name
 from modal_proto import api_pb2
 
 from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
@@ -33,6 +33,11 @@ APP_STATE_TO_MESSAGE = {
 async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
     """List Modal apps that are currently deployed/running or recently stopped."""
     env = ensure_env(env)
+    client = await _Client.from_env()
+
+    resp: api_pb2.AppListResponse = await client.stub.AppList(
+        api_pb2.AppListRequest(environment_name=_get_environment_name(env))
+    )
 
     columns: List[Union[Column, str]] = [
         Column("App ID", min_width=25),  # Ensure that App ID is not truncated in slim terminals
@@ -43,8 +48,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
         "Stopped at",
     ]
     rows: List[List[Union[Text, str]]] = []
-    apps: List[api_pb2.AppListResponse.AppListItem] = await _list_apps(env)
-    for app_stats in apps:
+    for app_stats in resp.apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
         rows.append(
             [

@@ -9,7 +9,6 @@ from grpclib import GRPCError, Status
 
 from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
 from modal._output import OutputManager
-from modal.app import list_apps  # type: ignore
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_app, deploy_stub
@@ -317,16 +316,6 @@ def test_app(client):
 
     with app.run(client=client):
         square_modal.remote(42)
-
-
-def test_list_apps(client):
-    apps_0 = [app.name for app in list_apps(client=client)]
-    app = App()
-    deploy_app(app, "foobar", client=client)
-    apps_1 = [app.name for app in list_apps(client=client)]
-
-    assert len(apps_1) == len(apps_0) + 1
-    assert set(apps_1) - set(apps_0) == set(["foobar"])
 
 
 def test_non_string_app_name():

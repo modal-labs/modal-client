@@ -18,10 +18,6 @@ from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
 from ._utils.grpc_utils import unary_stream
 from ._utils.mount_utils import validate_volumes
-from .app_utils import (  # noqa: F401
-    _list_apps,
-    list_apps,
-)
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls
