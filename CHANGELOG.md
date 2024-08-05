@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.7 (2024-08-05)
+
+- Removed client check for CPU core request being at least 0.1, deferring to server-side enforcement.
+
+
+
 ### 0.64.2 (2024-08-02)
 
 - Volumes can now be mounted to an ad hoc modal shell session:
