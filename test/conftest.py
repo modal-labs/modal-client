@@ -374,7 +374,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         apps = []
         for app_name, app_id in self.deployed_apps.items():
             apps.append(
-                api_pb2.AppStats(
+                api_pb2.AppListResponse.AppListItem(
                     name=app_name,
                     description=app_name,
                     app_id=app_id,

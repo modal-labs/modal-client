@@ -9,7 +9,9 @@ from .client import _Client
 from .object import _get_environment_name
 
 
-async def _list_apps(env: Optional[str] = None, client: Optional[_Client] = None) -> List[api_pb2.AppStats]:
+async def _list_apps(
+    env: Optional[str] = None, client: Optional[_Client] = None
+) -> List[api_pb2.AppListResponse.AppListItem]:
     """List apps in a given Modal environment."""
     if client is None:
         client = await _Client.from_env()

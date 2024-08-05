@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import time
 from typing import List, Optional, Union
 
 import typer
@@ -44,23 +43,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
         "Stopped at",
     ]
     rows: List[List[Union[Text, str]]] = []
-    apps: List[api_pb2.AppStats] = await _list_apps(env)
-    now = time.time()
+    apps: List[api_pb2.AppListResponse.AppListItem] = await _list_apps(env)
     for app_stats in apps:
-        if (
-            # Previously, all deployed objects (Dicts, Volumes, etc.) created an entry in the App table.
-            # We are waiting to roll off support for old clients before we can clean up the database.
-            # Until then, we filter deployed "single-object apps" from this output based on the object entity.
-            (app_stats.object_entity and app_stats.object_entity != "ap")
-            # AppList always returns up to the 250 most-recently stopped apps, which is a lot for the CLI
-            # (it is also used in the web interface, where apps are organized by tabs and paginated).
-            # So we semi-arbitrarily limit the stopped apps to those stopped within the past 2 hours.
-            or (
-                app_stats.state in {api_pb2.AppState.APP_STATE_STOPPED} and (now - app_stats.stopped_at) > (2 * 60 * 60)
-            )
-        ):
-            continue
-
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
         rows.append(
             [
