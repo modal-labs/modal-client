@@ -102,7 +102,7 @@ class IOContext:
         ]
         return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
 
-    def _args_and_kwargs(self):
+    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List]]:
         if not self._is_batched:
             return self._deserialized_args[0]
 
@@ -153,7 +153,7 @@ class IOContext:
         logger.debug(f"Finished input {self.input_ids} (async)")
         return res
 
-    def validate_output_data(self, data: Any) -> None:
+    def validate_output_data(self, data: Any) -> List[Any]:
         if self._is_batched:
             function_name = self.finalized_function.callable.__name__
             if not isinstance(data, list):
@@ -376,15 +376,12 @@ class _ContainerIOManager:
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
 
-    async def blob_upload(self, data: bytes) -> str:
-        return await blob_upload(data, self._client.stub)
-
     async def blob_download(self, blob_id: str) -> bytes:
         return await blob_download(blob_id, self._client.stub)
 
     async def format_blob_data(self, data: bytes, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         if len(data) > MAX_OBJECT_SIZE_BYTES:
-            kwargs["data_blob_id"] = await self.blob_upload(data)
+            kwargs["data_blob_id"] = await blob_upload(data, self._client.stub)
         else:
             kwargs["data"] = data
         return kwargs
@@ -516,6 +513,7 @@ class _ContainerIOManager:
                             final_input_received = True
                             break
 
+                    # If yielded, allow semaphore to be released via exit_context
                     yield inputs
                     yielded = True
 
@@ -558,7 +556,7 @@ class _ContainerIOManager:
         if "data" not in kwargs:
             kwargs_list = [kwargs] * len(io_context.input_ids)
         elif "status" in kwargs and kwargs["status"] == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-            exc_data = kwargs.pop("data")
+            exc_data = self.serialize_exception(kwargs.pop("data"))
             # if batched, duplicate exception to all inputs
             kwargs_list = await asyncio.gather(*[self.format_blob_data(exc_data, kwargs) for _ in io_context.input_ids])
         else:
@@ -687,7 +685,7 @@ class _ContainerIOManager:
                 started_at=started_at,
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-                data=self.serialize_exception(exc),
+                data=exc,
                 exception=repr_exc,
                 traceback=traceback.format_exc(),
                 serialized_tb=serialized_tb,
