@@ -517,7 +517,7 @@ class _ContainerIOManager:
             # just skip creating any output for this input and keep going with the next instead
             # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
-            logger.warning(f"Recevied a cancellation signal while processing input {input_id}")
+            logger.warning(f"Received a cancellation signal while processing input {input_id}")
             await self.complete_call(started_at)
             return
         except BaseException as exc:
