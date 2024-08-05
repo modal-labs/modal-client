@@ -365,7 +365,7 @@ def call_function(
                         " You might need to use @app.function(..., is_generator=True)."
                     )
                 value = await res
-                await container_io_manager.format_and_push_outputs.aio(
+                await container_io_manager.push_outputs.aio(
                     io_context,
                     started_at,
                     value,
