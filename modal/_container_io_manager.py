@@ -699,7 +699,7 @@ class _ContainerIOManager:
         self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def push_output(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
+    async def push_outputs(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
         await self.format_and_push_outputs(
             io_context=io_context,
             started_at=started_at,

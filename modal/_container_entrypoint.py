@@ -352,7 +352,7 @@ def call_function(
                 await container_io_manager._queue_put.aio(generator_queue, _ContainerIOManager._GENERATOR_STOP_SENTINEL)
                 await generator_output_task  # Wait to finish sending generator outputs.
                 message = api_pb2.GeneratorDone(items_total=item_count)
-                await container_io_manager.push_output.aio(
+                await container_io_manager.push_outputs.aio(
                     io_context,
                     started_at,
                     message,
@@ -365,7 +365,7 @@ def call_function(
                         " You might need to use @app.function(..., is_generator=True)."
                     )
                 value = await res
-                await container_io_manager.push_output.aio(
+                await container_io_manager.format_and_push_outputs.aio(
                     io_context,
                     started_at,
                     value,
@@ -402,14 +402,16 @@ def call_function(
                 container_io_manager._queue_put(generator_queue, _ContainerIOManager._GENERATOR_STOP_SENTINEL)
                 generator_output_task.result()  # Wait to finish sending generator outputs.
                 message = api_pb2.GeneratorDone(items_total=item_count)
-                container_io_manager.push_output(io_context, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
+                container_io_manager.push_outputs(io_context, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
             else:
                 if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                     raise InvalidError(
                         f"Sync (non-generator) function return value of type {type(res)}."
                         " You might need to use @app.function(..., is_generator=True)."
                     )
-                container_io_manager.push_output(io_context, started_at, res, io_context.finalized_function.data_format)
+                container_io_manager.push_outputs(
+                    io_context, started_at, res, io_context.finalized_function.data_format
+                )
         reset_context()
 
     if input_concurrency > 1:
