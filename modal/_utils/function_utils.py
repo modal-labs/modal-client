@@ -28,7 +28,7 @@ class FunctionInfoType(Enum):
     NOTEBOOK = "notebook"
 
 
-CLASS_PARAM_TYPE_MAP: Dict[Type, Tuple["api_pb2.ParameterType.ValueType", str]] = {  # type: ignore
+CLASS_PARAM_TYPE_MAP: Dict[Type, Tuple["api_pb2.ParameterType.ValueType", str]] = {
     str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
     int: (api_pb2.PARAM_TYPE_INT, "int_default"),
 }
