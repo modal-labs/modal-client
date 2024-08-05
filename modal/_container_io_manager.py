@@ -67,8 +67,8 @@ class IOContext:
         self.input_ids = input_ids
         self.function_call_ids = function_call_ids
         self.finalized_function = finalized_function
-        self.deserialized_args = deserialized_args
-        self.is_batched = is_batched
+        self._deserialized_args = deserialized_args
+        self._is_batched = is_batched
 
     @classmethod
     async def create(
@@ -96,14 +96,15 @@ class IOContext:
         method_name = inputs[0].method_name
         assert all(method_name == input.method_name for input in inputs)
         finalized_function = finalized_functions[method_name]
+        # TODO(cathy) Performance decrease if we deserialize inputs later
         deserialized_args = [
             container_io_manager.deserialize(input.args) if input.args else ((), {}) for input in inputs
         ]
         return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
 
     def _args_and_kwargs(self):
-        if not self.is_batched:
-            return self.deserialized_args[0]
+        if not self._is_batched:
+            return self._deserialized_args[0]
 
         func_name = self.finalized_function.callable.__name__
         # batched function cannot be generator
@@ -119,7 +120,7 @@ class IOContext:
 
         # aggregate args and kwargs of all inputs into a kwarg dict
         kwargs_by_inputs: List[Dict[str, Any]] = [{} for _ in range(len(self.input_ids))]
-        for i, (args, kwargs) in enumerate(self.deserialized_args):
+        for i, (args, kwargs) in enumerate(self._deserialized_args):
             # check that all batched inputs should have the same number of args and kwargs
             if (num_params := len(args) + len(kwargs)) != len(param_names):
                 raise InvalidError(
@@ -152,53 +153,18 @@ class IOContext:
         logger.debug(f"Finished input {self.input_ids} (async)")
         return res
 
-    async def format_outputs(
-        self, container_io_manager: "_ContainerIOManager", started_at: float, data_format: int, **kwargs
-    ) -> List[api_pb2.FunctionPutOutputsItem]:
-        if "data" not in kwargs:
-            kwargs_list = [kwargs] * len(self.input_ids)
-        # data is not batched, return a single kwargs.
-        elif not self.is_batched:
-            data = (
-                serialize_data_format(kwargs.pop("data"), data_format)
-                if kwargs["status"] == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-                else kwargs.pop("data")
-            )
-            kwargs_list = [await container_io_manager.format_blob_data(data, kwargs)]
-
-        # data is batched, return a list of kwargs
-        # split the list of data in kwargs to respective input_ids and report error for every input_id in batch call.
-        elif "status" in kwargs and kwargs["status"] == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-            error_data = kwargs.pop("data")
-            kwargs_list = await asyncio.gather(
-                *[container_io_manager.format_blob_data(error_data, kwargs) for _ in self.input_ids]
-            )
-        else:
+    def validate_output_data(self, data: Any) -> None:
+        if self._is_batched:
             function_name = self.finalized_function.callable.__name__
-            data = kwargs.pop("data")
             if not isinstance(data, list):
                 raise InvalidError(f"Output of batch function {function_name} must be a list.")
             if len(data) != len(self.input_ids):
                 raise InvalidError(
                     f"Output of batch function {function_name} must be a list of the same length as its inputs."
                 )
-            kwargs_list = await asyncio.gather(
-                *[
-                    container_io_manager.format_blob_data(serialize_data_format(d, data_format), kwargs.copy())
-                    for d in data
-                ]
-            )
-
-        return [
-            api_pb2.FunctionPutOutputsItem(
-                input_id=input_id,
-                input_started_at=started_at,
-                output_created_at=time.time(),
-                result=api_pb2.GenericResult(**kwargs),
-                data_format=data_format,
-            )
-            for input_id, kwargs in zip(self.input_ids, kwargs_list)
-        ]
+        else:
+            data = [data]
+        return data
 
 
 class _ContainerIOManager:
@@ -406,6 +372,10 @@ class _ContainerIOManager:
     def deserialize(self, data: bytes) -> Any:
         return deserialize(data, self._client)
 
+    @synchronizer.no_io_translation
+    def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
+        return serialize_data_format(obj, data_format)
+
     async def blob_upload(self, data: bytes) -> str:
         return await blob_upload(data, self._client.stub)
 
@@ -512,41 +482,49 @@ class _ContainerIOManager:
             request.batch_max_size, request.batch_linger_ms = batch_max_size, batch_linger_ms
 
             await self._semaphore.acquire()
-            # If number of active inputs is at max queue size, this will block.
-            iteration += 1
-            response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
-                self._client.stub.FunctionGetInputs, request
-            )
-
-            if response.rate_limit_sleep_duration:
-                logger.info(
-                    "Task exceeded rate limit, sleeping for %.2fs before trying again."
-                    % response.rate_limit_sleep_duration
+            yielded = False
+            try:
+                # If number of active inputs is at max queue size, this will block.
+                iteration += 1
+                response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
+                    self._client.stub.FunctionGetInputs, request
                 )
-                await asyncio.sleep(response.rate_limit_sleep_duration)
-                self._semaphore.release()
-            elif response.inputs:
-                # for input cancellations and concurrency logic we currently assume
-                # that there is no input buffering in the container
-                assert 0 < len(response.inputs) <= max(1, request.batch_max_size)
-                inputs = []
-                for item in response.inputs:
-                    if item.kill_switch or item.input.final_input:
+
+                if response.rate_limit_sleep_duration:
+                    logger.info(
+                        "Task exceeded rate limit, sleeping for %.2fs before trying again."
+                        % response.rate_limit_sleep_duration
+                    )
+                    await asyncio.sleep(response.rate_limit_sleep_duration)
+                elif response.inputs:
+                    # for input cancellations and concurrency logic we currently assume
+                    # that there is no input buffering in the container
+                    assert 0 < len(response.inputs) <= max(1, request.batch_max_size)
+                    inputs = []
+                    final_input_received = False
+                    for item in response.inputs:
                         if item.kill_switch:
                             logger.debug(f"Task {self.task_id} input kill signal input.")
-                        if item.input.final_input and request.batch_max_size > 0:
-                            logger.debug(f"Task {self.task_id} Final input not expected in batch input stream")
-                        self._semaphore.release()
+                            return
+                        if item.input_id in self.cancelled_input_ids:
+                            continue
+
+                        inputs.append((item.input_id, item.function_call_id, item.input))
+                        if item.input.final_input:
+                            if request.batch_max_size > 0:
+                                logger.debug(f"Task {self.task_id} Final input not expected in batch input stream")
+                            final_input_received = True
+                            break
+
+                    yield inputs
+                    yielded = True
+
+                    # We only support max_inputs = 1 at the moment
+                    if final_input_received or self.function_def.max_inputs == 1:
                         return
-                    if item.input_id in self.cancelled_input_ids:
-                        continue
-
-                    inputs.append((item.input_id, item.function_call_id, item.input))
-
-                yield inputs
-                # We only support max_inputs = 1 at the moment
-                if self.function_def.max_inputs == 1:
-                    return
+            finally:
+                if not yielded:
+                    self._semaphore.release()
 
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
@@ -565,7 +543,6 @@ class _ContainerIOManager:
 
         async for inputs in self._generate_inputs(batch_max_size, batch_linger_ms):
             io_context = await IOContext.create(self, finalized_functions, inputs, batch_max_size > 0)
-            # TODO(Cathy) investigate this thing when current_input_id is list
             self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
             yield io_context
             self.current_input_id, self.current_input_started_at = (None, None)
@@ -574,10 +551,33 @@ class _ContainerIOManager:
         for _ in range(input_concurrency):
             await self._semaphore.acquire()
 
-    async def _push_output(
-        self,
-        outputs: List[api_pb2.FunctionPutOutputsItem],
-    ):
+    @synchronizer.no_io_translation
+    async def format_and_push_outputs(
+        self, io_context: IOContext, started_at: float, data_format: int, **kwargs
+    ) -> None:
+        if "data" not in kwargs:
+            kwargs_list = [kwargs] * len(io_context.input_ids)
+        elif "status" in kwargs and kwargs["status"] == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
+            exc_data = kwargs.pop("data")
+            # if batched, duplicate exception to all inputs
+            kwargs_list = await asyncio.gather(*[self.format_blob_data(exc_data, kwargs) for _ in io_context.input_ids])
+        else:
+            data = io_context.validate_output_data(kwargs.pop("data"))
+            # if batched, split the list of data to all inputs
+            kwargs_list = await asyncio.gather(
+                *[self.format_blob_data(self.serialize_data_format(d, data_format), kwargs.copy()) for d in data]
+            )
+
+        outputs = [
+            api_pb2.FunctionPutOutputsItem(
+                input_id=input_id,
+                input_started_at=started_at,
+                output_created_at=time.time(),
+                result=api_pb2.GenericResult(**kwargs),
+                data_format=data_format,
+            )
+            for input_id, kwargs in zip(io_context.input_ids, kwargs_list)
+        ]
         await retry_transient_errors(
             self._client.stub.FunctionPutOutputs,
             api_pb2.FunctionPutOutputsRequest(outputs=outputs),
@@ -659,8 +659,8 @@ class _ContainerIOManager:
             # just skip creating any output for this input and keep going with the next instead
             # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
-            logger.warning(f"The current input ({io_context.input_ids=}) was cancelled by a user request")
-            await self.complete_call(started_at)
+            logger.warning(f"Received a cancellation signal while processing input {io_context.input_ids}")
+            await self.exit_context(started_at)
             return
         except BaseException as exc:
             # print exception so it's logged
@@ -682,8 +682,8 @@ class _ContainerIOManager:
                 repr_exc = repr_exc[: MAX_OBJECT_SIZE_BYTES - 1000]
                 repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
 
-            outputs = await io_context.format_outputs(
-                container_io_manager=self,
+            await self.format_and_push_outputs(
+                io_context=io_context,
                 started_at=started_at,
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
@@ -693,25 +693,23 @@ class _ContainerIOManager:
                 serialized_tb=serialized_tb,
                 tb_line_cache=tb_line_cache,
             )
-            await self._push_output(outputs)
-            await self.complete_call(started_at)
+            await self.exit_context(started_at)
 
-    async def complete_call(self, started_at):
+    async def exit_context(self, started_at):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
         self._semaphore.release()
 
     @synchronizer.no_io_translation
     async def push_output(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
-        outputs = await io_context.format_outputs(
-            container_io_manager=self,
+        await self.format_and_push_outputs(
+            io_context=io_context,
             started_at=started_at,
             data_format=data_format,
             data=data,
             status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
         )
-        await self._push_output(outputs)
-        await self.complete_call(started_at)
+        await self.exit_context(started_at)
 
     async def memory_restore(self) -> None:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
