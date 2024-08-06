@@ -293,7 +293,16 @@ message AppListRequest {
 }
 
 message AppListResponse {
-  repeated AppStats apps = 1;
+  message AppListItem {
+    string app_id = 1;
+    string description = 3;
+    AppState state = 4;
+    double created_at = 5;
+    double stopped_at = 6;
+    int32 n_running_tasks = 8;
+    string name = 10;
+  }
+  repeated AppListItem apps = 1;
 }
 
 message AppLookupObjectRequest {
@@ -340,18 +349,6 @@ message AppSetObjectsRequest {
   repeated string unindexed_object_ids = 4;
   AppState new_app_state = 5; // promotes an app from initializing to this new state
   string single_object_id = 6;
-}
-
-message AppStats {
-  string app_id = 1;
-  string description = 3;
-  AppState state = 4;
-  double created_at = 5;
-  double stopped_at = 6;
-  int32 n_running_tasks = 8;
-  string object_entity = 9;
-  string name = 10;
-  double deployed_at = 11;
 }
 
 message AppStopRequest {
