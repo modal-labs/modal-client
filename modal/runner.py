@@ -15,6 +15,7 @@ from ._output import OutputManager, get_app_logs_loop, step_completed, step_prog
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._sandbox_shell import connect_to_sandbox
+from ._traceback import traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
@@ -328,7 +329,10 @@ async def _run_app(
             if isinstance(exc_info, KeyboardInterrupt):
                 reason = api_pb2.APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT
             elif exc_info is not None:
-                reason = api_pb2.APP_DISCONNECT_REASON_LOCAL_EXCEPTION
+                if traceback_contains_remote_call(exc_info.__traceback__):
+                    reason = api_pb2.APP_DISCONNECT_REASON_REMOTE_EXCEPTION
+                else:
+                    reason = api_pb2.APP_DISCONNECT_REASON_LOCAL_EXCEPTION
             else:
                 reason = api_pb2.APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED
 
