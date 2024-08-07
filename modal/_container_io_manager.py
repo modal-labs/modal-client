@@ -105,16 +105,11 @@ class IOContext:
             return self._deserialized_args[0]
 
         func_name = self.finalized_function.callable.__name__
-        # batched function cannot be generator
-        if self.finalized_function.is_generator:
-            raise InvalidError(f"Modal batched function {func_name} cannot be a generator.")
 
         # batched function cannot have default arguments
         param_names = []
         for param in inspect.signature(self.finalized_function.callable).parameters.values():
             param_names.append(param.name)
-            if param.default is not inspect.Parameter.empty:
-                raise InvalidError(f"Modal batched function {func_name} does not accept default arguments.")
 
         # aggregate args and kwargs of all inputs into a kwarg dict
         kwargs_by_inputs: List[Dict[str, Any]] = [{} for _ in range(len(self.input_ids))]
@@ -122,7 +117,7 @@ class IOContext:
             # check that all batched inputs should have the same number of args and kwargs
             if (num_params := len(args) + len(kwargs)) != len(param_names):
                 raise InvalidError(
-                    f"Modal batched function {func_name} takes {len(param_names)} positional arguments, but one call has {num_params}.."  # noqa
+                    f"Modal batched function {func_name} takes {len(param_names)} positional arguments, but one function call in the batch has {num_params}.."  # noqa
                 )
 
             for j, arg in enumerate(args):
@@ -130,17 +125,16 @@ class IOContext:
             for k, v in kwargs.items():
                 if k not in param_names:
                     raise InvalidError(
-                        f"Modal batched function {func_name} got unexpected keyword argument {k} in one call."
+                        f"Modal batched function {func_name} got unexpected keyword argument {k} in one function call in the batch."  # noqa
                     )
                 if k in kwargs_by_inputs[i]:
                     raise InvalidError(
-                        f"Modal batched function {func_name} got multiple values for argument {k} in one call."
+                        f"Modal batched function {func_name} got multiple values for argument {k} in one function call in the batch."  # noqa
                     )
                 kwargs_by_inputs[i][k] = v
 
         formatted_kwargs = {
-            param_name: [kwargs_by_inputs[i][param_name] for i in range(len(kwargs_by_inputs))]
-            for param_name in param_names
+            param_name: [kwargs[param_name] for kwargs in kwargs_by_inputs] for param_name in param_names
         }
         return (), formatted_kwargs
 
