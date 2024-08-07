@@ -374,9 +374,6 @@ class _ContainerIOManager:
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
 
-    async def blob_download(self, blob_id: str) -> bytes:
-        return await blob_download(blob_id, self.client.stub)
-
     async def format_blob_data(self, data: bytes, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         if len(data) > MAX_OBJECT_SIZE_BYTES:
             kwargs["data_blob_id"] = await blob_upload(data, self.client.stub)
