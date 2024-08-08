@@ -18,10 +18,6 @@ from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
 from ._utils.grpc_utils import unary_stream
 from ._utils.mount_utils import validate_volumes
-from .app_utils import (  # noqa: F401
-    _list_apps,
-    list_apps,
-)
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls
@@ -439,7 +435,7 @@ class _App:
 
     def local_entrypoint(
         self, _warn_parentheses_missing: Any = None, *, name: Optional[str] = None
-    ) -> Callable[[Callable[..., Any]], None]:
+    ) -> Callable[[Callable[..., Any]], _LocalEntrypoint]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -493,7 +489,7 @@ class _App:
         if name is not None and not isinstance(name, str):
             raise InvalidError("Invalid value for `name`: Must be string.")
 
-        def wrapped(raw_f: Callable[..., Any]) -> None:
+        def wrapped(raw_f: Callable[..., Any]) -> _LocalEntrypoint:
             info = FunctionInfo(raw_f)
             tag = name if name is not None else raw_f.__qualname__
             if tag in self._local_entrypoints:

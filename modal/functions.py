@@ -353,6 +353,7 @@ class _Function(_Object, type_prefix="fu"):
                 function=function_definition,
                 #  method_bound_function.object_id usually gets set by preload
                 existing_function_id=existing_object_id or method_bound_function.object_id or "",
+                defer_updates=True,
             )
             assert resolver.client.stub is not None  # client should be connected when load is called
             with FunctionCreationStatus(resolver, full_name) as function_creation_status:
@@ -842,6 +843,7 @@ class _Function(_Object, type_prefix="fu"):
                     function=function_definition,
                     schedule=schedule.proto_message if schedule is not None else None,
                     existing_function_id=existing_object_id or "",
+                    defer_updates=True,
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
@@ -1100,7 +1102,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
-        assert metadata and isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata)
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
@@ -1108,6 +1110,7 @@ class _Function(_Object, type_prefix="fu"):
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
+        self._definition_id = metadata.definition_id
 
     def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id
@@ -1127,6 +1130,7 @@ class _Function(_Object, type_prefix="fu"):
             use_function_id=self._use_function_id,
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
+            definition_id=self._definition_id,
         )
 
     def _set_mute_cancellation(self, value: bool = True):

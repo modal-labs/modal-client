@@ -50,7 +50,7 @@ class Resolver:
 
     def __init__(
         self,
-        client=None,
+        client: _Client,
         *,
         environment_name: Optional[str] = None,
         app_id: Optional[str] = None,

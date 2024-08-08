@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import functools
+import re
 import traceback
 import warnings
 from types import TracebackType
@@ -37,6 +38,8 @@ def extract_traceback(exc: BaseException, task_id: str) -> Tuple[TBDictType, Lin
         # container. This means we've reached the end of the local traceback.
         if file.startswith("<"):
             break
+        # We rely on this specific filename format when inferring where the exception was raised
+        # in various other exception-related code
         cur.tb_frame.f_code.co_filename = f"<{task_id}>:{file}"
         cur = cur.tb_next
 
@@ -67,7 +70,7 @@ def append_modal_tb(exc: BaseException, tb_dict: TBDictType, line_cache: LineCac
     setattr(exc, "__line_cache__", line_cache)
 
 
-def reduce_traceback_to_user_code(tb: TracebackType, user_source: str) -> TracebackType:
+def reduce_traceback_to_user_code(tb: Optional[TracebackType], user_source: str) -> TracebackType:
     """Return a traceback that does not contain modal entrypoint or synchronicity frames."""
     # Step forward all the way through the traceback and drop any synchronicity frames
     tb_root = tb
@@ -92,6 +95,15 @@ def reduce_traceback_to_user_code(tb: TracebackType, user_source: str) -> Traceb
         tb = tb_root
 
     return tb
+
+
+def traceback_contains_remote_call(tb: Optional[TracebackType]) -> bool:
+    """Inspect the traceback stack to determine whether an error was raised locally or remotely."""
+    while tb is not None:
+        if re.match(r"^<ta-[0-9A-Z]{26}>:", tb.tb_frame.f_code.co_filename):
+            return True
+        tb = tb.tb_next
+    return False
 
 
 @group()

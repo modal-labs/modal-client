@@ -797,7 +797,7 @@ def test_cls_strict_parameters_added_to_definition(client, servicer, monkeypatch
 
     @strict_param_cls_app.cls(serialized=True)
     class StrictParamCls:
-        def __init__(self, x: str, y: int):
+        def __init__(self, x: str, y: int = 20):
             pass
 
     deploy_app(strict_param_cls_app, "my-cls-app", client=client)
@@ -808,8 +808,8 @@ def test_cls_strict_parameters_added_to_definition(client, servicer, monkeypatch
     assert definition.class_parameter_info == api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
         schema=[
-            api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING),
-            api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_INT),
+            api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING, has_default=False),
+            api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_INT, has_default=True, int_default=20),
         ],
     )
 
