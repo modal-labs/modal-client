@@ -1145,7 +1145,7 @@ def test_batch_sync_function_arg_len_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_keyword_arg_error(servicer):
-    inputs = [((10, 5), {}), ((10,), {"z": 5})]
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10,), {"z": 5})]
     _batch_function_test_helper(
         "batch_function_sync",
         servicer,
@@ -1160,7 +1160,7 @@ def test_batch_sync_function_keyword_arg_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_multiple_args_error(servicer):
-    inputs = [((10, 5), {}), ((10,), {"x": 1})]
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10,), {"x": 1})]
     _batch_function_test_helper(
         "batch_function_sync",
         servicer,
@@ -1175,7 +1175,7 @@ def test_batch_sync_function_multiple_args_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_outputs_list_error(servicer):
-    inputs = [((10, 5), {})]
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {})]
     _batch_function_test_helper(
         "batch_function_outputs_not_list",
         servicer,
@@ -1187,7 +1187,7 @@ def test_batch_sync_function_outputs_list_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_outputs_len_error(servicer):
-    inputs = [((10, 5), {})]
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {})]
     _batch_function_test_helper(
         "batch_function_outputs_wrong_len",
         servicer,
