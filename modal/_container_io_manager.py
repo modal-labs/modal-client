@@ -121,7 +121,7 @@ class IOContext:
             # check that all batched inputs should have the same number of args and kwargs
             if (num_params := len(args) + len(kwargs)) != len(param_names):
                 raise InvalidError(
-                    f"Modal batched function {func_name} takes {len(param_names)} positional arguments, but one function call in the batch has {num_params}.."  # noqa
+                    f"Modal batched function {func_name} takes {len(param_names)} positional arguments, but one invocation in the batch has {num_params}."  # noqa
                 )
 
             for j, arg in enumerate(args):
@@ -129,11 +129,11 @@ class IOContext:
             for k, v in kwargs.items():
                 if k not in param_names:
                     raise InvalidError(
-                        f"Modal batched function {func_name} got unexpected keyword argument {k} in one function call in the batch."  # noqa
+                        f"Modal batched function {func_name} got unexpected keyword argument {k} in one invocation in the batch."  # noqa
                     )
                 if k in kwargs_by_inputs[i]:
                     raise InvalidError(
-                        f"Modal batched function {func_name} got multiple values for argument {k} in one function call in the batch."  # noqa
+                        f"Modal batched function {func_name} got multiple values for argument {k} in one invocation in the batch."  # noqa
                     )
                 kwargs_by_inputs[i][k] = v
 
@@ -155,10 +155,10 @@ class IOContext:
 
         function_name = self.finalized_function.callable.__name__
         if not isinstance(data, list):
-            raise InvalidError(f"Output of batch function {function_name} must be a list.")
+            raise InvalidError(f"Output of batched function {function_name} must be a list.")
         if len(data) != len(self.input_ids):
             raise InvalidError(
-                f"Output of batch function {function_name} must be a list of the same length as its inputs."
+                f"Output of batched function {function_name} must be a list of equal length as its inputs."
             )
         return data
 
