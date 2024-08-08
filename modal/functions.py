@@ -345,7 +345,7 @@ class _Function(_Object, type_prefix="fu"):
                 use_function_id=class_service_function.object_id,
                 use_method_name=method_name,
                 batch_max_size=partial_function.batch_max_size or 0,
-                batch_wait_ms=partial_function.batch_wait_ms or 0,
+                batch_linger_ms=partial_function.batch_wait_ms or 0,
             )
             assert resolver.app_id
             request = api_pb2.FunctionCreateRequest(
@@ -657,8 +657,16 @@ class _Function(_Object, type_prefix="fu"):
                 )
             else:
                 raise InvalidError("Webhooks cannot be generators")
+
         if is_generator and batch_max_size:
-            raise InvalidError("Batch functions cannot return generators")
+            raise InvalidError("Batched functions cannot return generators")
+
+        if batch_max_size:
+            for arg in inspect.signature(info.raw_f).parameters.values():
+                if arg.default is not inspect.Parameter.empty:
+                    raise InvalidError(
+                        f"Modal batched function {info.raw_f.__name__} does not accept default arguments."  # noqa
+                    )
 
         if container_idle_timeout is not None and container_idle_timeout <= 0:
             raise InvalidError("`container_idle_timeout` must be > 0")
@@ -816,7 +824,7 @@ class _Function(_Object, type_prefix="fu"):
                     is_builder_function=is_builder_function,
                     allow_concurrent_inputs=allow_concurrent_inputs or 0,
                     batch_max_size=batch_max_size or 0,
-                    batch_wait_ms=batch_wait_ms or 0,
+                    batch_linger_ms=batch_wait_ms or 0,
                     worker_id=config.get("worker_id"),
                     is_auto_snapshot=is_auto_snapshot,
                     is_method=bool(info.user_cls) and not info.is_service_class(),

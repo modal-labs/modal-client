@@ -110,7 +110,6 @@ class IOContext:
 
         func_name = self.finalized_function.callable.__name__
 
-        # batched function cannot have default arguments
         param_names = []
         for param in inspect.signature(self.finalized_function.callable).parameters.values():
             param_names.append(param.name)

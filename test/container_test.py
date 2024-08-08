@@ -184,7 +184,7 @@ def _container_args(
         is_auto_snapshot=is_auto_snapshot,
         allow_concurrent_inputs=allow_concurrent_inputs,
         batch_max_size=batch_max_size,
-        batch_wait_ms=batch_wait_ms,
+        batch_linger_ms=batch_wait_ms,
         is_checkpointing_function=is_checkpointing_function,
         object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         max_inputs=max_inputs,
@@ -1129,38 +1129,74 @@ def test_batch_sync_function_keyword_args(servicer):
 
 
 @skip_github_non_linux
-def test_batch_sync_function_inputs_outputs_error(servicer):
-    # argument length does not match
+def test_batch_sync_function_arg_len_error(servicer):
     inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10, 5, 1), {})]
-    with pytest.raises(InvalidError) as err:
-        _batch_function_test_helper("batch_function_sync", servicer, inputs, [])
-    assert "Modal batched function batch_function_sync takes 2 positional arguments, but one call has 3." in str(err)
+    _batch_function_test_helper(
+        "batch_function_sync",
+        servicer,
+        inputs,
+        [
+            "InvalidError('Modal batched function batch_function_sync takes 2 positional arguments, but one invocation in the batch has 3.')"  # noqa
+        ]
+        * 2,
+        expected_status="failure",
+    )
 
-    # Unexpected keyword arg
+
+@skip_github_non_linux
+def test_batch_sync_function_keyword_arg_error(servicer):
     inputs = [((10, 5), {}), ((10,), {"z": 5})]
-    with pytest.raises(InvalidError) as err:
-        _batch_function_test_helper("batch_function_sync", servicer, inputs, [])
-    assert "Modal batched function batch_function_sync got an unexpected keyword argument z in one call." in str(err)
+    _batch_function_test_helper(
+        "batch_function_sync",
+        servicer,
+        inputs,
+        [
+            "InvalidError('Modal batched function batch_function_sync got unexpected keyword argument z in one invocation in the batch.')"  # noqa
+        ]
+        * 2,
+        expected_status="failure",
+    )
 
-    # Multiple values with keyword arg
+
+@skip_github_non_linux
+def test_batch_sync_function_multiple_args_error(servicer):
     inputs = [((10, 5), {}), ((10,), {"x": 1})]
-    with pytest.raises(InvalidError) as err:
-        _batch_function_test_helper("batch_function_sync", servicer, inputs, [])
-    assert "Modal batched function batch_function_sync got multiple values for argument x in one call." in str(err)
+    _batch_function_test_helper(
+        "batch_function_sync",
+        servicer,
+        inputs,
+        [
+            "InvalidError('Modal batched function batch_function_sync got multiple values for argument x in one invocation in the batch.')"  # noqa
+        ]
+        * 2,
+        expected_status="failure",
+    )
 
-    # output must be list
-    inputs = [((10, 5), {})]
-    with pytest.raises(InvalidError) as err:
-        _batch_function_test_helper("batch_function_outputs_not_list", servicer, inputs, [])
-    assert "Output of batched function batch_function_outputs_not_list must be a list." in str(err)
 
-    # outputs must match length of inputs
+@skip_github_non_linux
+def test_batch_sync_function_outputs_list_error(servicer):
     inputs = [((10, 5), {})]
-    with pytest.raises(InvalidError) as err:
-        _batch_function_test_helper("batch_function_outputs_wrong_len", servicer, inputs, [])
-    assert (
-        "Output of batched function batch_function_outputs_wrong_len must be a list of the same length as its inputs."
-        in str(err)
+    _batch_function_test_helper(
+        "batch_function_outputs_not_list",
+        servicer,
+        inputs,
+        ["InvalidError('Output of batched function batch_function_outputs_not_list must be a list.')"] * 1,
+        expected_status="failure",
+    )
+
+
+@skip_github_non_linux
+def test_batch_sync_function_outputs_len_error(servicer):
+    inputs = [((10, 5), {})]
+    _batch_function_test_helper(
+        "batch_function_outputs_wrong_len",
+        servicer,
+        inputs,
+        [
+            "InvalidError('Output of batched function batch_function_outputs_wrong_len must be a list of equal length as its inputs.')"  # noqa
+        ]
+        * 1,
+        expected_status="failure",
     )
 
 

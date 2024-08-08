@@ -20,7 +20,7 @@ from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 
-MAX_BATCH_SIZE = 1000
+MAX_MAX_BATCH_SIZE = 1000
 MAX_BATCH_WAIT_MS = 10 * 60 * 1000  # 10 minutes
 
 
@@ -211,7 +211,7 @@ def _method(
         if isinstance(raw_f, _PartialFunction) and (raw_f.batch_max_size is not None):
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
-                "Batch function on classes should not be wrapped by `@method`. "
+                "Batched function on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
         if is_generator is None:
@@ -576,7 +576,7 @@ def _batched(
     _warn_parentheses_missing=None,
     *,
     max_batch_size: int,
-    max_wait_ms: int,
+    wait_ms: int,
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     if _warn_parentheses_missing:
         raise InvalidError(
@@ -584,12 +584,12 @@ def _batched(
         )
     if max_batch_size < 1:
         raise InvalidError("max_batch_size must be a positive integer.")
-    if max_batch_size >= MAX_BATCH_SIZE:
-        raise InvalidError(f"max_batch_size must be less than {MAX_BATCH_SIZE}.")
-    if max_wait_ms < 0:
-        raise InvalidError("max_wait_ms must be a non-negative integer.")
-    if max_wait_ms >= MAX_BATCH_WAIT_MS:
-        raise InvalidError(f"max_wait_ms must be less than {MAX_BATCH_WAIT_MS}.")
+    if max_batch_size >= MAX_MAX_BATCH_SIZE:
+        raise InvalidError(f"max_batch_size must be less than {MAX_MAX_BATCH_SIZE}.")
+    if wait_ms < 0:
+        raise InvalidError("wait_ms must be a non-negative integer.")
+    if wait_ms >= MAX_BATCH_WAIT_MS:
+        raise InvalidError(f"wait_ms must be less than {MAX_BATCH_WAIT_MS}.")
 
     def wrapper(raw_f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
@@ -602,7 +602,7 @@ def _batched(
             raw_f,
             _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.BATCH,
             batch_max_size=max_batch_size,
-            batch_wait_ms=max_wait_ms,
+            batch_wait_ms=wait_ms,
         )
 
     return wrapper

@@ -883,7 +883,7 @@ def test_batched_method_duplicate_error(client):
             def method(self):
                 pass
 
-            @modal.batched(max_batch_size=2, max_wait_ms=0)
+            @modal.batched(max_batch_size=2, wait_ms=0)
             def batched_method(self):
                 pass
 
@@ -891,10 +891,10 @@ def test_batched_method_duplicate_error(client):
 
         @app_batched.cls(serialized=True)
         class BatchedClass_2:
-            @modal.batched(max_batch_size=2, max_wait_ms=0)
+            @modal.batched(max_batch_size=2, wait_ms=0)
             def batched_method_1(self):
                 pass
 
-            @modal.batched(max_batch_size=2, max_wait_ms=0)
+            @modal.batched(max_batch_size=2, wait_ms=0)
             def batched_method_2(self):
                 pass

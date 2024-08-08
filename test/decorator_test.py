@@ -93,6 +93,6 @@ def test_batch_method():
         @app.cls()
         class Container:
             @method()  # type: ignore
-            @batched(max_batch_size=2, max_wait_ms=0)
+            @batched(max_batch_size=2, wait_ms=0)
             def generate(self):
                 pass
