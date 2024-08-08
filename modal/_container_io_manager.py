@@ -88,7 +88,7 @@ class IOContext:
         async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput) -> api_pb2.FunctionInput:
             # If we got a pointer to a blob, download it from S3.
             if input.WhichOneof("args_oneof") == "args_blob_id":
-                args = await blob_download(input.args_blob_id, client)
+                args = await blob_download(input.args_blob_id, client.stub)
                 # Mutating
                 input.ClearField("args_blob_id")
                 input.args = args
