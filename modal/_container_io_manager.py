@@ -52,6 +52,10 @@ class FinalizedFunction:
 
 
 class IOContext:
+    """Context object for managing input, function calls, and function executions
+    in a batched or single input context.
+    """
+
     input_ids: List[str]
     function_call_ids: List[str]
     finalized_function: FinalizedFunction
@@ -146,16 +150,16 @@ class IOContext:
         return res
 
     def validate_output_data(self, data: Any) -> List[Any]:
-        if self._is_batched:
-            function_name = self.finalized_function.callable.__name__
-            if not isinstance(data, list):
-                raise InvalidError(f"Output of batch function {function_name} must be a list.")
-            if len(data) != len(self.input_ids):
-                raise InvalidError(
-                    f"Output of batch function {function_name} must be a list of the same length as its inputs."
-                )
-        else:
-            data = [data]
+        if not self._is_batched:
+            return [data]
+
+        function_name = self.finalized_function.callable.__name__
+        if not isinstance(data, list):
+            raise InvalidError(f"Output of batch function {function_name} must be a list.")
+        if len(data) != len(self.input_ids):
+            raise InvalidError(
+                f"Output of batch function {function_name} must be a list of the same length as its inputs."
+            )
         return data
 
 
