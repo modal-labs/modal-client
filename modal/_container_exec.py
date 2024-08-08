@@ -19,13 +19,14 @@ from .config import config
 from .exception import NotFoundError
 
 
-async def container_exec(task_id: str, command: List[str], *, pty: bool, client: _Client):
+async def container_exec(task_id: str, command: List[str], *, pty: bool, client: Optional[_Client] = None):
     """Execute a command inside an active container"""
     if platform.system() == "Windows":
         print("container exec is not currently supported on Windows.")
         return
 
-    client = await _Client.from_env()
+    if client is None:
+        client = await _Client.from_env()
 
     console = Console()
     connecting_status = console.status("Connecting...")
