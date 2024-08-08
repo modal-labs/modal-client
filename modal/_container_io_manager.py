@@ -368,12 +368,12 @@ class _ContainerIOManager:
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
 
-    async def format_blob_data(self, data: bytes, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        if len(data) > MAX_OBJECT_SIZE_BYTES:
-            kwargs["data_blob_id"] = await blob_upload(data, self._client.stub)
-        else:
-            kwargs["data"] = data
-        return kwargs
+    async def format_blob_data(self, data: bytes) -> Dict[str, Any]:
+        return (
+            {"data_blob_id": await blob_upload(data, self._client.stub)}
+            if len(data) > MAX_OBJECT_SIZE_BYTES
+            else {"data": data}
+        )
 
     async def get_data_in(self, function_call_id: str) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
@@ -580,19 +580,6 @@ class _ContainerIOManager:
 
         return serialized_tb, tb_line_cache
 
-    async def format_exception_results(self, io_context: IOContext, data: Any, **kwargs) -> List[api_pb2.GenericResult]:
-        kwargs = await self.format_blob_data(self.serialize_exception(data), kwargs)
-        return [api_pb2.GenericResult(**kwargs) for _ in io_context.input_ids]
-
-    async def format_output_results(
-        self, io_context: IOContext, data: Any, data_format: int, **kwargs
-    ) -> List[api_pb2.GenericResult]:
-        data = io_context.validate_output_data(data)
-        kwargs_list = await asyncio.gather(
-            *[self.format_blob_data(self.serialize_data_format(d, data_format), kwargs.copy()) for d in data]
-        )
-        return [api_pb2.GenericResult(**kwargs) for kwargs in kwargs_list]
-
     @asynccontextmanager
     async def handle_user_exception(self) -> AsyncGenerator[None, None]:
         """Sets the task as failed in a way where it's not retried.
@@ -670,15 +657,17 @@ class _ContainerIOManager:
                 repr_exc = repr_exc[: MAX_OBJECT_SIZE_BYTES - 1000]
                 repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
 
-            results = await self.format_exception_results(
-                io_context=io_context,
-                status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-                data=exc,
-                exception=repr_exc,
-                traceback=traceback.format_exc(),
-                serialized_tb=serialized_tb,
-                tb_line_cache=tb_line_cache,
-            )
+            results = [
+                api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                    exception=repr_exc,
+                    traceback=traceback.format_exc(),
+                    serialized_tb=serialized_tb,
+                    tb_line_cache=tb_line_cache,
+                    **await self.format_blob_data(self.serialize_exception(exc)),
+                )
+                for _ in io_context.input_ids
+            ]
             await self._push_outputs(
                 io_context=io_context,
                 started_at=started_at,
@@ -694,9 +683,17 @@ class _ContainerIOManager:
 
     @synchronizer.no_io_translation
     async def push_outputs(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
-        results = await self.format_output_results(
-            io_context, data, data_format, status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+        data = io_context.validate_output_data(data)
+        formatted_data = await asyncio.gather(
+            *[self.format_blob_data(self.serialize_data_format(d, data_format)) for d in data]
         )
+        results = [
+            api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                **d,
+            )
+            for d in formatted_data
+        ]
         await self._push_outputs(
             io_context=io_context,
             started_at=started_at,
