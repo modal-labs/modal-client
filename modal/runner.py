@@ -11,6 +11,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
+from ._container_exec import container_exec
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from ._pty import get_pty_info
 from ._resolver import Resolver
@@ -500,7 +501,6 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
 
     **kwargs will be passed into spawn_sandbox().
     """
-    from ._container_exec import container_exec
 
     client = await _Client.from_env()
     async with _run_app(_app, client=client, environment_name=environment_name):
@@ -509,7 +509,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
         loading_status.start()
 
         sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
-        sb = await _Sandbox.create(*sandbox_cmds, pty_info=get_pty_info(shell=True), app=_app, **kwargs)
+        sb = await _Sandbox.create("sleep", "100000", pty_info=get_pty_info(shell=True), app=_app, **kwargs)
         for _ in range(40):
             await asyncio.sleep(0.5)
             resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
