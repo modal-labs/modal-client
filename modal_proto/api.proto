@@ -337,6 +337,7 @@ message AppPublishRequest {
   map<string, string> function_ids = 5;  // function_name -> function_id
   map<string, string> class_ids = 6;  // class_name -> class_id
   map<string, string> definition_ids = 7;  // function_id -> definition_id
+  uint32 rollback_version = 8;  // Unused by client, but used internally
 }
 
 message AppPublishResponse {
