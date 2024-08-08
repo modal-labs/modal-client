@@ -22,7 +22,7 @@ try:
     from .image import Image
     from .mount import Mount
     from .network_file_system import NetworkFileSystem
-    from .partial_function import asgi_app, build, enter, exit, method, web_endpoint, web_server, wsgi_app
+    from .partial_function import asgi_app, batched, build, enter, exit, method, web_endpoint, web_server, wsgi_app
     from .proxy import Proxy
     from .queue import Queue
     from .retries import Retries
@@ -64,6 +64,7 @@ __all__ = [
     "Tunnel",
     "Volume",
     "asgi_app",
+    "batched",
     "build",
     "current_function_call_id",
     "current_input_id",
