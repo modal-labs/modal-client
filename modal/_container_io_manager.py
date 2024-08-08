@@ -81,7 +81,7 @@ class IOContext:
         assert len(inputs) >= 1 if is_batched else len(inputs) == 1
         input_ids, function_call_ids, inputs = zip(*inputs)
 
-        async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput):
+        async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput) -> api_pb2.FunctionInput:
             # If we got a pointer to a blob, download it from S3.
             if input.WhichOneof("args_oneof") == "args_blob_id":
                 args = await blob_download(input.args_blob_id, client)
