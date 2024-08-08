@@ -590,7 +590,7 @@ class _App:
                 )
 
             if isinstance(f, _PartialFunction):
-                # typically for @function-wrapped @web_endpoint, @asgi_app, or @batch
+                # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
                 f.wrapped = True
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
@@ -775,7 +775,7 @@ class _App:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
 
-            batch_functions = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.BATCH)
+            batch_functions = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.BATCHED)
             if batch_functions:
                 if len(batch_functions) > 1:
                     raise InvalidError(f"Modal class {user_cls.__name__} can only have one batched function.")

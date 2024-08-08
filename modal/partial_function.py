@@ -30,7 +30,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     ENTER_PRE_SNAPSHOT: int = 4
     ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
-    BATCH: int = 32
+    BATCHED: int = 32
 
     @staticmethod
     def all() -> "_PartialFunctionFlags":
@@ -202,13 +202,13 @@ def _method(
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         nonlocal is_generator
-        if isinstance(raw_f, _PartialFunction) and (raw_f.webhook_config):
+        if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
                 "Web endpoints on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
-        if isinstance(raw_f, _PartialFunction) and (raw_f.batch_max_size is not None):
+        if isinstance(raw_f, _PartialFunction) and raw_f.batch_max_size is not None:
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
                 "Batched function on classes should not be wrapped by `@method`. "
@@ -591,7 +591,7 @@ def _batched(
     if wait_ms >= MAX_BATCH_WAIT_MS:
         raise InvalidError(f"wait_ms must be less than {MAX_BATCH_WAIT_MS}.")
 
-    def wrapper(raw_f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
             raw_f = raw_f.get_raw_f()
             raise InvalidError(
@@ -600,7 +600,7 @@ def _batched(
             )
         return _PartialFunction(
             raw_f,
-            _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.BATCH,
+            _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.BATCHED,
             batch_max_size=max_batch_size,
             batch_wait_ms=wait_ms,
         )

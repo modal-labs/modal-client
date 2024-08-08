@@ -658,15 +658,14 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 raise InvalidError("Webhooks cannot be generators")
 
+        func_name = info.raw_f.__name__
         if is_generator and batch_max_size:
-            raise InvalidError("Batched functions cannot return generators")
+            raise InvalidError(f"Modal batched function {func_name} cannot return generators")
 
         if batch_max_size:
             for arg in inspect.signature(info.raw_f).parameters.values():
                 if arg.default is not inspect.Parameter.empty:
-                    raise InvalidError(
-                        f"Modal batched function {info.raw_f.__name__} does not accept default arguments."  # noqa
-                    )
+                    raise InvalidError(f"Modal batched function {func_name} does not accept default arguments.")
 
         if container_idle_timeout is not None and container_idle_timeout <= 0:
             raise InvalidError("`container_idle_timeout` must be > 0")
