@@ -58,32 +58,18 @@ def _get_inputs(
     n: int = 1,
     kill_switch=True,
     method_name: Optional[str] = None,
-) -> List[api_pb2.FunctionGetInputsResponse]:
-    input_pb = api_pb2.FunctionInput(
-        args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
-    )
-    inputs = [
-        *(
-            api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
-            for i in range(n)
-        ),
-        *([api_pb2.FunctionGetInputsItem(kill_switch=True)] if kill_switch else []),
-    ]
-    return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
-
-
-def _get_inputs_blob(
-    args: Tuple[Tuple, Dict] = ((42,), {}),
-    n: int = 1,
-    kill_switch=True,
-    method_name: Optional[str] = None,
+    upload_to_blob: bool = False,
     client: Optional[Client] = None,
 ) -> List[api_pb2.FunctionGetInputsResponse]:
-    args_blob_id = blob_upload(serialize(args), client.stub)
-    print("args_blob_id", args_blob_id)
-    input_pb = api_pb2.FunctionInput(
-        args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
-    )
+    if upload_to_blob:
+        args_blob_id = blob_upload(serialize(args), client.stub)
+        input_pb = api_pb2.FunctionInput(
+            args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+        )
+    else:
+        input_pb = api_pb2.FunctionInput(
+            args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+        )
     inputs = [
         *(
             api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
@@ -1400,7 +1386,7 @@ def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
         servicer,
         "test.supports.functions",
         "ident",
-        inputs=_get_inputs_blob(((42,), {}), client=client),
+        inputs=_get_inputs(((42,), {}), client=client),
     )
     assert _unwrap_blob_scalar(ret, client) == 42
 
