@@ -251,6 +251,23 @@ message AppDeploySingleObjectResponse {
   string app_id = 1;
 }
 
+message AppDeploymentHistoryRequest {
+  string app_id = 1;
+}
+
+message AppDeploymentHistoryResponse {
+  message AppDeploymentHistory {
+    string app_id = 1;
+    double deployed_at = 2;
+    uint32 version = 3; 
+    string client_version = 4;
+    string deployed_by = 5;
+    AppState state = 6;
+    string tag = 7;
+  }
+  repeated AppDeploymentHistory app_deployment_histories = 1;
+}
+
 message AppGetByDeploymentNameRequest {
   DeploymentNamespace namespace = 1;
   string name = 2;
@@ -287,23 +304,6 @@ message AppGetObjectsResponse {
 
 message AppHeartbeatRequest {
   string app_id = 1;
-}
-
-message AppDeploymentHistoryRequest {
-  string app_id = 1;
-}
-
-message AppDeploymentHistoryResponse {
-  message AppDeploymentHistory {
-    string app_id = 1;
-    double deployed_at = 2;
-    uint32 version = 3; 
-    string client_version = 4;
-    string deployed_by = 5;
-    AppState state = 6;
-    string tag = 7;
-  }
-  repeated AppDeploymentHistory app_deployment_histories = 1;
 }
 
 message AppListRequest {
@@ -2198,11 +2198,11 @@ service ModalClient {
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
   rpc AppDeploySingleObject(AppDeploySingleObjectRequest) returns (AppDeploySingleObjectResponse);
+  rpc AppDeploymentHistory(AppDeploymentHistoryRequest) returns (AppDeploymentHistoryResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
-  rpc AppDeploymentHistory(AppDeploymentHistoryRequest) returns (AppDeploymentHistoryResponse);
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
