@@ -1,10 +1,18 @@
 # Copyright Modal Labs 2022
+# ruff: noqa: E402
+import os
+
+telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
+if telemetry_socket:
+    from ._telemetry import instrument_imports
+
+    instrument_imports(telemetry_socket)
+
 import asyncio
 import base64
 import concurrent.futures
 import importlib
 import inspect
-import os
 import queue
 import signal
 import sys
@@ -56,12 +64,6 @@ from .running_app import RunningApp
 if TYPE_CHECKING:
     import modal._container_io_manager
     import modal.object
-
-telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
-if telemetry_socket:
-    from ._telemetry import instrument_imports
-
-    instrument_imports(telemetry_socket)
 
 
 def construct_webhook_callable(
