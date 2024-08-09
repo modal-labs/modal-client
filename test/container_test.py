@@ -31,7 +31,12 @@ from modal._serialization import (
     serialize_data_format,
 )
 from modal._utils import async_utils
-from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from modal._utils.async_utils import synchronize_api
+from modal._utils.blob_utils import (
+    MAX_OBJECT_SIZE_BYTES,
+    blob_download as _blob_download,
+    blob_upload as _blob_upload,
+)
 from modal.app import _App
 from modal.exception import InvalidError
 from modal.partial_function import enter, method
@@ -44,6 +49,9 @@ EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
+blob_upload = synchronize_api(_blob_upload)
+blob_download = synchronize_api(_blob_download)
+
 
 def _get_inputs(
     args: Tuple[Tuple, Dict] = ((42,), {}),
@@ -53,6 +61,28 @@ def _get_inputs(
 ) -> List[api_pb2.FunctionGetInputsResponse]:
     input_pb = api_pb2.FunctionInput(
         args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+    )
+    inputs = [
+        *(
+            api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
+            for i in range(n)
+        ),
+        *([api_pb2.FunctionGetInputsItem(kill_switch=True)] if kill_switch else []),
+    ]
+    return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
+
+
+def _get_inputs_blob(
+    args: Tuple[Tuple, Dict] = ((42,), {}),
+    n: int = 1,
+    kill_switch=True,
+    method_name: Optional[str] = None,
+    client: Optional[Client] = None,
+) -> List[api_pb2.FunctionGetInputsResponse]:
+    args_blob_id = blob_upload(serialize(args), client.stub)
+    print("args_blob_id", args_blob_id)
+    input_pb = api_pb2.FunctionInput(
+        args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
     )
     inputs = [
         *(
@@ -266,6 +296,13 @@ def _unwrap_scalar(ret: ContainerResult):
     assert len(ret.items) == 1
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     return deserialize(ret.items[0].result.data, ret.client)
+
+
+def _unwrap_blob_scalar(ret: ContainerResult, client: Client):
+    assert len(ret.items) == 1
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    data = blob_download(ret.items[0].result.data_blob_id, client.stub)
+    return deserialize(data, ret.client)
 
 
 def _unwrap_exception(ret: ContainerResult):
@@ -1354,6 +1391,18 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     )  # should not fail the outputs, as they would have been cancelled in backend already
     assert "Traceback" not in container_process.stderr.read().decode("utf8")
     assert exit_code == 0  # container should exit gracefully
+
+
+@skip_github_non_linux
+def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
+    monkeypatch.setattr("modal._container_io_manager.MAX_OBJECT_SIZE_BYTES", 0)
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "ident",
+        inputs=_get_inputs_blob(((42,), {}), client=client),
+    )
+    assert _unwrap_blob_scalar(ret, client) == 42
 
 
 @skip_github_non_linux
