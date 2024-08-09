@@ -111,3 +111,60 @@ async def stop(
         app_id = await get_app_id_from_name.aio(name, env, client)
     req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
     await client.stub.AppStop(req)
+
+
+@app_cli.command("history", no_args_is_help=True)
+@synchronizer.create_blocking
+async def history(
+    app_id: str = Argument("", help="Look up an App's deployment history by its ID"),
+    *,
+    env: Optional[str] = ENV_OPTION,
+    json: bool = False,
+):
+    """Show App Deployment history
+
+    **Examples:**
+
+    Get the history based on an app ID:
+
+    ```bash
+    modal app history ap-123456
+    ```
+
+    """
+    if not app_id:
+        raise UsageError("Must pass either an ID or a name.")
+
+    env = ensure_env(env)
+    client = await _Client.from_env()
+
+    resp: api_pb2.AppDeploymentHistoryResponse = await client.stub.AppDeploymentHistory(
+        api_pb2.AppDeploymentHistoryRequest(app_id=app_id)
+    )
+
+    columns: List[Union[Column, str]] = [
+        "id",
+        "Version",
+        "Deployed by",
+        "Deployed at",
+        "State",
+        "Client Version",
+        "Tag",
+    ]
+    rows: List[List[Union[Text, str]]] = []
+    for app_stats in resp.app_deployment_histories:
+        state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
+        rows.append(
+            [
+                str(app_stats.app_id),
+                str(app_stats.version),
+                app_stats.deployed_by,
+                timestamp_to_local(app_stats.deployed_at, json),
+                state,
+                app_stats.client_version,
+                app_stats.tag,
+            ]
+        )
+
+    env_part = f" in environment '{env}'" if env else ""
+    display_table(columns, rows, json, title=f"Apps{env_part}")

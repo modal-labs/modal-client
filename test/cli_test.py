@@ -781,6 +781,39 @@ def test_list_apps(servicer, mock_dir, set_env_client):
     assert "my-vol" not in res.stdout
 
 
+def test_list_app_deployment_history(servicer, mock_dir, set_env_client):
+    # app shouldnt be deployed / stopped before it exists
+    res = _run(["app", "history", "ap-1"], 0)
+    assert "deployed" not in res.stdout, res.stdout
+    assert "stopped" not in res.stdout, res.stdout
+
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["deploy", "myapp.py", "--name", "my_app_foo"])
+
+    # app should be deployed once it exists
+    res = _run(["app", "history", "ap-1"])
+    assert "deployed" in res.stdout, res.stdout
+
+    res = _run(["app", "history", "ap-1", "--json"])
+    assert json.loads(res.stdout)
+
+    # re-deploying an app should result in one app stopped and one app deployed
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["deploy", "myapp.py", "--name", "my_app_foo"])
+
+    res = _run(["app", "history", "ap-1", "--json"])
+    assert "deployed" in res.stdout
+    assert "stopped" in res.stdout, f"{res.stdout=}"
+
+    # stopping an app should result in all versions of it stopped
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["app", "stop", "ap-1"])
+
+    res = _run(["app", "history", "ap-1", "--json"])
+    assert "deployed" not in res.stdout
+    assert "stopped" in res.stdout
+
+
 def test_dict_create_list_delete(servicer, server_url_env, set_env_client):
     _run(["dict", "create", "foo-dict"])
     _run(["dict", "create", "bar-dict"])

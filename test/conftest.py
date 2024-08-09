@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import datetime
 import hashlib
 import inspect
 import os
@@ -100,6 +101,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_apps = {
             client_mount_name(): "ap-x",
         }
+        self.app_deployment_history = defaultdict(list)
+        self.app_deployment_history["ap-x"] = [
+            {
+                "app_id": "ap-x",
+                "deployed_at": datetime.datetime.now().timestamp(),
+                "version": 1,
+                "client_version": str(pkg_resources.parse_version(__version__)),
+                "deployed_by": "foo-user",
+                "state": api_pb2.APP_STATE_DEPLOYED,
+                "tag": "latest",
+            }
+        ]
         self.app_objects = {}
         self.app_single_objects = {}
         self.app_unindexed_objects = {
@@ -270,6 +283,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         res.object_id = object_id
         return res
 
+    def stop_previous_app_deployments(self, app_id):
+        self.app_deployment_history[app_id] = [
+            {**_app_deployment_history, "state": api_pb2.APP_STATE_STOPPED}
+            for _app_deployment_history in self.app_deployment_history.get(app_id, [])
+        ]
+
     ### App
 
     async def AppCreate(self, stream):
@@ -342,6 +361,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppDeployRequest = await stream.recv_message()
         self.deployed_apps[request.name] = request.app_id
         self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
+
         await stream.send_message(api_pb2.AppDeployResponse(url="http://test.modal.com/foo/bar"))
 
     async def AppPublish(self, stream):
@@ -359,6 +379,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.AppPublishResponse())
 
+        self.stop_previous_app_deployments(request.app_id)
+        # start new version
+        self.app_deployment_history[request.app_id].append(
+            {
+                "app_id": request.app_id,
+                "deployed_at": datetime.datetime.now().timestamp(),
+                "version": 1,
+                "client_version": str(pkg_resources.parse_version(__version__)),
+                "deployed_by": "foo-user",
+                "state": api_pb2.APP_STATE_DEPLOYED,
+                "tag": "latest",
+            }
+        )
+
     async def AppGetByDeploymentName(self, stream):
         request: api_pb2.AppGetByDeploymentNameRequest = await stream.recv_message()
         await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name)))
@@ -368,6 +402,27 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.requests.append(request)
         self.app_heartbeats[request.app_id] += 1
         await stream.send_message(Empty())
+
+    async def AppDeploymentHistory(self, stream):
+        request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
+        app_deployment_histories = []
+
+        for app_deployment_history in self.app_deployment_history.get(request.app_id, []):
+            app_deployment_histories.append(
+                api_pb2.AppDeploymentHistoryResponse.AppDeploymentHistory(
+                    app_id=request.app_id,
+                    deployed_at=app_deployment_history["deployed_at"],
+                    version=app_deployment_history["version"],
+                    client_version=app_deployment_history["client_version"],
+                    deployed_by=app_deployment_history["deployed_by"],
+                    state=app_deployment_history["state"],
+                    tag=app_deployment_history["tag"],
+                )
+            )
+
+        await stream.send_message(
+            api_pb2.AppDeploymentHistoryResponse(app_deployment_histories=app_deployment_histories)
+        )
 
     async def AppList(self, stream):
         await stream.recv_message()
@@ -386,6 +441,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppStop(self, stream):
         request: api_pb2.AppStopRequest = await stream.recv_message()
         self.deployed_apps = {k: v for k, v in self.deployed_apps.items() if v != request.app_id}
+        self.stop_previous_app_deployments(request.app_id)
         await stream.send_message(Empty())
 
     ### Checkpoint
