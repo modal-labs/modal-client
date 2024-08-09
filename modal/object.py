@@ -144,7 +144,7 @@ class _Object:
 
     @classmethod
     def _from_loader(
-        cls,
+        cls: Type[O],
         load: Callable[[O, Resolver, Optional[str]], Awaitable[None]],
         rep: str,
         is_another_app: bool = False,
@@ -152,7 +152,7 @@ class _Object:
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
-    ):
+    ) -> O:
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
         obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps, deduplication_key)
