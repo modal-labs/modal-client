@@ -9,6 +9,7 @@ import pathlib
 import pickle
 import pytest
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,7 @@ from grpclib.exceptions import GRPCError
 
 import modal
 from modal import Client, Queue, Volume, is_local
+from modal._checkpoint_utils import get_open_connections
 from modal._container_entrypoint import UserException, main
 from modal._serialization import (
     deserialize,
@@ -38,11 +40,12 @@ from modal.partial_function import enter, method
 from modal_proto import api_pb2
 
 from .helpers import deploy_app_externally
-from .supports.skip import skip_github_non_linux
+from .supports.skip import skip_github_non_linux, skip_macos, skip_windows
 
 EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
+CONNECTION_CHECK_CHECKPOINTING_MESSAGE = "connection check only runs inside containers"
 
 
 def _get_inputs(
@@ -786,19 +789,21 @@ def test_cls_generator(servicer):
 
 @skip_github_non_linux
 def test_checkpointing_cls_function(servicer):
-    ret = _run_container(
-        servicer,
-        "test.supports.functions",
-        "SnapshottingCls.*",
-        inputs=_get_inputs((("D",), {}), method_name="f"),
-        is_checkpointing_function=True,
-        is_class=True,
-    )
-    assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in servicer.requests)
-    for request in servicer.requests:
-        if isinstance(request, api_pb2.ContainerCheckpointRequest):
-            assert request.checkpoint_id
-    assert _unwrap_scalar(ret) == "ABCD"
+    # Monkey-patched to prevent side effects with other existing connections.
+    with mock.patch("modal._container_io_manager.get_open_connections", lambda: []):
+        ret = _run_container(
+            servicer,
+            "test.supports.functions",
+            "SnapshottingCls.*",
+            inputs=_get_inputs((("D",), {}), method_name="f"),
+            is_checkpointing_function=True,
+            is_class=True,
+        )
+        assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in servicer.requests)
+        for request in servicer.requests:
+            if isinstance(request, api_pb2.ContainerCheckpointRequest):
+                assert request.checkpoint_id
+        assert _unwrap_scalar(ret) == "ABCD"
 
 
 @skip_github_non_linux
@@ -1081,18 +1086,47 @@ def test_call_function_that_calls_method(servicer, set_env_client):
 def test_checkpoint_and_restore_success(servicer):
     """Functions send a checkpointing request and continue to execute normally,
     simulating a restore operation."""
-    ret = _run_container(
-        servicer,
-        "test.supports.functions",
-        "square",
-        is_checkpointing_function=True,
-    )
-    assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in servicer.requests)
-    for request in servicer.requests:
-        if isinstance(request, api_pb2.ContainerCheckpointRequest):
-            assert request.checkpoint_id
+    with mock.patch("modal._container_io_manager.get_open_connections", lambda: []):
+        ret = _run_container(
+            servicer,
+            "test.supports.functions",
+            "square",
+            is_checkpointing_function=True,
+        )
+        assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in servicer.requests)
+        for request in servicer.requests:
+            if isinstance(request, api_pb2.ContainerCheckpointRequest):
+                assert request.checkpoint_id
 
     assert _unwrap_scalar(ret) == 42**2
+
+
+@skip_macos(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
+@skip_windows(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
+def test_memory_snapshot_error_open_connection(servicer):
+    """Functions fail to checkpoint if connections are open."""
+
+    # A connection is left open.
+    with pytest.raises(ConnectionError):
+        _run_container(
+            servicer,
+            "test.supports.functions",
+            "SnapshottingClsNetworkConnectionOpen.*",
+            inputs=_get_inputs((("D",), {}), method_name="open_connection"),
+            is_checkpointing_function=True,
+            is_class=True,
+        )
+
+
+@skip_macos(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
+@skip_windows(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
+def test_get_open_connections():
+    new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    remote_ip = socket.gethostbyname("modal.com")
+    new_socket.connect((remote_ip, 80))
+
+    connections = get_open_connections()
+    assert any(c.remote_addr == f"{remote_ip}:80" for c in connections)
 
 
 @skip_github_non_linux

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import socket
 import time
 from typing import List
 
@@ -412,6 +413,27 @@ class SnapshottingCls:
     @method()
     def f(self, x):
         return "".join(self._vals) + x
+
+
+@app.cls(enable_memory_snapshot=True)
+class SnapshottingClsNetworkConnectionOpen:
+    def __init__(self):
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    @enter(snap=True)
+    def open_connection(self):
+        remote_ip = socket.gethostbyname("google.com")
+        self._socket.connect((remote_ip, 80))
+
+
+@app.cls(enable_memory_snapshot=True)
+class SnapshottingClsNetworkConnectionClosed:
+    @enter(snap=True)
+    def open_connection(self):
+        remote_ip = "94.140.14.14"  # AdGuard DNS
+        _socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        _socket.connect((remote_ip, 80))
+        _socket.close()
 
 
 @app.function(enable_memory_snapshot=True)

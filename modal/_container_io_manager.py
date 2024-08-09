@@ -18,6 +18,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
+from ._checkpoint_utils import get_open_connections, is_socket_patched, unpatch_socket_close
 from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
@@ -621,12 +622,33 @@ class _ContainerIOManager:
                     "CUDA device availability may be inaccurate."
                 )
 
+        # Unpatch socket.close() to restore default TIME_WAIT behavior.
+        # Refer modal._contaienr_utils.patch_socket_close() for full exetent of patch.
+        if is_socket_patched():
+            try:
+                unpatch_socket_close()
+                logger.debug("socket.close() unpatched successfully")
+            except Exception as exc:
+                logger.warning(f"failed to unpatch socket.close(): {exc}")
+
         self._client = await _Client.from_env()
 
     async def memory_snapshot(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
+
+        if connections := get_open_connections():
+            logger.error(f"Found {len(connections)} open network connection(s):")
+            for conn in connections:
+                logger.error(f"Remote Address: {conn.remote_addr}, Status: {conn.status}")
+
+            raise ConnectionError(
+                "Cannot checkpoint container with open network connections. "
+                "Are you closing connections before checkpointing?"
+            )
+        else:
+            logger.debug("No open TCP connections found.")
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self._heartbeat_condition:
