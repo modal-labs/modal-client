@@ -101,7 +101,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_apps = {
             client_mount_name(): "ap-x",
         }
-        self.app_deployment_history = defaultdict(list)
+        self.app_deployment_history: defaultdict[str, List[Dict[str, Any]]] = defaultdict(list)
         self.app_deployment_history["ap-x"] = [
             {
                 "app_id": "ap-x",
