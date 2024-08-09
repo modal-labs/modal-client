@@ -1386,7 +1386,7 @@ def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
         servicer,
         "test.supports.functions",
         "ident",
-        inputs=_get_inputs(((42,), {}), client=client),
+        inputs=_get_inputs(((42,), {}), upload_to_blob=True, client=client),
     )
     assert _unwrap_blob_scalar(ret, client) == 42
 
