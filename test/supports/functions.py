@@ -446,3 +446,8 @@ def is_local_f(x):
 def raise_large_unicode_exception():
     byte_str = (b"k" * 120_000_000) + b"\x99"
     byte_str.decode("utf-8")
+
+
+@app.function()
+def typed_func(a: str) -> float:
+    return 0.0

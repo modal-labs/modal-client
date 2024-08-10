@@ -278,7 +278,7 @@ class _FunctionSpec:
 
 
 P = typing_extensions.ParamSpec("P")
-T = typing.TypeVar("T")
+T = typing.TypeVar("T", covariant=True)
 
 
 class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
@@ -1269,7 +1269,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             return self._obj
 
     @synchronizer.nowrap
-    def local(self, *args, **kwargs) -> Any:
+    def local(self, *args: P.args, **kwargs: P.kwargs) -> T:
         """
         Calls the function locally, executing it with the given arguments and returning the execution's result.
 
