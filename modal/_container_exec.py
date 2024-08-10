@@ -18,7 +18,9 @@ from .config import config
 from .exception import ExecutionError, InteractiveTimeoutError, NotFoundError
 
 
-async def container_exec(task_id: str, command: List[str], *, pty: bool, client: Optional[_Client] = None):
+async def container_exec(
+    task_id: str, command: List[str], *, pty: bool, client: Optional[_Client] = None, console: Optional[Console] = None
+):
     """Execute a command inside an active container"""
     if platform.system() == "Windows":
         print("container exec is not currently supported on Windows.")
@@ -27,7 +29,9 @@ async def container_exec(task_id: str, command: List[str], *, pty: bool, client:
     if client is None:
         client = await _Client.from_env()
 
-    console = Console()
+    if console is None:
+        console = Console()
+
     connecting_status = console.status("Connecting...")
     connecting_status.start()
 
