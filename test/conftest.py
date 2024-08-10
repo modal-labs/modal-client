@@ -180,11 +180,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.sandbox_defs = []
         self.sandbox: asyncio.subprocess.Process = None
-
-        # Whether the sandbox is executing a shell program in interactive mode.
-        self.sandbox_is_interactive = False
-        self.sandbox_shell_prompt = "TEST_PROMPT# "
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
+
+        self.shell_prompt = "TEST_PROMPT# "
+        self.container_exec: asyncio.subprocess.Process = None
+        self.container_exec_result: Optional[api_pb2.GenericResult] = None
 
         self.token_flow_localhost_port = None
         self.queue_max_len = 100
@@ -397,7 +397,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
     async def ContainerExecPutInput(self, stream):
-        await stream.recv_message()
+        request = await stream.recv_message()
+
+        self.container_exec.stdin.write(request.input.message)
+        # self.container_exec.stdin.write(b'\x04')
+        await self.container_exec.stdin.drain()
+
         await stream.send_message(Empty())
 
     ### Blob
@@ -502,7 +507,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.ContainerHeartbeatResponse())
 
     async def ContainerExec(self, stream):
-        _request: api_pb2.ContainerExecRequest = await stream.recv_message()
+        request: api_pb2.ContainerExecRequest = await stream.recv_message()
+        self.container_exec = await asyncio.subprocess.create_subprocess_exec(
+            *request.command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE,
+        )
         await stream.send_message(api_pb2.ContainerExecResponse(exec_id="container_exec_id"))
 
     async def ContainerExecGetOutput(self, stream):
@@ -511,11 +522,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
             api_pb2.RuntimeOutputBatch(
                 items=[
                     api_pb2.RuntimeOutputMessage(
-                        file_descriptor=api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT, message="Hello World"
+                        message=self.shell_prompt, file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT
                     )
                 ]
             )
         )
+
+        async def read_stream(read_stream, file_descriptor):
+            async for message in read_stream:
+                await stream.send_message(
+                    api_pb2.RuntimeOutputBatch(
+                        items=[
+                            api_pb2.RuntimeOutputMessage(
+                                message=message.decode("utf-8"), file_descriptor=file_descriptor
+                            )
+                        ]
+                    )
+                )
+
+        await asyncio.gather(
+            read_stream(self.container_exec.stdout, api_pb2.FILE_DESCRIPTOR_STDOUT),
+            read_stream(self.container_exec.stderr, api_pb2.FILE_DESCRIPTOR_STDERR),
+        )
+
         await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
 
     ### Dict
@@ -1049,9 +1078,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxCreate(self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
-        if request.definition.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-            self.sandbox_is_interactive = True
-
         self.sandbox = await asyncio.subprocess.create_subprocess_exec(
             *request.definition.entrypoint_args,
             stdout=asyncio.subprocess.PIPE,
@@ -1066,14 +1092,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
         f: asyncio.StreamReader
-        if self.sandbox_is_interactive:
-            # sends an empty message to simulate PTY
-            await stream.send_message(
-                api_pb2.TaskLogsBatch(
-                    items=[api_pb2.TaskLogs(data=self.sandbox_shell_prompt, file_descriptor=request.file_descriptor)]
-                )
-            )
-
         if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
             # Blocking read until EOF is returned.
             f = self.sandbox.stdout
