@@ -10,7 +10,7 @@ from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli.utils import display_table, stream_app_logs, timestamp_to_local
 from modal.client import _Client
-from modal.container_process import ContainerProcess
+from modal.container_process import _ContainerProcess
 from modal_proto import api_pb2
 
 container_cli = typer.Typer(name="container", help="Manage and connect to running containers.", no_args_is_help=True)
@@ -59,9 +59,9 @@ async def exec(
     req = api_pb2.ContainerExecRequest(
         task_id=container_id, command=command, pty_info=get_pty_info(shell=True) if pty else None
     )
-    res = await client.stub.ContainerExec(req)
+    res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
 
-    ContainerProcess(client, res.task_id).attach(pty=pty)
+    await _ContainerProcess(res.exec_id, client).attach(pty=pty)
 
 
 @container_cli.command("stop")

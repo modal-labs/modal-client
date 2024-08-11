@@ -666,6 +666,7 @@ message ContainerExecGetOutputRequest {
   string exec_id = 1;
   float timeout = 2;
   uint64 last_batch_index = 3;
+  FileDescriptor file_descriptor = 4;
 }
 
 message ContainerExecPutInputRequest {

@@ -40,12 +40,14 @@ async def _container_process_logs_iterator(
         exec_id=process_id,
         timeout=55,
         last_batch_index=last_entry_id or 0,
+        file_descriptor=file_descriptor,
     )
     async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
         if batch.HasField("exit_code"):
             yield (None, batch.batch_index)
             break
         for item in batch.items:
+            # TODO: do this on the server.
             if item.file_descriptor == file_descriptor:
                 yield (item.message, batch.batch_index)
 
