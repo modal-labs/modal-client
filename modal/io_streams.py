@@ -89,6 +89,10 @@ class _StreamReader:
         # an empty string for any subsequent reads (including async for)
         self.eof = False
 
+    @property
+    def file_descriptor(self):
+        return self._file_descriptor
+
     async def read(self) -> str:
         """Fetch and return contents of the entire stream. If EOF was received,
         return an empty string.

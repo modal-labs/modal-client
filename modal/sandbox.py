@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import os
 from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -17,6 +18,7 @@ from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
+from .container_process import _ContainerProcess
 from .exception import deprecation_error, deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
@@ -288,20 +290,23 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self.returncode
 
     async def _get_task_id(self):
-        while self._task_id is None:
+        while not self._task_id:
             resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
             self._task_id = resp.task_id
+            # TODO: why the fuck is this needed??
+            await asyncio.sleep(0.5)
         return self._task_id
 
-    async def exec(self, *cmds: str):
+    async def exec(self, *cmds: str, pty_info: Optional[api_pb2.PTYInfo] = None):
         task_id = await self._get_task_id()
-        await self._client.stub.ContainerExec(
+        resp = await self._client.stub.ContainerExec(
             api_pb2.ContainerExecRequest(
                 task_id=task_id,
                 command=cmds,
-                pty_info=None,
+                pty_info=pty_info,
             )
         )
+        return _ContainerProcess(resp.exec_id, self._client)
 
     @property
     def stdout(self) -> _StreamReader:

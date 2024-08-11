@@ -5,11 +5,12 @@ from typing import List, Union
 import typer
 from rich.text import Text
 
+from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli.utils import display_table, stream_app_logs, timestamp_to_local
 from modal.client import _Client
-from modal.container_process import container_exec
+from modal.container_process import ContainerProcess
 from modal_proto import api_pb2
 
 container_cli = typer.Typer(name="container", help="Manage and connect to running containers.", no_args_is_help=True)
@@ -52,7 +53,15 @@ async def exec(
     pty: bool = typer.Option(is_flag=True, default=True, help="Run the command using a PTY."),
 ):
     """Execute a command in a container."""
-    await container_exec(container_id, command, pty=pty)
+
+    client = await _Client.from_env()
+
+    req = api_pb2.ContainerExecRequest(
+        task_id=container_id, command=command, pty_info=get_pty_info(shell=True) if pty else None
+    )
+    res = await client.stub.ContainerExec(req)
+
+    ContainerProcess(client, res.task_id).attach(pty=pty)
 
 
 @container_cli.command("stop")
