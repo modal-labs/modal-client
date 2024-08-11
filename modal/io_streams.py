@@ -27,7 +27,7 @@ async def _sandbox_logs_iterator(
         last_entry_id = log_batch.entry_id
 
         for message in log_batch.items:
-            yield (message, last_entry_id)
+            yield (message.data, last_entry_id)
         if log_batch.eof:
             yield (None, last_entry_id)
             break

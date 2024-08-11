@@ -28,9 +28,6 @@ class _ContainerProcess:
         self._stderr = StreamReader(api_pb2.FILE_DESCRIPTOR_STDERR, process_id, "container_process", self._client)
         self._stdin = StreamWriter(process_id, "container_process", self._client)
 
-    async def wait(self, raise_on_termination: bool = True):
-        pass
-
     @property
     def stdout(self) -> _StreamReader:
         """`StreamReader` for the container process's stdout stream."""

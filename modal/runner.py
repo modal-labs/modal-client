@@ -21,7 +21,9 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import (
     ExecutionError,
+    InteractiveTimeoutError,
     InvalidError,
+    RemoteError,
     _CliUserExecutionError,
     deprecation_warning,
 )
@@ -504,7 +506,16 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
         sandbox = await _Sandbox.create("sleep", "100000", app=_app, **kwargs)
 
         container_process = await sandbox.exec(*sandbox_cmds, pty_info=get_pty_info(shell=True))
-        await container_process.attach(pty=True)
+        try:
+            await container_process.attach(pty=True)
+        except InteractiveTimeoutError:
+            # Check on status of Sandbox. It may have crashed, causing connection failure.
+            req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox._object_id, timeout=0)
+            resp = await retry_transient_errors(sandbox._client.stub.SandboxWait, req)
+            if resp.result.exception:
+                raise RemoteError(resp.result.exception)
+            else:
+                raise
 
 
 def _run_stub(*args: Any, **kwargs: Any) -> AsyncGenerator[_App, None]:

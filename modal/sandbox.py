@@ -293,11 +293,25 @@ class _Sandbox(_Object, type_prefix="sb"):
         while not self._task_id:
             resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
             self._task_id = resp.task_id
-            # TODO: why the fuck is this needed??
+            # TODO: debug why sending an exec right after a task ID exists fails silently
             await asyncio.sleep(0.5)
         return self._task_id
 
     async def exec(self, *cmds: str, pty_info: Optional[api_pb2.PTYInfo] = None):
+        """Execute a command in the sandbox, and return a `ContainerProcess` handle.
+
+        **Usage**
+
+        ```
+        sandbox = modal.Sandbox.create("sleep", "infinity")
+
+        process = sandbox.exec("bash", "-c", "for i in $(seq 1 10); do echo foo $i; sleep 0.5; done")
+
+        for line in process.stdout:
+            print(line)
+        ```
+        """
+
         task_id = await self._get_task_id()
         resp = await self._client.stub.ContainerExec(
             api_pb2.ContainerExecRequest(
