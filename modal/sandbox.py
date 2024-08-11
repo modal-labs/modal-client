@@ -35,6 +35,25 @@ if TYPE_CHECKING:
     import modal.app
 
 
+async def _sandbox_logs_iterator(
+    sandbox_id: str, file_descriptor: int, last_entry_id: str, client: _Client
+) -> AsyncIterator[Tuple[Optional[api_pb2.TaskLogs], str]]:
+    req = api_pb2.SandboxGetLogsRequest(
+        sandbox_id=sandbox_id,
+        file_descriptor=file_descriptor,
+        timeout=55,
+        last_entry_id=last_entry_id,
+    )
+    async for log_batch in unary_stream(client.stub.SandboxGetLogs, req):
+        last_entry_id = log_batch.entry_id
+
+        for message in log_batch.items:
+            yield (message, last_entry_id)
+        if log_batch.eof:
+            yield (None, last_entry_id)
+            break
+
+
 class _LogsReader:
     """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`).
 
@@ -107,23 +126,16 @@ class _LogsReader:
 
         retries_remaining = 10
         while not completed:
-            req = api_pb2.SandboxGetLogsRequest(
-                sandbox_id=self._sandbox_id,
-                file_descriptor=self._file_descriptor,
-                timeout=55,
-                last_entry_id=self._last_log_batch_entry_id,
-            )
             try:
-                async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
-                    self._last_log_batch_entry_id = log_batch.entry_id
-
-                    for message in log_batch.items:
-                        yield message
-                    if log_batch.eof:
-                        self.eof = True
+                async for message, entry_id in _sandbox_logs_iterator(
+                    self._sandbox_id, self._file_descriptor, self._last_log_batch_entry_id, self._client
+                ):
+                    self._last_log_batch_entry_id = entry_id
+                    yield message
+                    if message is None:
                         completed = True
-                        yield None
-                        break
+                        self.eof = True
+
             except (GRPCError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
