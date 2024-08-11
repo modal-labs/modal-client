@@ -60,8 +60,8 @@ class _ContainerProcess:
         async def _write_to_fd_loop(stream: _StreamReader):
             async for line in stream:
                 if not on_connect.is_set():
+                    connecting_status.stop()
                     on_connect.set()
-                    await asyncio.sleep(0)  # Give up the event loop
 
                 await write_to_fd(stream.file_descriptor, line.encode("utf-8"))
 
@@ -83,9 +83,6 @@ class _ContainerProcess:
                 # time out if we can't connect to the server fast enough
                 await asyncio.wait_for(on_connect.wait(), timeout=15)
 
-                if connecting_status:
-                    connecting_status.stop()
-
                 async with stream_from_stdin(_handle_input, use_raw_terminal=pty):
                     await stdout_task
                     await stderr_task
@@ -95,9 +92,7 @@ class _ContainerProcess:
                 #     raise ExecutionError(f"Process exited with status code {exit_status}")
 
             except (asyncio.TimeoutError, TimeoutError):
-                if connecting_status:
-                    connecting_status.stop()
-
+                connecting_status.stop()
                 stdout_task.cancel()
                 stderr_task.cancel()
                 raise InteractiveTimeoutError("Failed to establish connection to container. Please try again.")
