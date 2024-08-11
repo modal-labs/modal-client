@@ -53,7 +53,7 @@ async def _container_process_logs_iterator(
 
 
 class _StreamReader:
-    """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`).
+    """Provides an interface to buffer and fetch logs from a stream (`stdout` or `stderr`).
 
     As an asynchronous iterable, the object supports the async for statement.
 
@@ -122,7 +122,7 @@ class _StreamReader:
 
     async def _get_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogs]]:
         """mdmd:hidden
-        Streams sandbox logs from the server to the reader.
+        Streams sandbox or process logs from the server to the reader.
 
         When the stream receives an EOF, it yields None. Once an EOF is received,
         subsequent invocations will not yield logs.
@@ -183,7 +183,7 @@ MAX_BUFFER_SIZE = 2 * 1024 * 1024
 
 
 class _StreamWriter:
-    """Provides an interface to buffer and write logs to a sandbox stream (`stdin`)."""
+    """Provides an interface to buffer and write logs to a sandbox or container process stream (`stdin`)."""
 
     def __init__(self, object_id: str, object_type: Literal["sandbox", "container_process"], client: _Client):
         self._index = 1
@@ -235,7 +235,7 @@ class _StreamWriter:
     def write_eof(self):
         """
         Closes the write end of the stream after the buffered write data is drained.
-        If the sandbox process was blocked on input, it will become unblocked after `write_eof()`.
+        If the process was blocked on input, it will become unblocked after `write_eof()`.
 
         This method needs to be used along with the `drain()` method which flushes the EOF to the process.
         """
@@ -243,15 +243,27 @@ class _StreamWriter:
 
     async def drain(self):
         """
-        Flushes the write buffer and EOF to the running Sandbox process.
+        Flushes the write buffer and EOF to the running process.
         """
         data = bytes(self._buffer)
         self._buffer.clear()
         index = self.get_next_index()
-        await retry_transient_errors(
-            self._client.stub.SandboxStdinWrite,
-            api_pb2.SandboxStdinWriteRequest(sandbox_id=self._sandbox_id, index=index, eof=self._is_closed, input=data),
-        )
+
+        if self._object_type == "sandbox":
+            await retry_transient_errors(
+                self._client.stub.SandboxStdinWrite,
+                api_pb2.SandboxStdinWriteRequest(
+                    sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
+                ),
+            )
+        else:
+            await retry_transient_errors(
+                self._client.stub.ContainerExecPutInput,
+                api_pb2.ContainerExecPutInputRequest(
+                    exec_id=self._object_id,
+                    input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
+                ),
+            )
 
 
 StreamReader = synchronize_api(_StreamReader)

@@ -1643,6 +1643,7 @@ message Resources {
 message RuntimeInputMessage {
   bytes message = 1;
   uint64 message_index = 2;
+  bool eof = 3;
 }
 
 message RuntimeOutputBatch {

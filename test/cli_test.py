@@ -355,7 +355,9 @@ def test_serve(servicer, set_env_client, server_url_env, test_dir):
 
 
 @pytest.fixture
-def mock_shell_pty():
+def mock_shell_pty(servicer):
+    servicer.shell_prompt = "TEST_PROMPT# "
+
     def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
         return api_pb2.PTYInfo(
@@ -438,9 +440,9 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     _, captured_out = mock_shell_pty
+    shell_prompt = servicer.shell_prompt.encode("utf-8")
     _run(["shell", "--cmd", "pwd", app_file.as_posix() + "::foo"])
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
-    shell_prompt = servicer.shell_prompt.encode("utf-8")
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 

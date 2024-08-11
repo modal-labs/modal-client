@@ -8,11 +8,10 @@ from rich.console import Console
 from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .exception import InteractiveTimeoutError
-from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
+from .io_streams import _StreamReader, _StreamWriter
 
 
 class _ContainerProcess:
@@ -24,9 +23,9 @@ class _ContainerProcess:
     def __init__(self, process_id: str, client: _Client) -> None:
         self._process_id = process_id
         self._client = client
-        self._stdout = StreamReader(api_pb2.FILE_DESCRIPTOR_STDOUT, process_id, "container_process", self._client)
-        self._stderr = StreamReader(api_pb2.FILE_DESCRIPTOR_STDERR, process_id, "container_process", self._client)
-        self._stdin = StreamWriter(process_id, "container_process", self._client)
+        self._stdout = _StreamReader(api_pb2.FILE_DESCRIPTOR_STDOUT, process_id, "container_process", self._client)
+        self._stderr = _StreamReader(api_pb2.FILE_DESCRIPTOR_STDERR, process_id, "container_process", self._client)
+        self._stdin = _StreamWriter(process_id, "container_process", self._client)
 
     @property
     def stdout(self) -> _StreamReader:
@@ -66,14 +65,8 @@ class _ContainerProcess:
                 await write_to_fd(stream.file_descriptor, line.encode("utf-8"))
 
         async def _handle_input(data: bytes, message_index: int):
-            await retry_transient_errors(
-                self._client.stub.ContainerExecPutInput,
-                api_pb2.ContainerExecPutInputRequest(
-                    exec_id=self._process_id,
-                    input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index),
-                ),
-                total_timeout=10,
-            )
+            self.stdin.write(data)
+            await self.stdin.drain()
 
         async with TaskContext() as tc:
             stdout_task = tc.create_task(_write_to_fd_loop(self.stdout))
