@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import TYPE_CHECKING, AsyncIterator, Optional, Tuple, Union
+from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Tuple, Union
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -33,6 +33,21 @@ async def _sandbox_logs_iterator(
             break
 
 
+async def _container_process_logs_iterator(process_id: str, file_descriptor: int, last_entry_id: str, client: _Client):
+    req = api_pb2.ContainerExecGetOutputRequest(
+        exec_id=process_id,
+        timeout=55,
+        last_batch_index=last_entry_id,
+    )
+    async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
+        if batch.HasField("exit_code"):
+            yield (None, batch.batch_index)
+            break
+        for item in batch.items:
+            if item.file_descriptor == file_descriptor:
+                yield (item.message, batch.batch_index)
+
+
 class _StreamReader:
     """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`).
 
@@ -53,11 +68,14 @@ class _StreamReader:
     ```
     """
 
-    def __init__(self, file_descriptor: int, sandbox_id: str, client: _Client) -> None:
+    def __init__(
+        self, file_descriptor: int, object_id: str, object_type: Literal["sandbox", "process"], client: _Client
+    ) -> None:
         """mdmd:hidden"""
 
         self._file_descriptor = file_descriptor
-        self._sandbox_id = sandbox_id
+        self._object_type = object_type
+        self._object_id = object_id
         self._client = client
         self._stream = None
         self._last_log_batch_entry_id = ""
@@ -106,9 +124,16 @@ class _StreamReader:
         retries_remaining = 10
         while not completed:
             try:
-                async for message, entry_id in _sandbox_logs_iterator(
-                    self._sandbox_id, self._file_descriptor, self._last_log_batch_entry_id, self._client
-                ):
+                if self._object_type == "sandbox":
+                    iterator = _sandbox_logs_iterator(
+                        self._object_id, self._file_descriptor, self._last_log_batch_entry_id, self._client
+                    )
+                else:
+                    iterator = _container_process_logs_iterator(
+                        self._object_id, self._file_descriptor, self._last_log_batch_entry_id, self._client
+                    )
+
+                async for message, entry_id in iterator:
                     self._last_log_batch_entry_id = entry_id
                     yield message
                     if message is None:
@@ -148,9 +173,10 @@ MAX_BUFFER_SIZE = 2 * 1024 * 1024
 class _StreamWriter:
     """Provides an interface to buffer and write logs to a sandbox stream (`stdin`)."""
 
-    def __init__(self, sandbox_id: str, client: _Client):
+    def __init__(self, object_id: str, object_type: Literal["sandbox", "process"], client: _Client):
         self._index = 1
-        self._sandbox_id = sandbox_id
+        self._object_id = object_id
+        self._object_type = object_type
         self._client = client
         self._is_closed = False
         self._buffer = bytearray()
