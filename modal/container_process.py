@@ -10,12 +10,59 @@ from rich.console import Console
 from modal_proto import api_pb2
 
 from ._pty import get_pty_info
-from ._utils.async_utils import TaskContext
+from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .config import config
 from .exception import ExecutionError, InteractiveTimeoutError, NotFoundError
+from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
+
+
+class _ContainerProcess:
+    _process_id: Optional[str] = None
+    _stdout: _StreamReader
+    _stderr: _StreamReader
+    _stdin: _StreamWriter
+
+    def __init__(self, process_id: str, client: _Client) -> None:
+        self._process_id = process_id
+        self._client = client
+        self._stdout = StreamReader(api_pb2.FILE_DESCRIPTOR_STDOUT, process_id, "container_process", self._client)
+        self._stderr = StreamReader(api_pb2.FILE_DESCRIPTOR_STDERR, process_id, "container_process", self._client)
+        self._stdin = StreamWriter(process_id, "container_process", self._client)
+
+    async def wait(self, raise_on_termination: bool = True):
+        pass
+
+    @property
+    def client(self) -> _Client:
+        return self._client
+
+    @property
+    def process_id(self) -> str:
+        return self._process_id
+
+    @property
+    def stdout(self) -> _StreamReader:
+        """`StreamReader` for the container process's stdout stream."""
+
+        return self._stdout
+
+    @property
+    def stderr(self) -> _StreamReader:
+        """`StreamReader` for the container process's stderr stream."""
+
+        return self._stderr
+
+    @property
+    def stdin(self) -> _StreamWriter:
+        """`StreamWriter` for the container process's stdin stream."""
+
+        return self._stdin
+
+
+ContainerProcess = synchronize_api(_ContainerProcess)
 
 
 async def container_exec(
