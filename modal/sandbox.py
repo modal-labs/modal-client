@@ -45,6 +45,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stdout: _StreamReader
     _stderr: _StreamReader
     _stdin: _StreamWriter
+    _task_id: Optional[str] = None
 
     @staticmethod
     def _new(
@@ -285,6 +286,22 @@ class _Sandbox(_Object, type_prefix="sb"):
             self._result = resp.result
 
         return self.returncode
+
+    async def _get_task_id(self):
+        while self._task_id is None:
+            resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
+            self._task_id = resp.task_id
+        return self._task_id
+
+    async def exec(self, *cmds: str):
+        task_id = await self._get_task_id()
+        await self._client.stub.ContainerExec(
+            api_pb2.ContainerExecRequest(
+                task_id=task_id,
+                command=cmds,
+                pty_info=None,
+            )
+        )
 
     @property
     def stdout(self) -> _StreamReader:
