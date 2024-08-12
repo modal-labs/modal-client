@@ -10,6 +10,21 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.18 (2024-08-12)
+
+- Sandboxes now have an `exec()` method that lets you execute a command inside the sandbox container. `exec` returns a `ContainerProcess` handle for input and output streaming.
+
+```python
+sandbox = modal.Sandbox.create("sleep", "infinity")
+
+process = sandbox.exec("bash", "-c", "for i in $(seq 1 10); do echo foo $i; sleep 0.5; done")
+
+for line in process.stdout:
+    print(line)
+```
+
+
+
 ### 0.64.8 (2024-08-06)
 
 - Remove support for the undocumented `modal.apps.list_apps()` function, which was internal and not intended to be part of public API.
