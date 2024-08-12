@@ -801,7 +801,7 @@ def test_cls_strict_parameters_added_to_definition(client, servicer, monkeypatch
 
         @modal.web_endpoint()
         def foo(self, z: str):
-            return {"x": self.x, "y": self.y, "z": z}
+            return {"z": z}
 
     deploy_app(strict_param_cls_app, "my-cls-app", client=client)
 
@@ -823,7 +823,6 @@ def test_cls_strict_parameters_added_to_definition(client, servicer, monkeypatch
 
 
 def test_cls_strict_parameters_unsupported_type(client, servicer, monkeypatch):
-    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
     monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
 
     strict_param_cls_app = App("strict-param-app")
@@ -833,20 +832,27 @@ def test_cls_strict_parameters_unsupported_type(client, servicer, monkeypatch):
         def __init__(self, x: float):
             pass
 
+        @modal.web_endpoint()
+        def foo(self, z: str):
+            return {"z": z}
+
     with pytest.raises(InvalidError, match="class parameters"):
         deploy_app(strict_param_cls_app, "my-cls-app", client=client)
 
 
 def test_cls_strict_parameters_without_type(client, servicer, monkeypatch):
-    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
     monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
 
     strict_param_cls_app = App("strict-param-app")
 
     @strict_param_cls_app.cls(serialized=True)
     class StrictParamCls:
-        def __init__(self, x):
+        def __init__(self, x: float):
             pass
+
+        @modal.web_endpoint()
+        def foo(self, z: str):
+            return {"z": z}
 
     with pytest.raises(InvalidError, match="class parameters"):
         deploy_app(strict_param_cls_app, "my-cls-app", client=client)
