@@ -161,9 +161,9 @@ async def history(
     rows: List[List[Union[Text, str]]] = []
     deployments_with_tags = False
     for idx, app_stats in enumerate(resp.app_deployment_histories):
-        version = Text(str(app_stats.version), style="green") if idx == 0 else str(app_stats.version)
+        version: Union[Text, str] = Text(str(app_stats.version), style="green") if idx == 0 else str(app_stats.version)
 
-        row = [
+        row: List[Union[Text, str]] = [
             version,
             timestamp_to_local(app_stats.deployed_at, json),
             app_stats.client_version,
@@ -180,5 +180,4 @@ async def history(
         columns.append("Tag")
 
     rows = sorted(rows, key=lambda x: str(x[0]), reverse=True)
-    env_part = f" in environment '{env}'" if env else ""
-    display_table(columns, rows, json, title=f"Apps{env_part}")
+    display_table(columns, rows, json)
