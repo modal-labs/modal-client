@@ -153,6 +153,7 @@ async def history(
     )
 
     columns: List[Union[Column, str]] = [
+        "",
         "Version",
         "Time deployed",
         "Client",
@@ -161,18 +162,19 @@ async def history(
     rows: List[List[Union[Text, str]]] = []
     deployments_with_tags = False
     for idx, app_stats in enumerate(resp.app_deployment_histories):
-        version: Union[Text, str] = Text(str(app_stats.version), style="green") if idx == 0 else str(app_stats.version)
+        style = "bold green" if idx == 0 else "dim"
 
         row: List[Union[Text, str]] = [
-            version,
-            timestamp_to_local(app_stats.deployed_at, json),
-            app_stats.client_version,
-            app_stats.deployed_by,
+            Text("•", style=style) if idx == 0 else Text("", style=style),
+            Text(str(app_stats.version), style=style),
+            Text(timestamp_to_local(app_stats.deployed_at, json), style=style),
+            Text(app_stats.client_version, style=style),
+            Text(app_stats.deployed_by, style=style),
         ]
 
         if app_stats.tag:
             deployments_with_tags = True
-            row.append(app_stats.tag)
+            row.append(Text(app_stats.tag, style=style))
 
         rows.append(row)
 
