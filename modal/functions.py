@@ -1187,7 +1187,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
         ):
             yield item
 
-    async def _call_function(self, args, kwargs):
+    async def _call_function(self, args, kwargs) -> T:
         invocation = await _Invocation.create(self, args, kwargs, client=self._client)
         try:
             return await invocation.run_function()
@@ -1195,6 +1195,8 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
             # this can happen if the user terminates a program, triggering a cancellation cascade
             if not self._mute_cancellation:
                 raise
+            # TODO (elias): remove _mute_cancellation hack
+            return  # type: ignore
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
         return await _Invocation.create(self, args, kwargs, client=self._client)
@@ -1314,7 +1316,7 @@ class _Function(typing.Generic[P, T], _Object, type_prefix="fu"):
                     await obj.aenter()
                     return await fun(*args, **kwargs)
 
-                return coro()
+                return coro()  # type: ignore
             else:
                 obj.enter()
                 return fun(*args, **kwargs)
