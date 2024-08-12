@@ -790,7 +790,6 @@ def test_cross_process_userclass_serde(supports_dir):
 
 
 def test_cls_strict_parameters_added_to_definition(client, servicer, monkeypatch):
-    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
     monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
 
     strict_param_cls_app = App("strict-param-app")
@@ -799,6 +798,10 @@ def test_cls_strict_parameters_added_to_definition(client, servicer, monkeypatch
     class StrictParamCls:
         def __init__(self, x: str, y: int = 20):
             pass
+
+        @modal.web_endpoint()
+        def foo(self, z: str):
+            return {"x": self.x, "y": self.y, "z": z}
 
     deploy_app(strict_param_cls_app, "my-cls-app", client=client)
 
