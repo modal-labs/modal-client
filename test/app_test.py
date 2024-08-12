@@ -9,7 +9,6 @@ from grpclib import GRPCError, Status
 
 from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
 from modal._output import OutputManager
-from modal.app import list_apps  # type: ignore
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_app, deploy_stub
@@ -302,8 +301,8 @@ def test_hydrated_other_app_object_gets_referenced(servicer, client):
         with Volume.ephemeral(client=client) as vol:
             app.function(volumes={"/vol": vol})(dummy)  # implicitly load vol
             deploy_app(app, client=client)
-            app_set_objects_req = ctx.pop_request("AppSetObjects")
-            assert vol.object_id in app_set_objects_req.unindexed_object_ids
+            function_create_req: api_pb2.FunctionCreateRequest = ctx.pop_request("FunctionCreate")
+            assert vol.object_id in {obj.object_id for obj in function_create_req.function.object_dependencies}
 
 
 def test_hasattr():
@@ -317,16 +316,6 @@ def test_app(client):
 
     with app.run(client=client):
         square_modal.remote(42)
-
-
-def test_list_apps(client):
-    apps_0 = [app.name for app in list_apps(client=client)]
-    app = App()
-    deploy_app(app, "foobar", client=client)
-    apps_1 = [app.name for app in list_apps(client=client)]
-
-    assert len(apps_1) == len(apps_0) + 1
-    assert set(apps_1) - set(apps_0) == set(["foobar"])
 
 
 def test_non_string_app_name():

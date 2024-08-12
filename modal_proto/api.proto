@@ -18,6 +18,7 @@ enum AppDisconnectReason {
   APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT = 2;
   APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED = 3;
   APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION = 4;
+  APP_DISCONNECT_REASON_REMOTE_EXCEPTION = 5;
 }
 
 // NOTE: make sure to update the frontend if we add a new state here
@@ -293,7 +294,16 @@ message AppListRequest {
 }
 
 message AppListResponse {
-  repeated AppStats apps = 1;
+  message AppListItem {
+    string app_id = 1;
+    string description = 3;
+    AppState state = 4;
+    double created_at = 5;
+    double stopped_at = 6;
+    int32 n_running_tasks = 8;
+    string name = 10;
+  }
+  repeated AppListItem apps = 1;
 }
 
 message AppLookupObjectRequest {
@@ -327,6 +337,7 @@ message AppPublishRequest {
   map<string, string> function_ids = 5;  // function_name -> function_id
   map<string, string> class_ids = 6;  // class_name -> class_id
   map<string, string> definition_ids = 7;  // function_id -> definition_id
+  uint32 rollback_version = 8;  // Unused by client, but used internally
 }
 
 message AppPublishResponse {
@@ -340,18 +351,6 @@ message AppSetObjectsRequest {
   repeated string unindexed_object_ids = 4;
   AppState new_app_state = 5; // promotes an app from initializing to this new state
   string single_object_id = 6;
-}
-
-message AppStats {
-  string app_id = 1;
-  string description = 3;
-  AppState state = 4;
-  double created_at = 5;
-  double stopped_at = 6;
-  int32 n_running_tasks = 8;
-  string object_entity = 9;
-  string name = 10;
-  double deployed_at = 11;
 }
 
 message AppStopRequest {
@@ -522,6 +521,7 @@ message CheckpointInfo {
   string checksum = 1;
   CheckpointStatus status = 2;
   string checkpoint_id = 3;
+  string runtime_fingerprint = 4;
 }
 
 message ClassCreateRequest {
@@ -585,6 +585,11 @@ message ClassParameterSet {
 message ClassParameterSpec {
   string name = 1;
   ParameterType type = 2;
+  bool has_default = 3;
+  oneof default_oneof {
+    string string_default = 4;
+    int64 int_default = 5;
+  }
 }
 
 message ClassParameterValue {
@@ -1066,6 +1071,10 @@ message FunctionCreateRequest {
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
   Schedule schedule = 6;
   string existing_function_id = 7;
+  // This flag tells the server to avoid doing updates in FunctionCreate that should now
+  // be done in AppPublish. Provides a smoother migration onto atomic deployments with 0.64,
+  // and can be deprecated once we no longer support ealier versions.
+  bool defer_updates = 8;
 }
 
 message FunctionCreateResponse {

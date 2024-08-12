@@ -41,6 +41,28 @@ class InterceptedModuleLoader(importlib.abc.Loader):
         spec.loader = self
         return module
 
+    def get_data(self, path: str) -> bytes:
+        """
+        Implementation is required to support pkgutil.get_data.
+
+        > If the package cannot be located or loaded, or it uses a loader which does
+        > not support get_data, then None is returned.
+
+        ref: https://docs.python.org/3/library/pkgutil.html#pkgutil.get_data
+        """
+        return self.loader.get_data(path)
+
+    def get_resource_reader(self, fullname: str):
+        """
+        Support reading a binary artifact that is shipped within a package.
+
+        > Loaders that wish to support resource reading are expected to provide a method called
+        > get_resource_reader(fullname) which returns an object implementing this ABC’s interface.
+
+        ref: docs.python.org/3.10/library/importlib.html?highlight=traversableresources#importlib.abc.ResourceReader
+        """
+        return self.loader.get_resource_reader(fullname)
+
 
 class ImportInterceptor(importlib.abc.MetaPathFinder):
     loading: typing.Dict[str, typing.Tuple[str, float]]

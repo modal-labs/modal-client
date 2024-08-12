@@ -10,6 +10,40 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.8 (2024-08-06)
+
+- Remove support for the undocumented `modal.apps.list_apps()` function, which was internal and not intended to be part of public API.
+
+
+
+### 0.64.7 (2024-08-05)
+
+- Removed client check for CPU core request being at least 0.1, deferring to server-side enforcement.
+
+
+
+### 0.64.2 (2024-08-02)
+
+- Volumes can now be mounted to an ad hoc modal shell session:
+    
+    ```
+    modal shell --volume my-vol-name
+    ```
+    When the shell starts, the volume will be mounted at `/mnt/my-vol-name`. This may be helpful for shell-based exploration or manipulation of volume contents.
+
+    Note that the option can be used multiple times to mount additional models:
+    ```
+    modal shell --volume models --volume data
+    ```
+
+
+
+### 0.64.0 (2024-07-29)
+
+- App deployment events are now atomic, reducing the risk that a failed deploy will leave the App in a bad state.
+
+
+
 ### 0.63.87 (2024-07-24)
 
 * The `_experimental_boost` argument can now be removed. Boost is now enabled on all modal Functions.

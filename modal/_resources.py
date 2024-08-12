@@ -14,8 +14,6 @@ def convert_fn_config_to_resources_config(
     gpu: GPU_T,
     ephemeral_disk: Optional[int],
 ) -> api_pb2.Resources:
-    if cpu is not None and cpu < 0.1:
-        raise InvalidError(f"Invalid fractional CPU value {cpu}. Cannot have less than 0.10 CPU resources.")
     gpu_config = parse_gpu_config(gpu)
     milli_cpu = int(1000 * cpu) if cpu is not None else None
     if memory and isinstance(memory, int):

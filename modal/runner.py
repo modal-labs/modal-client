@@ -3,7 +3,7 @@ import asyncio
 import dataclasses
 import os
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Coroutine, Dict, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Coroutine, Dict, List, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from rich.console import Console
@@ -11,10 +11,11 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
+from ._container_exec import container_exec
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from ._pty import get_pty_info
 from ._resolver import Resolver
-from ._sandbox_shell import connect_to_sandbox
+from ._traceback import traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
@@ -37,6 +38,9 @@ if TYPE_CHECKING:
     from .app import _App
 else:
     _App = TypeVar("_App")
+
+
+V = TypeVar("V")
 
 
 async def _heartbeat(client: _Client, app_id: str) -> None:
@@ -104,7 +108,6 @@ async def _create_all_objects(
     client: _Client,
     running_app: RunningApp,
     indexed_objects: Dict[str, _Object],
-    new_app_state: int,
     environment_name: str,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
@@ -150,28 +153,53 @@ async def _create_all_objects(
 
         await TaskContext.gather(*(_load(tag, obj) for tag, obj in indexed_objects.items()))
 
-    # Create the app (and send a list of all tagged obs)
-    # TODO(erikbern): we should delete objects from a previous version that are no longer needed
-    # We just delete them from the app, but the actual objects will stay around
-    indexed_object_ids = running_app.tag_to_object_id
-    assert indexed_object_ids == running_app.tag_to_object_id
-    all_objects = resolver.objects()
 
-    unindexed_object_ids = list(set(obj.object_id for obj in all_objects) - set(running_app.tag_to_object_id.values()))
-    req_set = api_pb2.AppSetObjectsRequest(
+async def _publish_app(
+    client: _Client,
+    running_app: RunningApp,
+    app_state: int,  # api_pb2.AppState.value
+    indexed_objects: Dict[str, _Object],
+    name: str = "",  # Only relevant for deployments
+    tag: str = "",  # Only relevant for deployments
+) -> str:
+    """Wrapper for AppPublish RPC."""
+
+    # Could simplify this function some changing the internal representation to use
+    # function_ids / class_ids rather than the current tag_to_object_id (i.e. "indexed_objects")
+    def filter_values(full_dict: Dict[str, V], condition: Callable[[V], bool]) -> Dict[str, V]:
+        return {k: v for k, v in full_dict.items() if condition(v)}
+
+    # The entity prefixes are defined in the monorepo; is there any way to share them here?
+    function_ids = filter_values(running_app.tag_to_object_id, lambda v: v.startswith("fu-"))
+    class_ids = filter_values(running_app.tag_to_object_id, lambda v: v.startswith("cs-"))
+
+    function_objs = filter_values(indexed_objects, lambda v: v.object_id in function_ids.values())
+    definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in function_objs.values()}  # type: ignore
+
+    request = api_pb2.AppPublishRequest(
         app_id=running_app.app_id,
-        indexed_object_ids=indexed_object_ids,
-        unindexed_object_ids=unindexed_object_ids,
-        new_app_state=new_app_state,  # type: ignore
+        name=name,
+        deployment_tag=tag,
+        app_state=app_state,  # type: ignore  : should be a api_pb2.AppState.value
+        function_ids=function_ids,
+        class_ids=class_ids,
+        definition_ids=definition_ids,
     )
-    await retry_transient_errors(client.stub.AppSetObjects, req_set)
+    try:
+        response = await retry_transient_errors(client.stub.AppPublish, request)
+    except GRPCError as exc:
+        if exc.status == Status.INVALID_ARGUMENT or exc.status == Status.FAILED_PRECONDITION:
+            raise InvalidError(exc.message)
+        raise
+
+    return response.url
 
 
 async def _disconnect(
     client: _Client,
     app_id: str,
     reason: "api_pb2.AppDisconnectReason.ValueType",
-    exc_str: Optional[str] = None,
+    exc_str: str = "",
 ) -> None:
     """Tell the server the client has disconnected for this app. Terminates all running tasks
     for ephemeral apps."""
@@ -252,7 +280,10 @@ async def _run_app(
         exc_info: Optional[BaseException] = None
         try:
             # Create all members
-            await _create_all_objects(client, running_app, app._indexed_objects, app_state, environment_name)
+            await _create_all_objects(client, running_app, app._indexed_objects, environment_name)
+
+            # Publish the app
+            await _publish_app(client, running_app, app_state, app._indexed_objects)
 
             # Show logs from dynamically created images.
             # TODO: better way to do this
@@ -298,7 +329,10 @@ async def _run_app(
             if isinstance(exc_info, KeyboardInterrupt):
                 reason = api_pb2.APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT
             elif exc_info is not None:
-                reason = api_pb2.APP_DISCONNECT_REASON_LOCAL_EXCEPTION
+                if traceback_contains_remote_call(exc_info.__traceback__):
+                    reason = api_pb2.APP_DISCONNECT_REASON_REMOTE_EXCEPTION
+                else:
+                    reason = api_pb2.APP_DISCONNECT_REASON_LOCAL_EXCEPTION
             else:
                 reason = api_pb2.APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED
 
@@ -337,9 +371,11 @@ async def _serve_update(
             client,
             running_app,
             app._indexed_objects,
-            api_pb2.APP_STATE_UNSPECIFIED,
             environment_name,
         )
+
+        # Publish the updated app
+        await _publish_app(client, running_app, api_pb2.APP_STATE_UNSPECIFIED, app._indexed_objects)
 
         # Communicate to the parent process
         is_ready.set()
@@ -361,7 +397,7 @@ async def _deploy_app(
     namespace: Any = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client: Optional[_Client] = None,
     environment_name: Optional[str] = None,
-    tag: Optional[str] = None,
+    tag: str = "",
 ) -> DeployResult:
     """Deploy an app and export its objects persistently.
 
@@ -387,9 +423,8 @@ async def _deploy_app(
     if environment_name is None:
         environment_name = config.get("environment")
 
-    if name is None:
-        name = app.name
-    if name is None:
+    name = name or app.name
+    if not name:
         raise InvalidError(
             "You need to either supply an explicit deployment name to the deploy command, "
             "or have a name set on the app.\n"
@@ -402,9 +437,9 @@ async def _deploy_app(
     else:
         check_object_name(name, "App")
 
-    if tag is not None and not is_valid_tag(tag):
+    if tag and not is_valid_tag(tag):
         raise InvalidError(
-            f"Tag {tag} is invalid."
+            f"Deployment tag {tag!r} is invalid."
             "\n\nTags may only contain alphanumeric characters, dashes, periods, and underscores, "
             "and must be 50 characters or less"
         )
@@ -420,38 +455,18 @@ async def _deploy_app(
         # Start heartbeats loop to keep the client alive
         tc.infinite_loop(lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL)
 
-        # Don't change the app state - deploy state is set by AppDeploy
-        post_init_state = api_pb2.APP_STATE_UNSPECIFIED
-
         try:
             # Create all members
             await _create_all_objects(
                 client,
                 running_app,
                 app._indexed_objects,
-                post_init_state,
                 environment_name=environment_name,
             )
 
-            # Deploy app
-            # TODO(erikbern): not needed if the app already existed
-            deploy_req = api_pb2.AppDeployRequest(
-                app_id=running_app.app_id,
-                name=name,
-                tag=tag,
-                namespace=namespace,
-                object_entity="ap",
-                visibility=api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE,
+            app_url = await _publish_app(
+                client, running_app, api_pb2.APP_STATE_DEPLOYED, app._indexed_objects, name, tag
             )
-            try:
-                deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)
-            except GRPCError as exc:
-                if exc.status == Status.INVALID_ARGUMENT:
-                    raise InvalidError(exc.message)
-                if exc.status == Status.FAILED_PRECONDITION:
-                    raise InvalidError(exc.message)
-                raise
-            url = deploy_response.url
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
             await _disconnect(client, running_app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
@@ -459,7 +474,7 @@ async def _deploy_app(
 
     if output_mgr := OutputManager.get():
         output_mgr.print(step_completed("App deployed! 🎉"))
-        output_mgr.print(f"\nView Deployment: [magenta]{url}[/magenta]")
+        output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(app_id=running_app.app_id)
 
 
@@ -486,6 +501,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
 
     **kwargs will be passed into spawn_sandbox().
     """
+
     client = await _Client.from_env()
     async with _run_app(_app, client=client, environment_name=environment_name):
         console = Console()
@@ -493,7 +509,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
         loading_status.start()
 
         sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
-        sb = await _Sandbox.create(*sandbox_cmds, pty_info=get_pty_info(shell=True), app=_app, **kwargs)
+        sb = await _Sandbox.create("sleep", "100000", pty_info=get_pty_info(shell=True), app=_app, **kwargs)
         for _ in range(40):
             await asyncio.sleep(0.5)
             resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
@@ -506,7 +522,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
 
         loading_status.stop()
         try:
-            await connect_to_sandbox(sb)
+            await container_exec(resp.task_id, sandbox_cmds, pty=True, client=sb._client, console=console)
         except InteractiveTimeoutError:
             # Check on status of Sandbox. It may have crashed, causing connection failure.
             req = api_pb2.SandboxWaitRequest(sandbox_id=sb._object_id, timeout=0)
