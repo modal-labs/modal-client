@@ -118,6 +118,58 @@ def logs(
     stream_app_logs(app_id)
 
 
+@app_cli.command("rollback", no_args_is_help=True)
+@synchronizer.create_blocking
+async def rollback(
+    app_id: str = Argument(""),
+    *,
+    version: int = Option(
+        -1, "-v", "--version", help="Target version (if positive) or number of versions to rollback (if negative)"
+    ),
+    name: str = Option("", "-n", "--name", help="Look up a deployed App by its name"),
+    env: Optional[str] = ENV_OPTION,
+):
+    """Redeploy a previous version of an App.
+
+    Note that the App must currently be in a "deployed" state.
+    Rollbacks will appear as a new deployment in the App history, although
+    the App state will be reset to the state at the time of the previous deployment.
+
+    **Examples:**
+
+    Rollback an App to its previous version:
+
+    ```
+    modal app rollback ap-123
+    ```
+
+    Rollback an App to a specific version:
+
+    ```
+    modal app rollback ap-123 --version 8
+    ```
+
+    Rollback an App by two versions:
+
+    ```
+    modal app rollback ap-123 --version -2
+    ```
+
+    Rollback an App using its name instead of its App ID:
+
+    ```
+    modal app rollback --name my-app
+
+    """
+    if not app_id:
+        app_id = await get_app_id_from_name.aio(name, env)
+    if not version:
+        raise UsageError("Must provide rollback version.")
+    req = api_pb2.AppRollbackRequest(app_id=app_id, version=version)
+    client = await _Client.from_env()
+    await client.stub.AppRollback(req)
+
+
 @app_cli.command("stop", no_args_is_help=True)
 @synchronizer.create_blocking
 async def stop(
