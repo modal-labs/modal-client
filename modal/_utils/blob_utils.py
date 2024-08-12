@@ -14,6 +14,7 @@ from aiohttp import BytesIOPayload
 from aiohttp.abc import AbstractStreamWriter
 
 from modal_proto import api_pb2
+from modal_proto.api_grpc import ModalClientStub
 
 from ..exception import ExecutionError
 from .async_utils import TaskContext, retry
@@ -176,7 +177,7 @@ async def perform_multipart_upload(
     completion_url: str,
     upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
     progress_report_cb: Optional[Callable] = None,
-):
+) -> None:
     upload_coros = []
     file_offset = 0
     num_bytes_left = content_length
@@ -233,7 +234,7 @@ async def perform_multipart_upload(
             )
 
 
-def get_content_length(data: BinaryIO):
+def get_content_length(data: BinaryIO) -> int:
     # *Remaining* length of file from current seek position
     pos = data.tell()
     data.seek(0, os.SEEK_END)
@@ -286,7 +287,7 @@ async def _blob_upload(
     return blob_id
 
 
-async def blob_upload(payload: bytes, stub) -> str:
+async def blob_upload(payload: bytes, stub: ModalClientStub) -> str:
     if isinstance(payload, str):
         logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
@@ -294,7 +295,9 @@ async def blob_upload(payload: bytes, stub) -> str:
     return await _blob_upload(upload_hashes, payload, stub)
 
 
-async def blob_upload_file(file_obj: BinaryIO, stub, progress_report_cb: Optional[Callable] = None) -> str:
+async def blob_upload_file(
+    file_obj: BinaryIO, stub: ModalClientStub, progress_report_cb: Optional[Callable] = None
+) -> str:
     upload_hashes = get_upload_hashes(file_obj)
     return await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
 
@@ -313,7 +316,7 @@ async def _download_from_url(download_url) -> bytes:
         return await resp.read()
 
 
-async def blob_download(blob_id, stub) -> bytes:
+async def blob_download(blob_id: str, stub: ModalClientStub) -> bytes:
     # convenience function reading all of the downloaded file into memory
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await retry_transient_errors(stub.BlobGet, req)
@@ -321,7 +324,7 @@ async def blob_download(blob_id, stub) -> bytes:
     return await _download_from_url(resp.download_url)
 
 
-async def blob_iter(blob_id, stub) -> AsyncIterator[bytes]:
+async def blob_iter(blob_id: str, stub: ModalClientStub) -> AsyncIterator[bytes]:
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await retry_transient_errors(stub.BlobGet, req)
     download_url = resp.download_url
