@@ -251,20 +251,20 @@ message AppDeploySingleObjectResponse {
   string app_id = 1;
 }
 
+message AppDeploymentHistory {
+  string app_id = 1;
+  uint32 version = 2;
+  string client_version = 3;
+  double deployed_at = 4;
+  string deployed_by = 5;
+  string tag = 6;
+}
+
 message AppDeploymentHistoryRequest {
   string app_id = 1;
 }
 
 message AppDeploymentHistoryResponse {
-  message AppDeploymentHistory {
-    string app_id = 1;
-    double deployed_at = 2;
-    uint32 version = 3; 
-    string client_version = 4;
-    string deployed_by = 5;
-    AppState state = 6;
-    string tag = 7;
-  }
   repeated AppDeploymentHistory app_deployment_histories = 1;
 }
 
