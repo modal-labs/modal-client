@@ -329,7 +329,7 @@ def _unwrap_scalar(ret: ContainerResult):
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     return deserialize(ret.items[0].result.data, ret.client)
 
-  
+
 def _unwrap_blob_scalar(ret: ContainerResult, client: Client):
     assert len(ret.items) == 1
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
