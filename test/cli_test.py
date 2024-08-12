@@ -42,6 +42,8 @@ dummy_other_module_file = "x = 42"
 
 def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
     runner = click.testing.CliRunner(mix_stderr=False)
+    # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
+    # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
     with mock.patch.object(sys, "argv", args):
         res = runner.invoke(entrypoint_cli, args)
     if res.exit_code != expected_exit_code:
@@ -390,9 +392,11 @@ def mock_shell_pty():
 
     with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
         "modal._pty.get_pty_info", mock_get_pty_info
-    ), mock.patch("modal.runner.get_pty_info", mock_get_pty_info), mock.patch(
-        "modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin
-    ), mock.patch("modal._sandbox_shell.write_to_fd", write_to_fd):
+    ), mock.patch("modal._container_exec.get_pty_info", mock_get_pty_info), mock.patch(
+        "modal.runner.get_pty_info", mock_get_pty_info
+    ), mock.patch("modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin), mock.patch(
+        "modal._container_exec.stream_from_stdin", fake_stream_from_stdin
+    ), mock.patch("modal._container_exec.write_to_fd", write_to_fd):
         yield fake_stdin, captured_out
 
 
@@ -406,10 +410,10 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     fake_stdin.clear()
     fake_stdin.extend([b'echo "Hello World"\n', b"exit\n"])
 
+    shell_prompt = servicer.shell_prompt.encode("utf-8")
+
     # Function is explicitly specified
     _run(["shell", app_file.as_posix() + "::foo"])
-
-    shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
 
     # first captured message is the empty message the mock server sends
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
@@ -436,7 +440,7 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     _, captured_out = mock_shell_pty
     _run(["shell", "--cmd", "pwd", app_file.as_posix() + "::foo"])
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
-    shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
+    shell_prompt = servicer.shell_prompt.encode("utf-8")
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 

@@ -538,6 +538,7 @@ message CheckpointInfo {
   string checksum = 1;
   CheckpointStatus status = 2;
   string checkpoint_id = 3;
+  string runtime_fingerprint = 4;
 }
 
 message ClassCreateRequest {

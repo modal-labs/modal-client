@@ -52,8 +52,7 @@ async def exec(
     pty: bool = typer.Option(is_flag=True, default=True, help="Run the command using a PTY."),
 ):
     """Execute a command in a container."""
-    client = await _Client.from_env()
-    await container_exec(container_id, command, pty=pty, client=client)
+    await container_exec(container_id, command, pty=pty)
 
 
 @container_cli.command("stop")
