@@ -823,7 +823,6 @@ class _App:
 
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
-            print(user_cls.__dict__)
             return cls
 
         return wrapper
