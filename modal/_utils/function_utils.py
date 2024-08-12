@@ -238,7 +238,16 @@ class FunctionInfo:
         if not self.user_cls:
             return api_pb2.ClassParameterInfo()
 
-        if not config.get("strict_parameters"):
+        # Determine whether the user's class has any web endpoints
+        from ..partial_function import (
+            _find_partial_methods_for_user_cls,
+            _PartialFunctionFlags,
+        )
+
+        partial_functions = _find_partial_methods_for_user_cls(self.user_cls, _PartialFunctionFlags.FUNCTION)
+        has_web_endpoint = any(pf.webhook_config for pf in partial_functions.values())
+
+        if not has_web_endpoint:
             return api_pb2.ClassParameterInfo(format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE)
 
         modal_parameters: List[api_pb2.ClassParameterSpec] = []
