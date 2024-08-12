@@ -15,6 +15,7 @@ import tempfile
 import textwrap
 import threading
 import traceback
+import typing
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, get_args
@@ -40,6 +41,8 @@ from modal.client import Client
 from modal.image import ImageBuilderVersion
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
+
+T = typing.TypeVar("T")
 
 
 @dataclasses.dataclass

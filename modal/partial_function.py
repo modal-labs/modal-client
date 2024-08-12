@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import enum
 import inspect
+import typing
 from typing import (
     Any,
     Callable,
@@ -11,6 +12,8 @@ from typing import (
     Type,
     Union,
 )
+
+import typing_extensions
 
 from modal_proto import api_pb2
 
@@ -33,10 +36,14 @@ class _PartialFunctionFlags(enum.IntFlag):
         return ~_PartialFunctionFlags(0)  # type: ignore #  for some reason mypy things this has type int
 
 
-class _PartialFunction:
+P = typing_extensions.ParamSpec("P")
+T = typing_extensions.TypeVar("T", covariant=True)
+
+
+class _PartialFunction(typing.Generic[P, T]):
     """Intermediate function, produced by @method or @web_endpoint"""
 
-    raw_f: Callable[..., Any]
+    raw_f: Callable[P, T]
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
     is_generator: Optional[bool]
@@ -44,7 +51,7 @@ class _PartialFunction:
 
     def __init__(
         self,
-        raw_f: Callable[..., Any],
+        raw_f: Callable[P, T],
         flags: _PartialFunctionFlags,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
@@ -223,7 +230,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
+) -> Callable[[Callable[P, T]], _PartialFunction[P, T]]:
     """Register a basic web endpoint with this application.
 
     This is the simple way to create a web endpoint on Modal. The function
