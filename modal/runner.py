@@ -11,10 +11,10 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
+from ._container_exec import container_exec
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from ._pty import get_pty_info
 from ._resolver import Resolver
-from ._sandbox_shell import connect_to_sandbox
 from ._traceback import traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
@@ -501,6 +501,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
 
     **kwargs will be passed into spawn_sandbox().
     """
+
     client = await _Client.from_env()
     async with _run_app(_app, client=client, environment_name=environment_name):
         console = Console()
@@ -508,7 +509,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
         loading_status.start()
 
         sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
-        sb = await _Sandbox.create(*sandbox_cmds, pty_info=get_pty_info(shell=True), app=_app, **kwargs)
+        sb = await _Sandbox.create("sleep", "100000", pty_info=get_pty_info(shell=True), app=_app, **kwargs)
         for _ in range(40):
             await asyncio.sleep(0.5)
             resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
@@ -521,7 +522,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
 
         loading_status.stop()
         try:
-            await connect_to_sandbox(sb)
+            await container_exec(resp.task_id, sandbox_cmds, pty=True, client=sb._client, console=console)
         except InteractiveTimeoutError:
             # Check on status of Sandbox. It may have crashed, causing connection failure.
             req = api_pb2.SandboxWaitRequest(sandbox_id=sb._object_id, timeout=0)
