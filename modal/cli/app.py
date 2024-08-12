@@ -5,7 +5,7 @@ import typer
 from click import UsageError
 from rich.table import Column
 from rich.text import Text
-from typer import Argument, Option
+from typer import Argument
 
 from modal._utils.async_utils import synchronizer
 from modal.client import _Client
@@ -13,7 +13,7 @@ from modal.environments import ensure_env
 from modal.object import _get_environment_name
 from modal_proto import api_pb2
 
-from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
+from .utils import ENV_OPTION, NAME_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
@@ -69,7 +69,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
 def logs(
     app_id: str = Argument("", help="Look up any App by its ID"),
     *,
-    name: str = Option("", "-n", "--name", help="Look up a deployed App by its name"),
+    name: str = NAME_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
     """Show App logs, streaming while active.
@@ -102,7 +102,7 @@ def logs(
 async def stop(
     app_id: str = Argument(""),
     *,
-    name: str = Option("", "-n", "--name", help="Look up a deployed App by its name"),
+    name: str = NAME_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
     """Stop an app."""
@@ -119,10 +119,10 @@ async def history(
     app_id: str = Argument("", help="Look up an App's deployment history by its ID"),
     *,
     env: Optional[str] = ENV_OPTION,
-    name: str = Option("", "-n", "--name", help="Look up a deployed App by its name"),
+    name: str = NAME_OPTION,
     json: bool = False,
 ):
-    """Show App deployment history
+    """Show App deployment history, for a currently deployed app
 
     **Examples:**
 
@@ -148,24 +148,20 @@ async def history(
     if not app_id:
         app_id = await get_app_id_from_name.aio(name, env, client)
 
-    resp: api_pb2.AppDeploymentHistoryResponse = await client.stub.AppDeploymentHistory(
-        api_pb2.AppDeploymentHistoryRequest(app_id=app_id)
-    )
+    resp = await client.stub.AppDeploymentHistory(api_pb2.AppDeploymentHistoryRequest(app_id=app_id))
 
-    columns: List[Union[Column, str]] = [
-        "",
+    columns = [
         "Version",
         "Time deployed",
         "Client",
         "Deployed by",
     ]
-    rows: List[List[Union[Text, str]]] = []
+    rows = []
     deployments_with_tags = False
     for idx, app_stats in enumerate(resp.app_deployment_histories):
-        style = "bold green" if idx == 0 else "dim"
+        style = "bold green" if idx == 0 else ""
 
-        row: List[Union[Text, str]] = [
-            Text("•", style=style) if idx == 0 else Text("", style=style),
+        row = [
             Text(str(app_stats.version), style=style),
             Text(timestamp_to_local(app_stats.deployed_at, json), style=style),
             Text(app_stats.client_version, style=style),
