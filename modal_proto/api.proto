@@ -345,6 +345,11 @@ message AppPublishResponse {
   string url = 1;
 }
 
+message AppRollbackRequest {
+  string app_id = 1;
+  int32 version = 2;  // signed as we support negative "roll back n versions" requests
+}
+
 message AppSetObjectsRequest {
   string app_id = 1;
   map<string, string> indexed_object_ids = 2;
@@ -2194,6 +2199,7 @@ service ModalClient {
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppPublish(AppPublishRequest) returns (AppPublishResponse);
+  rpc AppRollback(AppRollbackRequest) returns (google.protobuf.Empty);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
 
