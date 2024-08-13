@@ -794,7 +794,7 @@ app2 = modal.App("app2")
 
 @app2.cls()
 class UsingAnnotationParameters:
-    a: int
+    a: int = modal.parameter()
     b: str = modal.parameter(default="hello")
 
     @method()
@@ -827,6 +827,9 @@ def test_implicit_constructor():
 
     d = UsingAnnotationParameters(11, b="goodbye")
     assert d.b == "goodbye"
+
+    with pytest.raises(TypeError, match="missing a required argument: 'a'"):
+        UsingAnnotationParameters()
 
 
 def test_custom_constructor():

@@ -50,6 +50,8 @@ class _Obj:
     _entered: bool
     _user_cls_instance: Optional[Any] = None
     _construction_args: Tuple[Tuple, Dict[str, Any]]
+    _computed_parameters: Optional[Dict[str, Any]] = None  # only used for implicit constructors
+
     _instance_service_function: Optional[_Function]
 
     def _uses_common_service_function(self):
@@ -92,7 +94,32 @@ class _Obj:
         self._entered = False
         self._local_user_cls_instance = None
         self._user_cls = user_cls
-        self._construction_args = (args, kwargs)  # use later for lazy instantiation of the class
+        self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
+
+        if self._user_cls.__init__ == object.__init__:
+            # eager validation of constructor arguments in case of implicit construction
+            # this would raise errors early if the passed arguments don't match annotation
+            # based signature of the implicit constructor
+            self._computed_parameters = self._parameters_from_annotations_and_args(args, kwargs)
+
+    def _parameters_from_annotations_and_args(self, args, kwargs) -> typing.Dict[str, Any]:
+        """Construct parameter attributes using constructor arguments + class annotation information"""
+        constructor_parameters = []
+        for name in self._user_cls.__annotations__.keys():
+            if hasattr(self._user_cls, name):
+                parameter_spec = getattr(self._user_cls, name)
+                if isinstance(parameter_spec, _Parameter):
+                    maybe_default = {}
+                    if not isinstance(parameter_spec.default, _NO_DEFAULT):
+                        maybe_default["default"] = parameter_spec.default
+
+                    param = inspect.Parameter(name=name, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, **maybe_default)
+                    constructor_parameters.append(param)
+
+        sig = inspect.Signature(constructor_parameters)
+        bound_vars = sig.bind(*args, **kwargs)
+        bound_vars.apply_defaults()
+        return bound_vars.arguments
 
     def _user_cls_instance_constr(self):
         args, kwargs = self._construction_args
@@ -105,26 +132,9 @@ class _Obj:
             # in order to support both positional and keyword arguments, we construct a Signature to bind
             # the user's arguments to names:
             # TODO: let users designate annotations as non-init/non-parameters, similar to dataclasses
-            constructor_parameters = []
-            for name in self._user_cls.__annotations__.keys():
-                if hasattr(self._user_cls, name):
-                    parameter_spec = getattr(self._user_cls, name)
-                    if isinstance(parameter_spec, _Parameter):
-                        maybe_default = {}
-                        if parameter_spec.default != _NO_DEFAULT:
-                            maybe_default["default"] = parameter_spec.default
-
-                        param = inspect.Parameter(
-                            name=name, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, **maybe_default
-                        )
-                        constructor_parameters.append(param)
-
-            sig = inspect.Signature(constructor_parameters)
-            bound_vars = sig.bind(*args, **kwargs)
-            bound_vars.apply_defaults()
-            all_as_keyword_args = bound_vars.arguments
+            assert self._computed_parameters is not None  # should have been created in constructor
             user_cls_instance = self._user_cls.__new__(self._user_cls)  # new instance without running __init__
-            user_cls_instance.__dict__.update(all_as_keyword_args)  # set attributes based on parameter names
+            user_cls_instance.__dict__.update(self._computed_parameters)
 
         user_cls_instance._modal_functions = self._method_functions  # Needed for PartialFunction.__get__
         return user_cls_instance
@@ -489,7 +499,9 @@ class _Cls(_Object, type_prefix="cs"):
 Cls = synchronize_api(_Cls)
 
 
-_NO_DEFAULT = object()
+class _NO_DEFAULT:
+    def __repr__(self):
+        return "modal.cls._NO_DEFAULT()"
 
 
 class _Parameter:
@@ -501,6 +513,6 @@ class _Parameter:
         self.init = init
 
 
-def parameter(default: Any = _NO_DEFAULT, init: bool = True) -> _Parameter:
+def parameter(default: Any = _NO_DEFAULT(), init: bool = True) -> _Parameter:
     """Used to specify options for modal.cls parameters, similar to dataclass.field"""
     return _Parameter(default, init)
