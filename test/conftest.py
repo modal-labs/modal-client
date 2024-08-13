@@ -194,7 +194,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox: asyncio.subprocess.Process = None
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
-        self.shell_prompt = "TEST_PROMPT# "
+        self.shell_prompt = None
         self.container_exec: asyncio.subprocess.Process = None
         self.container_exec_result: Optional[api_pb2.GenericResult] = None
 
@@ -445,8 +445,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request = await stream.recv_message()
 
         self.container_exec.stdin.write(request.input.message)
-        # self.container_exec.stdin.write(b'\x04')
         await self.container_exec.stdin.drain()
+
+        if request.input.eof:
+            self.container_exec.stdin.close()
 
         await stream.send_message(Empty())
 
@@ -562,33 +564,32 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.ContainerExecResponse(exec_id="container_exec_id"))
 
     async def ContainerExecGetOutput(self, stream):
-        _request: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
-        await stream.send_message(
-            api_pb2.RuntimeOutputBatch(
-                items=[
-                    api_pb2.RuntimeOutputMessage(
-                        message=self.shell_prompt, file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT
-                    )
-                ]
-            )
-        )
-
-        async def read_stream(read_stream, file_descriptor):
-            async for message in read_stream:
+        request: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
+        if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            if self.shell_prompt:
                 await stream.send_message(
                     api_pb2.RuntimeOutputBatch(
                         items=[
                             api_pb2.RuntimeOutputMessage(
-                                message=message.decode("utf-8"), file_descriptor=file_descriptor
+                                message=self.shell_prompt, file_descriptor=request.file_descriptor
                             )
                         ]
                     )
                 )
+            read_stream = self.container_exec.stdout
+        else:
+            read_stream = self.container_exec.stderr
 
-        await asyncio.gather(
-            read_stream(self.container_exec.stdout, api_pb2.FILE_DESCRIPTOR_STDOUT),
-            read_stream(self.container_exec.stderr, api_pb2.FILE_DESCRIPTOR_STDERR),
-        )
+        async for message in read_stream:
+            await stream.send_message(
+                api_pb2.RuntimeOutputBatch(
+                    items=[
+                        api_pb2.RuntimeOutputMessage(
+                            message=message.decode("utf-8"), file_descriptor=request.file_descriptor
+                        )
+                    ]
+                )
+            )
 
         await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
 
