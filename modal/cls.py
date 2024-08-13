@@ -95,23 +95,30 @@ class _Obj:
         self._construction_args = (args, kwargs)  # use later for lazy instantiation of the class
 
     def _user_cls_instance_constr(self):
+        args, kwargs = self._construction_args
         if self._user_cls.__init__ != object.__init__:
             # user has custom constructor
             # TODO: deprecate custom constructors
-
-            user_cls_instance = self._user_cls(*self._construction_args[0], **self._construction_args[1])
+            user_cls_instance = self._user_cls(*args, **kwargs)
         else:
             # implicit constructor using class type annotations, like dataclasses
             # in order to support both positional and keyword arguments, we construct a Signature to bind
             # the user's arguments to names:
             # TODO: let users designate annotations as non-init/non-parameters, similar to dataclasses
-            sig = inspect.Signature(
-                [
-                    inspect.Parameter(name=name, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD)
-                    for name in self._user_cls.__annotations__.keys()
-                ]
-            )
-            bound_vars = sig.bind(*self._construction_args[0], **self._construction_args[1])
+            constructor_parameters = []
+            for name in self._user_cls.__annotations__.keys():
+                maybe_default = {}
+                if hasattr(self._user_cls, name):
+                    parameter_spec = getattr(self._user_cls, name)
+                    if isinstance(parameter_spec, _Parameter) and parameter_spec.default != _NO_DEFAULT:
+                        maybe_default["default"] = parameter_spec.default
+
+                param = inspect.Parameter(name=name, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, **maybe_default)
+                constructor_parameters.append(param)
+
+            sig = inspect.Signature(constructor_parameters)
+            bound_vars = sig.bind(*args, **kwargs)
+            bound_vars.apply_defaults()
             all_as_keyword_args = bound_vars.arguments
             user_cls_instance = self._user_cls.__new__(self._user_cls)  # new instance without running __init__
             user_cls_instance.__dict__.update(all_as_keyword_args)  # set attributes based on parameter names
@@ -477,3 +484,20 @@ class _Cls(_Object, type_prefix="cs"):
 
 
 Cls = synchronize_api(_Cls)
+
+
+_NO_DEFAULT = object()
+
+
+class _Parameter:
+    default: Any
+    init: bool
+
+    def __init__(self, default: Any, init: bool):
+        self.default = default
+        self.init = init
+
+
+def parameter(default: Any = _NO_DEFAULT, init: bool = True) -> _Parameter:
+    """Used to specify options for modal.cls parameters, similar to dataclass.field"""
+    return _Parameter(default, init)

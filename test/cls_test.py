@@ -789,22 +789,30 @@ def test_cross_process_userclass_serde(supports_dir):
     assert revived_cls().method() == "a"  # this should be bound to the object
 
 
-@app.cls()
+app2 = modal.App("app2")
+
+
+@app2.cls()
 class UsingAnnotationParameters:
     a: int
+    b: str = modal.parameter(default="hello")
 
     @method()
     def get_value(self):
         return self.a
 
 
-@app.cls()
+init_side_effects = []
+
+
+@app2.cls()
 class UsingCustomConstructor:
     # might want to deprecate this soon
 
     def __init__(self, a):
         print("running constructor")
         self._a = a
+        init_side_effects.append("did_run")
 
     @method()
     def get_value(self):
@@ -815,12 +823,18 @@ def test_implicit_constructor():
     c = UsingAnnotationParameters(10)
     assert c.a == 10
     assert c.get_value.local() == 10
+    assert c.b == "hello"
 
+    d = UsingAnnotationParameters(11, b="goodbye")
+    assert d.b == "goodbye"
+
+
+def test_custom_constructor():
     d = UsingCustomConstructor(10)
+    assert not init_side_effects
 
-    # with pytest.raises(AttributeError):
-    #     # constructors could run any code and are triggered lazily
-    #     d._a  # noqa
-    assert d._a == 10
+    assert d._a == 10  # lazily run constructor when accessing non-method attributes (!)
+    assert init_side_effects == ["did_run"]
 
-    assert d.get_value.local() == 10
+    d2 = UsingCustomConstructor(11)
+    assert d2.get_value.local() == 11  # run constructor before running locally
