@@ -6,12 +6,10 @@ from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Coroutine, Dict, List, Optional, TypeVar
 
 from grpclib import GRPCError, Status
-from rich.console import Console
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._container_exec import container_exec
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from ._pty import get_pty_info
 from ._resolver import Resolver
@@ -504,29 +502,16 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
 
     client = await _Client.from_env()
     async with _run_app(_app, client=client, environment_name=environment_name):
-        console = Console()
-        loading_status = console.status("Starting container...")
-        loading_status.start()
-
         sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
-        sb = await _Sandbox.create("sleep", "100000", pty_info=get_pty_info(shell=True), app=_app, **kwargs)
-        for _ in range(40):
-            await asyncio.sleep(0.5)
-            resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
-            if resp.task_id != "":
-                break
-            # else: sandbox hasn't been assigned a task yet
-        else:
-            loading_status.stop()
-            raise InteractiveTimeoutError("Timed out while waiting for sandbox to start")
+        sandbox = await _Sandbox.create("sleep", "100000", app=_app, **kwargs)
 
-        loading_status.stop()
+        container_process = await sandbox.exec(*sandbox_cmds, pty_info=get_pty_info(shell=True))
         try:
-            await container_exec(resp.task_id, sandbox_cmds, pty=True, client=sb._client, console=console)
+            await container_process.attach(pty=True)
         except InteractiveTimeoutError:
             # Check on status of Sandbox. It may have crashed, causing connection failure.
-            req = api_pb2.SandboxWaitRequest(sandbox_id=sb._object_id, timeout=0)
-            resp = await retry_transient_errors(sb._client.stub.SandboxWait, req)
+            req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox._object_id, timeout=0)
+            resp = await retry_transient_errors(sandbox._client.stub.SandboxWait, req)
             if resp.result.exception:
                 raise RemoteError(resp.result.exception)
             else:

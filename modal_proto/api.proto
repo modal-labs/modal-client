@@ -338,10 +338,16 @@ message AppPublishRequest {
   map<string, string> class_ids = 6;  // class_name -> class_id
   map<string, string> definition_ids = 7;  // function_id -> definition_id
   uint32 rollback_version = 8;  // Unused by client, but used internally
+  string client_version = 9;  // Unused by client, but used internally
 }
 
 message AppPublishResponse {
   string url = 1;
+}
+
+message AppRollbackRequest {
+  string app_id = 1;
+  int32 version = 2;  // signed as we support negative "roll back n versions" requests
 }
 
 message AppSetObjectsRequest {
@@ -665,6 +671,7 @@ message ContainerExecGetOutputRequest {
   string exec_id = 1;
   float timeout = 2;
   uint64 last_batch_index = 3;
+  FileDescriptor file_descriptor = 4;
 }
 
 message ContainerExecPutInputRequest {
@@ -1641,6 +1648,7 @@ message Resources {
 message RuntimeInputMessage {
   bytes message = 1;
   uint64 message_index = 2;
+  bool eof = 3;
 }
 
 message RuntimeOutputBatch {
@@ -2191,6 +2199,7 @@ service ModalClient {
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
   rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppPublish(AppPublishRequest) returns (AppPublishResponse);
+  rpc AppRollback(AppRollbackRequest) returns (google.protobuf.Empty);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
 
