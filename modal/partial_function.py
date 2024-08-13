@@ -578,6 +578,21 @@ def _batched(
     max_batch_size: int,
     wait_ms: int,
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Decorator for functions or class methods that should be batched.
+
+    **Usage**
+
+    ```python notest
+    @app.function()
+    @modal.batched(max_batch_size=4, wait_ms=1000)
+    async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
+        return [x * y for x, y in zip(xs, xs)]
+
+    # call batched_multiply with individual inputs
+    batched_multiply.remote.aio(2, 100)
+    ```
+    """
+    # TODO(cathy) add link to guide to docstring
     if _warn_parentheses_missing:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batched()`."
