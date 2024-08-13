@@ -255,7 +255,10 @@ class FunctionInfo:
         for param in signature.parameters.values():
             has_default = param.default is not param.empty
             if param.annotation not in CLASS_PARAM_TYPE_MAP:
-                raise InvalidError("Strict class parameters need to be explicitly annotated as str or int")
+                raise InvalidError(
+                    "Parameterized classes with web endpoints must have constructor arguments "
+                    "explicitly annotated as str or int"
+                )
             param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
             class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
             if has_default:
