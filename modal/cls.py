@@ -107,14 +107,17 @@ class _Obj:
             # TODO: let users designate annotations as non-init/non-parameters, similar to dataclasses
             constructor_parameters = []
             for name in self._user_cls.__annotations__.keys():
-                maybe_default = {}
                 if hasattr(self._user_cls, name):
                     parameter_spec = getattr(self._user_cls, name)
-                    if isinstance(parameter_spec, _Parameter) and parameter_spec.default != _NO_DEFAULT:
-                        maybe_default["default"] = parameter_spec.default
+                    if isinstance(parameter_spec, _Parameter):
+                        maybe_default = {}
+                        if parameter_spec.default != _NO_DEFAULT:
+                            maybe_default["default"] = parameter_spec.default
 
-                param = inspect.Parameter(name=name, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, **maybe_default)
-                constructor_parameters.append(param)
+                        param = inspect.Parameter(
+                            name=name, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, **maybe_default
+                        )
+                        constructor_parameters.append(param)
 
             sig = inspect.Signature(constructor_parameters)
             bound_vars = sig.bind(*args, **kwargs)
