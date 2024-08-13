@@ -5,7 +5,7 @@ import subprocess
 
 @pytest.fixture(scope="module")
 def generate_type_stubs():
-    pass  # subprocess.call(["inv", "type-stubs"])
+    subprocess.call(["inv", "type-stubs"])
 
 
 @pytest.mark.usefixtures("generate_type_stubs")
