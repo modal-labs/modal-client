@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 from typing_extensions import assert_type
 
 from .functions import typed_func

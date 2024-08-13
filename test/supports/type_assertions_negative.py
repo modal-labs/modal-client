@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 from .functions import typed_func
 
 typed_func.remote(b="hello")  # wrong arg name
