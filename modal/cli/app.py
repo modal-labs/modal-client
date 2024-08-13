@@ -123,10 +123,10 @@ def logs(
 async def rollback(
     app_id: str = Argument(""),
     *,
-    version: int = Option(
+    version: int = typer.Option(
         -1, "-v", "--version", help="Target version (if positive) or number of versions to rollback (if negative)"
     ),
-    name: str = Option("", "-n", "--name", help="Look up a deployed App by its name"),
+    name: str = NAME_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
     """Redeploy a previous version of an App.

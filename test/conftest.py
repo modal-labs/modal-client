@@ -339,6 +339,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
         ]
         await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
 
+    async def AppRollback(self, stream):
+        request: api_pb2.AppRollbackRequest = await stream.recv_message()
+        current_version = self.app_deployment_history[request.app_id][-1]["version"]
+        if request.version < 0:
+            rollback_version = current_version + request.version
+        else:
+            rollback_version = request.version
+        rollback_client = self.app_deployment_history[request.app_id][rollback_version - 1]["client_version"]
+        self.app_deployment_history[request.app_id].append(
+            {
+                "app_id": request.app_id,
+                "deployed_at": datetime.datetime.now().timestamp(),
+                "version": current_version + 1,
+                "client_version": rollback_client,
+                "deployed_by": "foo-user",
+                "tag": "latest",
+                "rollback_version": rollback_version,
+            }
+        )
+
+        self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
+        await stream.send_message(Empty())
+
     async def AppSetObjects(self, stream):
         request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
         self.app_objects[request.app_id] = dict(request.indexed_object_ids)
@@ -384,6 +407,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "client_version": str(pkg_resources.parse_version(__version__)),
                 "deployed_by": "foo-user",
                 "tag": "latest",
+                "rollback_version": None,
             }
         )
 
