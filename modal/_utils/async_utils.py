@@ -176,13 +176,11 @@ class TaskContext:
         async def loop_coro() -> None:
             logger.debug(f"Starting infinite loop {function_name}")
             while True:
-                t0 = time.time()
                 try:
                     await asyncio.wait_for(async_f(), timeout=timeout)
                 except Exception:
-                    time_elapsed = time.time() - t0
                     if log_exception:
-                        logger.exception(f"Loop attempt failed for {function_name} (time_elapsed={time_elapsed})")
+                        logger.exception(f"Loop attempt failed for {function_name}")
                 try:
                     await asyncio.wait_for(self._exited.wait(), timeout=sleep)
                 except asyncio.TimeoutError:
