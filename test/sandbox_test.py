@@ -189,3 +189,17 @@ def test_app_sandbox(client, servicer):
             )
             assert sb.stdout.read() == "hi\n"
             assert sb.stderr.read() == "bye\n"
+
+
+@skip_non_linux
+def test_sandbox_exec(client, servicer):
+    sb = Sandbox.create("sleep", "infinity", client=client)
+
+    cp = sb.exec("bash", "-c", "while read line; do echo $line; done")
+
+    cp.stdin.write(b"foo\n")
+    cp.stdin.write(b"bar\n")
+    cp.stdin.write_eof()
+    cp.stdin.drain()
+
+    assert cp.stdout.read() == "foo\nbar\n"
