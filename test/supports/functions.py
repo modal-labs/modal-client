@@ -7,6 +7,7 @@ from typing import List
 
 from modal import (
     App,
+    Sandbox,
     asgi_app,
     build,
     current_function_call_id,
@@ -392,7 +393,7 @@ class BuildCls:
 
 
 @app.cls(enable_memory_snapshot=True)
-class CheckpointingCls:
+class SnapshottingCls:
     def __init__(self):
         self._vals = []
 
@@ -413,6 +414,11 @@ class CheckpointingCls:
         return "".join(self._vals) + x
 
 
+@app.function(enable_memory_snapshot=True)
+def snapshotting_square(x):
+    return x * x
+
+
 @app.cls()
 class EventLoopCls:
     @enter()
@@ -426,10 +432,17 @@ class EventLoopCls:
 
 @app.function()
 def sandbox_f(x):
-    sb = app.spawn_sandbox("echo", str(x))
+    # TODO(erikbern): maybe inside containers, `app=app` should be automatic?
+    sb = Sandbox.create("echo", str(x), app=app)
     return sb.object_id
 
 
 @app.function()
 def is_local_f(x):
     return is_local()
+
+
+@app.function()
+def raise_large_unicode_exception():
+    byte_str = (b"k" * 120_000_000) + b"\x99"
+    byte_str.decode("utf-8")

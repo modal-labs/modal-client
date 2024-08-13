@@ -4,7 +4,7 @@ import inspect
 import os
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Type
+from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Tuple, Type
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
@@ -28,6 +28,12 @@ class FunctionInfoType(Enum):
     NOTEBOOK = "notebook"
 
 
+CLASS_PARAM_TYPE_MAP: Dict[Type, Tuple["api_pb2.ParameterType.ValueType", str]] = {
+    str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
+    int: (api_pb2.PARAM_TYPE_INT, "int_default"),
+}
+
+
 class LocalFunctionError(InvalidError):
     """Raised if a function declared in a non-global scope is used in an impermissible way"""
 
@@ -47,8 +53,16 @@ def entrypoint_only_package_mount_condition(entrypoint_file):
     return inner
 
 
-def is_global_object(object_qual_name):
+def is_global_object(object_qual_name: str):
     return "<locals>" not in object_qual_name.split(".")
+
+
+def is_top_level_function(f: Callable) -> bool:
+    """Returns True if this function is defined in global scope.
+
+    Returns False if this function is locally scoped (including on a class).
+    """
+    return f.__name__ == f.__qualname__
 
 
 def is_async(function):
@@ -73,7 +87,7 @@ class FunctionInfo:
 
     raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
-    cls: Optional[Type[Any]]
+    user_cls: Optional[Type[Any]]
     definition_type: "api_pb2.Function.DefinitionType.ValueType"
     module_name: Optional[str]
 
@@ -84,7 +98,7 @@ class FunctionInfo:
 
     def is_service_class(self):
         if self.raw_f is None:
-            assert self.cls
+            assert self.user_cls
             return True
         return False
 
@@ -94,31 +108,22 @@ class FunctionInfo:
         f: Optional[Callable[..., Any]],
         serialized=False,
         name_override: Optional[str] = None,
-        cls: Optional[Type] = None,
+        user_cls: Optional[Type] = None,
     ):
         self.raw_f = f
-        self.cls = cls
+        self.user_cls = user_cls
 
         if name_override is not None:
             self.function_name = name_override
-        elif f is None and cls:
+        elif f is None and user_cls:
             # "service function" for running all methods of a class
-            self.function_name = f"{cls.__name__}.*"
-        elif f.__qualname__ != f.__name__ and not serialized:
-            # single method of a class - should be only @build-methods at this point
-            if len(f.__qualname__.split(".")) > 2:
-                raise InvalidError(
-                    f"Cannot wrap `{f.__qualname__}`:"
-                    " functions and classes used in Modal must be defined in global scope."
-                    " If trying to apply additional decorators, they may need to use `functools.wraps`."
-                )
-            self.function_name = f"{cls.__name__}.{f.__name__}"
+            self.function_name = f"{user_cls.__name__}.*"
         else:
             self.function_name = f.__qualname__
 
         # If it's a cls, the @method could be defined in a base class in a different file.
-        if cls is not None:
-            module = inspect.getmodule(cls)
+        if user_cls is not None:
+            module = inspect.getmodule(user_cls)
         else:
             module = inspect.getmodule(f)
 
@@ -168,7 +173,7 @@ class FunctionInfo:
         if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
-            qualname = f.__qualname__ if f else cls.__qualname__
+            qualname = f.__qualname__ if f else user_cls.__qualname__
             if not is_global_object(qualname):
                 raise LocalFunctionError(
                     "Modal can only import functions defined in global scope unless they are `serialized=True`"
@@ -187,8 +192,39 @@ class FunctionInfo:
             logger.debug(f"Serializing {self.raw_f.__qualname__}, size is {len(serialized_bytes)}")
             return serialized_bytes
         else:
-            logger.debug(f"Serializing function for class service function {self.cls.__qualname__} as empty")
+            logger.debug(f"Serializing function for class service function {self.user_cls.__qualname__} as empty")
             return b""
+
+    def get_cls_vars(self) -> Dict[str, Any]:
+        if self.user_cls is not None:
+            cls_vars = {
+                attr: getattr(self.user_cls, attr)
+                for attr in dir(self.user_cls)
+                if not callable(getattr(self.user_cls, attr)) and not attr.startswith("__")
+            }
+            return cls_vars
+        return {}
+
+    def get_cls_var_attrs(self) -> Dict[str, Any]:
+        import dis
+
+        import opcode
+
+        LOAD_ATTR = opcode.opmap["LOAD_ATTR"]
+        STORE_ATTR = opcode.opmap["STORE_ATTR"]
+
+        func = self.raw_f
+        code = func.__code__
+        f_attr_ops = set()
+        for instr in dis.get_instructions(code):
+            if instr.opcode == LOAD_ATTR:
+                f_attr_ops.add(instr.argval)
+            elif instr.opcode == STORE_ATTR:
+                f_attr_ops.add(instr.argval)
+
+        cls_vars = self.get_cls_vars()
+        f_attrs = {k: cls_vars[k] for k in cls_vars if k in f_attr_ops}
+        return f_attrs
 
     def get_globals(self) -> Dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals
@@ -197,6 +233,29 @@ class FunctionInfo:
         f_globals_ref = _extract_code_globals(func.__code__)
         f_globals = {k: func.__globals__[k] for k in f_globals_ref if k in func.__globals__}
         return f_globals
+
+    def class_parameter_info(self) -> api_pb2.ClassParameterInfo:
+        if not self.user_cls:
+            return api_pb2.ClassParameterInfo()
+
+        if not config.get("strict_parameters"):
+            return api_pb2.ClassParameterInfo(format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE)
+
+        modal_parameters: List[api_pb2.ClassParameterSpec] = []
+        signature = inspect.signature(self.user_cls)
+        for param in signature.parameters.values():
+            has_default = param.default is not param.empty
+            if param.annotation not in CLASS_PARAM_TYPE_MAP:
+                raise InvalidError("Strict class parameters need to be explicitly annotated as str or int")
+            param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
+            class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
+            if has_default:
+                setattr(class_param_spec, default_field, param.default)
+            modal_parameters.append(class_param_spec)
+
+        return api_pb2.ClassParameterInfo(
+            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO, schema=modal_parameters
+        )
 
     def get_entrypoint_mount(self) -> List[_Mount]:
         """

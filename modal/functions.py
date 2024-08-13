@@ -35,7 +35,7 @@ from ._output import OutputManager
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
-from ._serialization import serialize
+from ._serialization import serialize, serialize_proto_params
 from ._utils.async_utils import (
     TaskContext,
     synchronize_api,
@@ -52,7 +52,7 @@ from ._utils.function_utils import (
     is_async,
 )
 from ._utils.grpc_utils import retry_transient_errors
-from ._utils.mount_utils import validate_mount_points, validate_volumes
+from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
@@ -272,6 +272,7 @@ class _FunctionSpec:
     memory: Optional[Union[int, Tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
+    _experimental_gpus: Sequence[GPU_T]
 
 
 class _Function(_Object, type_prefix="fu"):
@@ -290,7 +291,7 @@ class _Function(_Object, type_prefix="fu"):
     _web_url: Optional[str]
     _function_name: Optional[str]
     _is_method: bool
-    _spec: _FunctionSpec
+    _spec: Optional[_FunctionSpec] = None
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
@@ -305,6 +306,8 @@ class _Function(_Object, type_prefix="fu"):
     # TODO (elias): remove _parent. In case of instance functions, and methods bound on those,
     #  this references the parent class-function and is used to infer the client for lazy-loaded methods
     _parent: Optional["_Function"] = None
+
+    _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
 
     def _bind_method(
         self,
@@ -348,6 +351,7 @@ class _Function(_Object, type_prefix="fu"):
                 function=function_definition,
                 #  method_bound_function.object_id usually gets set by preload
                 existing_function_id=existing_object_id or method_bound_function.object_id or "",
+                defer_updates=True,
             )
             assert resolver.client.stub is not None  # client should be connected when load is called
             with FunctionCreationStatus(resolver, full_name) as function_creation_status:
@@ -385,7 +389,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._tag = full_name
         fun._raw_f = partial_function.raw_f
         fun._info = FunctionInfo(
-            partial_function.raw_f, cls=user_cls, serialized=class_service_function.info.is_serialized()
+            partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
         )  # needed for .local()
         fun._use_method_name = method_name
         fun._app = class_service_function._app
@@ -456,6 +460,7 @@ class _Function(_Object, type_prefix="fu"):
         fun._parent = instance_service_function._parent
         fun._app = class_bound_method._app
         fun._all_mounts = class_bound_method._all_mounts  # TODO: only used for mount-watching/modal serve
+        fun._spec = class_bound_method._spec
         return fun
 
     @staticmethod
@@ -484,7 +489,7 @@ class _Function(_Object, type_prefix="fu"):
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
         cloud: Optional[str] = None,
-        _experimental_boost: bool = False,
+        _experimental_boost: None = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
@@ -494,6 +499,7 @@ class _Function(_Object, type_prefix="fu"):
         block_network: bool = False,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
+        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -507,7 +513,7 @@ class _Function(_Object, type_prefix="fu"):
                 )
         else:
             # must be a "class service function"
-            assert info.cls
+            assert info.user_cls
             assert not webhook_config
             assert not schedule
 
@@ -525,9 +531,16 @@ class _Function(_Object, type_prefix="fu"):
             enable_memory_snapshot = checkpointing_enabled
 
         if allow_background_volume_commits is False:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
-                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+                "Disabling volume background commits is now deprecated. "
+                "Remove _allow_background_volume_commits=False to enable the functionality.",
+            )
+        elif allow_background_volume_commits is True:
+            deprecation_warning(
+                (2024, 7, 18),
+                "Setting volume background commits is deprecated. "
+                "The functionality is now unconditionally enabled (set to True).",
             )
         elif allow_background_volume_commits is None:
             allow_background_volume_commits = True
@@ -565,8 +578,6 @@ class _Function(_Object, type_prefix="fu"):
                 "Retries for generator functions are deprecated and will soon be removed.",
             )
 
-        gpu_config = parse_gpu_config(gpu)
-
         if proxy:
             # HACK: remove this once we stop using ssh tunnels for this.
             if image:
@@ -584,15 +595,16 @@ class _Function(_Object, type_prefix="fu"):
             memory=memory,
             ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
+            _experimental_gpus=_experimental_gpus,
         )
 
-        if info.cls and not is_auto_snapshot:
+        if info.user_cls and not is_auto_snapshot:
             # Needed to avoid circular imports
             from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
 
-            build_functions = list(_find_callables_for_cls(info.cls, _PartialFunctionFlags.BUILD).values())
+            build_functions = list(_find_callables_for_cls(info.user_cls, _PartialFunctionFlags.BUILD).values())
             for build_function in build_functions:
-                snapshot_info = FunctionInfo(build_function, cls=info.cls)
+                snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)
                 snapshot_function = _Function.from_args(
                     snapshot_info,
                     app=None,
@@ -609,6 +621,7 @@ class _Function(_Object, type_prefix="fu"):
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
+                    _experimental_gpus=_experimental_gpus,
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
@@ -650,9 +663,7 @@ class _Function(_Object, type_prefix="fu"):
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         # Validate NFS
-        if not isinstance(network_file_systems, dict):
-            raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
-        validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+        validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
         # Validate image
         if image is not None and not isinstance(image, _Image):
@@ -692,6 +703,7 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
+            assert resolver.app_id
             req = api_pb2.FunctionPrecreateRequest(
                 app_id=resolver.app_id,
                 function_name=info.function_name,
@@ -722,7 +734,7 @@ class _Function(_Object, type_prefix="fu"):
                     # serialize at _load time, not function decoration time
                     # otherwise we can't capture a surrounding class for lifetime methods etc.
                     function_serialized = info.serialized_function()
-                    class_serialized = serialize(info.cls) if info.cls is not None else None
+                    class_serialized = serialize(info.user_cls) if info.user_cls is not None else None
                     # Ensure that large data in global variables does not blow up the gRPC payload,
                     # which has maximum size 100 MiB. We set the limit lower for performance reasons.
                     if len(function_serialized) > 16 << 20:  # 16 MiB
@@ -799,22 +811,31 @@ class _Function(_Object, type_prefix="fu"):
                     allow_concurrent_inputs=allow_concurrent_inputs or 0,
                     worker_id=config.get("worker_id"),
                     is_auto_snapshot=is_auto_snapshot,
-                    is_method=bool(info.cls) and not info.is_service_class(),
+                    is_method=bool(info.user_cls) and not info.is_service_class(),
                     checkpointing_enabled=enable_memory_snapshot,
                     is_checkpointing_function=False,
                     object_dependencies=object_dependencies,
                     block_network=block_network,
                     max_inputs=max_inputs or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
-                    _experimental_boost=_experimental_boost,
+                    _experimental_boost=bool(_experimental_boost),
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
+                    class_parameter_info=info.class_parameter_info(),
+                    _experimental_resources=[
+                        convert_fn_config_to_resources_config(
+                            cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                        )
+                        for _experimental_gpu in _experimental_gpus
+                    ],
                 )
+                assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
                     app_id=resolver.app_id,
                     function=function_definition,
                     schedule=schedule.proto_message if schedule is not None else None,
                     existing_function_id=existing_object_id or "",
+                    defer_updates=True,
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
@@ -850,10 +871,14 @@ class _Function(_Object, type_prefix="fu"):
         # hash. We can't use the cloudpickle hash because it's not very stable.
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
-            gpu_config=repr(gpu_config),
+            gpu_config=repr(parse_gpu_config(gpu)),
             mounts=repr(mounts),
             network_file_systems=repr(network_file_systems),
         )
+        if _experimental_gpus:
+            obj._build_args["experimental_gpus"] = repr(
+                [parse_gpu_config(_experimental_gpu) for _experimental_gpu in _experimental_gpus]
+            )
 
         return obj
 
@@ -887,7 +912,17 @@ class _Function(_Object, type_prefix="fu"):
                     f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
                 )
             assert self._parent._client.stub
-            serialized_params = serialize((args, kwargs))
+            if (
+                self._parent._class_parameter_info
+                and self._parent._class_parameter_info.format
+                == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
+            ):
+                if args:
+                    # TODO(elias) - We could potentially support positional args as well, if we want to?
+                    raise InvalidError("Can't use positional arguments with strict parameter classes")
+                serialized_params = serialize_proto_params(kwargs, self._parent._class_parameter_info.schema)
+            else:
+                serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
             assert self._parent is not None
             req = api_pb2.FunctionBindParamsRequest(
@@ -1034,6 +1069,7 @@ class _Function(_Object, type_prefix="fu"):
     @property
     def spec(self) -> _FunctionSpec:
         """mdmd:hidden"""
+        assert self._spec
         return self._spec
 
     def get_build_def(self) -> str:
@@ -1048,7 +1084,6 @@ class _Function(_Object, type_prefix="fu"):
         self._progress = None
         self._is_generator = None
         self._web_url = None
-        self._output_mgr: Optional[OutputManager] = None
         self._mute_cancellation = (
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
@@ -1059,13 +1094,15 @@ class _Function(_Object, type_prefix="fu"):
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
-        assert metadata and isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata)
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
         self._is_method = metadata.is_method
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
+        self._class_parameter_info = metadata.class_parameter_info
+        self._definition_id = metadata.definition_id
 
     def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id
@@ -1084,13 +1121,12 @@ class _Function(_Object, type_prefix="fu"):
             use_method_name=self._use_method_name,
             use_function_id=self._use_function_id,
             is_method=self._is_method,
+            class_parameter_info=self._class_parameter_info,
+            definition_id=self._definition_id,
         )
 
     def _set_mute_cancellation(self, value: bool = True):
         self._mute_cancellation = value
-
-    def _set_output_mgr(self, output_mgr: OutputManager):
-        self._output_mgr = output_mgr
 
     @property
     def web_url(self) -> str:
@@ -1130,9 +1166,10 @@ class _Function(_Object, type_prefix="fu"):
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         assert self._function_name
-        count_update_callback = (
-            self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
-        )
+        if output_mgr := OutputManager.get():
+            count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
+        else:
+            count_update_callback = None
 
         async for item in _map_invocation(
             self,  # type: ignore
@@ -1241,6 +1278,12 @@ class _Function(_Object, type_prefix="fu"):
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
         info = self._get_info()
+
+        if is_local() and self.spec.volumes or self.spec.network_file_systems:
+            warnings.warn(
+                f"The {info.function_name} function is executing locally "
+                + "and will not have access to the mounted Volume or NetworkFileSystem data"
+            )
         if not info or not info.raw_f:
             msg = (
                 "The definition for this function is missing so it is not possible to invoke it locally. "

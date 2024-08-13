@@ -105,6 +105,11 @@ def test_class_with_options(client, servicer):
         assert options.retry_policy.retries == 5
 
 
+def test_class_with_options_need_hydrating(client, servicer):
+    with pytest.raises(ExecutionError, match="hydrate"):
+        Foo.with_options()  # type: ignore
+
+
 # Reusing the app runs into an issue with stale function handles.
 # TODO (akshat): have all the client tests use separate apps, and throw
 # an exception if the user tries to reuse an app.
@@ -662,22 +667,16 @@ def test_disallow_lifecycle_decorators_with_method(decorator):
 
 
 def test_deprecated_sync_methods():
-    with pytest.warns(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
+    class ClsWithDeprecatedSyncMethods:
+        def __enter__(self):
+            return 42
 
-        class ClsWithDeprecatedSyncMethods:
-            def __enter__(self):
-                return 42
+        @enter()
+        def my_enter(self):
+            return 43
 
-            @enter()
-            def my_enter(self):
-                return 43
-
-            def __exit__(self, exc_type, exc, tb):
-                return 44
-
-            @exit()
-            def my_exit(self, exc_type, exc, tb):
-                return 45
+        def __exit__(self, exc_type, exc, tb):
+            return 44
 
     obj = ClsWithDeprecatedSyncMethods()
 
@@ -687,25 +686,26 @@ def test_deprecated_sync_methods():
     with pytest.raises(DeprecationError, match="Using `__exit__`.+`modal.exit` decorator"):
         _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
 
+    with pytest.raises(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
+
+        class ClsWithDeprecatedSyncExitMethod:
+            @exit()
+            def my_exit(self, exc_type, exc, tb):
+                return 45
+
 
 @pytest.mark.asyncio
 async def test_deprecated_async_methods():
-    with pytest.warns(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
+    class ClsWithDeprecatedAsyncMethods:
+        async def __aenter__(self):
+            return 42
 
-        class ClsWithDeprecatedAsyncMethods:
-            async def __aenter__(self):
-                return 42
+        @enter()
+        async def my_enter(self):
+            return 43
 
-            @enter()
-            async def my_enter(self):
-                return 43
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return 44
-
-            @exit()
-            async def my_exit(self, exc_type, exc, tb):
-                return 45
+        async def __aexit__(self, exc_type, exc, tb):
+            return 44
 
     obj = ClsWithDeprecatedAsyncMethods()
 
@@ -714,6 +714,13 @@ async def test_deprecated_async_methods():
 
     with pytest.raises(DeprecationError, match=r"Using `__aexit__`.+`modal.exit` decorator \(on an async method\)"):
         _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
+
+    with pytest.raises(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
+
+        class ClsWithDeprecatedAsyncExitMethod:
+            @exit()
+            async def my_exit(self, exc_type, exc, tb):
+                return 45
 
 
 class HasSnapMethod:

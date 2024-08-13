@@ -55,6 +55,11 @@ def set_env(monkeypatch):
     monkeypatch.setenv("MODAL_ENVIRONMENT", "main")
 
 
+@pytest.fixture(scope="function", autouse=True)
+def disable_app_run_warning(monkeypatch):
+    monkeypatch.setenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING", "1")
+
+
 @patch_mock_servicer
 class MockClientServicer(api_grpc.ModalClientBase):
     # TODO(erikbern): add more annotations
@@ -166,6 +171,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_client_disconnect_count = 0
         self.app_get_logs_initial_count = 0
         self.app_set_objects_count = 0
+        self.app_publish_count = 0
 
         self.volume_counter = 0
         # Volume-id -> commit/reload count
@@ -174,11 +180,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.sandbox_defs = []
         self.sandbox: asyncio.subprocess.Process = None
-
-        # Whether the sandbox is executing a shell program in interactive mode.
-        self.sandbox_is_interactive = False
-        self.sandbox_shell_prompt = "TEST_PROMPT# "
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
+
+        self.shell_prompt = None
+        self.container_exec: asyncio.subprocess.Process = None
+        self.container_exec_result: Optional[api_pb2.GenericResult] = None
 
         self.token_flow_localhost_port = None
         self.queue_max_len = 100
@@ -305,8 +311,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         object_ids = self.app_objects.get(request.app_id, {})
         objects = list(object_ids.items())
         if request.include_unindexed:
-            unindexed_object_ids = self.app_unindexed_objects.get(request.app_id, [])
+            unindexed_object_ids = set()
+            for object_id in object_ids.values():
+                if object_id.startswith("fu-"):
+                    definition = self.app_functions[object_id]
+                    unindexed_object_ids |= {obj.object_id for obj in definition.object_dependencies}
             objects += [(None, object_id) for object_id in unindexed_object_ids]
+            # TODO(michael) This perpetuates a hack! The container_test tests rely on hardcoded unindexed_object_ids
+            # but we now look those up dynamically from the indexed objects in (the real) AppGetObjects. But the
+            # container tests never actually set indexed objects on the app. We need a total rewrite here.
+            if (None, "im-1") not in objects:
+                objects.append((None, "im-1"))
         items = [
             api_pb2.AppGetObjectsItem(tag=tag, object=self.get_object_metadata(object_id)) for tag, object_id in objects
         ]
@@ -329,6 +344,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
         await stream.send_message(api_pb2.AppDeployResponse(url="http://test.modal.com/foo/bar"))
 
+    async def AppPublish(self, stream):
+        request: api_pb2.AppPublishRequest = await stream.recv_message()
+        for key, val in request.definition_ids.items():
+            assert key.startswith("fu-")
+            assert val.startswith("de-")
+        # TODO(michael) add some other assertions once we make the mock server represent real RPCs more accurately
+        self.app_publish_count += 1
+        self.app_objects[request.app_id] = {**request.function_ids, **request.class_ids}
+        self.app_state_history[request.app_id].append(request.app_state)
+        if request.app_state == api_pb2.AppState.APP_STATE_DEPLOYED:
+            self.deployed_apps[request.name] = request.app_id
+            await stream.send_message(api_pb2.AppPublishResponse(url="http://test.modal.com/foo/bar"))
+        else:
+            await stream.send_message(api_pb2.AppPublishResponse())
+
     async def AppGetByDeploymentName(self, stream):
         request: api_pb2.AppGetByDeploymentNameRequest = await stream.recv_message()
         await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name)))
@@ -344,7 +374,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         apps = []
         for app_name, app_id in self.deployed_apps.items():
             apps.append(
-                api_pb2.AppStats(
+                api_pb2.AppListResponse.AppListItem(
                     name=app_name,
                     description=app_name,
                     app_id=app_id,
@@ -364,6 +394,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ContainerCheckpointRequest = await stream.recv_message()
         self.requests.append(request)
         self.container_snapshot_requests += 1
+        await stream.send_message(Empty())
+
+    async def ContainerExecPutInput(self, stream):
+        request = await stream.recv_message()
+
+        self.container_exec.stdin.write(request.input.message)
+        await self.container_exec.stdin.drain()
+
+        if request.input.eof:
+            self.container_exec.stdin.close()
+
         await stream.send_message(Empty())
 
     ### Blob
@@ -468,20 +509,43 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.ContainerHeartbeatResponse())
 
     async def ContainerExec(self, stream):
-        _request: api_pb2.ContainerExecRequest = await stream.recv_message()
+        request: api_pb2.ContainerExecRequest = await stream.recv_message()
+        self.container_exec = await asyncio.subprocess.create_subprocess_exec(
+            *request.command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE,
+        )
         await stream.send_message(api_pb2.ContainerExecResponse(exec_id="container_exec_id"))
 
     async def ContainerExecGetOutput(self, stream):
-        _request: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
-        await stream.send_message(
-            api_pb2.RuntimeOutputBatch(
-                items=[
-                    api_pb2.RuntimeOutputMessage(
-                        file_descriptor=api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT, message="Hello World"
+        request: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
+        if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            if self.shell_prompt:
+                await stream.send_message(
+                    api_pb2.RuntimeOutputBatch(
+                        items=[
+                            api_pb2.RuntimeOutputMessage(
+                                message=self.shell_prompt, file_descriptor=request.file_descriptor
+                            )
+                        ]
                     )
-                ]
+                )
+            read_stream = self.container_exec.stdout
+        else:
+            read_stream = self.container_exec.stderr
+
+        async for message in read_stream:
+            await stream.send_message(
+                api_pb2.RuntimeOutputBatch(
+                    items=[
+                        api_pb2.RuntimeOutputMessage(
+                            message=message.decode("utf-8"), file_descriptor=request.file_descriptor
+                        )
+                    ]
+                )
             )
-        )
+
         await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
 
     ### Dict
@@ -554,6 +618,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.DictGetRequest = await stream.recv_message()
         for k, v in self.dicts[request.dict_id].items():
             await stream.send_message(api_pb2.DictEntry(key=k, value=v))
+
+    ### Environment
+
+    async def EnvironmentCreate(self, stream):
+        await stream.send_message(Empty())
+
+    async def EnvironmentUpdate(self, stream):
+        await stream.send_message(api_pb2.EnvironmentListItem())
 
     ### Function
 
@@ -677,6 +749,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     web_url=function.web_url,
                     use_function_id=function.use_function_id or function_id,
                     use_method_name=function.use_method_name,
+                    definition_id=f"de-{self.n_functions}",
                 ),
             )
         )
@@ -825,6 +898,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ImageGetOrCreate(self, stream):
         request: api_pb2.ImageGetOrCreateRequest = await stream.recv_message()
+        for image_id, image in self.images.items():
+            if request.image.SerializeToString() == image.SerializeToString():
+                await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=image_id))
+                return
         idx = len(self.images) + 1
         image_id = f"im-{idx}"
 
@@ -841,13 +918,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if self.image_join_sleep_duration is not None:
             await asyncio.sleep(self.image_join_sleep_duration)
 
-        task_log_1 = api_pb2.TaskLogs(data="hello, world\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
+        task_log_1 = api_pb2.TaskLogs(data="build starting\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
         task_log_2 = api_pb2.TaskLogs(
             task_progress=api_pb2.TaskProgress(
                 len=1, pos=0, progress_type=api_pb2.IMAGE_SNAPSHOT_UPLOAD, description="xyz"
             )
         )
-        await stream.send_message(api_pb2.ImageJoinStreamingResponse(task_logs=[task_log_1, task_log_2]))
+        task_log_3 = api_pb2.TaskLogs(data="build finished\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_INFO)
+        await stream.send_message(api_pb2.ImageJoinStreamingResponse(task_logs=[task_log_1, task_log_2, task_log_3]))
         await stream.send_message(
             api_pb2.ImageJoinStreamingResponse(
                 result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
@@ -877,6 +955,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             mount_id = f"mo-{self.n_mounts}"
             self.deployed_mounts[k] = mount_id
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
+            self.n_mounts += 1
+            mount_id = f"mo-{self.n_mounts}"
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             self.n_mounts += 1
             mount_id = f"mo-{self.n_mounts}"
 
@@ -998,9 +1079,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxCreate(self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
-        if request.definition.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-            self.sandbox_is_interactive = True
-
         self.sandbox = await asyncio.subprocess.create_subprocess_exec(
             *request.definition.entrypoint_args,
             stdout=asyncio.subprocess.PIPE,
@@ -1015,14 +1093,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
         f: asyncio.StreamReader
-        if self.sandbox_is_interactive:
-            # sends an empty message to simulate PTY
-            await stream.send_message(
-                api_pb2.TaskLogsBatch(
-                    items=[api_pb2.TaskLogs(data=self.sandbox_shell_prompt, file_descriptor=request.file_descriptor)]
-                )
-            )
-
         if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
             # Blocking read until EOF is returned.
             f = self.sandbox.stdout
@@ -1085,6 +1155,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
+            secret_id = "st-" + str(len(self.secrets))
+            self.secrets[secret_id] = request.env_dict
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_secrets:
                 raise GRPCError(Status.ALREADY_EXISTS, f"Secret {k} already exists")
@@ -1122,6 +1195,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         k = (request.deployment_name, request.namespace, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_nfss:
+                if k in self.deployed_volumes:
+                    raise GRPCError(Status.NOT_FOUND, "App has wrong entity vo")
                 raise GRPCError(Status.NOT_FOUND, f"NFS {k} not found")
             nfs_id = self.deployed_nfss[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
@@ -1369,8 +1444,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
 
-@pytest_asyncio.fixture
-async def blob_server():
+@pytest.fixture
+def blob_server():
     blobs = {}
     blob_parts: Dict[str, Dict[int, bytes]] = defaultdict(dict)
 
@@ -1414,8 +1489,30 @@ async def blob_server():
     app.add_routes([aiohttp.web.get("/download", download)])
     app.add_routes([aiohttp.web.post("/complete_multipart", complete_multipart)])
 
-    async with run_temporary_http_server(app) as host:
-        yield host, blobs
+    started = threading.Event()
+    stop_server = threading.Event()
+
+    host = None
+
+    def run_server_other_thread():
+        loop = asyncio.new_event_loop()
+
+        async def async_main():
+            nonlocal host
+            async with run_temporary_http_server(app) as _host:
+                host = _host
+                started.set()
+                await loop.run_in_executor(None, stop_server.wait)
+
+        loop.run_until_complete(async_main())
+
+    # run server on separate thread to not lock up the server event loop in case of blocking calls in tests
+    thread = threading.Thread(target=run_server_other_thread)
+    thread.start()
+    started.wait()
+    yield host, blobs
+    stop_server.set()
+    thread.join()
 
 
 @pytest_asyncio.fixture(scope="function")

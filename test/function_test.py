@@ -735,10 +735,10 @@ def test_no_state_reuse(client, servicer, supports_dir):
     app = App("reuse-mount-app")
     app.function(mounts=[mount_instance_1, mount_instance_2])(dummy)
 
-    deploy_app(app, client=client, show_progress=False)
+    deploy_app(app, client=client)
     first_deploy = {mount_instance_1.object_id, mount_instance_2.object_id}
 
-    deploy_app(app, client=client, show_progress=False)
+    deploy_app(app, client=client)
     second_deploy = {mount_instance_1.object_id, mount_instance_2.object_id}
 
     # mount ids should not overlap between first and second deploy
@@ -781,3 +781,24 @@ async def test_non_aio_map_in_async_caller_error(client):
         # but we support it for backwards compatibility for now:
         res = [r async for r in dummy_function.map([1, 2, 4])]
         assert res == [1, 4, 16]
+
+
+def test_warn_on_local_volume_mount(client, servicer):
+    vol = modal.Volume.from_name("my-vol")
+    dummy_function = app.function(volumes={"/foo": vol})(dummy)
+
+    assert modal.is_local()
+    with pytest.warns(match="local"):
+        dummy_function.local()
+
+
+class X:
+    def f(self):
+        ...
+
+
+def test_function_decorator_on_method():
+    app = modal.App()
+
+    with pytest.raises(InvalidError, match="@app.cls"):
+        app.function()(X.f)

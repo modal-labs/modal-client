@@ -9,6 +9,7 @@ if sys.version_info[:2] >= (3, 13):
 from modal_version import __version__
 
 try:
+    from ._output import enable_output
     from ._tunnel import Tunnel, forward
     from .app import App, Stub
     from .client import Client
@@ -66,6 +67,7 @@ __all__ = [
     "build",
     "current_function_call_id",
     "current_input_id",
+    "enable_output",
     "enter",
     "exit",
     "forward",

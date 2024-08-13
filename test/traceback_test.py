@@ -4,7 +4,12 @@ from pathlib import Path
 from traceback import extract_tb
 from typing import Dict, List, Tuple
 
-from modal._traceback import append_modal_tb, extract_traceback, reduce_traceback_to_user_code
+from modal._traceback import (
+    append_modal_tb,
+    extract_traceback,
+    reduce_traceback_to_user_code,
+    traceback_contains_remote_call,
+)
 from modal._vendor import tblib
 
 from .supports.raise_error import raise_error
@@ -133,3 +138,24 @@ def test_reduce_traceback_to_user_code(user_mode):
     assert f.f_code.co_name == "execute"
 
     assert tb_out.tb_next.tb_next is None
+
+
+def test_traceback_contains_remote_call():
+    stack = [
+        ("/home/foobar/code/script.py", "f"),
+        ("/usr/local/venv/modal.py", "local"),
+    ]
+
+    tb = tblib.Traceback.from_dict(tb_dict_from_stack_dicts(make_tb_stack(stack)))
+    assert not traceback_contains_remote_call(tb)
+
+    task_id = "ta-0123456789ABCDEFGHILJKMNOP"
+    stack.extend(
+        [
+            (f"<{task_id}>:/usr/local/lib/python3.11/importlib/__init__.py", ""),
+            ("/root/script.py", ""),
+        ]
+    )
+
+    tb = tblib.Traceback.from_dict(tb_dict_from_stack_dicts(make_tb_stack(stack)))
+    assert traceback_contains_remote_call(tb)

@@ -64,7 +64,7 @@ async def _watch_paths(paths: Set[Path], watch_filter: AppFilesFilter) -> AsyncG
         pass
 
 
-def _print_watched_paths(paths: Set[Path], output_mgr: OutputManager):
+def _print_watched_paths(paths: Set[Path]):
     msg = "️️⚡️ Serving... hit Ctrl-C to stop!"
 
     output_tree = Tree(msg, guide_style="gray50")
@@ -72,7 +72,8 @@ def _print_watched_paths(paths: Set[Path], output_mgr: OutputManager):
     for path in paths:
         output_tree.add(f"Watching {path}.")
 
-    output_mgr.print_if_visible(output_tree)
+    if output_mgr := OutputManager.get():
+        output_mgr.print(output_tree)
 
 
 def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], AppFilesFilter]:
@@ -93,10 +94,10 @@ def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], AppFilesFi
     return paths, watch_filter
 
 
-async def watch(mounts: List[_Mount], output_mgr: OutputManager) -> AsyncGenerator[Set[str], None]:
+async def watch(mounts: List[_Mount]) -> AsyncGenerator[Set[str], None]:
     paths, watch_filter = _watch_args_from_mounts(mounts)
 
-    _print_watched_paths(paths, output_mgr)
+    _print_watched_paths(paths)
 
     async for updated_paths in _watch_paths(paths, watch_filter):
         yield updated_paths

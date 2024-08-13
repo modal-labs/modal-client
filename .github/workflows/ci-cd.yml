@@ -6,6 +6,11 @@ on:
       - main
   pull_request:
 
+# Cancel previous runs of the same PR but do not cancel previous runs on main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 env:
   TERM: linux
   TERMINFO: /etc/terminfo
@@ -62,7 +67,7 @@ jobs:
           MODAL_ENVIRONMENT: client-doc-tests
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: pytest --markdown-docs -m markdown-docs modal
+        run: pytest -v --markdown-docs -m markdown-docs modal
 
   container-dependencies:
     name: Check minimal container dependencies for ${{ matrix.python-version }}

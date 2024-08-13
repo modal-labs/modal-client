@@ -79,7 +79,7 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
             if msg["type"] == "http.response.body":
                 body_chunk_size = MAX_OBJECT_SIZE_BYTES - 1024  # reserve 1 KiB for framing
                 body_chunk_limit = 20 * body_chunk_size
-                s3_chunk_size = 150 * body_chunk_size
+                s3_chunk_size = 50 * body_chunk_size
 
                 size = len(msg.get("body", b""))
                 if size <= body_chunk_limit:
@@ -243,9 +243,12 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
     async def listen_for_disconnect() -> NoReturn:
         while True:
             message = await receive()
-            if message["type"] == "http.disconnect":
-                # based on the aiottp code, there should be a connection set after session.request
-                proxy_response.connection.transport.abort()  # type: ignore
+            if (
+                message["type"] == "http.disconnect"
+                and proxy_response.connection is not None
+                and proxy_response.connection.transport is not None
+            ):
+                proxy_response.connection.transport.abort()
 
     async with TaskContext() as tc:
         send_response_task = tc.create_task(send_response())

@@ -1,9 +1,10 @@
 # Copyright Modal Labs 2022
 import inspect
+import os
 import typing
 import warnings
-from io import TextIOWrapper
 from pathlib import PurePosixPath
+from textwrap import dedent
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
@@ -13,14 +14,10 @@ from modal_proto import api_pb2
 
 from ._ipython import is_notebook
 from ._output import OutputManager
-from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
-from ._utils.function_utils import FunctionInfo
+from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
+from ._utils.grpc_utils import unary_stream
 from ._utils.mount_utils import validate_volumes
-from .app_utils import (  # noqa: F401
-    _list_apps,
-    list_apps,
-)
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls
@@ -117,6 +114,8 @@ class _App:
     In this example, the secret and schedule are registered with the app.
     """
 
+    _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
+
     _name: Optional[str]
     _description: Optional[str]
     _indexed_objects: Dict[str, _Object]
@@ -127,9 +126,11 @@ class _App:
     _volumes: Dict[Union[str, PurePosixPath], _Volume]
     _web_endpoints: List[str]  # Used by the CLI
     _local_entrypoints: Dict[str, _LocalEntrypoint]
-    _running_app: Optional[RunningApp]
+
+    # Running apps only (container apps or running local)
+    _app_id: Optional[str]  # Kept after app finishes
+    _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
-    _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
 
     def __init__(
         self,
@@ -139,7 +140,6 @@ class _App:
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
         volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
-        **kwargs: _Object,  # DEPRECATED: passing additional objects to the stub as kwargs is no longer supported
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
 
@@ -164,24 +164,15 @@ class _App:
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
 
-        if kwargs:
-            deprecation_error(
-                (2023, 12, 13),
-                "Passing additional objects to the app constructor is deprecated."
-                f" Please remove the following parameters from your app definition: {', '.join(kwargs)}."
-                " In most cases, persistent (named) objects can just be defined in the global scope.",
-            )
-
-        for k, v in kwargs.items():
-            self._validate_blueprint_value(k, v)
-
-        self._indexed_objects = kwargs
+        self._indexed_objects = {}
         self._image = image
         self._mounts = mounts
         self._secrets = secrets
         self._volumes = volumes
         self._local_entrypoints = {}
         self._web_endpoints = []
+
+        self._app_id = None
         self._running_app = None  # Set inside container, OR during the time an app is running locally
         self._client = None
 
@@ -204,11 +195,8 @@ class _App:
 
     @property
     def app_id(self) -> Optional[str]:
-        """Return the app_id, if the app is running."""
-        if self._running_app:
-            return self._running_app.app_id
-        else:
-            return None
+        """Return the app_id of a running or stopped app."""
+        return self._app_id
 
     @property
     def description(self) -> Optional[str]:
@@ -299,23 +287,22 @@ class _App:
         deprecation_error((2023, 11, 8), _App.is_inside.__doc__)
 
     @asynccontextmanager
-    async def _set_local_app(self, client: _Client, app: RunningApp) -> AsyncGenerator[None, None]:
+    async def _set_local_app(self, client: _Client, running_app: RunningApp) -> AsyncGenerator[None, None]:
+        self._app_id = running_app.app_id
+        self._running_app = running_app
         self._client = client
-        self._running_app = app
         try:
             yield
         finally:
-            self._client = None
             self._running_app = None
+            self._client = None
 
     @asynccontextmanager
     async def run(
         self,
         client: Optional[_Client] = None,
-        stdout: Optional[TextIOWrapper] = None,
-        show_progress: bool = True,
+        show_progress: Optional[bool] = None,
         detach: bool = False,
-        output_mgr: Optional[OutputManager] = None,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
@@ -327,9 +314,50 @@ class _App:
         no longer useful since you can use the app itself for access to all
         objects. For backwards compatibility reasons, it returns the same app.
         """
-        # TODO(erikbern): deprecate this one too?
-        async with _run_app(self, client, stdout, show_progress, detach, output_mgr):
-            yield self
+
+        enable_output_warning = """
+        Note that output will soon not be be printed with `app.run`.
+
+        If you want to print output, use `modal.enable_output()`:
+
+        ```python
+        with modal.enable_output():
+            with app.run():
+                ...
+        ```
+
+        If you don't want output, and you want to to suppress this warning,
+        use `app.run(..., show_progress=False)`.
+        """
+
+        # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
+
+        auto_enable_output = False
+
+        if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
+            if show_progress is None:
+                if OutputManager.get() is None:
+                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    auto_enable_output = True
+            elif show_progress is True:
+                if OutputManager.get() is None:
+                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    auto_enable_output = True
+                else:
+                    deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
+            elif show_progress is False:
+                if OutputManager.get() is not None:
+                    deprecation_warning(
+                        (2024, 7, 18), "`show_progress=False` will have no effect since output is enabled."
+                    )
+
+        if auto_enable_output:
+            with OutputManager.enable_output():
+                async with _run_app(self, client=client, detach=detach):
+                    yield self
+        else:
+            async with _run_app(self, client=client, detach=detach):
+                yield self
 
     def _get_default_image(self):
         if self._image:
@@ -365,8 +393,9 @@ class _App:
             self._web_endpoints.append(function.tag)
 
     def _init_container(self, client: _Client, running_app: RunningApp):
-        self._client = client
+        self._app_id = running_app.app_id
         self._running_app = running_app
+        self._client = client
 
         # Hydrate objects on app
         for tag, object_id in running_app.tag_to_object_id.items():
@@ -401,7 +430,7 @@ class _App:
 
     def local_entrypoint(
         self, _warn_parentheses_missing: Any = None, *, name: Optional[str] = None
-    ) -> Callable[[Callable[..., Any]], None]:
+    ) -> Callable[[Callable[..., Any]], _LocalEntrypoint]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -455,7 +484,7 @@ class _App:
         if name is not None and not isinstance(name, str):
             raise InvalidError("Invalid value for `name`: Must be string.")
 
-        def wrapped(raw_f: Callable[..., Any]) -> None:
+        def wrapped(raw_f: Callable[..., Any]) -> _LocalEntrypoint:
             info = FunctionInfo(raw_f)
             tag = name if name is not None else raw_f.__qualname__
             if tag in self._local_entrypoints:
@@ -515,11 +544,12 @@ class _App:
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
-        _allow_background_volume_commits: Optional[bool] = None,
-        _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
+        _allow_background_volume_commits: None = None,
+        _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
     ) -> Callable[..., _Function]:
         """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -531,6 +561,11 @@ class _App:
         if interactive:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+            )
+
+        if _experimental_boost is not None:
+            deprecation_warning(
+                (2024, 7, 23), "`_experimental_boost` is now always-on. This argument is no longer needed."
             )
 
         if image is None:
@@ -545,7 +580,9 @@ class _App:
 
             # Check if the decorated object is a class
             if inspect.isclass(f):
-                raise TypeError("The @app.function decorator cannot be used on a class. Please use @app.cls instead.")
+                raise TypeError(
+                    "The `@app.function` decorator cannot be used on a class. Please use `@app.cls` instead."
+                )
 
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint and @asgi_app
@@ -559,6 +596,35 @@ class _App:
                 if webhook_config and interactive:
                     raise InvalidError("interactive=True is not supported with web endpoint functions")
             else:
+                if not is_global_object(f.__qualname__) and not serialized:
+                    raise InvalidError(
+                        dedent(
+                            """
+                            The `@app.function` decorator must apply to functions in global scope,
+                            unless `serialize=True` is set.
+                            If trying to apply additional decorators, they may need to use `functools.wraps`.
+                            """
+                        )
+                    )
+
+                if not is_top_level_function(f) and is_global_object(f.__qualname__):
+                    raise InvalidError(
+                        dedent(
+                            """
+                            The `@app.function` decorator cannot be used on class methods.
+                            Please use `@app.cls` with `@modal.method` instead. Example:
+
+                            ```python
+                            @app.cls()
+                            class MyClass:
+                                @modal.method()
+                                def f(self, x):
+                                    ...
+                            ```
+                            """
+                        )
+                    )
+
                 info = FunctionInfo(f, serialized=serialized, name_override=name)
                 webhook_config = None
                 raw_f = f
@@ -610,6 +676,7 @@ class _App:
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
+                _experimental_gpus=_experimental_gpus,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -650,7 +717,7 @@ class _App:
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
-        _allow_background_volume_commits: Optional[bool] = None,
+        _allow_background_volume_commits: None = None,
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
@@ -658,10 +725,11 @@ class _App:
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
-        _experimental_boost: bool = False,  # Experimental flag for lower latency function execution (alpha).
+        _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
     ) -> Callable[[CLS_T], _Cls]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
@@ -669,6 +737,11 @@ class _App:
         if interactive:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
+            )
+
+        if _experimental_boost is not None:
+            deprecation_warning(
+                (2024, 7, 23), "`_experimental_boost` is now always-on. This argument is no longer needed."
             )
 
         if image is None:
@@ -683,7 +756,7 @@ class _App:
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
-            info = FunctionInfo(None, serialized=serialized, cls=user_cls)
+            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
             if region:
@@ -724,6 +797,7 @@ class _App:
                 # the callable itself are invalid and set to defaults:
                 webhook_config=None,
                 is_generator=False,
+                _experimental_gpus=_experimental_gpus,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
@@ -735,6 +809,17 @@ class _App:
                 and not enable_memory_snapshot
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
+
+            # Disallow enable_memory_snapshot for parameterized classes
+            # TODO(matt) Temporary fix for MOD-3048
+            constructor = dict(inspect.getmembers(user_cls, inspect.isfunction)).get("__init__")
+            if enable_memory_snapshot and constructor:
+                params = inspect.signature(constructor).parameters
+                if len(params) > 1:
+                    name = user_cls.__name__
+                    raise InvalidError(
+                        f"Cannot use class parameterization in class {name} with `enable_memory_snapshot=True`."
+                    )
 
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
@@ -762,7 +847,7 @@ class _App:
         volumes: Dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
-        _allow_background_volume_commits: Optional[bool] = None,
+        _allow_background_volume_commits: None = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -775,25 +860,35 @@ class _App:
 
         Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
         """
-        if self._running_app:
-            app_id = self._running_app.app_id
-            environment_name = self._running_app.environment_name
-            client = self._client
-        else:
+        deprecation_warning(
+            (2024, 7, 5),
+            """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create`.
+
+            See https://modal.com/docs/guide/sandbox for more info.
+            """,
+        )
+        if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
         if _allow_background_volume_commits is False:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
-                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+                "Disabling volume background commits is now deprecated. "
+                "Remove _allow_background_volume_commits=False to enable the functionality.",
+            )
+        elif _allow_background_volume_commits is True:
+            deprecation_warning(
+                (2024, 7, 18),
+                "Setting volume background commits is deprecated. "
+                "The functionality is now unconditionally enabled (set to True).",
             )
         elif _allow_background_volume_commits is None:
             _allow_background_volume_commits = True
 
-        # TODO(erikbern): pulling a lot of app internals here, let's clean up shortly
-        resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
-        obj = _Sandbox._new(
-            entrypoint_args,
+        return await _Sandbox.create(
+            *entrypoint_args,
+            app=self,
+            environment_name=self._running_app.environment_name,
             image=image or _default_image,
             mounts=mounts,
             secrets=secrets,
@@ -807,12 +902,11 @@ class _App:
             network_file_systems=network_file_systems,
             block_network=block_network,
             volumes=volumes,
-            allow_background_volume_commits=_allow_background_volume_commits,
             pty_info=pty_info,
+            _allow_background_volume_commits=_allow_background_volume_commits,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
+            client=self._client,
         )
-        await resolver.load(obj)
-        return obj
 
     def include(self, /, other_app: "_App"):
         """Include another app's objects in this one.
@@ -847,6 +941,33 @@ class _App:
                 )
 
             self._add_object(tag, object)
+
+    async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
+        """Stream logs from the app.
+
+        This method is considered private and its interface may change - use at your own risk!
+        """
+        if not self._app_id:
+            raise InvalidError("`app._logs` requires a running/stopped app.")
+
+        client = client or self._client or await _Client.from_env()
+
+        last_log_batch_entry_id: Optional[str] = None
+        while True:
+            request = api_pb2.AppGetLogsRequest(
+                app_id=self._app_id,
+                timeout=55,
+                last_entry_id=last_log_batch_entry_id,
+            )
+            async for log_batch in unary_stream(client.stub.AppGetLogs, request):
+                if log_batch.entry_id:
+                    # log_batch entry_id is empty for fd="server" messages from AppGetLogs
+                    last_log_batch_entry_id = log_batch.entry_id
+                if log_batch.app_done:
+                    return
+                for log in log_batch.items:
+                    if log.data:
+                        yield log.data
 
 
 App = synchronize_api(_App)

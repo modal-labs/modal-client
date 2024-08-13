@@ -31,6 +31,12 @@ from modal._serialization import (
     serialize_data_format,
 )
 from modal._utils import async_utils
+from modal._utils.async_utils import synchronize_api
+from modal._utils.blob_utils import (
+    MAX_OBJECT_SIZE_BYTES,
+    blob_download as _blob_download,
+    blob_upload as _blob_upload,
+)
 from modal.app import _App
 from modal.exception import InvalidError
 from modal.partial_function import enter, method
@@ -43,16 +49,27 @@ EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 
+blob_upload = synchronize_api(_blob_upload)
+blob_download = synchronize_api(_blob_download)
+
 
 def _get_inputs(
     args: Tuple[Tuple, Dict] = ((42,), {}),
     n: int = 1,
     kill_switch=True,
     method_name: Optional[str] = None,
+    upload_to_blob: bool = False,
+    client: Optional[Client] = None,
 ) -> List[api_pb2.FunctionGetInputsResponse]:
-    input_pb = api_pb2.FunctionInput(
-        args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
-    )
+    if upload_to_blob:
+        args_blob_id = blob_upload(serialize(args), client.stub)
+        input_pb = api_pb2.FunctionInput(
+            args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+        )
+    else:
+        input_pb = api_pb2.FunctionInput(
+            args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+        )
     inputs = [
         *(
             api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
@@ -119,6 +136,9 @@ def _container_args(
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
     is_class: bool = False,
+    class_parameter_info=api_pb2.ClassParameterInfo(
+        format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
+    ),
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -128,7 +148,6 @@ def _container_args(
         )
     else:
         webhook_config = None
-
     function_def = api_pb2.Function(
         module_name=module_name,
         function_name=function_name,
@@ -144,6 +163,7 @@ def _container_args(
         object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         max_inputs=max_inputs,
         is_class=is_class,
+        class_parameter_info=class_parameter_info,
     )
 
     return api_pb2.ContainerArguments(
@@ -182,6 +202,9 @@ def _run_container(
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
     is_class: bool = False,
+    class_parameter_info=api_pb2.ClassParameterInfo(
+        format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
+    ),
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -199,6 +222,7 @@ def _run_container(
         is_auto_snapshot,
         max_inputs,
         is_class=is_class,
+        class_parameter_info=class_parameter_info,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
         if inputs is None:
@@ -258,6 +282,13 @@ def _unwrap_scalar(ret: ContainerResult):
     assert len(ret.items) == 1
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     return deserialize(ret.items[0].result.data, ret.client)
+
+
+def _unwrap_blob_scalar(ret: ContainerResult, client: Client):
+    assert len(ret.items) == 1
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    data = blob_download(ret.items[0].result.data_blob_id, client.stub)
+    return deserialize(data, ret.client)
 
 
 def _unwrap_exception(ret: ContainerResult):
@@ -672,6 +703,31 @@ def test_param_cls_function(servicer):
 
 
 @skip_github_non_linux
+def test_param_cls_function_strict_params(servicer):
+    schema = [
+        api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_INT),
+        api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_STRING),
+    ]
+    serialized_params = modal._serialization.serialize_proto_params({"x": 111, "y": "foo"}, schema)
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "ParamCls.*",
+        serialized_params=serialized_params,
+        is_class=True,
+        inputs=_get_inputs(method_name="f"),
+        class_parameter_info=api_pb2.ClassParameterInfo(
+            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
+            schema=[
+                api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_INT),
+                api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_STRING),
+            ],
+        ),
+    )
+    assert _unwrap_scalar(ret) == "111 foo 42"
+
+
+@skip_github_non_linux
 def test_cls_web_endpoint(servicer):
     inputs = _get_web_inputs(method_name="web")
     ret = _run_container(
@@ -689,7 +745,7 @@ def test_cls_web_endpoint(servicer):
 @skip_github_non_linux
 def test_cls_web_asgi_construction(servicer):
     servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
-    servicer.app_functions["fu-2"] = api_pb2.FunctionHandleMetadata()
+    servicer.app_functions["fu-2"] = api_pb2.Function()
 
     inputs = _get_web_inputs(method_name="asgi_web")
     ret = _run_container(
@@ -756,7 +812,7 @@ def test_checkpointing_cls_function(servicer):
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "CheckpointingCls.*",
+        "SnapshottingCls.*",
         inputs=_get_inputs((("D",), {}), method_name="f"),
         is_checkpointing_function=True,
         is_class=True,
@@ -783,6 +839,9 @@ def test_cls_enter_uses_event_loop(servicer):
 @skip_github_non_linux
 def test_container_heartbeats(servicer):
     _run_container(servicer, "test.supports.functions", "square")
+    assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in servicer.requests)
+
+    _run_container(servicer, "test.supports.functions", "snapshotting_square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in servicer.requests)
 
 
@@ -1135,11 +1194,11 @@ def test_build_decorator_cls(servicer):
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "BuildCls.*",
-        inputs=_get_inputs(((), {}), method_name="build1"),
+        # note: builder functions are still run as standalone functions from their class service function
+        "BuildCls.build1",
+        inputs=_get_inputs(((), {})),
         is_builder_function=True,
         is_auto_snapshot=True,
-        is_class=True,
     )
     assert _unwrap_scalar(ret) == 101
     # TODO: this is GENERIC_STATUS_FAILURE when `@exit` fails,
@@ -1153,11 +1212,11 @@ def test_multiple_build_decorator_cls(servicer):
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "BuildCls.*",
-        inputs=_get_inputs(((), {}), method_name="build2"),
+        # note: builder functions are still run as standalone functions from their class service function
+        "BuildCls.build2",
+        inputs=_get_inputs(((), {})),
         is_builder_function=True,
         is_auto_snapshot=True,
-        is_class=True,
     )
     assert _unwrap_scalar(ret) == 1001
     assert ret.task_result is None
@@ -1276,7 +1335,7 @@ def test_cancellation_aborts_current_input_on_match(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
     stdout, stderr = container_process.communicate()
-    assert stderr.decode().count("was cancelled by a user request") == live_cancellations
+    assert stderr.decode().count("Received a cancellation signal") == live_cancellations
     assert "Traceback" not in stderr.decode()
     assert container_process.returncode == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit
@@ -1318,6 +1377,18 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     )  # should not fail the outputs, as they would have been cancelled in backend already
     assert "Traceback" not in container_process.stderr.read().decode("utf8")
     assert exit_code == 0  # container should exit gracefully
+
+
+@skip_github_non_linux
+def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
+    monkeypatch.setattr("modal._container_io_manager.MAX_OBJECT_SIZE_BYTES", 0)
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "ident",
+        inputs=_get_inputs(((42,), {}), upload_to_blob=True, client=client),
+    )
+    assert _unwrap_blob_scalar(ret, client) == 42
 
 
 @skip_github_non_linux
@@ -1421,6 +1492,24 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
     assert loop_iteration_failures > 5
     assert "error=Exception('oops')" in caplog.text
     assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_container_doesnt_send_large_exceptions(servicer):
+    # Tests that large exception messages (>2mb are trimmed)
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "raise_large_unicode_exception",
+        inputs=_get_inputs(((), {})),
+    )
+
+    assert len(ret.items) == 1
+    assert len(ret.items[0].SerializeToString()) < MAX_OBJECT_SIZE_BYTES * 1.5
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "UnicodeDecodeError" in ret.items[0].result.exception
+    assert servicer.task_result is None  # should not cause a failure result
 
 
 @skip_github_non_linux
@@ -1618,3 +1707,19 @@ def test_function_lazy_resolution(servicer, set_env_client):
     deploy_app_externally(servicer, "test.supports.lazy_hydration", "app", capture_output=False)
     ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-1", "vo-0"])
     assert _unwrap_scalar(ret) is None
+
+
+@skip_github_non_linux
+def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env_client):
+    _run_container(
+        servicer,
+        "test.supports.volume_local",
+        "volume_func_outer",
+        inputs=_get_inputs(((), {})),
+    )
+
+    warnings = len(recwarn)
+    for w in range(warnings):
+        warning = str(recwarn.pop().message)
+        assert "and will not have access to the mounted Volume or NetworkFileSystem data" not in warning
+    assert len(recwarn) == 0

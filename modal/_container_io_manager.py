@@ -1,13 +1,16 @@
 # Copyright Modal Labs 2024
 import asyncio
+import inspect
 import json
 import math
 import os
 import signal
+import sys
 import time
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, List, Optional, Set, Tuple
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Set, Tuple
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -16,7 +19,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._serialization import deserialize, deserialize_data_format, serialize, serialize_data_format
+from ._serialization import deserialize, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
@@ -38,6 +41,126 @@ class UserException(Exception):
 
 class Sentinel:
     """Used to get type-stubs to work with this object."""
+
+
+@dataclass
+class FinalizedFunction:
+    callable: Callable[..., Any]
+    is_async: bool
+    is_generator: bool
+    data_format: int  # api_pb2.DataFormat
+
+
+class IOContext:
+    """Context object for managing input, function calls, and function executions
+    in a batched or single input context.
+    """
+
+    input_ids: List[str]
+    function_call_ids: List[str]
+    finalized_function: FinalizedFunction
+
+    def __init__(
+        self,
+        input_ids: List[str],
+        function_call_ids: List[str],
+        finalized_function: FinalizedFunction,
+        deserialized_args: List,
+        is_batched: bool,
+    ):
+        self.input_ids = input_ids
+        self.function_call_ids = function_call_ids
+        self.finalized_function = finalized_function
+        self._deserialized_args = deserialized_args
+        self._is_batched = is_batched
+
+    @classmethod
+    async def create(
+        cls,
+        client: _Client,
+        finalized_functions: Dict[str, FinalizedFunction],
+        inputs: List[Tuple[str, str, api_pb2.FunctionInput]],
+        is_batched: bool,
+    ) -> "IOContext":
+        assert len(inputs) >= 1 if is_batched else len(inputs) == 1
+        input_ids, function_call_ids, inputs = zip(*inputs)
+
+        async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput) -> api_pb2.FunctionInput:
+            # If we got a pointer to a blob, download it from S3.
+            if input.WhichOneof("args_oneof") == "args_blob_id":
+                args = await blob_download(input.args_blob_id, client.stub)
+                # Mutating
+                input.ClearField("args_blob_id")
+                input.args = args
+
+            return input
+
+        inputs = await asyncio.gather(*[_populate_input_blobs(client, input) for input in inputs])
+        # check every input in batch executes the same function
+        method_name = inputs[0].method_name
+        assert all(method_name == input.method_name for input in inputs)
+        finalized_function = finalized_functions[method_name]
+        # TODO(cathy) Performance decrease if we deserialize inputs later
+        deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in inputs]
+        return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
+
+    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List]]:
+        if not self._is_batched:
+            return self._deserialized_args[0]
+
+        func_name = self.finalized_function.callable.__name__
+
+        # batched function cannot have default arguments
+        param_names = []
+        for param in inspect.signature(self.finalized_function.callable).parameters.values():
+            param_names.append(param.name)
+
+        # aggregate args and kwargs of all inputs into a kwarg dict
+        kwargs_by_inputs: List[Dict[str, Any]] = [{} for _ in range(len(self.input_ids))]
+        for i, (args, kwargs) in enumerate(self._deserialized_args):
+            # check that all batched inputs should have the same number of args and kwargs
+            if (num_params := len(args) + len(kwargs)) != len(param_names):
+                raise InvalidError(
+                    f"Modal batched function {func_name} takes {len(param_names)} positional arguments, but one invocation in the batch has {num_params}."  # noqa
+                )
+
+            for j, arg in enumerate(args):
+                kwargs_by_inputs[i][param_names[j]] = arg
+            for k, v in kwargs.items():
+                if k not in param_names:
+                    raise InvalidError(
+                        f"Modal batched function {func_name} got unexpected keyword argument {k} in one invocation in the batch."  # noqa
+                    )
+                if k in kwargs_by_inputs[i]:
+                    raise InvalidError(
+                        f"Modal batched function {func_name} got multiple values for argument {k} in one invocation in the batch."  # noqa
+                    )
+                kwargs_by_inputs[i][k] = v
+
+        formatted_kwargs = {
+            param_name: [kwargs[param_name] for kwargs in kwargs_by_inputs] for param_name in param_names
+        }
+        return (), formatted_kwargs
+
+    def call_finalized_function(self) -> Any:
+        args, kwargs = self._args_and_kwargs()
+        logger.debug(f"Starting input {self.input_ids} (async)")
+        res = self.finalized_function.callable(*args, **kwargs)
+        logger.debug(f"Finished input {self.input_ids} (async)")
+        return res
+
+    def validate_output_data(self, data: Any) -> List[Any]:
+        if not self._is_batched:
+            return [data]
+
+        function_name = self.finalized_function.callable.__name__
+        if not isinstance(data, list):
+            raise InvalidError(f"Output of batched function {function_name} must be a list.")
+        if len(data) != len(self.input_ids):
+            raise InvalidError(
+                f"Output of batched function {function_name} must be a list of equal length as its inputs."
+            )
+        return data
 
 
 class _ContainerIOManager:
@@ -62,8 +185,9 @@ class _ContainerIOManager:
     _input_concurrency: Optional[int]
     _semaphore: Optional[asyncio.Semaphore]
     _environment_name: str
-    _waiting_for_memory_snapshot: bool
     _heartbeat_loop: Optional[asyncio.Task]
+    _heartbeat_condition: asyncio.Condition
+    _waiting_for_memory_snapshot: bool
 
     _is_interactivity_enabled: bool
     _fetching_inputs: bool
@@ -90,8 +214,9 @@ class _ContainerIOManager:
 
         self._semaphore = None
         self._environment_name = container_args.environment_name
-        self._waiting_for_memory_snapshot = False
         self._heartbeat_loop = None
+        self._heartbeat_condition = asyncio.Condition()
+        self._waiting_for_memory_snapshot = False
 
         self._is_interactivity_enabled = False
         self._fetching_inputs = True
@@ -135,22 +260,24 @@ class _ContainerIOManager:
         # Return True if a cancellation event was received, in that case
         # we shouldn't wait too long for another heartbeat
 
-        # Don't send heartbeats for tasks waiting to be checkpointed.
-        # Calling gRPC methods open new connections which block the
-        # checkpointing process.
-        if self._waiting_for_memory_snapshot:
-            return False
-
         request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
         if self.current_input_id is not None:
             request.current_input_id = self.current_input_id
         if self.current_input_started_at is not None:
             request.current_input_started_at = self.current_input_started_at
 
-        # TODO(erikbern): capture exceptions?
-        response = await retry_transient_errors(
-            self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
-        )
+        async with self._heartbeat_condition:
+            # Continuously wait until `waiting_for_memory_snapshot` is false.
+            # TODO(matt): Verify that a `while` is necessary over an `if`. Spurious
+            # wakeups could allow execution to continue despite `_waiting_for_memory_snapshot`
+            # being true.
+            while self._waiting_for_memory_snapshot:
+                await self._heartbeat_condition.wait()
+
+            # TODO(erikbern): capture exceptions?
+            response = await retry_transient_errors(
+                self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
+            )
 
         if response.HasField("cancel_input_event"):
             # Pause processing of the current input by signaling self a SIGUSR1.
@@ -185,10 +312,11 @@ class _ContainerIOManager:
         return False
 
     @asynccontextmanager
-    async def heartbeats(self) -> AsyncGenerator[None, None]:
+    async def heartbeats(self, wait_for_mem_snap: bool) -> AsyncGenerator[None, None]:
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")
+            self._waiting_for_memory_snapshot = wait_for_mem_snap
             try:
                 yield
             finally:
@@ -244,8 +372,12 @@ class _ContainerIOManager:
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
 
-    def deserialize_data_format(self, data: bytes, data_format: int) -> Any:
-        return deserialize_data_format(data, data_format, self._client)
+    async def format_blob_data(self, data: bytes) -> Dict[str, Any]:
+        return (
+            {"data_blob_id": await blob_upload(data, self._client.stub)}
+            if len(data) > MAX_OBJECT_SIZE_BYTES
+            else {"data": data}
+        )
 
     async def get_data_in(self, function_call_id: str) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
@@ -313,14 +445,6 @@ class _ContainerIOManager:
         """Put a value onto a queue, using the synchronicity event loop."""
         await queue.put(value)
 
-    async def populate_input_blobs(self, item: api_pb2.FunctionInput):
-        args = await blob_download(item.args_blob_id, self._client.stub)
-
-        # Mutating
-        item.ClearField("args_blob_id")
-        item.args = args
-        return item
-
     def get_average_call_time(self) -> float:
         if self.calls_completed == 0:
             return 0
@@ -334,14 +458,18 @@ class _ContainerIOManager:
         return math.ceil(RTT_S / max(self.get_average_call_time(), 1e-6))
 
     @synchronizer.no_io_translation
-    async def _generate_inputs(self) -> AsyncIterator[Tuple[str, str, api_pb2.FunctionInput]]:
+    async def _generate_inputs(
+        self,
+        batch_max_size: int,
+        batch_linger_ms: int,
+    ) -> AsyncIterator[List[Tuple[str, str, api_pb2.FunctionInput]]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
-        eof_received = False
         iteration = 0
-        while not eof_received and self._fetching_inputs:
+        while self._fetching_inputs:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self._input_concurrency
+            request.batch_max_size, request.batch_linger_ms = batch_max_size, batch_linger_ms
 
             await self._semaphore.acquire()
             yielded = False
@@ -361,36 +489,42 @@ class _ContainerIOManager:
                 elif response.inputs:
                     # for input cancellations and concurrency logic we currently assume
                     # that there is no input buffering in the container
-                    assert len(response.inputs) == 1
-
+                    assert 0 < len(response.inputs) <= max(1, request.batch_max_size)
+                    inputs = []
+                    final_input_received = False
                     for item in response.inputs:
                         if item.kill_switch:
                             logger.debug(f"Task {self.task_id} input kill signal input.")
-                            eof_received = True
-                            break
+                            return
                         if item.input_id in self.cancelled_input_ids:
                             continue
 
-                        # If we got a pointer to a blob, download it from S3.
-                        if item.input.WhichOneof("args_oneof") == "args_blob_id":
-                            input_pb = await self.populate_input_blobs(item.input)
-                        else:
-                            input_pb = item.input
-
-                        # If yielded, allow semaphore to be released via complete_call
-                        yield (item.input_id, item.function_call_id, input_pb)
-                        yielded = True
-
-                        # We only support max_inputs = 1 at the moment
-                        if item.input.final_input or self.function_def.max_inputs == 1:
-                            eof_received = True
+                        inputs.append((item.input_id, item.function_call_id, item.input))
+                        if item.input.final_input:
+                            if request.batch_max_size > 0:
+                                logger.debug(f"Task {self.task_id} Final input not expected in batch input stream")
+                            final_input_received = True
                             break
+
+                    # If yielded, allow semaphore to be released via exit_context
+                    yield inputs
+                    yielded = True
+
+                    # We only support max_inputs = 1 at the moment
+                    if final_input_received or self.function_def.max_inputs == 1:
+                        return
             finally:
                 if not yielded:
                     self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def run_inputs_outputs(self, input_concurrency: int = 1) -> AsyncIterator[Tuple[str, str, str, Any, Any]]:
+    async def run_inputs_outputs(
+        self,
+        finalized_functions: Dict[str, FinalizedFunction],
+        input_concurrency: int = 1,
+        batch_max_size: int = 0,
+        batch_linger_ms: int = 0,
+    ) -> AsyncIterator[IOContext]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
@@ -398,35 +532,34 @@ class _ContainerIOManager:
         self._input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
-        async for input_id, function_call_id, input_pb in self._generate_inputs():
-            args, kwargs = self.deserialize(input_pb.args) if input_pb.args else ((), {})
-            self.current_input_id, self.current_input_started_at = (input_id, time.time())
-            yield input_id, function_call_id, input_pb.method_name, args, kwargs
+        async for inputs in self._generate_inputs(batch_max_size, batch_linger_ms):
+            io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
+            self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
+            yield io_context
             self.current_input_id, self.current_input_started_at = (None, None)
 
         # collect all active input slots, meaning all inputs have wrapped up.
         for _ in range(input_concurrency):
             await self._semaphore.acquire()
 
-    async def _push_output(self, input_id, started_at: float, data_format=api_pb2.DATA_FORMAT_UNSPECIFIED, **kwargs):
-        # upload data to S3 if too big.
-        if "data" in kwargs and kwargs["data"] and len(kwargs["data"]) > MAX_OBJECT_SIZE_BYTES:
-            data_blob_id = await blob_upload(kwargs["data"], self._client.stub)
-            # mutating kwargs.
-            del kwargs["data"]
-            kwargs["data_blob_id"] = data_blob_id
-
-        output = api_pb2.FunctionPutOutputsItem(
-            input_id=input_id,
-            input_started_at=started_at,
-            output_created_at=time.time(),
-            result=api_pb2.GenericResult(**kwargs),
-            data_format=data_format,
-        )
-
+    @synchronizer.no_io_translation
+    async def _push_outputs(
+        self, io_context: IOContext, started_at: float, data_format: int, results: List[api_pb2.GenericResult]
+    ) -> None:
+        output_created_at = time.time()
+        outputs = [
+            api_pb2.FunctionPutOutputsItem(
+                input_id=input_id,
+                input_started_at=started_at,
+                output_created_at=output_created_at,
+                result=result,
+                data_format=data_format,
+            )
+            for input_id, result in zip(io_context.input_ids, results)
+        ]
         await retry_transient_errors(
             self._client.stub.FunctionPutOutputs,
-            api_pb2.FunctionPutOutputsRequest(outputs=[output]),
+            api_pb2.FunctionPutOutputsRequest(outputs=outputs),
             additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             max_retries=None,  # Retry indefinitely, trying every 1s.
         )
@@ -486,7 +619,11 @@ class _ContainerIOManager:
             raise UserException()
 
     @asynccontextmanager
-    async def handle_input_exception(self, input_id, started_at: float) -> AsyncGenerator[None, None]:
+    async def handle_input_exception(
+        self,
+        io_context: IOContext,
+        started_at: float,
+    ) -> AsyncGenerator[None, None]:
         """Handle an exception while processing a function input."""
         try:
             yield
@@ -501,8 +638,8 @@ class _ContainerIOManager:
             # just skip creating any output for this input and keep going with the next instead
             # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
-            logger.warning(f"The current input ({input_id=}) was cancelled by a user request")
-            await self.complete_call(started_at)
+            logger.warning(f"Received a cancellation signal while processing input {io_context.input_ids}")
+            await self.exit_context(started_at)
             return
         except BaseException as exc:
             # print exception so it's logged
@@ -514,34 +651,60 @@ class _ContainerIOManager:
             # serializing the exception, which may have some issues (there
             # was an earlier note about it that it might not be possible
             # to unpickle it in some cases). Let's watch out for issues.
-            await self._push_output(
-                input_id,
+
+            repr_exc = repr(exc)
+            if len(repr_exc) >= MAX_OBJECT_SIZE_BYTES:
+                # We prevent large exception messages to avoid
+                # unhandled exceptions causing inf loops
+                # and just send backa trimmed version
+                trimmed_bytes = len(repr_exc) - MAX_OBJECT_SIZE_BYTES - 1000
+                repr_exc = repr_exc[: MAX_OBJECT_SIZE_BYTES - 1000]
+                repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
+
+            results = [
+                api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                    exception=repr_exc,
+                    traceback=traceback.format_exc(),
+                    serialized_tb=serialized_tb,
+                    tb_line_cache=tb_line_cache,
+                    **await self.format_blob_data(self.serialize_exception(exc)),
+                )
+                for _ in io_context.input_ids
+            ]
+            await self._push_outputs(
+                io_context=io_context,
                 started_at=started_at,
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
-                status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-                data=self.serialize_exception(exc),
-                exception=repr(exc),
-                traceback=traceback.format_exc(),
-                serialized_tb=serialized_tb,
-                tb_line_cache=tb_line_cache,
+                results=results,
             )
-            await self.complete_call(started_at)
+            await self.exit_context(started_at)
 
-    async def complete_call(self, started_at):
+    async def exit_context(self, started_at):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
         self._semaphore.release()
 
     @synchronizer.no_io_translation
-    async def push_output(self, input_id, started_at: float, data: Any, data_format: int) -> None:
-        await self._push_output(
-            input_id,
+    async def push_outputs(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
+        data = io_context.validate_output_data(data)
+        formatted_data = await asyncio.gather(
+            *[self.format_blob_data(self.serialize_data_format(d, data_format)) for d in data]
+        )
+        results = [
+            api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                **d,
+            )
+            for d in formatted_data
+        ]
+        await self._push_outputs(
+            io_context=io_context,
             started_at=started_at,
             data_format=data_format,
-            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-            data=self.serialize_data_format(data, data_format),
+            results=results,
         )
-        await self.complete_call(started_at)
+        await self.exit_context(started_at)
 
     async def memory_restore(self) -> None:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
@@ -581,23 +744,47 @@ class _ContainerIOManager:
         self.current_input_id = None
         self.current_input_started_at = None
 
+        # Patch torch to ensure it doesn't return CUDA unavailibility due to
+        # cached queries that executed during snapshot process. ref: MOD-3257
+        #
+        # perf: scanning sys.modules keys before import to avoid slow PYTHONPATH scanning.
+        if "torch" in sys.modules:
+            try:
+                sys.modules["torch"].cuda.device_count = sys.modules["torch"].cuda._device_count_nvml
+            # Wide-open except to catch anything. We don't want to crash here.
+            except Exception as exc:
+                logger.warning(
+                    f"failed to patch 'torch.cuda.device_count' during snapshot restore: {exc}. "
+                    "CUDA device availability may be inaccurate."
+                )
+
         self._client = await _Client.from_env()
-        self._waiting_for_memory_snapshot = False
 
     async def memory_snapshot(self) -> None:
         """Message server indicating that function is ready to be checkpointed."""
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
 
-        await self._client.stub.ContainerCheckpoint(
-            api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
-        )
+        # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
+        async with self._heartbeat_condition:
+            # Notify the heartbeat loop that the snapshot phase has begun in order to
+            # prevent it from sending heartbeat RPCs
+            self._waiting_for_memory_snapshot = True
+            self._heartbeat_condition.notify_all()
 
-        self._waiting_for_memory_snapshot = True
-        await self._client._close(forget_credentials=True)
+            await self._client.stub.ContainerCheckpoint(
+                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+            )
 
-        logger.debug("Memory snapshot request sent. Connection closed.")
-        await self.memory_restore()
+            await self._client._close(forget_credentials=True)
+
+            logger.debug("Memory snapshot request sent. Connection closed.")
+            await self.memory_restore()
+
+            # Turn heartbeats back on. This is safe since the snapshot RPC
+            # and the restore phase has finished.
+            self._waiting_for_memory_snapshot = False
+            self._heartbeat_condition.notify_all()
 
     async def volume_commit(self, volume_ids: List[str]) -> None:
         """

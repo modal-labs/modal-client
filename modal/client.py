@@ -16,7 +16,7 @@ from modal_version import __version__
 from ._utils import async_utils
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
-from ._utils.http_utils import http_client_with_tls
+from ._utils.http_utils import ClientSessionRegistry
 from .config import _check_config, config, logger
 from .exception import AuthError, ConnectionError, DeprecationError, VersionError
 
@@ -64,9 +64,8 @@ def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], vers
 async def _http_check(url: str, timeout: float) -> str:
     # Used for sanity checking connection issues
     try:
-        async with http_client_with_tls(timeout=timeout) as session:
-            async with session.get(url) as resp:
-                return f"HTTP status: {resp.status}"
+        async with ClientSessionRegistry.get_session().get(url) as resp:
+            return f"HTTP status: {resp.status}"
     except ClientResponseError as exc:
         return f"HTTP status: {exc.status}"
     except ClientConnectorError as exc:
@@ -103,8 +102,9 @@ class _Client:
         self._stub: Optional[api_grpc.ModalClientStub] = None
 
     @property
-    def stub(self) -> Optional[api_grpc.ModalClientStub]:
+    def stub(self) -> api_grpc.ModalClientStub:
         """mdmd:hidden"""
+        assert self._stub
         return self._stub
 
     @property
