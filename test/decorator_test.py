@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import App, asgi_app, method, web_endpoint, wsgi_app
+from modal import App, asgi_app, batched, method, web_endpoint, wsgi_app
 from modal.exception import InvalidError
 
 
@@ -81,5 +81,18 @@ def test_web_endpoint_method():
         class Container:
             @method()  # type: ignore
             @web_endpoint()
+            def generate(self):
+                pass
+
+
+def test_batch_method():
+    app = App()
+
+    with pytest.raises(InvalidError, match="remove the `@method`"):
+
+        @app.cls()
+        class Container:
+            @method()  # type: ignore
+            @batched(max_batch_size=2, wait_ms=0)
             def generate(self):
                 pass
