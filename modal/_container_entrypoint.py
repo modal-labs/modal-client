@@ -124,11 +124,11 @@ class Service(metaclass=ABCMeta):
 
 @dataclass
 class ImportedFunction(Service):
+    user_cls_instance: Any
     app: Optional[_App]
     code_deps: Optional[List["modal.object._Object"]]
-    _user_defined_callable: Callable[..., Any]
 
-    user_cls_instance = None
+    _user_defined_callable: Callable[..., Any]
 
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
@@ -495,7 +495,7 @@ def import_single_function_service(
 
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
-        user_defined_callable = ser_fun
+        cls, user_defined_callable = ser_cls, ser_fun
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
@@ -507,14 +507,13 @@ def import_single_function_service(
         parts = qual_name.split(".")
         if len(parts) == 1:
             # This is a function
+            cls = None
             f = getattr(module, qual_name)
             if isinstance(f, Function):
-                # decorated in global scope
                 function = synchronizer._translate_in(f)
                 user_defined_callable = function.get_raw_f()
                 active_app = function._app
             else:
-                # decorated in some local scope, so we have the real callable already
                 user_defined_callable = f
         elif len(parts) == 2:
             # As of v0.63 - this path should only be triggered by @build class builder methods
@@ -547,6 +546,7 @@ def import_single_function_service(
         code_deps = function.deps(only_explicit_mounts=True)
 
     return ImportedFunction(
+        user_cls_instance,
         active_app,
         code_deps,
         user_defined_callable,
