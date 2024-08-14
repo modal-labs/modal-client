@@ -110,7 +110,6 @@ class IOContext:
 
         func_name = self.finalized_function.callable.__name__
 
-        # batched function cannot have default arguments
         param_names = []
         for param in inspect.signature(self.finalized_function.callable).parameters.values():
             param_names.append(param.name)
@@ -461,7 +460,7 @@ class _ContainerIOManager:
     async def _generate_inputs(
         self,
         batch_max_size: int,
-        batch_linger_ms: int,
+        batch_wait_ms: int,
     ) -> AsyncIterator[List[Tuple[str, str, api_pb2.FunctionInput]]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
@@ -469,7 +468,7 @@ class _ContainerIOManager:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self._input_concurrency
-            request.batch_max_size, request.batch_linger_ms = batch_max_size, batch_linger_ms
+            request.batch_max_size, request.batch_linger_ms = batch_max_size, batch_wait_ms
 
             await self._semaphore.acquire()
             yielded = False
@@ -523,7 +522,7 @@ class _ContainerIOManager:
         finalized_functions: Dict[str, FinalizedFunction],
         input_concurrency: int = 1,
         batch_max_size: int = 0,
-        batch_linger_ms: int = 0,
+        batch_wait_ms: int = 0,
     ) -> AsyncIterator[IOContext]:
         # Ensure we do not fetch new inputs when container is too busy.
         # Before trying to fetch an input, acquire the semaphore:
@@ -532,7 +531,7 @@ class _ContainerIOManager:
         self._input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
-        async for inputs in self._generate_inputs(batch_max_size, batch_linger_ms):
+        async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
             io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
             self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
             yield io_context
