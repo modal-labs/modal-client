@@ -171,7 +171,10 @@ class TaskContext:
     def infinite_loop(
         self, async_f, timeout: Optional[float] = 90, sleep: float = 10, log_exception: bool = True
     ) -> asyncio.Task:
-        function_name = async_f.__qualname__
+        if isinstance(async_f, functools.partial):
+            function_name = async_f.func.__qualname__
+        else:
+            function_name = async_f.__qualname__
 
         async def loop_coro() -> None:
             logger.debug(f"Starting infinite loop {function_name}")

@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import functools
 import logging
 import os
 import platform
@@ -97,6 +98,17 @@ async def test_task_context_infinite_loop():
     assert not t.cancelled()
     assert t.done()
     assert counter == 4  # should be exited immediately
+
+
+@skip_github_non_linux
+@pytest.mark.asyncio
+async def test_task_context_infinite_loop_non_functions():
+    async with TaskContext(grace=0.01) as task_context:
+        async def f(x):
+            pass
+
+        task_context.infinite_loop(lambda: f(123))
+        task_context.infinite_loop(functools.partial(f, 123))
 
 
 @pytest.mark.asyncio
