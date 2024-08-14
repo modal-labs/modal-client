@@ -258,6 +258,8 @@ message AppDeploymentHistory {
   double deployed_at = 4;
   string deployed_by = 5;
   string tag = 6;
+  uint32 rollback_version = 7;
+  bool rollback_allowed = 8;
 }
 
 message AppDeploymentHistoryRequest {
