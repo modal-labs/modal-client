@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
+import typing_extensions
 from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -20,7 +21,7 @@ from ._utils.grpc_utils import unary_stream
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
-from .cls import _Cls
+from .cls import _Cls, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
@@ -684,6 +685,7 @@ class _App:
 
         return wrapped
 
+    @typing_extensions.dataclass_transform(field_specifiers=(parameter,))
     def cls(
         self,
         _warn_parentheses_missing: Optional[bool] = None,
@@ -730,7 +732,7 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
-    ) -> Callable[[CLS_T], _Cls]:
+    ) -> Callable[[CLS_T], CLS_T]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
@@ -749,7 +751,7 @@ class _App:
 
         secrets = [*self._secrets, *secrets]
 
-        def wrapper(user_cls: CLS_T) -> _Cls:
+        def wrapper(user_cls: CLS_T) -> CLS_T:
             nonlocal keep_warm
 
             # Check if the decorated object is a class
@@ -820,10 +822,10 @@ class _App:
                     raise InvalidError(
                         f"Cannot use class parameterization in class {name} with `enable_memory_snapshot=True`."
                     )
-
+            # TODO(elias): raise invalid in case of memory snapshotting when using implicit constructors as well
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
-            return cls
+            return cls  # type: ignore  # a _Cls instance "simulates" being the user provided class
 
         return wrapper
 

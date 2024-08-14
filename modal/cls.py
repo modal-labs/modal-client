@@ -41,6 +41,36 @@ if typing.TYPE_CHECKING:
     import modal.app
 
 
+def _use_annotation_parameters(user_cls) -> bool:
+    has_parameters = any(isinstance(cls_member, _Parameter) for cls_member in user_cls.__dict__.values())
+    has_explicit_constructor = user_cls.__init__ != object.__init__
+    return has_parameters and not has_explicit_constructor
+
+
+def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
+    if not _use_annotation_parameters(user_cls):
+        return inspect.signature(user_cls.__init__)
+    else:
+        constructor_parameters = []
+        for name, annotation_value in user_cls.__annotations__.items():
+            if hasattr(user_cls, name):
+                parameter_spec = getattr(user_cls, name)
+                if isinstance(parameter_spec, _Parameter):
+                    maybe_default = {}
+                    if not isinstance(parameter_spec.default, _NO_DEFAULT):
+                        maybe_default["default"] = parameter_spec.default
+
+                    param = inspect.Parameter(
+                        name=name,
+                        annotation=annotation_value,
+                        kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                        **maybe_default,
+                    )
+                    constructor_parameters.append(param)
+
+        return inspect.Signature(constructor_parameters)
+
+
 class _Obj:
     """An instance of a `Cls`, i.e. `Cls("foo", 42)` returns an `Obj`.
 
@@ -96,45 +126,19 @@ class _Obj:
         self._user_cls = user_cls
         self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
 
-        if self._user_cls.__init__ == object.__init__:
-            # eager validation of constructor arguments in case of implicit construction
-            # this would raise errors early if the passed arguments don't match annotation
-            # based signature of the implicit constructor
-            self._computed_parameters = self._parameters_from_annotations_and_args(args, kwargs)
-
-    def _parameters_from_annotations_and_args(self, args, kwargs) -> typing.Dict[str, Any]:
-        """Construct parameter attributes using constructor arguments + class annotation information"""
-        constructor_parameters = []
-        for name in self._user_cls.__annotations__.keys():
-            if hasattr(self._user_cls, name):
-                parameter_spec = getattr(self._user_cls, name)
-                if isinstance(parameter_spec, _Parameter):
-                    maybe_default = {}
-                    if not isinstance(parameter_spec.default, _NO_DEFAULT):
-                        maybe_default["default"] = parameter_spec.default
-
-                    param = inspect.Parameter(name=name, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, **maybe_default)
-                    constructor_parameters.append(param)
-
-        sig = inspect.Signature(constructor_parameters)
-        bound_vars = sig.bind(*args, **kwargs)
-        bound_vars.apply_defaults()
-        return bound_vars.arguments
-
     def _user_cls_instance_constr(self):
         args, kwargs = self._construction_args
-        if self._user_cls.__init__ != object.__init__:
-            # user has custom constructor
-            # TODO: deprecate custom constructors
+        if not _use_annotation_parameters(self._user_cls):
+            # TODO(elias): deprecate this code path eventually
             user_cls_instance = self._user_cls(*args, **kwargs)
         else:
-            # implicit constructor using class type annotations, like dataclasses
-            # in order to support both positional and keyword arguments, we construct a Signature to bind
-            # the user's arguments to names:
-            # TODO: let users designate annotations as non-init/non-parameters, similar to dataclasses
-            assert self._computed_parameters is not None  # should have been created in constructor
+            # set the attributes on the class corresponding to annotations
+            # with = parameter() specifications
+            sig = _get_class_constructor_signature(self._user_cls)
+            bound_vars = sig.bind(*args, **kwargs)
+            bound_vars.apply_defaults()
             user_cls_instance = self._user_cls.__new__(self._user_cls)  # new instance without running __init__
-            user_cls_instance.__dict__.update(self._computed_parameters)
+            user_cls_instance.__dict__.update(bound_vars.arguments)
 
         user_cls_instance._modal_functions = self._method_functions  # Needed for PartialFunction.__get__
         return user_cls_instance
@@ -513,6 +517,7 @@ class _Parameter:
         self.init = init
 
 
-def parameter(default: Any = _NO_DEFAULT(), init: bool = True) -> _Parameter:
+def parameter(default: Any = _NO_DEFAULT(), init: bool = True) -> Any:
     """Used to specify options for modal.cls parameters, similar to dataclass.field"""
+    # has to return Any to be assignable to any annotation (https://github.com/microsoft/pyright/issues/5102)
     return _Parameter(default, init)
