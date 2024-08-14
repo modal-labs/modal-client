@@ -52,7 +52,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         return inspect.signature(user_cls.__init__)
     else:
         constructor_parameters = []
-        for name, annotation_value in user_cls.__annotations__.items():
+        for name, annotation_value in user_cls.__dict__.get("__annotations__", {}).items():
             if hasattr(user_cls, name):
                 parameter_spec = getattr(user_cls, name)
                 if isinstance(parameter_spec, _Parameter):
@@ -80,7 +80,6 @@ class _Obj:
     _entered: bool
     _user_cls_instance: Optional[Any] = None
     _construction_args: Tuple[Tuple, Dict[str, Any]]
-    _computed_parameters: Optional[Dict[str, Any]] = None  # only used for implicit constructors
 
     _instance_service_function: Optional[_Function]
 

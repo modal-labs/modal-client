@@ -670,14 +670,14 @@ def test_disallow_lifecycle_decorators_with_method(decorator):
 def test_deprecated_sync_methods():
     class ClsWithDeprecatedSyncMethods:
         def __enter__(self):
-            return 42
+            ...
 
         @enter()
         def my_enter(self):
-            return 43
+            ...
 
         def __exit__(self, exc_type, exc, tb):
-            return 44
+            ...
 
     obj = ClsWithDeprecatedSyncMethods()
 
@@ -692,7 +692,7 @@ def test_deprecated_sync_methods():
         class ClsWithDeprecatedSyncExitMethod:
             @exit()
             def my_exit(self, exc_type, exc, tb):
-                return 45
+                ...
 
 
 @pytest.mark.asyncio
@@ -721,7 +721,7 @@ async def test_deprecated_async_methods():
         class ClsWithDeprecatedAsyncExitMethod:
             @exit()
             async def my_exit(self, exc_type, exc, tb):
-                return 45
+                ...
 
 
 class HasSnapMethod:
