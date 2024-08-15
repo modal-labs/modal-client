@@ -16,7 +16,14 @@ def replace_invalid_subdomain_chars(label: str) -> str:
 
 
 def is_valid_object_name(name: str) -> bool:
-    return len(name) <= 64 and re.match("^[a-zA-Z0-9-_.]+$", name) is not None
+    return (
+        # Limit object name length
+        len(name) <= 64
+        # Limit character set
+        and re.match("^[a-zA-Z0-9-_.]+$", name) is not None
+        # Avoid collisions with App IDs
+        and re.match("^ap-[a-zA-Z0-9]{22}$", name) is None
+    )
 
 
 def is_valid_environment_name(name: str) -> bool:
@@ -34,7 +41,7 @@ def check_object_name(name: str, object_type: str) -> None:
     message = (
         f"Invalid {object_type} name: '{name}'."
         "\n\nNames may contain only alphanumeric characters, dashes, periods, and underscores,"
-        " and must be shorter than 64 characters."
+        " must be shorter than 64 characters, and cannot conflict with App ID strings."
     )
     if not is_valid_object_name(name):
         raise InvalidError(message)
