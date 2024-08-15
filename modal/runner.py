@@ -2,6 +2,7 @@
 import asyncio
 import dataclasses
 import os
+import time
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Coroutine, Dict, List, Optional, TypeVar
 
@@ -445,6 +446,8 @@ async def _deploy_app(
     if client is None:
         client = await _Client.from_env()
 
+    t0 = time.time()
+
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
     )
@@ -471,7 +474,8 @@ async def _deploy_app(
             raise e
 
     if output_mgr := OutputManager.get():
-        output_mgr.print(step_completed("App deployed! 🎉"))
+        t = time.time() - t0
+        output_mgr.print(step_completed(f"App deployed in {t:.3f}s! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(app_id=running_app.app_id)
 
