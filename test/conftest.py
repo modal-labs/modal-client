@@ -89,6 +89,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.slow_put_inputs = False
         self.container_inputs = []
         self.container_outputs = []
+        self.fail_get_data_out = []
         self.fc_data_in = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.fc_data_out = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.queue: Dict[bytes, List[bytes]] = {b"": []}
@@ -813,6 +814,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionCallGetDataOut(self, stream):
         req: api_pb2.FunctionCallGetDataRequest = await stream.recv_message()
+
+        if len(self.fail_get_data_out) > 0:
+            status_code = self.fail_get_data_out.pop()
+            raise GRPCError(status_code, "foobar")
+
         while True:
             chunk = await self.fc_data_out[req.function_call_id].get()
             await stream.send_message(chunk)
