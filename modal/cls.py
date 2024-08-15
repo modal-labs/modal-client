@@ -49,7 +49,7 @@ def _use_annotation_parameters(user_cls) -> bool:
 
 def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
     if not _use_annotation_parameters(user_cls):
-        return inspect.signature(user_cls.__init__)
+        return inspect.signature(user_cls)
     else:
         constructor_parameters = []
         for name, annotation_value in user_cls.__dict__.get("__annotations__", {}).items():
@@ -526,7 +526,8 @@ def field(*, default: Any = None, init: bool = False) -> Any:
     """Optional field descriptor for non-parameter fields on a Modal class
 
     Using this on an annotated field allows *type checkers* and editors to omit the field in
-    the implicit constructor of the class.
+    the implicit constructor of the class. It has no effect on the actual runtime constructor
+    which always includes
 
     E.g.
 

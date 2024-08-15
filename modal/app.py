@@ -21,7 +21,7 @@ from ._utils.grpc_utils import unary_stream
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
-from .cls import _Cls, field, parameter
+from .cls import _Cls, _get_class_constructor_signature, field, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
@@ -842,15 +842,14 @@ class _App:
 
             # Disallow enable_memory_snapshot for parameterized classes
             # TODO(matt) Temporary fix for MOD-3048
-            constructor = dict(inspect.getmembers(user_cls, inspect.isfunction)).get("__init__")
-            if enable_memory_snapshot and constructor:
-                params = inspect.signature(constructor).parameters
-                if len(params) > 1:
+            if enable_memory_snapshot:
+                signature = _get_class_constructor_signature(user_cls)
+                if len(signature.parameters) > 0:
                     name = user_cls.__name__
                     raise InvalidError(
                         f"Cannot use class parameterization in class {name} with `enable_memory_snapshot=True`."
                     )
-            # TODO(elias): raise invalid in case of memory snapshotting when using implicit constructors as well
+
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
             return cls  # type: ignore  # a _Cls instance "simulates" being the user provided class

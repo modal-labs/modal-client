@@ -861,9 +861,17 @@ class ParameterizedClass1:
         pass
 
 
+class ParameterizedClass1Implicit:
+    a: int = modal.parameter()
+
+
 class ParameterizedClass2:
     def __init__(self, a: int = 1):
         pass
+
+
+class ParameterizedClass2Implicit:
+    a: int = modal.parameter(default=1)
 
 
 class ParameterizedClass3:
@@ -876,7 +884,13 @@ def test_disabled_parameterized_snap_cls():
         app.cls(enable_memory_snapshot=True)(ParameterizedClass1)
 
     with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
+        app.cls(enable_memory_snapshot=True)(ParameterizedClass1Implicit)
+
+    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
         app.cls(enable_memory_snapshot=True)(ParameterizedClass2)
+
+    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
+        app.cls(enable_memory_snapshot=True)(ParameterizedClass2Implicit)
 
     app.cls(enable_memory_snapshot=True)(ParameterizedClass3)
 
