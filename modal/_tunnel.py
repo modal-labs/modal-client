@@ -62,14 +62,14 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
     **Usage:**
 
     ```python
+    import modal
     from flask import Flask
-    from modal import Image, App, forward
 
-    app = App(image=Image.debian_slim().pip_install("Flask"))  # Note: "app" was called "stub" up until April 2024
-    app = Flask(__name__)
+    app = modal.App(image=modal.Image.debian_slim().pip_install("Flask"))
+    flask_app = Flask(__name__)
 
 
-    @app.route("/")
+    @flask_app.route("/")
     def hello_world():
         return "Hello, World!"
 
@@ -78,9 +78,9 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
     def run_app():
         # Start a web server inside the container at port 8000. `modal.forward(8000)` lets us
         # expose that port to the world at a random HTTPS URL.
-        with forward(8000) as tunnel:
+        with modal.forward(8000) as tunnel:
             print("Server listening at", tunnel.url)
-            app.run("0.0.0.0", 8000)
+            flask_app.run("0.0.0.0", 8000)
 
         # When the context manager exits, the port is no longer exposed.
     ```
@@ -90,7 +90,8 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
     ```python
     import socket
     import threading
-    from modal import App, forward
+
+    import modal
 
 
     def run_echo_server(port: int):
@@ -115,13 +116,13 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
             threading.Thread(target=handle, args=(conn,)).start()
 
 
-    app = App()  # Note: "app" was called "stub" up until April 2024
+    app = modal.App()
 
 
     @app.function()
     def tcp_tunnel():
         # This exposes port 8000 to public Internet traffic over TCP.
-        with forward(8000, unencrypted=True) as tunnel:
+        with modal.forward(8000, unencrypted=True) as tunnel:
             # You can connect to this TCP socket from outside the container, for example, using `nc`:
             #  nc <HOST> <PORT>
             print("TCP tunnel listening at:", tunnel.tcp_socket)
@@ -129,12 +130,13 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
     ```
 
     **SSH example:**
-    This assumes you have a rsa keypair in `~/.ssh/id_rsa{.pub}, this is a bare-bones example
+    This assumes you have a rsa keypair in `~/.ssh/id_rsa{.pub}`, this is a bare-bones example
     letting you SSH into a Modal container.
 
     ```python
     import subprocess
     import time
+
     import modal
 
     app = modal.App()
@@ -152,7 +154,7 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
         with modal.forward(port=22, unencrypted=True) as tunnel:
             hostname, port = tunnel.tcp_socket
             connection_cmd = f'ssh -p {port} root@{hostname}'
-            print(f"ssh into container using:\n{connection_cmd}")
+            print(f"ssh into container using: {connection_cmd}")
             time.sleep(3600)  # keep alive for 1 hour or until killed
     ```
 

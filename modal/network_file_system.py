@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2023
+import functools
 import os
 import time
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, BinaryIO, List, Optional, Tuple, Type, Union
+from typing import AsyncIterator, BinaryIO, Callable, List, Optional, Tuple, Type, Union
 
 import aiostream
 from grpclib import GRPCError, Status
@@ -18,7 +19,7 @@ from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
-from .exception import deprecation_error
+from .exception import InvalidError, deprecation_error
 from .object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -125,8 +126,15 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
-            response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
-            self._hydrate(response.shared_volume_id, resolver.client, None)
+            try:
+                response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
+                self._hydrate(response.shared_volume_id, resolver.client, None)
+            except GRPCError as exc:
+                if exc.status == Status.NOT_FOUND and exc.message == "App has wrong entity vo":
+                    raise InvalidError(
+                        f"Attempted to mount: `{label}` as a NetworkFileSystem " + "which already exists as a Volume"
+                    )
+                raise
 
         return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()", hydrate_lazily=True)
 
@@ -227,7 +235,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         return resp.shared_volume_id
 
     @live_method
-    async def write_file(self, remote_path: str, fp: BinaryIO) -> int:
+    async def write_file(self, remote_path: str, fp: BinaryIO, progress_cb: Optional[Callable] = None) -> int:
         """Write from a file object to a path on the network file system, atomically.
 
         Will create any needed parent directories automatically.
@@ -235,12 +243,17 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         If remote_path ends with `/` it's assumed to be a directory and the
         file will be uploaded with its current name to that directory.
         """
+        progress_cb = progress_cb or (lambda *_, **__: None)
+
         sha_hash = get_sha256_hex(fp)
         fp.seek(0, os.SEEK_END)
         data_size = fp.tell()
         fp.seek(0)
         if data_size > LARGE_FILE_LIMIT:
-            blob_id = await blob_upload_file(fp, self._client.stub)
+            progress_task_id = progress_cb(name=remote_path, size=data_size)
+            blob_id = await blob_upload_file(
+                fp, self._client.stub, progress_report_cb=functools.partial(progress_cb, progress_task_id)
+            )
             req = api_pb2.SharedVolumePutFileRequest(
                 shared_volume_id=self.object_id,
                 path=remote_path,
@@ -294,7 +307,10 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
     @live_method
     async def add_local_file(
-        self, local_path: Union[Path, str], remote_path: Optional[Union[str, PurePosixPath, None]] = None
+        self,
+        local_path: Union[Path, str],
+        remote_path: Optional[Union[str, PurePosixPath, None]] = None,
+        progress_cb: Optional[Callable] = None,
     ):
         local_path = Path(local_path)
         if remote_path is None:
@@ -303,13 +319,14 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             remote_path = PurePosixPath(remote_path).as_posix()
 
         with local_path.open("rb") as local_file:
-            return await self.write_file(remote_path, local_file)
+            return await self.write_file(remote_path, local_file, progress_cb=progress_cb)
 
     @live_method
     async def add_local_dir(
         self,
         local_path: Union[Path, str],
         remote_path: Optional[Union[str, PurePosixPath, None]] = None,
+        progress_cb: Optional[Callable] = None,
     ):
         _local_path = Path(local_path)
         if remote_path is None:
@@ -329,7 +346,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         transfer_paths = aiostream.stream.iterate(gen_transfers())
         await aiostream.stream.map(
             transfer_paths,
-            aiostream.async_(lambda paths: self.add_local_file(paths[0], paths[1])),
+            aiostream.async_(lambda paths: self.add_local_file(paths[0], paths[1], progress_cb)),
             task_limit=20,
         )
 

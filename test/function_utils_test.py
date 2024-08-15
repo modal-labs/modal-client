@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import pytest
 import time
 
 from grpclib import Status
@@ -8,7 +7,6 @@ from modal import method, web_endpoint
 from modal._serialization import serialize_data_format
 from modal._utils import async_utils
 from modal._utils.function_utils import FunctionInfo, _stream_function_call_data, method_has_params
-from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 
@@ -53,14 +51,6 @@ def test_method_has_params():
     assert method_has_params(Cls().bar)
     assert method_has_params(Cls.buz)
     assert method_has_params(Cls().buz)
-
-
-def test_nonglobal_function():
-    def f():
-        ...
-
-    with pytest.raises(InvalidError, match=r"Cannot wrap `test_nonglobal_function.<locals>.f"):
-        FunctionInfo(f)
 
 
 class Foo:

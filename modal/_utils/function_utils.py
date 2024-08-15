@@ -4,7 +4,7 @@ import inspect
 import os
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Type
+from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Tuple, Type
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
@@ -28,6 +28,12 @@ class FunctionInfoType(Enum):
     NOTEBOOK = "notebook"
 
 
+CLASS_PARAM_TYPE_MAP: Dict[Type, Tuple["api_pb2.ParameterType.ValueType", str]] = {
+    str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
+    int: (api_pb2.PARAM_TYPE_INT, "int_default"),
+}
+
+
 class LocalFunctionError(InvalidError):
     """Raised if a function declared in a non-global scope is used in an impermissible way"""
 
@@ -47,8 +53,16 @@ def entrypoint_only_package_mount_condition(entrypoint_file):
     return inner
 
 
-def is_global_object(object_qual_name):
+def is_global_object(object_qual_name: str):
     return "<locals>" not in object_qual_name.split(".")
+
+
+def is_top_level_function(f: Callable) -> bool:
+    """Returns True if this function is defined in global scope.
+
+    Returns False if this function is locally scoped (including on a class).
+    """
+    return f.__name__ == f.__qualname__
 
 
 def is_async(function):
@@ -104,15 +118,6 @@ class FunctionInfo:
         elif f is None and user_cls:
             # "service function" for running all methods of a class
             self.function_name = f"{user_cls.__name__}.*"
-        elif f.__qualname__ != f.__name__ and not serialized:
-            # single method of a class - should be only @build-methods at this point
-            if len(f.__qualname__.split(".")) > 2:
-                raise InvalidError(
-                    f"Cannot wrap `{f.__qualname__}`:"
-                    " functions and classes used in Modal must be defined in global scope."
-                    " If trying to apply additional decorators, they may need to use `functools.wraps`."
-                )
-            self.function_name = f"{user_cls.__name__}.{f.__name__}"
         else:
             self.function_name = f.__qualname__
 
@@ -239,13 +244,14 @@ class FunctionInfo:
         modal_parameters: List[api_pb2.ClassParameterSpec] = []
         signature = inspect.signature(self.user_cls)
         for param in signature.parameters.values():
-            if param.annotation == str:
-                param_type = api_pb2.PARAM_TYPE_STRING
-            elif param.annotation == int:
-                param_type = api_pb2.PARAM_TYPE_INT
-            else:
+            has_default = param.default is not param.empty
+            if param.annotation not in CLASS_PARAM_TYPE_MAP:
                 raise InvalidError("Strict class parameters need to be explicitly annotated as str or int")
-            modal_parameters.append(api_pb2.ClassParameterSpec(name=param.name, type=param_type))
+            param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
+            class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
+            if has_default:
+                setattr(class_param_spec, default_field, param.default)
+            modal_parameters.append(class_param_spec)
 
         return api_pb2.ClassParameterInfo(
             format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO, schema=modal_parameters

@@ -52,7 +52,7 @@ from ._utils.function_utils import (
     is_async,
 )
 from ._utils.grpc_utils import retry_transient_errors
-from ._utils.mount_utils import validate_mount_points, validate_volumes
+from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
@@ -272,6 +272,7 @@ class _FunctionSpec:
     memory: Optional[Union[int, Tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
+    _experimental_gpus: Sequence[GPU_T]
 
 
 class _Function(_Object, type_prefix="fu"):
@@ -343,6 +344,8 @@ class _Function(_Object, type_prefix="fu"):
                 is_method=True,
                 use_function_id=class_service_function.object_id,
                 use_method_name=method_name,
+                batch_max_size=partial_function.batch_max_size or 0,
+                batch_linger_ms=partial_function.batch_wait_ms or 0,
             )
             assert resolver.app_id
             request = api_pb2.FunctionCreateRequest(
@@ -350,6 +353,7 @@ class _Function(_Object, type_prefix="fu"):
                 function=function_definition,
                 #  method_bound_function.object_id usually gets set by preload
                 existing_function_id=existing_object_id or method_bound_function.object_id or "",
+                defer_updates=True,
             )
             assert resolver.client.stub is not None  # client should be connected when load is called
             with FunctionCreationStatus(resolver, full_name) as function_creation_status:
@@ -483,11 +487,13 @@ class _Function(_Object, type_prefix="fu"):
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
+        batch_max_size: Optional[int] = None,
+        batch_wait_ms: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
         cloud: Optional[str] = None,
-        _experimental_boost: bool = False,
+        _experimental_boost: None = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
@@ -497,6 +503,7 @@ class _Function(_Object, type_prefix="fu"):
         block_network: bool = False,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
+        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -528,9 +535,16 @@ class _Function(_Object, type_prefix="fu"):
             enable_memory_snapshot = checkpointing_enabled
 
         if allow_background_volume_commits is False:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
-                "Disabling volume background commits is now deprecated. Set _allow_background_volume_commits=True.",
+                "Disabling volume background commits is now deprecated. "
+                "Remove _allow_background_volume_commits=False to enable the functionality.",
+            )
+        elif allow_background_volume_commits is True:
+            deprecation_warning(
+                (2024, 7, 18),
+                "Setting volume background commits is deprecated. "
+                "The functionality is now unconditionally enabled (set to True).",
             )
         elif allow_background_volume_commits is None:
             allow_background_volume_commits = True
@@ -568,8 +582,6 @@ class _Function(_Object, type_prefix="fu"):
                 "Retries for generator functions are deprecated and will soon be removed.",
             )
 
-        gpu_config = parse_gpu_config(gpu)
-
         if proxy:
             # HACK: remove this once we stop using ssh tunnels for this.
             if image:
@@ -587,6 +599,7 @@ class _Function(_Object, type_prefix="fu"):
             memory=memory,
             ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
+            _experimental_gpus=_experimental_gpus,
         )
 
         if info.user_cls and not is_auto_snapshot:
@@ -612,6 +625,7 @@ class _Function(_Object, type_prefix="fu"):
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
+                    _experimental_gpus=_experimental_gpus,
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
@@ -644,6 +658,14 @@ class _Function(_Object, type_prefix="fu"):
             else:
                 raise InvalidError("Webhooks cannot be generators")
 
+        if info.raw_f and batch_max_size:
+            func_name = info.raw_f.__name__
+            if is_generator:
+                raise InvalidError(f"Modal batched function {func_name} cannot return generators")
+            for arg in inspect.signature(info.raw_f).parameters.values():
+                if arg.default is not inspect.Parameter.empty:
+                    raise InvalidError(f"Modal batched function {func_name} does not accept default arguments.")
+
         if container_idle_timeout is not None and container_idle_timeout <= 0:
             raise InvalidError("`container_idle_timeout` must be > 0")
 
@@ -653,9 +675,7 @@ class _Function(_Object, type_prefix="fu"):
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         # Validate NFS
-        if not isinstance(network_file_systems, dict):
-            raise InvalidError("network_file_systems must be a dict[str, NetworkFileSystem] where the keys are paths")
-        validated_network_file_systems = validate_mount_points("Network file system", network_file_systems)
+        validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
         # Validate image
         if image is not None and not isinstance(image, _Image):
@@ -801,6 +821,8 @@ class _Function(_Object, type_prefix="fu"):
                     app_name=app_name,
                     is_builder_function=is_builder_function,
                     allow_concurrent_inputs=allow_concurrent_inputs or 0,
+                    batch_max_size=batch_max_size or 0,
+                    batch_linger_ms=batch_wait_ms or 0,
                     worker_id=config.get("worker_id"),
                     is_auto_snapshot=is_auto_snapshot,
                     is_method=bool(info.user_cls) and not info.is_service_class(),
@@ -810,10 +832,16 @@ class _Function(_Object, type_prefix="fu"):
                     block_network=block_network,
                     max_inputs=max_inputs or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
-                    _experimental_boost=_experimental_boost,
+                    _experimental_boost=bool(_experimental_boost),
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
+                    _experimental_resources=[
+                        convert_fn_config_to_resources_config(
+                            cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                        )
+                        for _experimental_gpu in _experimental_gpus
+                    ],
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
@@ -821,6 +849,7 @@ class _Function(_Object, type_prefix="fu"):
                     function=function_definition,
                     schedule=schedule.proto_message if schedule is not None else None,
                     existing_function_id=existing_object_id or "",
+                    defer_updates=True,
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
@@ -856,10 +885,14 @@ class _Function(_Object, type_prefix="fu"):
         # hash. We can't use the cloudpickle hash because it's not very stable.
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
-            gpu_config=repr(gpu_config),
+            gpu_config=repr(parse_gpu_config(gpu)),
             mounts=repr(mounts),
             network_file_systems=repr(network_file_systems),
         )
+        if _experimental_gpus:
+            obj._build_args["experimental_gpus"] = repr(
+                [parse_gpu_config(_experimental_gpu) for _experimental_gpu in _experimental_gpus]
+            )
 
         return obj
 
@@ -1065,7 +1098,6 @@ class _Function(_Object, type_prefix="fu"):
         self._progress = None
         self._is_generator = None
         self._web_url = None
-        self._output_mgr: Optional[OutputManager] = None
         self._mute_cancellation = (
             False  # set when a user terminates the app intentionally, to prevent useless traceback spam
         )
@@ -1076,7 +1108,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
-        assert metadata and isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata)
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
@@ -1084,6 +1116,7 @@ class _Function(_Object, type_prefix="fu"):
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
+        self._definition_id = metadata.definition_id
 
     def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id
@@ -1103,13 +1136,11 @@ class _Function(_Object, type_prefix="fu"):
             use_function_id=self._use_function_id,
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
+            definition_id=self._definition_id,
         )
 
     def _set_mute_cancellation(self, value: bool = True):
         self._mute_cancellation = value
-
-    def _set_output_mgr(self, output_mgr: OutputManager):
-        self._output_mgr = output_mgr
 
     @property
     def web_url(self) -> str:
@@ -1149,9 +1180,10 @@ class _Function(_Object, type_prefix="fu"):
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         assert self._function_name
-        count_update_callback = (
-            self._output_mgr.function_progress_callback(self._function_name, total=None) if self._output_mgr else None
-        )
+        if output_mgr := OutputManager.get():
+            count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
+        else:
+            count_update_callback = None
 
         async for item in _map_invocation(
             self,  # type: ignore

@@ -9,13 +9,14 @@ import warnings
 from dataclasses import dataclass
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, get_args
+from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, get_args
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
 
+from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
@@ -28,7 +29,7 @@ from .exception import InvalidError, NotFoundError, RemoteError, VersionError, d
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
-from .object import _Object
+from .object import _Object, live_method_gen
 from .secret import _Secret
 from .volume import _Volume
 
@@ -420,10 +421,13 @@ class _Image(_Object, type_prefix="im"):
                     for task_log in response.task_logs:
                         if task_log.task_progress.pos or task_log.task_progress.len:
                             assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
-                            resolver.image_snapshot_update(image_id, task_log.task_progress)
+                            if output_mgr := OutputManager.get():
+                                output_mgr.update_snapshot_progress(image_id, task_log.task_progress)
                         elif task_log.data:
-                            await resolver.console_write(task_log)
-                resolver.console_flush()
+                            if output_mgr := OutputManager.get():
+                                await output_mgr.put_log_content(task_log)
+                if output_mgr := OutputManager.get():
+                    output_mgr.flush_lines()
 
             # Handle up to n exceptions while fetching logs
             retry_count = 0
@@ -572,6 +576,7 @@ class _Image(_Object, type_prefix="im"):
                 "flash-attn==2.5.8", extra_options="--no-build-isolation"
             )
         )
+        ```
         """
         pkgs = _flatten_str_args("pip_install", "packages", packages)
         if not pkgs:
@@ -1370,11 +1375,13 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def from_dockerfile(
+        # Filepath to Dockerfile.
         path: Union[str, Path],
-        context_mount: Optional[
-            _Mount
-        ] = None,  # modal.Mount with local files to supply as build context for COPY commands
-        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        # modal.Mount with local files to supply as build context for COPY commands.
+        # NOTE: The remote_path of the Mount should match the Dockerfile's WORKDIR.
+        context_mount: Optional[_Mount] = None,
+        # Ignore cached builds, similar to 'docker build --no-cache'
+        force_build: bool = False,
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -1390,6 +1397,22 @@ class _Image(_Object, type_prefix="im"):
 
         ```python
         image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.12")
+        ```
+
+        If your Dockerfile uses `COPY` instructions which copy data from the local context of the
+        build into the image, this local data must be uploaded to Modal via a context mount:
+
+        ```python
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            context_mount=modal.Mount.from_local_dir(
+                local_path="src",
+                remote_path=".",  # to current WORKDIR
+            ),
+        )
+        ```
+
+        The context mount will allow a `COPY src/ src/` instruction to succeed in Modal's remote builder.
         ```
         """
 
@@ -1674,6 +1697,26 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         deprecation_error((2023, 12, 15), Image.run_inside.__doc__)
+
+    @live_method_gen
+    async def _logs(self) -> AsyncGenerator[str, None]:
+        """Streams logs from an image, or returns logs from an already completed image.
+
+        This method is considered private since its interface may change - use it at your own risk!
+        """
+        last_entry_id: Optional[str] = None
+
+        request = api_pb2.ImageJoinStreamingRequest(
+            image_id=self._object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
+        )
+        async for response in unary_stream(self._client.stub.ImageJoinStreaming, request):
+            if response.result.status:
+                return
+            if response.entry_id:
+                last_entry_id = response.entry_id
+            for task_log in response.task_logs:
+                if task_log.data:
+                    yield task_log.data
 
 
 Image = synchronize_api(_Image)

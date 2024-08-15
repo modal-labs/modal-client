@@ -2,12 +2,13 @@
 import asyncio
 import logging
 import pytest
+import time
 
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
-from modal import App, Dict, Image, Mount, Secret, Stub, Volume, web_endpoint
-from modal.app import list_apps  # type: ignore
+from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
+from modal._output import OutputManager
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_app, deploy_stub
@@ -300,8 +301,8 @@ def test_hydrated_other_app_object_gets_referenced(servicer, client):
         with Volume.ephemeral(client=client) as vol:
             app.function(volumes={"/vol": vol})(dummy)  # implicitly load vol
             deploy_app(app, client=client)
-            app_set_objects_req = ctx.pop_request("AppSetObjects")
-            assert vol.object_id in app_set_objects_req.unindexed_object_ids
+            function_create_req: api_pb2.FunctionCreateRequest = ctx.pop_request("FunctionCreate")
+            assert vol.object_id in {obj.object_id for obj in function_create_req.function.object_dependencies}
 
 
 def test_hasattr():
@@ -315,16 +316,6 @@ def test_app(client):
 
     with app.run(client=client):
         square_modal.remote(42)
-
-
-def test_list_apps(client):
-    apps_0 = [app.name for app in list_apps(client=client)]
-    app = App()
-    deploy_app(app, "foobar", client=client)
-    apps_1 = [app.name for app in list_apps(client=client)]
-
-    assert len(apps_1) == len(apps_0) + 1
-    assert set(apps_1) - set(apps_0) == set(["foobar"])
 
 
 def test_non_string_app_name():
@@ -355,3 +346,83 @@ def test_deploy_stub(servicer, client):
     deploy_app(app, client=client)
     with pytest.warns(match="deploy_app"):
         deploy_stub(app, client=client)
+
+
+def test_app_logs(servicer, client):
+    app = App()
+    f = app.function()(dummy)
+
+    with app.run(client=client):
+        f.remote()
+
+    logs = [data for data in app._logs(client=client)]
+    assert logs == ["hello, world (1)\n"]
+
+
+def test_app_interactive(servicer, client, capsys):
+    app = App()
+
+    async def app_logs_pty(servicer, stream):
+        await stream.recv_message()
+
+        # Enable PTY
+        await stream.send_message(api_pb2.TaskLogsBatch(pty_exec_id="ta-123"))
+
+        # Send some data (should be written raw to stdout)
+        log = api_pb2.TaskLogs(data="some data\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
+        await stream.send_message(api_pb2.TaskLogsBatch(entry_id="xyz", items=[log]))
+
+        # Send an EOF
+        await stream.send_message(api_pb2.TaskLogsBatch(eof=True, task_id="ta-123"))
+
+        # Terminate app
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppGetLogs", app_logs_pty)
+
+        with OutputManager.enable_output():
+            with app.run(client=client):
+                time.sleep(0.1)
+
+    captured = capsys.readouterr()
+    assert captured.out.endswith("\nsome data\n\r")
+
+
+def test_show_progress_deprecations(client, monkeypatch):
+    # Unset env used to disable warning
+    monkeypatch.delenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING")
+
+    app = App()
+
+    # If show_progress is not provided, and output is not enabled, warn
+    with pytest.warns(DeprecationError, match="enable_output"):
+        with app.run(client=client):
+            assert OutputManager.get() is not None  # Should be auto-enabled
+
+    # If show_progress is not provided, and output is enabled, no warning
+    with enable_output():
+        with app.run(client=client):
+            pass
+
+    # If show_progress is set to True, and output is not enabled, warn
+    with pytest.warns(DeprecationError, match="enable_output"):
+        with app.run(client=client, show_progress=True):
+            assert OutputManager.get() is not None  # Should be auto-enabled
+
+    # If show_progress is set to True, and output is enabled, warn the flag is superfluous
+    with pytest.warns(DeprecationError, match="`show_progress=True` is deprecated"):
+        with enable_output():
+            with app.run(client=client, show_progress=True):
+                pass
+
+    # If show_progress is set to False, and output is not enabled, no warning
+    # This mode is currently used to suppress deprecation warnings, but will in itself be deprecated later.
+    with app.run(client=client, show_progress=False):
+        assert OutputManager.get() is None
+
+    # If show_progress is set to False, and output is enabled, warn that it has no effect
+    with pytest.warns(DeprecationError, match="no effect"):
+        with enable_output():
+            with app.run(client=client, show_progress=False):
+                pass

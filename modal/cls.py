@@ -8,7 +8,6 @@ from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 
-from ._output import OutputManager
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
@@ -61,7 +60,6 @@ class _Obj:
     def __init__(
         self,
         user_cls: type,
-        output_mgr: Optional[OutputManager],
         class_service_function: Optional[_Function],  # only None for <v0.63 classes
         classbound_methods: Dict[str, _Function],
         from_other_workspace: bool,
@@ -83,14 +81,12 @@ class _Obj:
             )
             for method_name, class_bound_method in classbound_methods.items():
                 method = self._instance_service_function._bind_instance_method(class_bound_method)
-                method._set_output_mgr(output_mgr)
                 self._method_functions[method_name] = method
         else:
             # <v0.63 classes - bind each individual method to the new parameters
             self._instance_service_function = None
             for method_name, class_bound_method in classbound_methods.items():
                 method = class_bound_method._bind_parameters(self, from_other_workspace, options, args, kwargs)
-                method._set_output_mgr(output_mgr)
                 self._method_functions[method_name] = method
 
         # Used for construction local object lazily
@@ -206,7 +202,6 @@ class _Cls(_Object, type_prefix="cs"):
         self._options = None
         self._callables = {}
         self._from_other_workspace = None
-        self._output_mgr: Optional[OutputManager] = None
 
     def _initialize_from_other(self, other: "_Cls"):
         self._user_cls = other._user_cls
@@ -215,10 +210,6 @@ class _Cls(_Object, type_prefix="cs"):
         self._options = other._options
         self._callables = other._callables
         self._from_other_workspace = other._from_other_workspace
-        self._output_mgr: Optional[OutputManager] = other._output_mgr
-
-    def _set_output_mgr(self, output_mgr: OutputManager):
-        self._output_mgr = output_mgr
 
     def _get_partial_functions(self) -> Dict[str, _PartialFunction]:
         if not self._user_cls:
@@ -283,6 +274,16 @@ class _Cls(_Object, type_prefix="cs"):
                     )
                 )
             resp = await resolver.client.stub.ClassCreate(req)
+            # Even though we already have the function_handle_metadata for this method locally,
+            # The RPC is going to replace it with function_handle_metadata derived from the server.
+            # We need to overwrite the definition_id sent back from the server here with the definition_id
+            # previously stored in function metadata, which may have been sent back from FunctionCreate.
+            # The problem is that this metadata propagates back and overwrites the metadata on the Function
+            # object itself. This is really messy. Maybe better to exclusively populate the method metadata
+            # from the function metadata we already have locally? Really a lot to clean up here...
+            for method in resp.handle_metadata.methods:
+                f_metadata = self._method_functions[method.function_name]._get_metadata()
+                method.function_handle_metadata.definition_id = f_metadata.definition_id
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
@@ -443,7 +444,6 @@ class _Cls(_Object, type_prefix="cs"):
         """This acts as the class constructor."""
         return _Obj(
             self._user_cls,
-            self._output_mgr,
             self._class_service_function,
             self._method_functions,
             self._from_other_workspace,

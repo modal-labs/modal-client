@@ -2,6 +2,7 @@
 import asyncio
 import functools
 import inspect
+import platform
 import re
 import shlex
 import sys
@@ -16,6 +17,7 @@ from rich.console import Console
 from typing_extensions import TypedDict
 
 from .. import Cls
+from .._output import enable_output
 from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
@@ -24,6 +26,7 @@ from ..functions import Function, _FunctionSpec
 from ..image import Image
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
+from ..volume import Volume
 from .import_refs import import_app, import_function
 from .utils import ENV_OPTION, ENV_OPTION_HELP, stream_app_logs
 
@@ -153,24 +156,25 @@ def _get_click_command_for_function(app: App, function_tag):
 
     @click.pass_context
     def f(ctx, **kwargs):
-        with run_app(
-            app,
-            detach=ctx.obj["detach"],
-            show_progress=ctx.obj["show_progress"],
-            environment_name=ctx.obj["env"],
-            interactive=ctx.obj["interactive"],
-        ):
-            if cls is None:
-                function.remote(**kwargs)
-            else:
-                # unpool class and method arguments
-                # TODO(erikbern): this code is a bit hacky
-                cls_kwargs = {k: kwargs[k] for k in cls_signature}
-                fun_kwargs = {k: kwargs[k] for k in fun_signature}
+        show_progress: bool = ctx.obj["show_progress"]
+        with enable_output(show_progress):
+            with run_app(
+                app,
+                detach=ctx.obj["detach"],
+                environment_name=ctx.obj["env"],
+                interactive=ctx.obj["interactive"],
+            ):
+                if cls is None:
+                    function.remote(**kwargs)
+                else:
+                    # unpool class and method arguments
+                    # TODO(erikbern): this code is a bit hacky
+                    cls_kwargs = {k: kwargs[k] for k in cls_signature}
+                    fun_kwargs = {k: kwargs[k] for k in fun_signature}
 
-                instance = cls(**cls_kwargs)
-                method: Function = getattr(instance, method_name)
-                method.remote(**fun_kwargs)
+                    instance = cls(**cls_kwargs)
+                    method: Function = getattr(instance, method_name)
+                    method.remote(**fun_kwargs)
 
     with_click_options = _add_click_options(f, signature)
     return click.command(with_click_options)
@@ -188,20 +192,21 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
                 "triggered Modal function alive after the parent process has been killed or disconnected."
             )
 
-        with run_app(
-            app,
-            detach=ctx.obj["detach"],
-            show_progress=ctx.obj["show_progress"],
-            environment_name=ctx.obj["env"],
-            interactive=ctx.obj["interactive"],
-        ):
-            try:
-                if isasync:
-                    asyncio.run(func(*args, **kwargs))
-                else:
-                    func(*args, **kwargs)
-            except Exception as exc:
-                raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
+        show_progress: bool = ctx.obj["show_progress"]
+        with enable_output(show_progress):
+            with run_app(
+                app,
+                detach=ctx.obj["detach"],
+                environment_name=ctx.obj["env"],
+                interactive=ctx.obj["interactive"],
+            ):
+                try:
+                    if isasync:
+                        asyncio.run(func(*args, **kwargs))
+                    else:
+                        func(*args, **kwargs)
+                except Exception as exc:
+                    raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
 
     with_click_options = _add_click_options(f, _get_signature(func))
     return click.command(with_click_options)
@@ -274,10 +279,10 @@ def run(ctx, detach, quiet, interactive, env):
 
 def deploy(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
-    name: str = typer.Option(None, help="Name of the deployment."),
+    name: str = typer.Option("", help="Name of the deployment."),
     env: str = ENV_OPTION,
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
-    tag: str = typer.Option(None, help="Tag the deployment with a version."),
+    tag: str = typer.Option("", help="Tag the deployment with a version."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -287,7 +292,8 @@ def deploy(
     if name is None:
         name = app.name
 
-    res = deploy_app(app, name=name, environment_name=env, tag=tag)
+    with enable_output():
+        res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
 
     if stream_logs:
         stream_app_logs(res.app_id)
@@ -312,21 +318,25 @@ def serve(
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))
 
-    with serve_app(app, app_ref, environment_name=env):
-        if timeout is None:
-            timeout = config["serve_timeout"]
-        if timeout is None:
-            timeout = float("inf")
-        while timeout > 0:
-            t = min(timeout, 3600)
-            time.sleep(t)
-            timeout -= t
+    with enable_output():
+        with serve_app(app, app_ref, environment_name=env):
+            if timeout is None:
+                timeout = config["serve_timeout"]
+            if timeout is None:
+                timeout = float("inf")
+            while timeout > 0:
+                t = min(timeout, 3600)
+                time.sleep(t)
+                timeout -= t
 
 
 def shell(
     func_ref: Optional[str] = typer.Argument(
         default=None,
-        help="Path to a Python file with an App or Modal function whose container to run.",
+        help=(
+            "Path to a Python file with an App or Modal function with container parameters."
+            " Can also include a function specifier, like `module.py::func`, when the file defines multiple functions."
+        ),
         metavar="FUNC_REF",
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
@@ -335,6 +345,13 @@ def shell(
         default=None, help="Container image tag for inside the shell (if not using FUNC_REF)."
     ),
     add_python: Optional[str] = typer.Option(default=None, help="Add Python to the image (if not using FUNC_REF)."),
+    volume: Optional[typing.List[str]] = typer.Option(
+        default=None,
+        help=(
+            "Name of a `modal.Volume` to mount inside the shell at `/mnt/{name}` (if not using FUNC_REF)."
+            " Can be used multiple times."
+        ),
+    ),
     cpu: Optional[int] = typer.Option(
         default=None, help="Number of CPUs to allocate to the shell (if not using FUNC_REF)."
     ),
@@ -388,6 +405,9 @@ def shell(
     if not console.is_terminal:
         raise click.UsageError("`modal shell` can only be run from a terminal.")
 
+    if platform.system() == "Windows":
+        raise InvalidError("`modal shell` is currently not supported on Windows")
+
     app = App("modal shell")
 
     if func_ref is not None:
@@ -406,10 +426,11 @@ def shell(
             memory=function_spec.memory,
             volumes=function_spec.volumes,
             region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
-            _allow_background_volume_commits=True,
+            _experimental_gpus=function_spec._experimental_gpus,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
+        volumes = {} if volume is None else {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
         start_shell = partial(
             interactive_shell,
             image=modal_image,
@@ -417,6 +438,7 @@ def shell(
             memory=memory,
             gpu=gpu,
             cloud=cloud,
+            volumes=volumes,
             region=region.split(",") if region else [],
         )
 

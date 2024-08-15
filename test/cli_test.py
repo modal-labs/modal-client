@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import json
 import os
+import platform
 import pytest
 import re
 import subprocess
@@ -41,6 +42,8 @@ dummy_other_module_file = "x = 42"
 
 def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
     runner = click.testing.CliRunner(mix_stderr=False)
+    # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
+    # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
     with mock.patch.object(sys, "argv", args):
         res = runner.invoke(entrypoint_cli, args)
     if res.exit_code != expected_exit_code:
@@ -352,7 +355,9 @@ def test_serve(servicer, set_env_client, server_url_env, test_dir):
 
 
 @pytest.fixture
-def mock_shell_pty():
+def mock_shell_pty(servicer):
+    servicer.shell_prompt = "TEST_PROMPT# "
+
     def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
         return api_pb2.PTYInfo(
@@ -391,7 +396,9 @@ def mock_shell_pty():
         "modal._pty.get_pty_info", mock_get_pty_info
     ), mock.patch("modal.runner.get_pty_info", mock_get_pty_info), mock.patch(
         "modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin
-    ), mock.patch("modal._sandbox_shell.write_to_fd", write_to_fd):
+    ), mock.patch("modal.container_process.stream_from_stdin", fake_stream_from_stdin), mock.patch(
+        "modal.container_process.write_to_fd", write_to_fd
+    ):
         yield fake_stdin, captured_out
 
 
@@ -405,10 +412,10 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     fake_stdin.clear()
     fake_stdin.extend([b'echo "Hello World"\n', b"exit\n"])
 
+    shell_prompt = servicer.shell_prompt.encode("utf-8")
+
     # Function is explicitly specified
     _run(["shell", app_file.as_posix() + "::foo"])
-
-    shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
 
     # first captured message is the empty message the mock server sends
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
@@ -433,10 +440,18 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     _, captured_out = mock_shell_pty
+    shell_prompt = servicer.shell_prompt.encode("utf-8")
     _run(["shell", "--cmd", "pwd", app_file.as_posix() + "::foo"])
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
-    shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
+
+
+def test_shell_unsuported_cmds_fails_on_windows(servicer, set_env_client, mock_shell_pty):
+    expected_exit_code = 1 if platform.system() == "Windows" else 0
+    res = _run(["shell"], expected_exit_code=expected_exit_code)
+
+    if expected_exit_code != 0:
+        assert re.search("Windows", str(res.exception)), "exception message does not match expected string"
 
 
 def test_app_descriptions(servicer, server_url_env, test_dir):
@@ -770,6 +785,32 @@ def test_list_apps(servicer, mock_dir, set_env_client):
     _run(["volume", "create", "my-vol"])
     res = _run(["app", "list"])
     assert "my-vol" not in res.stdout
+
+
+def test_list_app_deployment_history(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["deploy", "myapp.py", "--name", "my_app_foo"])
+
+    # app should be deployed once it exists
+    res = _run(["app", "history", "-n", "my_app_foo"])
+    assert "1" in res.stdout, res.stdout
+
+    res = _run(["app", "history", "-n", "my_app_foo", "--json"])
+    assert json.loads(res.stdout)
+
+    # re-deploying an app should result in one app stopped and one app deployed
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["deploy", "myapp.py", "--name", "my_app_foo"])
+
+    res = _run(["app", "history", "-n", "my_app_foo", "--json"])
+    assert "1" in res.stdout
+    assert "2" in res.stdout, f"{res.stdout=}"
+
+    # can't fetch history for stopped apps
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["app", "stop", "-n", "my_app_foo"])
+
+    res = _run(["app", "history", "-n", "my_app_foo", "--json"], 1)
 
 
 def test_dict_create_list_delete(servicer, server_url_env, set_env_client):

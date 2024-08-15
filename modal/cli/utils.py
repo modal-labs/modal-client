@@ -23,7 +23,7 @@ from ..exception import NotFoundError
 @synchronizer.create_blocking
 async def stream_app_logs(app_id: Optional[str] = None, task_id: Optional[str] = None):
     client = await _Client.from_env()
-    output_mgr = OutputManager(None, None, f"Tailing logs for {app_id}")
+    output_mgr = OutputManager(status_spinner_text=f"Tailing logs for {app_id}")
     try:
         with output_mgr.show_status_spinner():
             await get_app_logs_loop(client, output_mgr, app_id, task_id)
@@ -102,3 +102,5 @@ Otherwise, raises an error if the workspace has multiple environments.
 ENV_OPTION = typer.Option(None, "-e", "--env", help=ENV_OPTION_HELP)
 
 YES_OPTION = typer.Option(False, "-y", "--yes", help="Run without pausing for confirmation.")
+
+NAME_OPTION = typer.Option("", "-n", "--name", help="Look up a deployed App by its name")

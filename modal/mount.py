@@ -301,7 +301,8 @@ class _Mount(_Object, type_prefix="mo"):
         *,
         # Where the directory is placed within in the mount
         remote_path: Union[str, PurePosixPath, None] = None,
-        # Filter function for file selection; defaults to including all files
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
+        # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
         # add files from subdirectories as well
         recursive: bool = True,
@@ -335,7 +336,8 @@ class _Mount(_Object, type_prefix="mo"):
         *,
         # Where the directory is placed within in the mount
         remote_path: Union[str, PurePosixPath, None] = None,
-        # Filter function for file selection - default all files
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
+        # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
         # add files from subdirectories as well
         recursive: bool = True,
@@ -522,6 +524,8 @@ class _Mount(_Object, type_prefix="mo"):
     def from_local_python_packages(
         *module_names: str,
         remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
+        # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
     ) -> "_Mount":
         """
@@ -594,7 +598,7 @@ class _Mount(_Object, type_prefix="mo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         client: Optional[_Client] = None,
-    ) -> "_Mount":
+    ) -> None:
         check_object_name(deployment_name, "Mount")
         self._deployment_name = deployment_name
         self._namespace = namespace

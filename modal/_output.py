@@ -10,7 +10,7 @@ import re
 import socket
 import sys
 from datetime import timedelta
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, ClassVar, Dict, Generator, Optional, Tuple
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console, Group, RenderableType
@@ -66,18 +66,12 @@ def step_progress(text: str = "") -> Spinner:
     return Spinner(default_spinner, text, style="blue")
 
 
-def step_progress_update(spinner: Spinner, message: str):
-    spinner.update(text=message)
+def step_completed(message: str) -> RenderableType:
+    return f"[green]✓[/green] {message}"
 
 
-def step_completed(message: str, is_substep: bool = False) -> RenderableType:
-    """Returns the element to be rendered when a step is completed."""
-
-    STEP_COMPLETED = "[green]✓[/green]"
-    SUBSTEP_COMPLETED = "🔨"
-
-    symbol = SUBSTEP_COMPLETED if is_substep else STEP_COMPLETED
-    return f"{symbol} {message}"
+def substep_completed(message: str) -> RenderableType:
+    return f"🔨 {message}"
 
 
 def download_progress_bar() -> Progress:
@@ -140,7 +134,8 @@ class LineBufferedOutput(io.StringIO):
 
 
 class OutputManager:
-    _visible_progress: bool
+    _instance: ClassVar[Optional["OutputManager"]] = None
+
     _console: Console
     _task_states: Dict[str, int]
     _task_progress_items: Dict[Tuple[str, int], TaskID]
@@ -154,10 +149,13 @@ class OutputManager:
     _show_image_logs: bool
     _status_spinner_live: Optional[Live]
 
-    def __init__(self, stdout: io.TextIOWrapper, show_progress: bool, status_spinner_text: str = "Running app..."):
-        self.stdout = stdout or sys.stdout
-
-        self._visible_progress = show_progress
+    def __init__(
+        self,
+        *,
+        stdout: Optional[io.TextIOWrapper] = None,
+        status_spinner_text: str = "Running app...",
+    ):
+        self._stdout = stdout or sys.stdout
         self._console = Console(file=stdout, highlight=False)
         self._task_states = {}
         self._task_progress_items = {}
@@ -169,15 +167,31 @@ class OutputManager:
         self._status_spinner = step_progress(status_spinner_text)
         self._app_page_url = None
         self._show_image_logs = False
+        self._status_spinner_live = None
 
-    def print_if_visible(self, renderable) -> None:
-        if self._visible_progress:
-            self._console.print(renderable)
+    @classmethod
+    def disable(cls):
+        cls._instance.flush_lines()
+        if cls._instance._status_spinner_live:
+            cls._instance._status_spinner_live.stop()
+        cls._instance = None
 
-    def ctx_if_visible(self, context_mgr):
-        if self._visible_progress:
-            return context_mgr
-        return contextlib.nullcontext()
+    @classmethod
+    def get(cls) -> Optional["OutputManager"]:
+        return cls._instance
+
+    @classmethod
+    @contextlib.contextmanager
+    def enable_output(cls, show_progress: bool = True) -> Generator[None, None, None]:
+        if show_progress:
+            cls._instance = OutputManager()
+        try:
+            yield
+        finally:
+            cls._instance = None
+
+    def print(self, renderable) -> None:
+        self._console.print(renderable)
 
     def make_live(self, renderable: RenderableType) -> Live:
         """Creates a customized `rich.Live` instance with the given renderable. The renderable
@@ -293,7 +307,7 @@ class OutputManager:
         message = f"[blue]{message}[/blue] [grey70]View app at [underline]{self._app_page_url}[/underline][/grey70]"
 
         # Set the new message
-        step_progress_update(self._status_spinner, message)
+        self._status_spinner.update(text=message)
 
     def update_snapshot_progress(self, image_id: str, task_progress: api_pb2.TaskProgress) -> None:
         # TODO(erikbern): move this to sit on the resolver object, mostly
@@ -336,33 +350,11 @@ class OutputManager:
             self._task_progress_items[task_key] = progress_task_id
 
     async def put_log_content(self, log: api_pb2.TaskLogs):
-        if self._visible_progress:
-            stream = self._line_buffers.get(log.file_descriptor)
-            if stream is None:
-                stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
-                self._line_buffers[log.file_descriptor] = stream
-            stream.write(log.data)
-        elif hasattr(self.stdout, "buffer"):
-            # If we're not showing progress, there's no need to buffer lines,
-            # because the progress spinner can't interfere with output.
-
-            data = log.data.encode("utf-8")
-            written = 0
-            n_retries = 0
-            while written < len(data):
-                try:
-                    written += self.stdout.buffer.write(data[written:])
-                    self.stdout.flush()
-                except BlockingIOError:
-                    if n_retries >= 5:
-                        raise
-                    n_retries += 1
-                    await asyncio.sleep(0.1)
-        else:
-            # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
-            # io.StringIO).
-            self.stdout.write(log.data)
-            self.stdout.flush()
+        stream = self._line_buffers.get(log.file_descriptor)
+        if stream is None:
+            stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
+            self._line_buffers[log.file_descriptor] = stream
+        stream.write(log.data)
 
     def flush_lines(self):
         for stream in self._line_buffers.values():
@@ -371,12 +363,123 @@ class OutputManager:
     @contextlib.contextmanager
     def show_status_spinner(self):
         self._status_spinner_live = self.make_live(self._status_spinner)
-        with self.ctx_if_visible(self._status_spinner_live):
+        with self._status_spinner_live:
             yield
 
-    def hide_status_spinner(self):
-        if self._status_spinner_live:
-            self._status_spinner_live.stop()
+
+class ProgressHandler:
+    live: Live
+    _type: str
+    _spinner: Spinner
+    _overall_progress: Progress
+    _download_progress: Progress
+    _overall_progress_task_id: TaskID
+    _total_tasks: int
+    _completed_tasks: int
+
+    def __init__(self, type: str, console: Console):
+        self._type = type
+
+        if self._type == "download":
+            title = "Downloading file(s) to local..."
+        elif self._type == "upload":
+            title = "Uploading file(s) to volume..."
+        else:
+            raise NotImplementedError(f"Progress handler of type: `{type}` not yet implemented")
+
+        self._spinner = step_progress(title)
+
+        self._overall_progress = Progress(
+            TextColumn(f"[bold white]{title}", justify="right"),
+            TimeElapsedColumn(),
+            BarColumn(bar_width=None),
+            TextColumn("[bold white]{task.description}"),
+            transient=True,
+            console=console,
+        )
+        self._download_progress = Progress(
+            TextColumn("[bold white]{task.fields[path]}", justify="right"),
+            BarColumn(bar_width=None),
+            "[progress.percentage]{task.percentage:>3.1f}%",
+            "•",
+            DownloadColumn(),
+            "•",
+            TransferSpeedColumn(),
+            "•",
+            TimeRemainingColumn(),
+            transient=True,
+            console=console,
+        )
+
+        self.live = Live(
+            Group(self._spinner, self._overall_progress, self._download_progress), transient=True, refresh_per_second=4
+        )
+
+        self._overall_progress_task_id = self._overall_progress.add_task(".", start=True)
+        self._total_tasks = 0
+        self._completed_tasks = 0
+
+    def _add_sub_task(self, name: str, size: float) -> TaskID:
+        task_id = self._download_progress.add_task(self._type, path=name, start=True, total=size)
+        self._total_tasks += 1
+        self._overall_progress.update(self._overall_progress_task_id, total=self._total_tasks)
+        return task_id
+
+    def _reset_sub_task(self, task_id: TaskID):
+        self._download_progress.reset(task_id)
+
+    def _complete_progress(self):
+        # TODO: we could probably implement some callback progression from the server
+        # to get progress reports for the post processing too
+        # so we don't have to just spin here
+        self._overall_progress.remove_task(self._overall_progress_task_id)
+        self._spinner.update(text="Post processing...")
+
+    def _complete_sub_task(self, task_id: TaskID):
+        self._completed_tasks += 1
+        self._download_progress.remove_task(task_id)
+        self._overall_progress.update(
+            self._overall_progress_task_id,
+            advance=1,
+            description=f"({self._completed_tasks} out of {self._total_tasks} files completed)",
+        )
+
+    def _advance_sub_task(self, task_id: TaskID, advance: float):
+        self._download_progress.update(task_id, advance=advance)
+
+    def progress(
+        self,
+        task_id: Optional[TaskID] = None,
+        advance: Optional[float] = None,
+        name: Optional[str] = None,
+        size: Optional[float] = None,
+        reset: Optional[bool] = False,
+        complete: Optional[bool] = False,
+    ) -> Optional[TaskID]:
+        try:
+            if task_id is not None:
+                if reset:
+                    return self._reset_sub_task(task_id)
+                elif complete:
+                    return self._complete_sub_task(task_id)
+                elif advance is not None:
+                    return self._advance_sub_task(task_id, advance)
+            elif name is not None and size is not None:
+                return self._add_sub_task(name, size)
+            elif complete:
+                return self._complete_progress()
+        except Exception as exc:
+            # Liberal exception handling to avoid crashing downloads and uploads.
+            logger.error(f"failed progress update: {exc}")
+        raise NotImplementedError(
+            "Unknown action to take with args: "
+            + f"name={name} "
+            + f"size={size} "
+            + f"task_id={task_id} "
+            + f"advance={advance} "
+            + f"reset={reset} "
+            + f"complete={complete} "
+        )
 
 
 async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: asyncio.Event):
@@ -397,10 +500,36 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
         await finish_event.wait()
 
 
+async def put_pty_content(log: api_pb2.TaskLogs, stdout):
+    if hasattr(stdout, "buffer"):
+        # If we're not showing progress, there's no need to buffer lines,
+        # because the progress spinner can't interfere with output.
+
+        data = log.data.encode("utf-8")
+        written = 0
+        n_retries = 0
+        while written < len(data):
+            try:
+                written += stdout.buffer.write(data[written:])
+                stdout.flush()
+            except BlockingIOError:
+                if n_retries >= 5:
+                    raise
+                n_retries += 1
+                await asyncio.sleep(0.1)
+    else:
+        # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
+        # io.StringIO).
+        stdout.write(log.data)
+        stdout.flush()
+
+
 async def get_app_logs_loop(
     client: _Client, output_mgr: OutputManager, app_id: Optional[str] = None, task_id: Optional[str] = None
 ):
     last_log_batch_entry_id = ""
+
+    pty_shell_stdout = None
     pty_shell_finish_event: Optional[asyncio.Event] = None
     pty_shell_task_id: Optional[str] = None
 
@@ -431,10 +560,14 @@ async def get_app_logs_loop(
             else:  # Ensure forward-compatible with new types.
                 logger.debug(f"Received unrecognized progress type: {log.task_progress.progress_type}")
         elif log.data:
-            await output_mgr.put_log_content(log)
+            if pty_shell_finish_event:
+                await put_pty_content(log, pty_shell_stdout)
+            else:
+                await output_mgr.put_log_content(log)
 
     async def _get_logs():
-        nonlocal last_log_batch_entry_id, pty_shell_finish_event, pty_shell_task_id
+        nonlocal last_log_batch_entry_id
+        nonlocal pty_shell_stdout, pty_shell_finish_event, pty_shell_task_id
 
         request = api_pb2.AppGetLogsRequest(
             app_id=app_id or "",
@@ -460,14 +593,15 @@ async def get_app_logs_loop(
                 # statically and dynamically built images.
                 pass
             elif log_batch.pty_exec_id:
+                # This corresponds to the `modal run -i` use case where a breakpoint
+                # triggers and the task drops into an interactive PTY mode
                 if pty_shell_finish_event:
                     print("ERROR: concurrent PTY shells are not supported.")
                 else:
-                    output_mgr.flush_lines()
-                    output_mgr.hide_status_spinner()
-                    output_mgr._visible_progress = False
+                    pty_shell_stdout = output_mgr._stdout
                     pty_shell_finish_event = asyncio.Event()
                     pty_shell_task_id = log_batch.task_id
+                    output_mgr.disable()
                     asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
             else:
                 for log in log_batch.items:
@@ -484,7 +618,7 @@ async def get_app_logs_loop(
         except asyncio.CancelledError:
             # TODO: this should come from the backend maybe
             app_logs_url = f"https://modal.com/logs/{app_id}"
-            output_mgr.print_if_visible(
+            output_mgr.print(
                 f"[red]Timed out waiting for logs. "
                 f"[grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
             )
@@ -505,14 +639,12 @@ async def get_app_logs_loop(
             elif isinstance(exc, AttributeError):
                 if "_write_appdata" in str(exc):
                     # Happens after losing connection
-                    # TODO: figure out a way to catch this in a more robust manner
-                    # see: https://github.com/modal-labs/modal-client/pull/1967#discussion_r1666955873
+                    # StreamTerminatedError are not properly raised in grpclib<=0.4.7
+                    # fixed in https://github.com/vmagamedov/grpclib/issues/185
+                    # TODO: update to newer version (>=0.4.8) once stable
                     logger.debug("Lost connection. Retrying ...")
                     continue
             raise
-        except Exception as exc:
-            logger.exception(f"Failed to fetch logs: {exc}")
-            await asyncio.sleep(1)
 
         if last_log_batch_entry_id is None:
             break
@@ -569,3 +701,24 @@ class FunctionCreationStatus:
                 )
         else:
             self.status_row.finish(f"Created function {self.tag}.")
+
+
+@contextlib.contextmanager
+def enable_output(show_progress: bool = True) -> Generator[None, None, None]:
+    """Context manager that enable output when using the Python SDK.
+
+    This will print to stdout and stderr things such as
+    1. Logs from running functions
+    2. Status of creating objects
+    3. Map progress
+
+    Example:
+    ```python
+    app = modal.App()
+    with modal.enable_output():
+        with app.run():
+            ...
+    ```
+    """
+    with OutputManager.enable_output(show_progress):
+        yield

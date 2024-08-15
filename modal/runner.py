@@ -2,12 +2,11 @@
 import asyncio
 import dataclasses
 import os
-from io import TextIOWrapper
+import time
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Coroutine, Dict, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Coroutine, Dict, List, Optional, TypeVar
 
 from grpclib import GRPCError, Status
-from rich.console import Console
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
@@ -15,7 +14,7 @@ from modal_proto import api_pb2
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
 from ._pty import get_pty_info
 from ._resolver import Resolver
-from ._sandbox_shell import connect_to_sandbox
+from ._traceback import traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
@@ -25,6 +24,7 @@ from .exception import (
     ExecutionError,
     InteractiveTimeoutError,
     InvalidError,
+    RemoteError,
     _CliUserExecutionError,
     deprecation_warning,
 )
@@ -37,6 +37,9 @@ if TYPE_CHECKING:
     from .app import _App
 else:
     _App = TypeVar("_App")
+
+
+V = TypeVar("V")
 
 
 async def _heartbeat(client: _Client, app_id: str) -> None:
@@ -104,9 +107,7 @@ async def _create_all_objects(
     client: _Client,
     running_app: RunningApp,
     indexed_objects: Dict[str, _Object],
-    new_app_state: int,
     environment_name: str,
-    output_mgr: Optional[OutputManager] = None,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
     if not client.authenticated:
@@ -114,7 +115,6 @@ async def _create_all_objects(
 
     resolver = Resolver(
         client,
-        output_mgr=output_mgr,
         environment_name=environment_name,
         app_id=running_app.app_id,
     )
@@ -152,28 +152,53 @@ async def _create_all_objects(
 
         await TaskContext.gather(*(_load(tag, obj) for tag, obj in indexed_objects.items()))
 
-    # Create the app (and send a list of all tagged obs)
-    # TODO(erikbern): we should delete objects from a previous version that are no longer needed
-    # We just delete them from the app, but the actual objects will stay around
-    indexed_object_ids = running_app.tag_to_object_id
-    assert indexed_object_ids == running_app.tag_to_object_id
-    all_objects = resolver.objects()
 
-    unindexed_object_ids = list(set(obj.object_id for obj in all_objects) - set(running_app.tag_to_object_id.values()))
-    req_set = api_pb2.AppSetObjectsRequest(
+async def _publish_app(
+    client: _Client,
+    running_app: RunningApp,
+    app_state: int,  # api_pb2.AppState.value
+    indexed_objects: Dict[str, _Object],
+    name: str = "",  # Only relevant for deployments
+    tag: str = "",  # Only relevant for deployments
+) -> str:
+    """Wrapper for AppPublish RPC."""
+
+    # Could simplify this function some changing the internal representation to use
+    # function_ids / class_ids rather than the current tag_to_object_id (i.e. "indexed_objects")
+    def filter_values(full_dict: Dict[str, V], condition: Callable[[V], bool]) -> Dict[str, V]:
+        return {k: v for k, v in full_dict.items() if condition(v)}
+
+    # The entity prefixes are defined in the monorepo; is there any way to share them here?
+    function_ids = filter_values(running_app.tag_to_object_id, lambda v: v.startswith("fu-"))
+    class_ids = filter_values(running_app.tag_to_object_id, lambda v: v.startswith("cs-"))
+
+    function_objs = filter_values(indexed_objects, lambda v: v.object_id in function_ids.values())
+    definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in function_objs.values()}  # type: ignore
+
+    request = api_pb2.AppPublishRequest(
         app_id=running_app.app_id,
-        indexed_object_ids=indexed_object_ids,
-        unindexed_object_ids=unindexed_object_ids,
-        new_app_state=new_app_state,  # type: ignore
+        name=name,
+        deployment_tag=tag,
+        app_state=app_state,  # type: ignore  : should be a api_pb2.AppState.value
+        function_ids=function_ids,
+        class_ids=class_ids,
+        definition_ids=definition_ids,
     )
-    await retry_transient_errors(client.stub.AppSetObjects, req_set)
+    try:
+        response = await retry_transient_errors(client.stub.AppPublish, request)
+    except GRPCError as exc:
+        if exc.status == Status.INVALID_ARGUMENT or exc.status == Status.FAILED_PRECONDITION:
+            raise InvalidError(exc.message)
+        raise
+
+    return response.url
 
 
 async def _disconnect(
     client: _Client,
     app_id: str,
     reason: "api_pb2.AppDisconnectReason.ValueType",
-    exc_str: Optional[str] = None,
+    exc_str: str = "",
 ) -> None:
     """Tell the server the client has disconnected for this app. Terminates all running tasks
     for ephemeral apps."""
@@ -190,13 +215,10 @@ async def _disconnect(
 @asynccontextmanager
 async def _run_app(
     app: _App,
+    *,
     client: Optional[_Client] = None,
-    stdout: Optional[TextIOWrapper] = None,
-    show_progress: bool = True,
     detach: bool = False,
-    output_mgr: Optional[OutputManager] = None,
     environment_name: Optional[str] = None,
-    shell: bool = False,
     interactive: bool = False,
 ) -> AsyncGenerator[_App, None]:
     """mdmd:hidden"""
@@ -227,10 +249,6 @@ async def _run_app(
 
     if client is None:
         client = await _Client.from_env()
-    if output_mgr is None:
-        output_mgr = OutputManager(stdout, show_progress, "Running app...")
-    if shell:
-        output_mgr._visible_progress = False
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     running_app: RunningApp = await _init_local_app_new(
         client,
@@ -247,42 +265,36 @@ async def _run_app(
             lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL, log_exception=not detach
         )
 
-        with output_mgr.ctx_if_visible(output_mgr.make_live(step_progress("Initializing..."))):
-            initialized_msg = (
-                f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
-            )
-            output_mgr.print_if_visible(step_completed(initialized_msg))
-            output_mgr.update_app_page_url(running_app.app_page_url)
+        if output_mgr := OutputManager.get():
+            with output_mgr.make_live(step_progress("Initializing...")):
+                initialized_msg = (
+                    f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+                )
+                output_mgr.print(step_completed(initialized_msg))
+                output_mgr.update_app_page_url(running_app.app_page_url)
 
-        # Start logs loop
-        if not shell:
+            # Start logs loop
             logs_loop = tc.create_task(get_app_logs_loop(client, output_mgr, running_app.app_id))
 
         exc_info: Optional[BaseException] = None
         try:
             # Create all members
-            await _create_all_objects(
-                client, running_app, app._indexed_objects, app_state, environment_name, output_mgr=output_mgr
-            )
+            await _create_all_objects(client, running_app, app._indexed_objects, environment_name)
 
-            # Update all functions client-side to have the output mgr
-            for obj in app.registered_functions.values():
-                obj._set_output_mgr(output_mgr)
-
-            # Update all the classes client-side to propagate output manager to their methods.
-            for obj in app.registered_classes.values():
-                obj._set_output_mgr(output_mgr)
+            # Publish the app
+            await _publish_app(client, running_app, app_state, app._indexed_objects)
 
             # Show logs from dynamically created images.
             # TODO: better way to do this
-            output_mgr.enable_image_logs()
+            if output_mgr := OutputManager.get():
+                output_mgr.enable_image_logs()
 
             # Yield to context
-            if shell:
-                yield app
-            else:
+            if output_mgr := OutputManager.get():
                 with output_mgr.show_status_spinner():
                     yield app
+            else:
+                yield app
         except KeyboardInterrupt as e:
             exc_info = e
             # mute cancellation errors on all function handles to prevent exception spam
@@ -290,23 +302,25 @@ async def _run_app(
                 obj._set_mute_cancellation(True)
 
             if detach:
-                output_mgr.print_if_visible(step_completed("Shutting down Modal client."))
-                output_mgr.print_if_visible(
-                    "The detached app keeps running. You can track its progress at: "
-                    f"[magenta]{running_app.app_page_url}[/magenta]"
-                    ""
-                )
-                if not shell:
+                if output_mgr := OutputManager.get():
+                    output_mgr.print(step_completed("Shutting down Modal client."))
+                    output_mgr.print(
+                        "The detached app keeps running. You can track its progress at: "
+                        f"[magenta]{running_app.app_page_url}[/magenta]"
+                        ""
+                    )
                     logs_loop.cancel()
             else:
-                output_mgr.print_if_visible(
-                    step_completed(
-                        f"App aborted. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+                if output_mgr := OutputManager.get():
+                    output_mgr.print(
+                        step_completed(
+                            "App aborted. "
+                            f"[grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+                        )
                     )
-                )
-                output_mgr.print_if_visible(
-                    "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
-                )
+                    output_mgr.print(
+                        "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
+                    )
         except BaseException as e:
             exc_info = e
             raise e
@@ -314,7 +328,10 @@ async def _run_app(
             if isinstance(exc_info, KeyboardInterrupt):
                 reason = api_pb2.APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT
             elif exc_info is not None:
-                reason = api_pb2.APP_DISCONNECT_REASON_LOCAL_EXCEPTION
+                if traceback_contains_remote_call(exc_info.__traceback__):
+                    reason = api_pb2.APP_DISCONNECT_REASON_REMOTE_EXCEPTION
+                else:
+                    reason = api_pb2.APP_DISCONNECT_REASON_LOCAL_EXCEPTION
             else:
                 reason = api_pb2.APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED
 
@@ -328,9 +345,12 @@ async def _run_app(
             await _disconnect(client, running_app.app_id, reason, exc_str)
             app._uncreate_all_objects()
 
-    output_mgr.print_if_visible(
-        step_completed(f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]")
-    )
+    if output_mgr := OutputManager.get():
+        output_mgr.print(
+            step_completed(
+                f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+            )
+        )
 
 
 async def _serve_update(
@@ -346,15 +366,15 @@ async def _serve_update(
         running_app: RunningApp = await _init_local_app_existing(client, existing_app_id)
 
         # Create objects
-        output_mgr = OutputManager(None, True)
         await _create_all_objects(
             client,
             running_app,
             app._indexed_objects,
-            api_pb2.APP_STATE_UNSPECIFIED,
             environment_name,
-            output_mgr=output_mgr,
         )
+
+        # Publish the updated app
+        await _publish_app(client, running_app, api_pb2.APP_STATE_UNSPECIFIED, app._indexed_objects)
 
         # Communicate to the parent process
         is_ready.set()
@@ -375,10 +395,8 @@ async def _deploy_app(
     name: Optional[str] = None,
     namespace: Any = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     client: Optional[_Client] = None,
-    stdout: Optional[TextIOWrapper] = None,
-    show_progress: bool = True,
     environment_name: Optional[str] = None,
-    tag: Optional[str] = None,
+    tag: str = "",
 ) -> DeployResult:
     """Deploy an app and export its objects persistently.
 
@@ -404,9 +422,8 @@ async def _deploy_app(
     if environment_name is None:
         environment_name = config.get("environment")
 
-    if name is None:
-        name = app.name
-    if name is None:
+    name = name or app.name
+    if not name:
         raise InvalidError(
             "You need to either supply an explicit deployment name to the deploy command, "
             "or have a name set on the app.\n"
@@ -419,9 +436,9 @@ async def _deploy_app(
     else:
         check_object_name(name, "App")
 
-    if tag is not None and not is_valid_tag(tag):
+    if tag and not is_valid_tag(tag):
         raise InvalidError(
-            f"Tag {tag} is invalid."
+            f"Deployment tag {tag!r} is invalid."
             "\n\nTags may only contain alphanumeric characters, dashes, periods, and underscores, "
             "and must be 50 characters or less"
         )
@@ -429,7 +446,7 @@ async def _deploy_app(
     if client is None:
         client = await _Client.from_env()
 
-    output_mgr = OutputManager(stdout, show_progress)
+    t0 = time.time()
 
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
@@ -439,46 +456,27 @@ async def _deploy_app(
         # Start heartbeats loop to keep the client alive
         tc.infinite_loop(lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL)
 
-        # Don't change the app state - deploy state is set by AppDeploy
-        post_init_state = api_pb2.APP_STATE_UNSPECIFIED
-
         try:
             # Create all members
             await _create_all_objects(
                 client,
                 running_app,
                 app._indexed_objects,
-                post_init_state,
                 environment_name=environment_name,
-                output_mgr=output_mgr,
             )
 
-            # Deploy app
-            # TODO(erikbern): not needed if the app already existed
-            deploy_req = api_pb2.AppDeployRequest(
-                app_id=running_app.app_id,
-                name=name,
-                tag=tag,
-                namespace=namespace,
-                object_entity="ap",
-                visibility=api_pb2.APP_DEPLOY_VISIBILITY_WORKSPACE,
+            app_url = await _publish_app(
+                client, running_app, api_pb2.APP_STATE_DEPLOYED, app._indexed_objects, name, tag
             )
-            try:
-                deploy_response = await retry_transient_errors(client.stub.AppDeploy, deploy_req)
-            except GRPCError as exc:
-                if exc.status == Status.INVALID_ARGUMENT:
-                    raise InvalidError(exc.message)
-                if exc.status == Status.FAILED_PRECONDITION:
-                    raise InvalidError(exc.message)
-                raise
-            url = deploy_response.url
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
             await _disconnect(client, running_app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
-    output_mgr.print_if_visible(step_completed("App deployed! 🎉"))
-    output_mgr.print_if_visible(f"\nView Deployment: [magenta]{url}[/magenta]")
+    if output_mgr := OutputManager.get():
+        t = time.time() - t0
+        output_mgr.print(step_completed(f"App deployed in {t:.3f}s! 🎉"))
+        output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(app_id=running_app.app_id)
 
 
@@ -505,26 +503,23 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
 
     **kwargs will be passed into spawn_sandbox().
     """
+
     client = await _Client.from_env()
-    async with _run_app(_app, client, environment_name=environment_name, shell=True):
-        console = Console()
-        loading_status = console.status("Starting container...")
-        loading_status.start()
-
+    async with _run_app(_app, client=client, environment_name=environment_name):
         sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
-        sb = await _Sandbox.create(*sandbox_cmds, pty_info=get_pty_info(shell=True), app=_app, **kwargs)
-        for _ in range(40):
-            await asyncio.sleep(0.5)
-            resp = await sb._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=sb._object_id))
-            if resp.task_id != "":
-                break
-            # else: sandbox hasn't been assigned a task yet
-        else:
-            loading_status.stop()
-            raise InteractiveTimeoutError("Timed out while waiting for sandbox to start")
+        sandbox = await _Sandbox.create("sleep", "100000", app=_app, **kwargs)
 
-        loading_status.stop()
-        await connect_to_sandbox(sb)
+        container_process = await sandbox.exec(*sandbox_cmds, pty_info=get_pty_info(shell=True))
+        try:
+            await container_process.attach(pty=True)
+        except InteractiveTimeoutError:
+            # Check on status of Sandbox. It may have crashed, causing connection failure.
+            req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox._object_id, timeout=0)
+            resp = await retry_transient_errors(sandbox._client.stub.SandboxWait, req)
+            if resp.result.exception:
+                raise RemoteError(resp.result.exception)
+            else:
+                raise
 
 
 def _run_stub(*args: Any, **kwargs: Any) -> AsyncGenerator[_App, None]:
