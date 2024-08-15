@@ -79,7 +79,7 @@ def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[ty
         raise InvalidError(error_msg)
 
 
-CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
+CLS_T = typing.TypeVar("CLS_T", bound=typing.Type[Any])
 
 
 P = typing_extensions.ParamSpec("P")

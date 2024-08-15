@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import (
     IO,
+    Any,
     AsyncGenerator,
     AsyncIterator,
     BinaryIO,
@@ -547,10 +548,12 @@ class _VolumeUploadContextManager:
     _volume_id: str
     _client: _Client
     _force: bool
-    progress_cb: Callable
+    progress_cb: Callable[..., Any]
     _upload_generators: List[Generator[Callable[[], FileUploadSpec], None, None]]
 
-    def __init__(self, volume_id: str, client: _Client, progress_cb: Optional[Callable] = None, force: bool = False):
+    def __init__(
+        self, volume_id: str, client: _Client, progress_cb: Optional[Callable[..., Any]] = None, force: bool = False
+    ):
         """mdmd:hidden"""
         self._volume_id = volume_id
         self._client = client

@@ -106,7 +106,9 @@ class _PartialFunction(typing.Generic[P, T]):
 PartialFunction = synchronize_api(_PartialFunction)
 
 
-def _find_partial_methods_for_user_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
+def _find_partial_methods_for_user_cls(
+    user_cls: Type[Any], flags: _PartialFunctionFlags
+) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class"""
     partial_functions: Dict[str, PartialFunction] = {}
     for parent_cls in user_cls.mro():
@@ -120,7 +122,7 @@ def _find_partial_methods_for_user_cls(user_cls: Type, flags: _PartialFunctionFl
     return partial_functions
 
 
-def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
+def _find_callables_for_cls(user_cls: Type[Any], flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
     """Grabs all method on a user class, and returns callables. Includes legacy methods."""
     functions: Dict[str, Callable] = {}
 

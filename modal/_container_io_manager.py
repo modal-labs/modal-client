@@ -65,7 +65,7 @@ class IOContext:
         input_ids: List[str],
         function_call_ids: List[str],
         finalized_function: FinalizedFunction,
-        deserialized_args: List,
+        deserialized_args: List[Any],
         is_batched: bool,
     ):
         self.input_ids = input_ids
@@ -104,7 +104,7 @@ class IOContext:
         deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in inputs]
         return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
 
-    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List]]:
+    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List[Any]]]:
         if not self._is_batched:
             return self._deserialized_args[0]
 
