@@ -719,7 +719,7 @@ async def test_deprecated_async_methods():
     with pytest.raises(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
 
         class ClsWithDeprecatedAsyncExitMethod:
-            @exit()
+            @exit()  # type: ignore  # TODO: fix type for the exit decorator to support async exit handlers
             async def my_exit(self, exc_type, exc, tb):
                 ...
 
@@ -758,7 +758,7 @@ def test_partial_function_descriptors(client):
 
     assert isinstance(Foo.bar, PartialFunction)
 
-    assert Foo().bar() == "a"
+    assert Foo().bar() == "a"  # type: ignore   # edge case - using a non-decorated class should just return the bound original method
     assert inspect.ismethod(Foo().bar)
     app = modal.App()
 
@@ -778,7 +778,9 @@ def test_partial_function_descriptors(client):
     )  # but it should be a PartialFunction, so it keeps associated metadata!
 
     # ensure that webhook metadata is kept
-    assert synchronizer._translate_in(revived_class.web).webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
+    web_partial_function: _PartialFunction = synchronizer._translate_in(revived_class.web)  # type: ignore
+    assert web_partial_function.webhook_config
+    assert web_partial_function.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
 
 
 def test_cross_process_userclass_serde(supports_dir):
@@ -797,6 +799,7 @@ app2 = modal.App("app2")
 class UsingAnnotationParameters:
     a: int = modal.parameter()
     b: str = modal.parameter(default="hello")
+    c: float = modal.field()
 
     @method()
     def get_value(self):

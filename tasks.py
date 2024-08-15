@@ -87,7 +87,14 @@ def lint_protos(ctx):
 @task
 def type_check(ctx):
     # mypy will not check the *implementation* (.py) for files that also have .pyi type stubs
-    ctx.run("mypy . --exclude=playground --exclude=venv311 --exclude=venv38", pty=True)
+    mypy_exclude_list = [
+        "playground",
+        "venv311",
+        "venv38",
+        "test/cls_test.py",  # blocked by mypy bug: https://github.com/python/mypy/issues/16527
+    ]
+    excludes = " ".join(f"--exclude {path}" for path in mypy_exclude_list)
+    ctx.run(f"mypy . {excludes}", pty=True)
 
     # use pyright for checking implementation of those files
     pyright_allowlist = [
@@ -104,6 +111,7 @@ def type_check(ctx):
         "modal/_utils/package_utils.py",
         "modal/_utils/rand_pb_testing.py",
         "modal/_utils/shell_utils.py",
+        "test/cls_test.py",  # see mypy bug above - but this works with pyright, so we run that instead
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 

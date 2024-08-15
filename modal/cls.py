@@ -516,7 +516,23 @@ class _Parameter:
         self.init = init
 
 
-def parameter(default: Any = _NO_DEFAULT(), init: bool = True) -> Any:
+def parameter(*, default: Any = _NO_DEFAULT(), init: bool = True) -> Any:
     """Used to specify options for modal.cls parameters, similar to dataclass.field"""
     # has to return Any to be assignable to any annotation (https://github.com/microsoft/pyright/issues/5102)
     return _Parameter(default, init)
+
+
+def field(*, default: Any = None, init: bool = False) -> Any:
+    """Optional field descriptor for non-parameter fields on a Modal class
+
+    Using this on an annotated field allows *type checkers* and editors to omit the field in
+    the implicit constructor of the class.
+
+    E.g.
+
+    class A:
+        a: str = parameter()
+        a: int = field()
+
+    """
+    return default
