@@ -30,19 +30,14 @@ def is_valid_tag(tag: str) -> bool:
     return bool(re.match(pattern, tag))
 
 
-def check_object_name(name: str, object_type: str, warn: bool = False) -> None:
+def check_object_name(name: str, object_type: str) -> None:
     message = (
         f"Invalid {object_type} name: '{name}'."
         "\n\nNames may contain only alphanumeric characters, dashes, periods, and underscores,"
         " and must be shorter than 64 characters."
     )
-    if warn:
-        message += "\n\nThis will become an error in the future. Please rename your object to preserve access to it."
     if not is_valid_object_name(name):
-        if warn:
-            deprecation_warning((2024, 4, 30), message, show_source=False)
-        else:
-            raise InvalidError(message)
+        raise InvalidError(message)
 
 
 def check_environment_name(name: str, warn: bool = False) -> None:
