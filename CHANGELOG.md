@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.26 (2024-08-15)
+
+- `ContainerProcess` handles now support `wait()` and `poll()`, like `Sandbox` objects
+
+
+
 ### 0.64.24 (2024-08-14)
 
 Added support for dynamic batching. Functions or class methods decorated with `@modal.batched` will now automatically batch their invocations together, up to a specified `max_batch_size`.  The batch will wait for a maximum of `wait_ms` for more invocations after the first invocation is made. See guide for more details.
