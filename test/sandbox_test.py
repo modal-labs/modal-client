@@ -203,3 +203,18 @@ def test_sandbox_exec(client, servicer):
     cp.stdin.drain()
 
     assert cp.stdout.read() == "foo\nbar\n"
+
+
+@skip_non_linux
+def test_sandbox_exec_wait(client, servicer):
+    sb = Sandbox.create("sleep", "infinity", client=client)
+
+    cp = sb.exec("bash", "-c", "sleep 0.5 && exit 42")
+
+    assert cp.poll() is None
+
+    t0 = time.time()
+    assert cp.wait() == 42
+    assert time.time() - t0 > 0.2
+
+    assert cp.poll() == 42

@@ -60,7 +60,7 @@ class _ContainerProcess:
     async def poll(self) -> Optional[int]:
         """Check if the container process has finished running.
 
-        Returns `None` if the sandbox is still running, else returns the exit code.
+        Returns `None` if the process is still running, else returns the exit code.
         """
         if self._returncode is not None:
             return self._returncode
