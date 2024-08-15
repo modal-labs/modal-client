@@ -517,7 +517,13 @@ class _Parameter:
 
 
 def parameter(*, default: Any = _NO_DEFAULT(), init: bool = True) -> Any:
-    """Used to specify options for modal.cls parameters, similar to dataclass.field"""
+    """Used to specify options for modal.cls parameters, similar to dataclass.field for dataclasses
+    ```
+    class A:
+        a: str = modal.parameter()
+
+    ```
+    """
     # has to return Any to be assignable to any annotation (https://github.com/microsoft/pyright/issues/5102)
     return _Parameter(default, init)
 
@@ -527,13 +533,21 @@ def field(*, default: Any = None, init: bool = False) -> Any:
 
     Using this on an annotated field allows *type checkers* and editors to omit the field in
     the implicit constructor of the class. It has no effect on the actual runtime constructor
-    which always includes
+    which always includes *only* `parameter()`-designated fields.
 
     E.g.
-
+    ```
     class A:
-        a: str = parameter()
-        a: int = field()
+        a: str = modal.parameter()
+        b: int = modal.field()
+        c: float
+    ```
+    a <- part of A constructor
+    b <- not part of A constructor
+    c <- not part of A constructor, but type checkers think it is
 
+    Note: This probably only works in pyright/vscode
     """
+    # TODO(elias): Try to get init_default for dataclass_transform into the
+    #              typing standard which would let us get rid of this
     return default
