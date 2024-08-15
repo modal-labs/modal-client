@@ -563,6 +563,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
         await stream.send_message(api_pb2.ContainerExecResponse(exec_id="container_exec_id"))
 
+    async def ContainerExecWait(self, stream):
+        request: api_pb2.ContainerExecWaitRequest = await stream.recv_message()
+        try:
+            await asyncio.wait_for(self.container_exec.wait(), request.timeout)
+        except asyncio.TimeoutError:
+            pass
+
+        if self.container_exec.returncode is None:
+            await stream.send_message(api_pb2.ContainerExecWaitResponse(completed=False))
+        else:
+            await stream.send_message(
+                api_pb2.ContainerExecWaitResponse(completed=True, exit_code=self.container_exec.returncode)
+            )
+
     async def ContainerExecGetOutput(self, stream):
         request: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
         if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
