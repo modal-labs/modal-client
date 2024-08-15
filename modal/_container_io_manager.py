@@ -537,9 +537,7 @@ class _ContainerIOManager:
                 self._override_input_concurrency = self._orig_input_concurrency
 
             # Change semaphore count if input_concurrency is changed
-            # TODO(cathy) maybe we could use less updates here
             if self._override_input_concurrency != self._input_concurrency:
-                print("Changing input concurrency from", "to", self._override_input_concurrency)
                 for _ in range(self._input_concurrency):
                     await self._semaphore.acquire()
                 self._input_concurrency = self._override_input_concurrency
@@ -877,9 +875,6 @@ class _ContainerIOManager:
     def stop_fetching_inputs(cls):
         assert cls._singleton
         cls._singleton._fetching_inputs = False
-
-    def set_concurrent_inputs(self, num_concurrent_inputs: int) -> None:
-        self._new_input_concurrency = num_concurrent_inputs
 
     def get_concurrent_inputs(self) -> Optional[int]:
         return self._input_concurrency

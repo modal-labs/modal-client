@@ -88,14 +88,6 @@ _current_input_id: ContextVar = ContextVar("_current_input_id")
 _current_function_call_id: ContextVar = ContextVar("_current_function_call_id")
 
 
-def set_local_concurrent_inputs(num_concurrent_inputs: int) -> None:
-    """Set the number of concurrent inputs for the local container."""
-    if num_concurrent_inputs <= 0:
-        raise InvalidError("Number of concurrent inputs must be greater than 0.")
-
-    _ContainerIOManager._singleton.set_concurrent_inputs(num_concurrent_inputs)
-
-
 def get_local_concurrent_inputs() -> Optional[int]:
     """Get the number of concurrent inputs for the local container."""
 
