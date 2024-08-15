@@ -182,6 +182,9 @@ class _ContainerIOManager:
     current_input_started_at: Optional[float]
 
     _input_concurrency: Optional[int]
+    _orig_input_concurrency: Optional[int]
+    _override_input_concurrency: Optional[int]
+
     _semaphore: Optional[asyncio.Semaphore]
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
@@ -210,6 +213,8 @@ class _ContainerIOManager:
         self.current_input_started_at = None
 
         self._input_concurrency = None
+        self._orig_input_concurrency = None
+        self._override_input_concurrency = None
 
         self._semaphore = None
         self._environment_name = container_args.environment_name
@@ -465,12 +470,12 @@ class _ContainerIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
+            await self._semaphore.acquire()
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
             request.input_concurrency = self._input_concurrency
             request.batch_max_size, request.batch_linger_ms = batch_max_size, batch_wait_ms
 
-            await self._semaphore.acquire()
             yielded = False
             try:
                 # If number of active inputs is at max queue size, this will block.
@@ -516,11 +521,37 @@ class _ContainerIOManager:
                 if not yielded:
                     self._semaphore.release()
 
+    async def update_input_concurrency(self, input_concurrency_override_max: int) -> None:
+        if input_concurrency_override_max != 0:
+            function_stats = await retry_transient_errors(
+                self._client.stub.FunctionGetCurrentStats,
+                api_pb2.FunctionGetCurrentStatsRequest(function_id=self.function_id),
+                total_timeout=10.0,
+            )
+            if function_stats.num_desired_tasks > function_stats.num_total_tasks:
+                self._override_input_concurrency = min(
+                    input_concurrency_override_max,
+                    self._orig_input_concurrency + math.ceil(function_stats.backlog / function_stats.num_total_tasks),
+                )
+            else:
+                self._override_input_concurrency = self._orig_input_concurrency
+
+            # Change semaphore count if input_concurrency is changed
+            # TODO(cathy) maybe we could use less updates here
+            if self._override_input_concurrency != self._input_concurrency:
+                print("Changing input concurrency from", "to", self._override_input_concurrency)
+                for _ in range(self._input_concurrency):
+                    await self._semaphore.acquire()
+                self._input_concurrency = self._override_input_concurrency
+                for _ in range(self._input_concurrency):
+                    self._semaphore.release()
+
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
         self,
         finalized_functions: Dict[str, FinalizedFunction],
         input_concurrency: int = 1,
+        input_concurrency_override_max: int = 0,
         batch_max_size: int = 0,
         batch_wait_ms: int = 0,
     ) -> AsyncIterator[IOContext]:
@@ -529,6 +560,8 @@ class _ContainerIOManager:
         # - if no input is fetched, release the semaphore.
         # - or, when the output for the fetched input is sent, release the semaphore.
         self._input_concurrency = input_concurrency
+        self._orig_input_concurrency = input_concurrency
+        self._override_input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
 
         async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
@@ -536,6 +569,7 @@ class _ContainerIOManager:
             self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
             yield io_context
             self.current_input_id, self.current_input_started_at = (None, None)
+            await self.update_input_concurrency(input_concurrency_override_max)
 
         # collect all active input slots, meaning all inputs have wrapped up.
         for _ in range(input_concurrency):
@@ -843,6 +877,12 @@ class _ContainerIOManager:
     def stop_fetching_inputs(cls):
         assert cls._singleton
         cls._singleton._fetching_inputs = False
+
+    def set_concurrent_inputs(self, num_concurrent_inputs: int) -> None:
+        self._new_input_concurrency = num_concurrent_inputs
+
+    def get_concurrent_inputs(self) -> Optional[int]:
+        return self._input_concurrency
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)

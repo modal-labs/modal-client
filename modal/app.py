@@ -528,6 +528,9 @@ class _App:
             int
         ] = None,  # An optional maximum number of concurrent containers running the function (keep_warm sets minimum).
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
+        concurrent_inputs_override_max: Optional[
+            int
+        ] = None,  # Maximum number of concurrent inputs when overriding default.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Optional[
@@ -673,6 +676,7 @@ class _App:
                 retries=retries,
                 concurrency_limit=concurrency_limit,
                 allow_concurrent_inputs=allow_concurrent_inputs,
+                concurrent_inputs_override_max=concurrent_inputs_override_max,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 container_idle_timeout=container_idle_timeout,
@@ -720,6 +724,9 @@ class _App:
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
+        concurrent_inputs_override_max: Optional[
+            int
+        ] = None,  # Maximum number of concurrent inputs when overriding default.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
@@ -807,6 +814,7 @@ class _App:
                 retries=retries,
                 concurrency_limit=concurrency_limit,
                 allow_concurrent_inputs=allow_concurrent_inputs,
+                concurrent_inputs_override_max=concurrent_inputs_override_max,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 container_idle_timeout=container_idle_timeout,

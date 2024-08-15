@@ -1044,6 +1044,7 @@ message Function {
   reserved 59;
   uint32 batch_max_size = 60; // Maximum number of inputs to fetch at once
   uint64 batch_linger_ms = 61; // Miliseconds to block before a response is needed
+  uint32 concurrent_inputs_override_max = 62; // Maximum when attempting to override input concurrency
 }
 
 message FunctionBindParamsRequest {
@@ -1319,6 +1320,7 @@ message FunctionStats {
   uint32 backlog = 1;
   uint32 num_active_tasks = 2;
   uint32 num_total_tasks = 3;
+  uint32 num_desired_tasks = 4;
 }
 
 message FunctionUpdateSchedulingParamsRequest {
