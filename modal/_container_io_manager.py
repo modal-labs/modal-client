@@ -531,7 +531,9 @@ class _ContainerIOManager:
             if function_stats.num_desired_tasks > function_stats.num_total_tasks:
                 self._override_input_concurrency = min(
                     input_concurrency_override_max,
-                    self._orig_input_concurrency + math.ceil(function_stats.backlog / function_stats.num_total_tasks),
+                    math.ceil(
+                        self._orig_input_concurrency * function_stats.num_desired_tasks / function_stats.num_total_tasks
+                    ),
                 )
             else:
                 self._override_input_concurrency = self._orig_input_concurrency
