@@ -854,3 +854,59 @@ def test_custom_constructor():
     # check that explicit constructors trigger pickle parameterization
     function_info: FunctionInfo = synchronizer._translate_in(UsingCustomConstructor)._class_service_function._info  # type: ignore
     assert function_info.class_parameter_info().format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE
+
+
+class ParameterizedClass1:
+    def __init__(self, a):
+        pass
+
+
+class ParameterizedClass2:
+    def __init__(self, a: int = 1):
+        pass
+
+
+class ParameterizedClass3:
+    def __init__(self):
+        pass
+
+
+def test_disabled_parameterized_snap_cls():
+    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
+        app.cls(enable_memory_snapshot=True)(ParameterizedClass1)
+
+    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
+        app.cls(enable_memory_snapshot=True)(ParameterizedClass2)
+
+    app.cls(enable_memory_snapshot=True)(ParameterizedClass3)
+
+
+app_batched = App()
+
+
+def test_batched_method_duplicate_error(client):
+    with pytest.raises(
+        InvalidError, match="Modal class BatchedClass_1 with a modal batched function cannot have other modal methods."
+    ):
+
+        @app_batched.cls(serialized=True)
+        class BatchedClass_1:
+            @modal.method()
+            def method(self):
+                pass
+
+            @modal.batched(max_batch_size=2, wait_ms=0)
+            def batched_method(self):
+                pass
+
+    with pytest.raises(InvalidError, match="Modal class BatchedClass_2 can only have one batched function."):
+
+        @app_batched.cls(serialized=True)
+        class BatchedClass_2:
+            @modal.batched(max_batch_size=2, wait_ms=0)
+            def batched_method_1(self):
+                pass
+
+            @modal.batched(max_batch_size=2, wait_ms=0)
+            def batched_method_2(self):
+                pass

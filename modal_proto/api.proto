@@ -258,6 +258,8 @@ message AppDeploymentHistory {
   double deployed_at = 4;
   string deployed_by = 5;
   string tag = 6;
+  uint32 rollback_version = 7;
+  bool rollback_allowed = 8;
 }
 
 message AppDeploymentHistoryRequest {
@@ -707,6 +709,16 @@ message ContainerExecRequest {
 
 message ContainerExecResponse {
   string exec_id = 1;
+}
+
+message ContainerExecWaitRequest {
+  string exec_id = 1;
+  float timeout = 2;
+}
+
+message ContainerExecWaitResponse {
+  optional int32 exit_code = 1;
+  bool completed = 2;
 }
 
 message ContainerHeartbeatRequest {
@@ -2239,6 +2251,7 @@ service ModalClient {
   rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
   rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputBatch);
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
+  rpc ContainerExecWait(ContainerExecWaitRequest) returns (ContainerExecWaitResponse);
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 
