@@ -24,7 +24,7 @@ We appreciate your patience while we speedily work towards a stable release of t
     modal app history my-app
     ```
 
-    Accordingly, the explicit `--name` option has been deprecated. Providing an name that can be confused with an App ID will also now raise an error.
+    Accordingly, the explicit `--name` option has been deprecated. Providing a name that can be confused with an App ID will also now raise an error.
 
 
 
