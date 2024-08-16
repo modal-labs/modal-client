@@ -36,8 +36,8 @@ class _PartialFunctionFlags(enum.IntFlag):
     BATCHED: int = 32
 
     @staticmethod
-    def all() -> "_PartialFunctionFlags":
-        return ~_PartialFunctionFlags(0)  # type: ignore #  for some reason mypy things this has type int
+    def all() -> int:
+        return ~_PartialFunctionFlags(0)
 
 
 P = typing_extensions.ParamSpec("P")
@@ -118,9 +118,7 @@ class _PartialFunction(typing.Generic[P, T]):
 PartialFunction = synchronize_api(_PartialFunction)
 
 
-def _find_partial_methods_for_user_cls(
-    user_cls: Type[Any], flags: _PartialFunctionFlags
-) -> Dict[str, _PartialFunction]:
+def _find_partial_methods_for_user_cls(user_cls: Type[Any], flags: int) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class"""
     partial_functions: Dict[str, PartialFunction] = {}
     for parent_cls in user_cls.mro():
@@ -134,7 +132,7 @@ def _find_partial_methods_for_user_cls(
     return partial_functions
 
 
-def _find_callables_for_cls(user_cls: Type[Any], flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
+def _find_callables_for_cls(user_cls: Type[Any], flags: int) -> Dict[str, Callable[..., Any]]:
     """Grabs all method on a user class, and returns callables. Includes legacy methods."""
     functions: Dict[str, Callable] = {}
 
@@ -168,7 +166,7 @@ def _find_callables_for_cls(user_cls: Type[Any], flags: _PartialFunctionFlags) -
     return functions
 
 
-def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
+def _find_callables_for_obj(user_obj: Any, flags: int) -> Dict[str, Callable[..., Any]]:
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: Type = type(user_obj)
     return {k: meth.__get__(user_obj) for k, meth in _find_callables_for_cls(user_cls, flags).items()}
