@@ -2,6 +2,7 @@
 import re
 from typing import List, Optional, Union
 
+import rich
 import typer
 from click import UsageError
 from rich.table import Column
@@ -166,6 +167,7 @@ async def rollback(
             raise UsageError(f"Invalid version specifer: {version}")
     req = api_pb2.AppRollbackRequest(app_id=app_id, version=version_number)
     await client.stub.AppRollback(req)
+    rich.print("[green]✓[/green] Deployment rollback successful!")
 
 
 @app_cli.command("stop", no_args_is_help=True)
