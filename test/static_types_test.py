@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2024
 import pytest
 import subprocess
+from test.supports.skip import skip_windows
 
 
 @pytest.fixture(scope="module")
@@ -8,11 +9,13 @@ def generate_type_stubs():
     subprocess.call(["inv", "type-stubs"])
 
 
+@skip_windows("Type tests fail on windows since they don't exclude non-windows features")
 @pytest.mark.usefixtures("generate_type_stubs")
 def test_remote_call_keeps_original_return_value():
     subprocess.check_call(["mypy", "test/supports/type_assertions.py"])
 
 
+@skip_windows("Type tests fail on windows since they don't exclude non-windows features")
 @pytest.mark.usefixtures("generate_type_stubs")
 def test_negative_assertions():
     p = subprocess.Popen(
