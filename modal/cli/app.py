@@ -193,5 +193,5 @@ async def history(
     if deployments_with_tags:
         columns.append("Tag")
 
-    rows = sorted(rows, key=lambda x: str(x[0]), reverse=True)
+    rows = sorted(rows, key=lambda x: int(str(x[0])[1:]), reverse=True)
     display_table(columns, rows, json)
