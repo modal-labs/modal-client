@@ -3,6 +3,7 @@ import asyncio
 import inspect
 import textwrap
 import time
+import typing
 import warnings
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -22,6 +23,7 @@ from typing import (
     Union,
 )
 
+import typing_extensions
 from aiostream import stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -275,7 +277,11 @@ class _FunctionSpec:
     _experimental_gpus: Sequence[GPU_T]
 
 
-class _Function(_Object, type_prefix="fu"):
+P = typing_extensions.ParamSpec("P")
+R = typing.TypeVar("R", covariant=True)
+
+
+class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -1195,7 +1201,7 @@ class _Function(_Object, type_prefix="fu"):
         ):
             yield item
 
-    async def _call_function(self, args, kwargs):
+    async def _call_function(self, args, kwargs) -> R:
         invocation = await _Invocation.create(self, args, kwargs, client=self._client)
         try:
             return await invocation.run_function()
@@ -1203,6 +1209,8 @@ class _Function(_Object, type_prefix="fu"):
             # this can happen if the user terminates a program, triggering a cancellation cascade
             if not self._mute_cancellation:
                 raise
+            # TODO (elias): remove _mute_cancellation hack
+            return  # type: ignore
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
         return await _Invocation.create(self, args, kwargs, client=self._client)
@@ -1221,7 +1229,7 @@ class _Function(_Object, type_prefix="fu"):
 
     @synchronizer.no_io_translation
     @live_method
-    async def remote(self, *args, **kwargs) -> Any:
+    async def remote(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -1281,7 +1289,7 @@ class _Function(_Object, type_prefix="fu"):
             return self._obj
 
     @synchronizer.nowrap
-    def local(self, *args, **kwargs) -> Any:
+    def local(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """
         Calls the function locally, executing it with the given arguments and returning the execution's result.
 
@@ -1322,14 +1330,14 @@ class _Function(_Object, type_prefix="fu"):
                     await obj.aenter()
                     return await fun(*args, **kwargs)
 
-                return coro()
+                return coro()  # type: ignore
             else:
                 obj.enter()
                 return fun(*args, **kwargs)
 
     @synchronizer.no_input_translation
     @live_method
-    async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
+    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> Optional["_FunctionCall[R]"]:
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
@@ -1373,7 +1381,7 @@ class _Function(_Object, type_prefix="fu"):
 Function = synchronize_api(_Function)
 
 
-class _FunctionCall(_Object, type_prefix="fc"):
+class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
     """A reference to an executed function call.
 
     Constructed using `.spawn(...)` on a Modal function with the same
@@ -1388,7 +1396,7 @@ class _FunctionCall(_Object, type_prefix="fc"):
         assert self._client.stub
         return _Invocation(self._client.stub, self.object_id, self._client)
 
-    async def get(self, timeout: Optional[float] = None):
+    async def get(self, timeout: Optional[float] = None) -> R:
         """Get the result of the function call.
 
         This function waits indefinitely by default. It takes an optional

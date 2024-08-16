@@ -10,6 +10,7 @@ from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
 
+import modal_proto
 from modal_proto import api_pb2
 
 from .._serialization import deserialize, deserialize_data_format, serialize
@@ -88,7 +89,7 @@ class FunctionInfo:
     raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
     user_cls: Optional[Type[Any]]
-    definition_type: "api_pb2.Function.DefinitionType.ValueType"
+    definition_type: "modal_proto.api_pb2.Function.DefinitionType.ValueType"
     module_name: Optional[str]
 
     _type: FunctionInfoType
@@ -318,7 +319,7 @@ class FunctionInfo:
         return True
 
 
-def method_has_params(f: Callable) -> bool:
+def method_has_params(f: Callable[..., Any]) -> bool:
     """Return True if a method (bound or unbound) has parameters other than self.
 
     Used for deprecation of @exit() parameters.

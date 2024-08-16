@@ -65,7 +65,7 @@ class IOContext:
         input_ids: List[str],
         function_call_ids: List[str],
         finalized_function: FinalizedFunction,
-        deserialized_args: List,
+        deserialized_args: List[Any],
         is_batched: bool,
     ):
         self.input_ids = input_ids
@@ -104,7 +104,7 @@ class IOContext:
         deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in inputs]
         return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
 
-    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List]]:
+    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List[Any]]]:
         if not self._is_batched:
             return self._deserialized_args[0]
 
@@ -345,7 +345,7 @@ class _ContainerIOManager:
             object_handle_metadata=object_handle_metadata,
         )
 
-    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable]:
+    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable[..., Any]]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)

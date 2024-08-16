@@ -89,9 +89,13 @@ def type_check(ctx):
     # mypy will not check the *implementation* (.py) for files that also have .pyi type stubs
     mypy_exclude_list = [
         "playground",
+        "venv312",
         "venv311",
+        "venv310",
+        "venv39",
         "venv38",
         "test/cls_test.py",  # blocked by mypy bug: https://github.com/python/mypy/issues/16527
+        "test/supports/type_assertions_negative.py",
     ]
     excludes = " ".join(f"--exclude {path}" for path in mypy_exclude_list)
     ctx.run(f"mypy . {excludes}", pty=True)

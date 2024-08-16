@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import contextlib
+import typing
 from asyncio import Future
 from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
 
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
 
 class StatusRow:
-    def __init__(self, progress: "Optional[Tree]"):
+    def __init__(self, progress: "typing.Optional[Tree]"):
         from ._output import (
             step_progress,
         )

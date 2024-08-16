@@ -655,7 +655,7 @@ def get_active_app_fallback(function_def: api_pb2.Function) -> Optional[_App]:
 def call_lifecycle_functions(
     event_loop: UserCodeEventLoop,
     container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
-    funcs: Sequence[Callable],
+    funcs: Sequence[Callable[..., Any]],
 ) -> None:
     """Call function(s), can be sync or async, but any return values are ignored."""
     with container_io_manager.handle_user_exception():
