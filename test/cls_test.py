@@ -269,8 +269,8 @@ class NoArgRemote:
         pass
 
     @method()
-    def baz(self, z: int):
-        return z**3
+    def baz(self, z: int) -> float:
+        return z**3.0
 
 
 def test_call_cls_remote_no_args(client):
@@ -282,7 +282,9 @@ def test_call_cls_remote_no_args(client):
 if TYPE_CHECKING:
     # Check that type annotations carry through to the decorated classes
     assert_type(Foo(), Foo)
-    assert_type(Foo().bar, Function)
+    # can't use assert_type with named arguments, as it will diff in the name
+    # vs the anonymous argument in the assertion type
+    # assert_type(Foo().bar, Function[[int], float])
 
 
 def test_lookup(client, servicer):
@@ -481,7 +483,7 @@ app_unhydrated = App()
 @app_unhydrated.cls()
 class FooUnhydrated:
     @method()
-    def bar(self):
+    def bar(self, x):
         ...
 
 
