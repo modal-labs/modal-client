@@ -238,7 +238,7 @@ Usage:
 
 Given the following example `app.py`:
 ```
-app = modal.App()  # Note: "app" was called "stub" up until April 2024
+app = modal.App()
 
 @app.function()
 def foo():

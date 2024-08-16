@@ -111,7 +111,7 @@ class _App:
     ```python
     import modal
 
-    app = modal.App()  # Note: app were called "stub" up until April 2024
+    app = modal.App()
 
     @app.function(
         secrets=[modal.Secret.from_name("some_secret")],
@@ -285,16 +285,6 @@ class _App:
         # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
         for obj in self._indexed_objects.values():
             obj._unhydrate()
-
-    def is_inside(self, image: Optional[_Image] = None):
-        """Deprecated: use `Image.imports()` instead! Usage:
-        ```
-        my_image = modal.Image.debian_slim().pip_install("torch")
-        with my_image.imports():
-            import torch
-        ```
-        """
-        deprecation_error((2023, 11, 8), _App.is_inside.__doc__)
 
     @asynccontextmanager
     async def _set_local_app(self, client: _Client, running_app: RunningApp) -> AsyncGenerator[None, None]:

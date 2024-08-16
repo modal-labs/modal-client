@@ -102,5 +102,3 @@ Otherwise, raises an error if the workspace has multiple environments.
 ENV_OPTION = typer.Option(None, "-e", "--env", help=ENV_OPTION_HELP)
 
 YES_OPTION = typer.Option(False, "-y", "--yes", help="Run without pausing for confirmation.")
-
-NAME_OPTION = typer.Option("", "-n", "--name", help="Look up a deployed App by its name")

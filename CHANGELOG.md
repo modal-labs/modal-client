@@ -10,6 +10,18 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.33 (2024-08-16)
+
+- Commands in the `modal app` CLI now accept an App name as a positional argument, in addition to an App ID:
+
+    ```
+    modal app history my-app
+    ```
+
+    Accordingly, the explicit `--name` option has been deprecated. Providing an name that can be confused with an App ID will also now raise an error.
+
+
+
 ### 0.64.26 (2024-08-15)
 
 - `ContainerProcess` handles now support `wait()` and `poll()`, like `Sandbox` objects
