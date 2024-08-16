@@ -111,7 +111,7 @@ class _App:
     ```python
     import modal
 
-    app = modal.App()  # Note: app were called "stub" up until April 2024
+    app = modal.App()
 
     @app.function(
         secrets=[modal.Secret.from_name("some_secret")],

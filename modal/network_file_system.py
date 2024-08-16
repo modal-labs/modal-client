@@ -63,7 +63,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     import modal
 
     nfs = modal.NetworkFileSystem.from_name("my-nfs", create_if_missing=True)
-    app = modal.App()  # Note: "app" was called "stub" up until April 2024
+    app = modal.App()
 
     @app.function(network_file_systems={"/root/foo": nfs})
     def f():
