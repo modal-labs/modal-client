@@ -178,7 +178,7 @@ async def history(
         style = "bold green" if idx == 0 else ""
 
         row = [
-            Text(str(app_stats.version), style=style),
+            Text(f"v{app_stats.version}", style=style),
             Text(timestamp_to_local(app_stats.deployed_at, json), style=style),
             Text(app_stats.client_version, style=style),
             Text(app_stats.deployed_by, style=style),
