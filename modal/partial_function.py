@@ -41,13 +41,13 @@ class _PartialFunctionFlags(enum.IntFlag):
 
 
 P = typing_extensions.ParamSpec("P")
-T = typing_extensions.TypeVar("T", covariant=True)
+R = typing_extensions.TypeVar("R", covariant=True)
 
 
-class _PartialFunction(typing.Generic[P, T]):
+class _PartialFunction(typing.Generic[P, R]):
     """Intermediate function, produced by @method, @web_endpoint, or @batched"""
 
-    raw_f: Callable[P, T]
+    raw_f: Callable[P, R]
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
     is_generator: Optional[bool]
@@ -57,7 +57,7 @@ class _PartialFunction(typing.Generic[P, T]):
 
     def __init__(
         self,
-        raw_f: Callable[P, T],
+        raw_f: Callable[P, R],
         flags: _PartialFunctionFlags,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
@@ -74,7 +74,7 @@ class _PartialFunction(typing.Generic[P, T]):
         self.batch_max_size = batch_max_size
         self.batch_wait_ms = batch_wait_ms
 
-    def __get__(self, obj, objtype=None) -> _Function:
+    def __get__(self, obj, objtype=None) -> _Function[P, R]:
         k = self.raw_f.__name__
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
@@ -179,7 +179,7 @@ def _method(
     # a [sync/async] generator object
     is_generator: Optional[bool] = None,
     keep_warm: Optional[int] = None,  # Deprecated: Use keep_warm on @app.cls() instead
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
+) -> Callable[[Callable[typing_extensions.Concatenate[Any, P], R]], _PartialFunction[P, R]]:
     """Decorator for methods that should be transformed into a Modal Function registered against this class's app.
 
     **Usage:**
@@ -248,7 +248,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
-) -> Callable[[Callable[P, T]], _PartialFunction[P, T]]:
+) -> Callable[[Callable[P, R]], _PartialFunction[P, R]]:
     """Register a basic web endpoint with this application.
 
     This is the simple way to create a web endpoint on Modal. The function
