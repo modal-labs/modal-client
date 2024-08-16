@@ -115,7 +115,7 @@ class _Volume(_Object, type_prefix="vo"):
     ```python
     import modal
 
-    app = modal.App()  # Note: "app" was called "stub" up until April 2024
+    app = modal.App()
     volume = modal.Volume.from_name("my-persisted-volume", create_if_missing=True)
 
     @app.function(volumes={"/root/foo": volume})
@@ -166,7 +166,7 @@ class _Volume(_Object, type_prefix="vo"):
 
         volume = modal.Volume.from_name("my-volume", create_if_missing=True)
 
-        app = modal.App()  # Note: "app" was called "stub" up until April 2024
+        app = modal.App()
 
         # Volume refers to the same object, even across instances of `app`.
         @app.function(volumes={"/vol": volume})

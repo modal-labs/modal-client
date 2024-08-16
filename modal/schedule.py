@@ -19,7 +19,7 @@ class Cron(Schedule):
 
     ```python
     import modal
-    app = modal.App()  # Note: "app" was called "stub" up until April 2024
+    app = modal.App()
 
 
     @app.function(schedule=modal.Cron("* * * * *"))
@@ -49,7 +49,7 @@ class Period(Schedule):
 
     ```python
     import modal
-    app = modal.App()  # Note: "app" was called "stub" up until April 2024
+    app = modal.App()
 
     @app.function(schedule=modal.Period(days=1))
     def f():
