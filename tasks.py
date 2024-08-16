@@ -86,6 +86,7 @@ def lint_protos(ctx):
 
 @task
 def type_check(ctx):
+    type_stubs(ctx)
     # mypy will not check the *implementation* (.py) for files that also have .pyi type stubs
     ctx.run(
         "mypy . --exclude=playground --exclude=venv311 --exclude=venv38 "
