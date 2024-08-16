@@ -98,12 +98,6 @@ def test_run_function_without_app_error():
     assert "hydrated" in str(excinfo.value)
 
 
-def test_is_inside_basic():
-    app = App()
-    with pytest.raises(DeprecationError, match="imports()"):
-        app.is_inside()
-
-
 def test_missing_attr():
     """Trying to call a non-existent function on the App should produce
     an understandable error message."""
