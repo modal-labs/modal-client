@@ -944,7 +944,7 @@ def test_unannotated_parameters_are_invalid():
 
         @app.cls(serialized=True)
         class B:
-            b = modal.parameter()
+            b = modal.parameter()  # type: ignore
 
 
 def test_unsupported_type_parameters_raise_errors():
