@@ -23,6 +23,9 @@ from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 
+MAX_MAX_BATCH_SIZE = 1000
+MAX_BATCH_WAIT_MS = 10 * 60 * 1000  # 10 minutes
+
 
 class _PartialFunctionFlags(enum.IntFlag):
     FUNCTION: int = 1
@@ -30,6 +33,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     ENTER_PRE_SNAPSHOT: int = 4
     ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
+    BATCHED: int = 32
 
     @staticmethod
     def all() -> "_PartialFunctionFlags":
@@ -41,13 +45,15 @@ T = typing_extensions.TypeVar("T", covariant=True)
 
 
 class _PartialFunction(typing.Generic[P, T]):
-    """Intermediate function, produced by @method or @web_endpoint"""
+    """Intermediate function, produced by @method, @web_endpoint, or @batched"""
 
     raw_f: Callable[P, T]
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
     is_generator: Optional[bool]
     keep_warm: Optional[int]
+    batch_max_size: Optional[int]
+    batch_wait_ms: Optional[int]
 
     def __init__(
         self,
@@ -56,6 +62,8 @@ class _PartialFunction(typing.Generic[P, T]):
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
         keep_warm: Optional[int] = None,
+        batch_max_size: Optional[int] = None,
+        batch_wait_ms: Optional[int] = None,
     ):
         self.raw_f = raw_f
         self.flags = flags
@@ -63,6 +71,8 @@ class _PartialFunction(typing.Generic[P, T]):
         self.is_generator = is_generator
         self.keep_warm = keep_warm
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
+        self.batch_max_size = batch_max_size
+        self.batch_wait_ms = batch_wait_ms
 
     def __get__(self, obj, objtype=None) -> _Function:
         k = self.raw_f.__name__
@@ -100,6 +110,8 @@ class _PartialFunction(typing.Generic[P, T]):
             flags=(self.flags | flags),
             webhook_config=self.webhook_config,
             keep_warm=self.keep_warm,
+            batch_max_size=self.batch_max_size,
+            batch_wait_ms=self.batch_wait_ms,
         )
 
 
@@ -203,6 +215,12 @@ def _method(
             raw_f.wrapped = True  # suppress later warning
             raise InvalidError(
                 "Web endpoints on classes should not be wrapped by `@method`. "
+                "Suggestion: remove the `@method` decorator."
+            )
+        if isinstance(raw_f, _PartialFunction) and raw_f.batch_max_size is not None:
+            raw_f.wrapped = True  # suppress later warning
+            raise InvalidError(
+                "Batched function on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
         if is_generator is None:
@@ -563,6 +581,57 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
     return wrapper
 
 
+def _batched(
+    _warn_parentheses_missing=None,
+    *,
+    max_batch_size: int,
+    wait_ms: int,
+) -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Decorator for functions or class methods that should be batched.
+
+    **Usage**
+
+    ```python notest
+    @app.function()
+    @modal.batched(max_batch_size=4, wait_ms=1000)
+    async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
+        return [x * y for x, y in zip(xs, xs)]
+
+    # call batched_multiply with individual inputs
+    batched_multiply.remote.aio(2, 100)
+    ```
+    """
+    # TODO(cathy) add link to guide to docstring
+    if _warn_parentheses_missing:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batched()`."
+        )
+    if max_batch_size < 1:
+        raise InvalidError("max_batch_size must be a positive integer.")
+    if max_batch_size >= MAX_MAX_BATCH_SIZE:
+        raise InvalidError(f"max_batch_size must be less than {MAX_MAX_BATCH_SIZE}.")
+    if wait_ms < 0:
+        raise InvalidError("wait_ms must be a non-negative integer.")
+    if wait_ms >= MAX_BATCH_WAIT_MS:
+        raise InvalidError(f"wait_ms must be less than {MAX_BATCH_WAIT_MS}.")
+
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if isinstance(raw_f, _Function):
+            raw_f = raw_f.get_raw_f()
+            raise InvalidError(
+                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
+                "@app.function()\n@modal.batched()\ndef batched_function():\n    ..."
+            )
+        return _PartialFunction(
+            raw_f,
+            _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.BATCHED,
+            batch_max_size=max_batch_size,
+            batch_wait_ms=wait_ms,
+        )
+
+    return wrapper
+
+
 method = synchronize_api(_method)
 web_endpoint = synchronize_api(_web_endpoint)
 asgi_app = synchronize_api(_asgi_app)
@@ -571,3 +640,4 @@ web_server = synchronize_api(_web_server)
 build = synchronize_api(_build)
 enter = synchronize_api(_enter)
 exit = synchronize_api(_exit)
+batched = synchronize_api(_batched)

@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import App, Image, Mount, NetworkFileSystem, Proxy, web_endpoint
+from modal import App, Image, Mount, NetworkFileSystem, Proxy, batched, web_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import ExecutionError, InvalidError
@@ -810,3 +810,33 @@ def test_function_decorator_on_method():
 
     with pytest.raises(InvalidError, match="@app.cls"):
         app.function()(X.f)
+
+
+def test_batch_function_invalid_error():
+    app = App()
+
+    with pytest.raises(InvalidError, match="must be a positive integer"):
+        app.function(batched(max_batch_size=0, wait_ms=1))(dummy)
+
+    with pytest.raises(InvalidError, match="must be a non-negative integer"):
+        app.function(batched(max_batch_size=1, wait_ms=-1))(dummy)
+
+    with pytest.raises(InvalidError, match="must be less than"):
+        app.function(batched(max_batch_size=1000, wait_ms=1))(dummy)
+
+    with pytest.raises(InvalidError, match="must be less than"):
+        app.function(batched(max_batch_size=1, wait_ms=10 * 60 * 1000))(dummy)
+
+    with pytest.raises(InvalidError, match="cannot return generators"):
+
+        @app.function(serialized=True)
+        @batched(max_batch_size=1, wait_ms=1)
+        def f(x):
+            yield [x_i**2 for x_i in x]
+
+    with pytest.raises(InvalidError, match="does not accept default arguments"):
+
+        @app.function(serialized=True)
+        @batched(max_batch_size=1, wait_ms=1)
+        def g(x=1):
+            return [x_i**2 for x_i in x]

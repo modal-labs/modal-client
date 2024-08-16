@@ -251,6 +251,25 @@ message AppDeploySingleObjectResponse {
   string app_id = 1;
 }
 
+message AppDeploymentHistory {
+  string app_id = 1;
+  uint32 version = 2;
+  string client_version = 3;
+  double deployed_at = 4;
+  string deployed_by = 5;
+  string tag = 6;
+  uint32 rollback_version = 7;
+  bool rollback_allowed = 8;
+}
+
+message AppDeploymentHistoryRequest {
+  string app_id = 1;
+}
+
+message AppDeploymentHistoryResponse {
+  repeated AppDeploymentHistory app_deployment_histories = 1;
+}
+
 message AppGetByDeploymentNameRequest {
   DeploymentNamespace namespace = 1;
   string name = 2;
@@ -690,6 +709,16 @@ message ContainerExecRequest {
 
 message ContainerExecResponse {
   string exec_id = 1;
+}
+
+message ContainerExecWaitRequest {
+  string exec_id = 1;
+  float timeout = 2;
+}
+
+message ContainerExecWaitResponse {
+  optional int32 exit_code = 1;
+  bool completed = 2;
 }
 
 message ContainerHeartbeatRequest {
@@ -2191,6 +2220,7 @@ service ModalClient {
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
   rpc AppDeploySingleObject(AppDeploySingleObjectRequest) returns (AppDeploySingleObjectResponse);
+  rpc AppDeploymentHistory(AppDeploymentHistoryRequest) returns (AppDeploymentHistoryResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
@@ -2221,6 +2251,7 @@ service ModalClient {
   rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
   rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputBatch);
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
+  rpc ContainerExecWait(ContainerExecWaitRequest) returns (ContainerExecWaitResponse);
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 

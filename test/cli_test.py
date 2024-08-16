@@ -787,6 +787,32 @@ def test_list_apps(servicer, mock_dir, set_env_client):
     assert "my-vol" not in res.stdout
 
 
+def test_list_app_deployment_history(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["deploy", "myapp.py", "--name", "my_app_foo"])
+
+    # app should be deployed once it exists
+    res = _run(["app", "history", "-n", "my_app_foo"])
+    assert "1" in res.stdout, res.stdout
+
+    res = _run(["app", "history", "-n", "my_app_foo", "--json"])
+    assert json.loads(res.stdout)
+
+    # re-deploying an app should result in one app stopped and one app deployed
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["deploy", "myapp.py", "--name", "my_app_foo"])
+
+    res = _run(["app", "history", "-n", "my_app_foo", "--json"])
+    assert "1" in res.stdout
+    assert "2" in res.stdout, f"{res.stdout=}"
+
+    # can't fetch history for stopped apps
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["app", "stop", "-n", "my_app_foo"])
+
+    res = _run(["app", "history", "-n", "my_app_foo", "--json"], 1)
+
+
 def test_dict_create_list_delete(servicer, server_url_env, set_env_client):
     _run(["dict", "create", "foo-dict"])
     _run(["dict", "create", "bar-dict"])

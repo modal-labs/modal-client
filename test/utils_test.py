@@ -13,7 +13,7 @@ from modal._utils.name_utils import (
     is_valid_tag,
 )
 from modal._utils.package_utils import parse_major_minor_version
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import InvalidError
 
 
 def test_subdomain_label():
@@ -30,10 +30,9 @@ def test_object_name():
     assert is_valid_object_name("a" * 64)
     assert not is_valid_object_name("hello world")
     assert not is_valid_object_name("a" * 65)
+    assert not is_valid_object_name("ap-abcdefghABCDEFGH012345")
     with pytest.raises(InvalidError, match="Invalid Volume name: 'foo/bar'"):
         check_object_name("foo/bar", "Volume")
-    with pytest.warns(DeprecationError, match="Invalid Volume name: 'foo/bar'"):
-        check_object_name("foo/bar", "Volume", warn=True)
 
 
 def test_environment_name():

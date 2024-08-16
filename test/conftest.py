@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import datetime
 import hashlib
 import inspect
 import os
@@ -103,6 +104,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_apps = {
             client_mount_name(): "ap-x",
         }
+        self.app_deployment_history: defaultdict[str, List[Dict[str, Any]]] = defaultdict(list)
+        self.app_deployment_history["ap-x"] = [
+            {
+                "app_id": "ap-x",
+                "deployed_at": datetime.datetime.now().timestamp(),
+                "version": 1,
+                "client_version": str(pkg_resources.parse_version(__version__)),
+                "deployed_by": "foo-user",
+                "tag": "latest",
+            }
+        ]
         self.app_objects = {}
         self.app_single_objects = {}
         self.app_unindexed_objects = {
@@ -345,6 +357,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppDeployRequest = await stream.recv_message()
         self.deployed_apps[request.name] = request.app_id
         self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
+
         await stream.send_message(api_pb2.AppDeployResponse(url="http://test.modal.com/foo/bar"))
 
     async def AppPublish(self, stream):
@@ -362,6 +375,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.AppPublishResponse())
 
+        # start new version
+        self.app_deployment_history[request.app_id].append(
+            {
+                "app_id": request.app_id,
+                "deployed_at": datetime.datetime.now().timestamp(),
+                "version": 1,
+                "client_version": str(pkg_resources.parse_version(__version__)),
+                "deployed_by": "foo-user",
+                "tag": "latest",
+            }
+        )
+
     async def AppGetByDeploymentName(self, stream):
         request: api_pb2.AppGetByDeploymentNameRequest = await stream.recv_message()
         await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name)))
@@ -371,6 +396,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.requests.append(request)
         self.app_heartbeats[request.app_id] += 1
         await stream.send_message(Empty())
+
+    async def AppDeploymentHistory(self, stream):
+        request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
+        app_deployment_histories = []
+
+        for app_deployment_history in self.app_deployment_history.get(request.app_id, []):
+            app_deployment_histories.append(
+                api_pb2.AppDeploymentHistory(
+                    app_id=request.app_id,
+                    deployed_at=app_deployment_history["deployed_at"],
+                    version=app_deployment_history["version"],
+                    client_version=app_deployment_history["client_version"],
+                    deployed_by=app_deployment_history["deployed_by"],
+                    tag=app_deployment_history["tag"],
+                )
+            )
+
+        await stream.send_message(
+            api_pb2.AppDeploymentHistoryResponse(app_deployment_histories=app_deployment_histories)
+        )
 
     async def AppList(self, stream):
         await stream.recv_message()
@@ -520,6 +565,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
             stdin=asyncio.subprocess.PIPE,
         )
         await stream.send_message(api_pb2.ContainerExecResponse(exec_id="container_exec_id"))
+
+    async def ContainerExecWait(self, stream):
+        request: api_pb2.ContainerExecWaitRequest = await stream.recv_message()
+        try:
+            await asyncio.wait_for(self.container_exec.wait(), request.timeout)
+        except asyncio.TimeoutError:
+            pass
+
+        if self.container_exec.returncode is None:
+            await stream.send_message(api_pb2.ContainerExecWaitResponse(completed=False))
+        else:
+            await stream.send_message(
+                api_pb2.ContainerExecWaitResponse(completed=True, exit_code=self.container_exec.returncode)
+            )
 
     async def ContainerExecGetOutput(self, stream):
         request: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()

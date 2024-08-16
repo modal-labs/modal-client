@@ -10,6 +10,34 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.26 (2024-08-15)
+
+- `ContainerProcess` handles now support `wait()` and `poll()`, like `Sandbox` objects
+
+
+
+### 0.64.24 (2024-08-14)
+
+Added support for dynamic batching. Functions or class methods decorated with `@modal.batched` will now automatically batch their invocations together, up to a specified `max_batch_size`.  The batch will wait for a maximum of `wait_ms` for more invocations after the first invocation is made. See guide for more details.
+```
+@app.function()
+@modal.batched(max_batch_size=4, wait_ms=1000)
+async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
+    return [x * y for x, y in zip(xs, xs)]
+
+@app.cls()
+class BatchedClass():
+    @modal.batched(max_batch_size=4, wait_ms=1000)
+    async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
+        return [x * y for x, y in zip(xs, xs)]
+```
+The batched function is called with individual inputs:
+```
+await batched_multiply.remote.aio(2, 3)
+```
+
+
+
 ### 0.64.18 (2024-08-12)
 
 - Sandboxes now have an `exec()` method that lets you execute a command inside the sandbox container. `exec` returns a `ContainerProcess` handle for input and output streaming.

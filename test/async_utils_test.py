@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import functools
 import logging
 import os
 import platform
@@ -99,6 +100,31 @@ async def test_task_context_infinite_loop():
     assert counter == 4  # should be exited immediately
 
 
+@skip_github_non_linux
+@pytest.mark.asyncio
+async def test_task_context_infinite_loop_non_functions():
+    async with TaskContext(grace=0.01) as task_context:
+        async def f(x):
+            pass
+
+        task_context.infinite_loop(lambda: f(123))
+        task_context.infinite_loop(functools.partial(f, 123))
+
+
+@skip_github_non_linux
+@pytest.mark.asyncio
+async def test_task_context_infinite_loop_timeout(caplog):
+    async with TaskContext(grace=0.01) as task_context:
+        async def f():
+            await asyncio.sleep(5.0)
+
+        task_context.infinite_loop(f, timeout=0.1)
+        await asyncio.sleep(0.15)
+
+    assert len(caplog.records) == 1
+    assert "timed out" in caplog.text
+
+
 @pytest.mark.asyncio
 async def test_task_context_gather():
     state = "none"
@@ -183,7 +209,6 @@ async def test_warn_if_generator_is_not_consumed(caplog):
     assert "list" in caplog.text
 
 
-@pytest.mark.asyncio
 def test_warn_if_generator_is_not_consumed_sync(caplog):
     @warn_if_generator_is_not_consumed()
     def my_generator():
