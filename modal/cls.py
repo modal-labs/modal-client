@@ -509,14 +509,12 @@ class _NO_DEFAULT:
 
 class _Parameter:
     default: Any
-    init: bool
 
-    def __init__(self, default: Any, init: bool):
+    def __init__(self, default: Any):
         self.default = default
-        self.init = init
 
 
-def parameter(*, default: Any = _NO_DEFAULT(), init: bool = True) -> Any:
+def parameter(*, default: Any = _NO_DEFAULT()) -> Any:
     """Used to specify options for modal.cls parameters, similar to dataclass.field for dataclasses
     ```
     class A:
@@ -525,7 +523,7 @@ def parameter(*, default: Any = _NO_DEFAULT(), init: bool = True) -> Any:
     ```
     """
     # has to return Any to be assignable to any annotation (https://github.com/microsoft/pyright/issues/5102)
-    return _Parameter(default, init)
+    return _Parameter(default)
 
 
 def field(*, default: Any = None, init: bool = False) -> Any:
