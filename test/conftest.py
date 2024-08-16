@@ -372,12 +372,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.AppPublishResponse())
 
-        # start new version
+        if current_history := self.app_deployment_history[request.app_id]:
+            current_version = current_history[-1]["version"]
+        else:
+            current_version = 0
         self.app_deployment_history[request.app_id].append(
             {
                 "app_id": request.app_id,
                 "deployed_at": datetime.datetime.now().timestamp(),
-                "version": 1,
+                "version": current_version + 1,
                 "client_version": str(pkg_resources.parse_version(__version__)),
                 "deployed_by": "foo-user",
                 "tag": "latest",
