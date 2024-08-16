@@ -76,7 +76,7 @@ class _CloudBucketMount:
 
     **Google GCS Usage**
 
-    Google Cloud Storage (GCS) is partially [S3-compatible](https://cloud.google.com/storage/docs/interoperability).
+    Google Cloud Storage (GCS) is [S3-compatible](https://cloud.google.com/storage/docs/interoperability).
     GCS Buckets also require a secret with Google-specific key names (see below) populated with
     a [HMAC key](https://cloud.google.com/storage/docs/authentication/managing-hmackeys#create).
 
