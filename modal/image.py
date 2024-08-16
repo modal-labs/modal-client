@@ -1686,18 +1686,6 @@ class _Image(_Object, type_prefix="im"):
             if not isinstance(exc, ImportError):
                 warnings.warn(f"Warning: caught a non-ImportError exception in an `imports()` block: {repr(exc)}")
 
-    def run_inside(self):
-        """`Image.run_inside` is deprecated - use `Image.imports` instead.
-
-        **Usage:**
-
-        ```python notest
-        with image.imports():
-            import torch
-        ```
-        """
-        deprecation_error((2023, 12, 15), Image.run_inside.__doc__)
-
     @live_method_gen
     async def _logs(self) -> AsyncGenerator[str, None]:
         """Streams logs from an image, or returns logs from an already completed image.
