@@ -25,7 +25,7 @@ from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
-from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -1685,18 +1685,6 @@ class _Image(_Object, type_prefix="im"):
                 raise
             if not isinstance(exc, ImportError):
                 warnings.warn(f"Warning: caught a non-ImportError exception in an `imports()` block: {repr(exc)}")
-
-    def run_inside(self):
-        """`Image.run_inside` is deprecated - use `Image.imports` instead.
-
-        **Usage:**
-
-        ```python notest
-        with image.imports():
-            import torch
-        ```
-        """
-        deprecation_error((2023, 12, 15), Image.run_inside.__doc__)
 
     @live_method_gen
     async def _logs(self) -> AsyncGenerator[str, None]:

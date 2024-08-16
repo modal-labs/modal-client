@@ -286,16 +286,6 @@ class _App:
         for obj in self._indexed_objects.values():
             obj._unhydrate()
 
-    def is_inside(self, image: Optional[_Image] = None):
-        """Deprecated: use `Image.imports()` instead! Usage:
-        ```
-        my_image = modal.Image.debian_slim().pip_install("torch")
-        with my_image.imports():
-            import torch
-        ```
-        """
-        deprecation_error((2023, 11, 8), _App.is_inside.__doc__)
-
     @asynccontextmanager
     async def _set_local_app(self, client: _Client, running_app: RunningApp) -> AsyncGenerator[None, None]:
         self._app_id = running_app.app_id
