@@ -1,5 +1,13 @@
 # Copyright Modal Labs 2024
-from .functions import typed_func
+import modal
+
+app = modal.App()
+
+
+@app.function()
+def typed_func(a: str) -> float:
+    return 0.0
+
 
 typed_func.remote(b="hello")  # wrong arg name
 typed_func.remote(a=10)  # wrong arg type

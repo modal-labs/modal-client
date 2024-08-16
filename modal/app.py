@@ -88,7 +88,7 @@ CLS_T = typing.TypeVar("CLS_T", bound=typing.Type[Any])
 
 
 P = typing_extensions.ParamSpec("P")
-T = typing.TypeVar("T")
+R = typing.TypeVar("R")
 
 
 class _App:
@@ -560,7 +560,7 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
-    ) -> Callable[[Union[Callable[P, T], _PartialFunction[P, T]]], _Function[P, T]]:
+    ) -> Callable[[Union[Callable[P, R], _PartialFunction[P, R]]], _Function[P, R]]:
         """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg
