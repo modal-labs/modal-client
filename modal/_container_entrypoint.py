@@ -722,8 +722,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     service: Service
     function_def = container_args.function_def
     is_auto_snapshot: bool = function_def.is_auto_snapshot
-    # Restore tasks can fallback to non-restore tasks, in which case `MODAL_ENABLE_SNAP_RESTORE` is false.
-    is_snapshotting_function = os.environ.get("MODAL_ENABLE_SNAP_RESTORE", "1") == "1"
+    # The worker sets this flag to "1" for snapshot and restore tasks. Otherwise, this flag is unset,
+    # in which case snapshots should be disabled.
+    is_snapshotting_function = (
+        function_def.is_checkpointing_function and os.environ.get("MODAL_ENABLE_SNAP_RESTORE", "0") == "1"
+    )
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
 
