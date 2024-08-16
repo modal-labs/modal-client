@@ -534,7 +534,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             )
 
         if checkpointing_enabled is not None:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 3, 4),
                 "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
             )

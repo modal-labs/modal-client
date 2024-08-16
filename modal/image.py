@@ -463,7 +463,7 @@ class _Image(_Object, type_prefix="im"):
 
     def extend(self, **kwargs) -> "_Image":
         """Deprecated! This is a low-level method not intended to be part of the public API."""
-        deprecation_warning(
+        deprecation_error(
             (2024, 3, 7),
             "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
         )
