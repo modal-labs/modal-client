@@ -26,6 +26,10 @@ from modal_version import __version__
 
 from .logger import logger
 
+RequestType = TypeVar("RequestType", bound=Message)
+ResponseType = TypeVar("ResponseType", bound=Message)
+
+
 # Monkey patches grpclib to have a Modal User Agent header.
 grpclib.client.USER_AGENT = "modal-client/{version} ({sys}; {py}/{py_ver})'".format(
     version=__version__,
@@ -120,7 +124,7 @@ async def unary_stream(
 
 
 async def retry_transient_errors(
-    fn,
+    fn: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
     *args,
     base_delay: float = 0.1,
     max_delay: float = 1,
@@ -130,7 +134,7 @@ async def retry_transient_errors(
     attempt_timeout: Optional[float] = None,  # timeout for each attempt
     total_timeout: Optional[float] = None,  # timeout for the entire function call
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
-):
+) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
 
