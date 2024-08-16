@@ -191,7 +191,7 @@ class _Cls(_Object, type_prefix="cs"):
     ]  # The _Function serving *all* methods of the class, used for version >=v0.63
     _method_functions: Dict[str, _Function]  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
-    _callables: Dict[str, Callable]
+    _callables: Dict[str, Callable[..., Any]]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
     _app: Optional["modal.app._App"] = None  # not set for lookups
 
