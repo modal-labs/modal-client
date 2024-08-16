@@ -926,3 +926,30 @@ def test_batched_method_duplicate_error(client):
             @modal.batched(max_batch_size=2, wait_ms=0)
             def batched_method_2(self):
                 pass
+
+
+def test_cls_with_both_constructor_and_parameters_is_invalid():
+    with pytest.raises(InvalidError, match="constructor"):
+
+        @app.cls(serialized=True)
+        class A:
+            a: int = modal.parameter()
+
+            def __init__(self, a):
+                self.a = a
+
+
+def test_unannotated_parameters_are_invalid():
+    with pytest.raises(InvalidError, match="annotated"):
+
+        @app.cls(serialized=True)
+        class B:
+            b = modal.parameter()
+
+
+def test_unsupported_type_parameters_raise_errors():
+    with pytest.raises(InvalidError, match="float"):
+
+        @app.cls(serialized=True)
+        class C:
+            c: float = modal.parameter()

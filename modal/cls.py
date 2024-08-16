@@ -7,6 +7,7 @@ from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Type,
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
+from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -282,8 +283,35 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
+    def validate_construction_mechanism(user_cls):
+        params = {k: v for k, v in user_cls.__dict__.items() if isinstance(v, _Parameter)}
+        has_custom_constructor = user_cls.__init__ != object.__init__
+        if params and has_custom_constructor:
+            raise InvalidError(
+                "A class can't have both a custom __init__ constructor "
+                "and dataclass-style modal.parameter() annotations"
+            )
+
+        annotations = user_cls.__dict__.get("__annotations__", {})  # compatible with older pythons
+        missing_annotations = params.keys() - annotations.keys()
+        if missing_annotations:
+            raise InvalidError("All modal.parameter() specifications need to be type annotated")
+
+        annotated_params = {k: t for k, t in annotations.items() if k in params}
+        for k, t in annotated_params.items():
+            if t not in CLASS_PARAM_TYPE_MAP:
+                t_name = getattr(t, "__name__", repr(t))
+                supported = ", ".join(t.__name__ for t in CLASS_PARAM_TYPE_MAP.keys())
+                raise InvalidError(
+                    f"{user_cls.__name__}.{k}: {t_name} is not a supported parameter type. Use one of: {supported}"
+                )
+
+    @staticmethod
     def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
         """mdmd:hidden"""
+        # validate signature
+        _Cls.validate_construction_mechanism(user_cls)
+
         functions: Dict[str, _Function] = {}
         partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
