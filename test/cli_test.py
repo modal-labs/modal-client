@@ -816,9 +816,15 @@ def test_app_rollback(servicer, mock_dir, set_env_client):
         # Deploy multiple times
         for _ in range(4):
             _run(["deploy", "myapp.py", "--name", "my_app"])
-    _run(["app", "rollback", "--name", "my_app", "--version", "-2"])
+    _run(["app", "rollback", "my_app"])
+    app_id = servicer.deployed_apps.get("my_app")
+    assert servicer.app_deployment_history[app_id][-1]["rollback_version"] == 3
+
+    _run(["app", "rollback", "my_app", "v2"])
     app_id = servicer.deployed_apps.get("my_app")
     assert servicer.app_deployment_history[app_id][-1]["rollback_version"] == 2
+
+    _run(["app", "rollback", "my_app", "2"], expected_exit_code=2)
 
 
 def test_dict_create_list_delete(servicer, server_url_env, set_env_client):

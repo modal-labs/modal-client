@@ -3,6 +3,7 @@ import re
 from typing import List, Optional, Union
 
 import typer
+from click import UsageError
 from rich.table import Column
 from rich.text import Text
 from typer import Argument
@@ -122,12 +123,9 @@ def logs(
 @synchronizer.create_blocking
 async def rollback(
     app_identifier: str = APP_IDENTIFIER,
-    version: int = typer.Argument(
-        -1, help="Target version (if positive) or number of versions to rollback (if negative)"
-    ),
+    version: str = typer.Argument("", help="Target version for rollback."),
     *,
     env: Optional[str] = ENV_OPTION,
-    name: str = NAME_OPTION,
 ):
     """Redeploy a previous version of an App.
 
@@ -140,32 +138,33 @@ async def rollback(
     Rollback an App to its previous version:
 
     ```
-    modal app rollback ap-123
+    modal app rollback my-app
     ```
 
     Rollback an App to a specific version:
 
     ```
-    modal app rollback ap-123 8
+    modal app rollback my-app v3
     ```
 
-    Rollback an App by two versions:
+    Rollback an App using its App ID instead of its name:
 
     ```
-    modal app rollback ap-123 -2
-    ```
-
-    Rollback an App using its name instead of its App ID:
-
-    ```
-    modal app rollback my-app
+    modal app rollback ap-abcdefghABCDEFGH123456
     ```
 
     """
     env = ensure_env(env)
     client = await _Client.from_env()
     app_id = await get_app_id.aio(app_identifier, env, client)
-    req = api_pb2.AppRollbackRequest(app_id=app_id, version=version)
+    if not version:
+        version_number = -1
+    else:
+        if m := re.match(r"v(\d+)", version):
+            version_number = int(m.group(1))
+        else:
+            raise UsageError(f"Invalid version specifer: {version}")
+    req = api_pb2.AppRollbackRequest(app_id=app_id, version=version_number)
     await client.stub.AppRollback(req)
 
 
