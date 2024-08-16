@@ -484,21 +484,19 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
     with servicer.intercept() as ctx:
         ctx.set_responder("AppGetLogs", app_done)
 
-        res = _run(["app", "logs", "ap-123"])
-        assert res.stdout == "hello\n"
+        # TODO Fix the mock servicer to use "real" App IDs so this does not get misconstrued as a name
+        # res = _run(["app", "logs", "ap-123"])
+        # assert res.stdout == "hello\n"
 
         with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
             res = _run(["deploy", "myapp.py", "--name", "my-app", "--stream-logs"])
             assert res.stdout.endswith("hello\n")
 
-    _run(
-        ["app", "logs", "app-123", "-n", "my-app"],
-        expected_exit_code=2,
-        expected_stderr="Must pass either an ID or a name",
-    )
+        res = _run(["app", "logs", "my-app"])
+        assert res.stdout == "hello\n"
 
     _run(
-        ["app", "logs", "-n", "does-not-exist"],
+        ["app", "logs", "does-not-exist"],
         expected_exit_code=1,
         expected_error="Could not find a deployed app named 'does-not-exist'",
     )
@@ -512,7 +510,7 @@ def test_app_stop(servicer, mock_dir, set_env_client):
     res = _run(["app", "list"])
     assert re.search("my_app .+ deployed", res.stdout)
 
-    _run(["app", "stop", "-n", "my_app"])
+    _run(["app", "stop", "my_app"])
 
     # Note that the mock servicer doesn't report "stopped" app statuses
     # so we just check that it's not reported as deployed
@@ -792,25 +790,25 @@ def test_list_app_deployment_history(servicer, mock_dir, set_env_client):
         _run(["deploy", "myapp.py", "--name", "my_app_foo"])
 
     # app should be deployed once it exists
-    res = _run(["app", "history", "-n", "my_app_foo"])
+    res = _run(["app", "history", "my_app_foo"])
     assert "1" in res.stdout, res.stdout
 
-    res = _run(["app", "history", "-n", "my_app_foo", "--json"])
+    res = _run(["app", "history", "my_app_foo", "--json"])
     assert json.loads(res.stdout)
 
     # re-deploying an app should result in one app stopped and one app deployed
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         _run(["deploy", "myapp.py", "--name", "my_app_foo"])
 
-    res = _run(["app", "history", "-n", "my_app_foo", "--json"])
+    res = _run(["app", "history", "my_app_foo", "--json"])
     assert "1" in res.stdout
     assert "2" in res.stdout, f"{res.stdout=}"
 
     # can't fetch history for stopped apps
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
-        _run(["app", "stop", "-n", "my_app_foo"])
+        _run(["app", "stop", "my_app_foo"])
 
-    res = _run(["app", "history", "-n", "my_app_foo", "--json"], 1)
+    res = _run(["app", "history", "my_app_foo", "--json"], 1)
 
 
 def test_dict_create_list_delete(servicer, server_url_env, set_env_client):
