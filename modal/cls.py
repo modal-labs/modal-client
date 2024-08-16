@@ -79,7 +79,7 @@ class _Obj:
     _functions: Dict[str, _Function]
     _entered: bool
     _user_cls_instance: Optional[Any] = None
-    _construction_args: Tuple[Tuple, Dict[str, Any]]
+    _construction_args: Tuple[tuple, Dict[str, Any]]
 
     _instance_service_function: Optional[_Function]
 
