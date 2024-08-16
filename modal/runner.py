@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Coroutine, Dict
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal_proto.api_pb2
 from modal_proto import api_pb2
 
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
@@ -197,7 +198,7 @@ async def _publish_app(
 async def _disconnect(
     client: _Client,
     app_id: str,
-    reason: "api_pb2.AppDisconnectReason.ValueType",
+    reason: "modal_proto.api_pb2.AppDisconnectReason.ValueType",
     exc_str: str = "",
 ) -> None:
     """Tell the server the client has disconnected for this app. Terminates all running tasks

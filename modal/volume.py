@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import time
+import typing
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import (
@@ -28,6 +29,7 @@ import aiostream
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal_proto.api_pb2
 from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_error, deprecation_warning
 from modal_proto import api_pb2
 
@@ -153,7 +155,7 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
-        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
+        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
         """Create a reference to a persisted volume. Optionally create it lazily.
 
@@ -193,7 +195,7 @@ class _Volume(_Object, type_prefix="vo"):
         cls: Type["_Volume"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
+        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Volume"]:
         """Creates a new ephemeral volume within a context manager:
@@ -237,7 +239,7 @@ class _Volume(_Object, type_prefix="vo"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
-        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
+        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
         """Lookup a volume with a given name
 
@@ -265,7 +267,7 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
+        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "Volume")
