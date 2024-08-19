@@ -1633,6 +1633,22 @@ def test_stop_fetching_inputs(servicer):
 
 
 @skip_github_non_linux
+def test_set_local_concurrent_inputs(servicer):
+    ret = _run_container(
+        servicer,
+        "test.supports.experimental",
+        "SetLocalConcurrentInputs.*",
+        inputs=_get_inputs((set(), {}), n=4, method_name="get_concurrent_inputs"),
+        is_class=True,
+    )
+
+    assert len(ret.items) == 4
+    data = [deserialize(i.result.data, ret.client) for i in ret.items]
+    # first return is 1 because it takes 1 iteration to set the input_concurrency value
+    assert data == [1, 20, 20, 20]
+
+
+@skip_github_non_linux
 def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypatch):
     monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     num_heartbeats = 0

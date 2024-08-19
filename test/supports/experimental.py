@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
+import time
+
 import modal.experimental
 from modal import (
     App,
@@ -25,3 +27,15 @@ class StopFetching:
             modal.experimental.stop_fetching_inputs()
 
         return x * x
+
+
+@app.cls(allow_concurrent_inputs=1, concurrency_limit=1)
+class SetLocalConcurrentInputs:
+    @enter()
+    def init(self):
+        modal.experimental.set_local_concurrent_inputs(20)
+
+    @method()
+    def get_concurrent_inputs(self):
+        time.sleep(1)
+        return modal.experimental.get_local_concurrent_inputs()

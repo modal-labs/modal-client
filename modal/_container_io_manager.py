@@ -523,7 +523,7 @@ class _ContainerIOManager:
         if self._input_concurrency_update is not None and self._input_concurrency_update != self._input_concurrency:
             for _ in range(self._input_concurrency):
                 await self._semaphore.acquire()
-            self._input_concurrency = self._override_input_concurrency
+            self._input_concurrency = self._input_concurrency_update
             for _ in range(self._input_concurrency):
                 self._semaphore.release()
 
@@ -856,8 +856,11 @@ class _ContainerIOManager:
         assert cls._singleton
         cls._singleton._fetching_inputs = False
 
-    def set_concurrent_inputs(self, num: int):
+    def set_concurrent_inputs(self, num: int) -> None:
         self._input_concurrency_update = num
+
+    def get_concurrent_inputs(self) -> Optional[int]:
+        return self._input_concurrency
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
