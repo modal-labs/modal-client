@@ -16,13 +16,13 @@ def stop_fetching_inputs():
 async def _set_local_concurrent_inputs(concurrent_inputs: int) -> None:
     """Set the number of concurrent inputs for the local container."""
 
-    return await _ContainerIOManager._singleton.set_concurrent_inputs(concurrent_inputs)
+    return await _ContainerIOManager._singleton.set_input_concurrency(concurrent_inputs)
 
 
 def get_local_concurrent_inputs() -> Optional[int]:
     """Get the number of concurrent inputs for the local container."""
 
-    return _ContainerIOManager._singleton.get_concurrent_inputs()
+    return _ContainerIOManager._singleton.get_input_concurrency()
 
 
 set_local_concurrent_inputs = synchronize_api(_set_local_concurrent_inputs)

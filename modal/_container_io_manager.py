@@ -279,7 +279,7 @@ class _ContainerIOManager:
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
-                if self.get_concurrent_inputs() > 1:
+                if self.get_input_concurrency() > 1:
                     logger.info(
                         "Shutting down task to stop some subset of inputs "
                         "(concurrent functions don't support fine-grained cancellation)"
@@ -464,7 +464,7 @@ class _ContainerIOManager:
         while self._fetching_inputs:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
-            request.input_concurrency = self.get_concurrent_inputs()
+            request.input_concurrency = self.get_input_concurrency()
             request.batch_max_size, request.batch_linger_ms = batch_max_size, batch_wait_ms
 
             await self._dynamic_semaphore.acquire()
@@ -842,13 +842,14 @@ class _ContainerIOManager:
         assert cls._singleton
         cls._singleton._fetching_inputs = False
 
-    async def set_concurrent_inputs(self, concurrent_inputs: int) -> None:
+    async def set_input_concurrency(self, concurrent_inputs: int) -> None:
         if self._dynamic_semaphore:
             await self._dynamic_semaphore.update_capacity(concurrent_inputs)
+        # accomodate set at the `@modal.enter` function
         else:
             self._dynamic_semaphore = DynamicSemaphore(concurrent_inputs)
 
-    def get_concurrent_inputs(self) -> Optional[int]:
+    def get_input_concurrency(self) -> Optional[int]:
         return self._dynamic_semaphore.get_capacity() if self._dynamic_semaphore else None
 
 
