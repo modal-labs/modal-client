@@ -1644,8 +1644,7 @@ def test_set_local_concurrent_inputs(servicer):
 
     assert len(ret.items) == 4
     data = [deserialize(i.result.data, ret.client) for i in ret.items]
-    # first return is 1 because it takes 1 iteration to set the input_concurrency value
-    assert data == [1, 20, 20, 20]
+    assert data == [20] * 4
 
 
 @skip_github_non_linux

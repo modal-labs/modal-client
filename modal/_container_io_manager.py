@@ -162,6 +162,91 @@ class IOContext:
         return data
 
 
+class ConcurrencyManager:
+    def __init__(self, input_concurrency: int):
+        self._input_concurrency = input_concurrency
+        self._queue = asyncio.Queue()
+        self._owed_reductions = 0
+        self._lock = asyncio.Lock()
+
+        for _ in range(input_concurrency):
+            self._queue.put_nowait(None)
+
+    async def get_input_concurrency(self) -> int:
+        async with self._lock:
+            return self._input_concurrency
+
+    async def acquire(self):
+        await self._queue.get()
+
+    async def release(self):
+        async with self._lock:
+            if self._owed_reductions > 0:
+                self._owed_reductions -= 1
+                return
+        await self._queue.put(None)
+
+    async def update_concurrency(self, updated_input_concurrency: int):
+        async with self._lock:
+            difference = updated_input_concurrency - self._input_concurrency
+            if difference > 0:
+                num_resources_to_add = difference - self._owed_reductions
+                if num_resources_to_add < 0:
+                    self._owed_reductions = abs(num_resources_to_add)
+                else:
+                    self._owed_reductions = 0
+                    for _ in range(num_resources_to_add):
+                        self._queue.put_nowait(None)
+
+            elif difference < 0:
+                for _ in range(abs(difference)):
+                    try:
+                        self._queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        self._owed_reductions += 1
+
+            self._input_concurrency = updated_input_concurrency
+
+
+class ConcurrencyManagerSemaphore:
+    def __init__(self, input_concurrency: int):
+        self._input_concurrency = input_concurrency
+        self._semaphore = asyncio.Semaphore(input_concurrency)
+        self._lock = asyncio.Lock()
+        self._owed_reductions = 0
+
+    async def acquire(self) -> None:
+        await self._semaphore.acquire()
+
+    async def release(self):
+        async with self._lock:
+            if self._owed_reductions > 0:
+                self._owed_reductions -= 1
+                return
+        self._semaphore.release()
+
+    async def update_concurrency(self, updated_input_concurrency: int):
+        async with self._lock:
+            difference = updated_input_concurrency - self._input_concurrency
+            if difference > 0:
+                num_resources_to_add = difference - self._owed_reductions
+                if num_resources_to_add < 0:
+                    self._owed_reductions = abs(num_resources_to_add)
+                else:
+                    self._owed_reductions = 0
+                    for _ in range(num_resources_to_add):
+                        self._semaphore.release()
+
+            elif difference < 0:
+                for _ in range(abs(difference)):
+                    try:
+                        self._queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        self._owed_reductions += 1
+
+            self._input_concurrency = updated_input_concurrency
+
+
 class _ContainerIOManager:
     """Synchronizes all RPC calls and network operations for a running container.
 
@@ -181,10 +266,7 @@ class _ContainerIOManager:
     current_input_id: Optional[str]
     current_input_started_at: Optional[float]
 
-    _input_concurrency: Optional[int]
-    _input_concurrency_update: Optional[int]
-
-    _semaphore: Optional[asyncio.Semaphore]
+    _concurrency_manager: Optional[ConcurrencyManager]
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
     _heartbeat_condition: asyncio.Condition
@@ -211,10 +293,7 @@ class _ContainerIOManager:
         self.current_input_id = None
         self.current_input_started_at = None
 
-        self._input_concurrency = None
-        self._input_concurrency_update = None
-
-        self._semaphore = None
+        self._concurrency_manager = None
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
         self._heartbeat_condition = asyncio.Condition()
@@ -285,7 +364,7 @@ class _ContainerIOManager:
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
-                if self._input_concurrency > 1:
+                if await self._concurrency_manager.get_input_concurrency() > 1:
                     logger.info(
                         "Shutting down task to stop some subset of inputs "
                         "(concurrent functions don't support fine-grained cancellation)"
@@ -470,10 +549,10 @@ class _ContainerIOManager:
         while self._fetching_inputs:
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
-            request.input_concurrency = self._input_concurrency
+            request.input_concurrency = await self._concurrency_manager.get_input_concurrency()
             request.batch_max_size, request.batch_linger_ms = batch_max_size, batch_wait_ms
 
-            await self._semaphore.acquire()
+            await self._concurrency_manager.acquire()
             yielded = False
             try:
                 # If number of active inputs is at max queue size, this will block.
@@ -517,15 +596,7 @@ class _ContainerIOManager:
                         return
             finally:
                 if not yielded:
-                    self._semaphore.release()
-
-    async def update_input_concurrency(self) -> None:
-        if self._input_concurrency_update is not None and self._input_concurrency_update != self._input_concurrency:
-            for _ in range(self._input_concurrency):
-                await self._semaphore.acquire()
-            self._input_concurrency = self._input_concurrency_update
-            for _ in range(self._input_concurrency):
-                self._semaphore.release()
+                    await self._concurrency_manager.release()
 
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
@@ -539,19 +610,20 @@ class _ContainerIOManager:
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
         # - or, when the output for the fetched input is sent, release the semaphore.
-        self._input_concurrency = input_concurrency
-        self._semaphore = asyncio.Semaphore(input_concurrency)
+
+        # if self._concurrency_manager set during initialization by user, use that instead
+        if self._concurrency_manager is None:
+            self._concurrency_manager = ConcurrencyManager(input_concurrency)
 
         async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
             io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
             self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
             yield io_context
             self.current_input_id, self.current_input_started_at = (None, None)
-            await self.update_input_concurrency()
 
         # collect all active input slots, meaning all inputs have wrapped up.
         for _ in range(input_concurrency):
-            await self._semaphore.acquire()
+            await self._concurrency_manager.acquire()
 
     @synchronizer.no_io_translation
     async def _push_outputs(
@@ -694,7 +766,7 @@ class _ContainerIOManager:
     async def exit_context(self, started_at):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
-        self._semaphore.release()
+        await self._concurrency_manager.release()
 
     @synchronizer.no_io_translation
     async def push_outputs(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
@@ -856,11 +928,14 @@ class _ContainerIOManager:
         assert cls._singleton
         cls._singleton._fetching_inputs = False
 
-    def set_concurrent_inputs(self, num: int) -> None:
-        self._input_concurrency_update = num
+    async def set_concurrent_inputs(self, concurrent_inputs: int) -> None:
+        if self._concurrency_manager:
+            await self._concurrency_manager.update_concurrency(concurrent_inputs)
+        else:
+            self._concurrency_manager = ConcurrencyManager(concurrent_inputs)
 
-    def get_concurrent_inputs(self) -> Optional[int]:
-        return self._input_concurrency
+    async def get_concurrent_inputs(self) -> Optional[int]:
+        return await self._concurrency_manager.get_input_concurrency()
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
