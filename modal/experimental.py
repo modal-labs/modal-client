@@ -7,3 +7,9 @@ def stop_fetching_inputs():
     The container will exit gracefully after the current input is processed."""
 
     _ContainerIOManager.stop_fetching_inputs()
+
+
+def set_local_concurrent_inputs(concurrent_inputs: int) -> None:
+    """Set the number of concurrent inputs for the local container."""
+
+    _ContainerIOManager._singleton.set_concurrent_inputs(concurrent_inputs)

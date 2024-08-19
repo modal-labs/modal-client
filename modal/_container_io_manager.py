@@ -182,6 +182,8 @@ class _ContainerIOManager:
     current_input_started_at: Optional[float]
 
     _input_concurrency: Optional[int]
+    _input_concurrency_update: Optional[int]
+
     _semaphore: Optional[asyncio.Semaphore]
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
@@ -210,6 +212,7 @@ class _ContainerIOManager:
         self.current_input_started_at = None
 
         self._input_concurrency = None
+        self._input_concurrency_update = None
 
         self._semaphore = None
         self._environment_name = container_args.environment_name
@@ -516,6 +519,14 @@ class _ContainerIOManager:
                 if not yielded:
                     self._semaphore.release()
 
+    async def update_input_concurrency(self) -> None:
+        if self._input_concurrency_update is not None and self._input_concurrency_update != self._input_concurrency:
+            for _ in range(self._input_concurrency):
+                await self._semaphore.acquire()
+            self._input_concurrency = self._override_input_concurrency
+            for _ in range(self._input_concurrency):
+                self._semaphore.release()
+
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
         self,
@@ -536,6 +547,7 @@ class _ContainerIOManager:
             self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
             yield io_context
             self.current_input_id, self.current_input_started_at = (None, None)
+            await self.update_input_concurrency()
 
         # collect all active input slots, meaning all inputs have wrapped up.
         for _ in range(input_concurrency):
@@ -843,6 +855,9 @@ class _ContainerIOManager:
     def stop_fetching_inputs(cls):
         assert cls._singleton
         cls._singleton._fetching_inputs = False
+
+    def set_concurrent_inputs(self, num: int):
+        self._input_concurrency_update = num
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
