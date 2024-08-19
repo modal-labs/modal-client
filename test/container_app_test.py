@@ -59,23 +59,22 @@ async def test_container_function_lazily_imported(container_client):
 
 
 @pytest.mark.asyncio
-async def test_container_snapshot_restore(container_client, tmpdir, servicer):
+async def test_container_snapshot_restore(mock_get_open_connections, container_client, tmpdir, servicer):
     # Get a reference to a Client instance in memory
     old_client = container_client
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = temp_restore_path(tmpdir)
 
-    with mock.patch("modal._container_io_manager.get_open_connections", lambda: []):
-        with mock.patch.dict(
-            os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
-        ):
-            io_manager.memory_snapshot()
-            # In-memory Client instance should have update credentials, not old credentials
-            assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
+    with mock.patch.dict(
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
+    ):
+        io_manager.memory_snapshot()
+        # In-memory Client instance should have update credentials, not old credentials
+        assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
 
 
 @pytest.mark.asyncio
-async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
+async def test_container_snapshot_restore_heartbeats(mock_get_open_connections, tmpdir, servicer):
     client = _Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret"))
     async with client as async_client:
         io_manager = _ContainerIOManager(api_pb2.ContainerArguments(), async_client)
@@ -88,9 +87,7 @@ async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
                 os.environ,
                 {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
             ):
-                with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs), mock.patch(
-                    "modal._container_io_manager.get_open_connections", lambda: []
-                ):
+                with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
                     await asyncio.sleep(heartbeat_interval_secs * 2)
                     assert not list(
                         filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
@@ -103,7 +100,7 @@ async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
 
 
 @pytest.mark.asyncio
-async def test_container_debug_snapshot(container_client, tmpdir, servicer):
+async def test_container_debug_snapshot(mock_get_open_connections, container_client, tmpdir, servicer):
     # Get an IO manager, where restore takes place
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = tmpdir.join("fake-restore-state.json")
@@ -115,9 +112,7 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
 
     # Test that the breakpoint was called
     test_breakpoint = mock.Mock()
-    with mock.patch("sys.breakpointhook", test_breakpoint), mock.patch(
-        "modal._container_io_manager.get_open_connections", lambda: []
-    ):
+    with mock.patch("sys.breakpointhook", test_breakpoint):
         with mock.patch.dict(
             os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
         ):
@@ -158,7 +153,9 @@ def weird_torch_module():
 
 
 @pytest.mark.asyncio
-async def test_container_snapshot_patching(fake_torch_module, container_client, tmpdir, servicer):
+async def test_container_snapshot_patching(
+    fake_torch_module, mock_get_open_connections, container_client, tmpdir, servicer
+):
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
 
     # bring fake torch into scope and call the utility fn
@@ -168,18 +165,19 @@ async def test_container_snapshot_patching(fake_torch_module, container_client, 
 
     # Write out a restore file so that snapshot+restore will complete
     restore_path = temp_restore_path(tmpdir)
-    with mock.patch("modal._container_io_manager.get_open_connections", lambda: []):
-        with mock.patch.dict(
-            os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
-        ):
-            io_manager.memory_snapshot()
-            import torch
+    with mock.patch.dict(
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
+    ):
+        io_manager.memory_snapshot()
+        import torch
 
-            assert torch.cuda.device_count() == 2
+        assert torch.cuda.device_count() == 2
 
 
 @pytest.mark.asyncio
-async def test_container_snapshot_patching_err(weird_torch_module, container_client, tmpdir, servicer):
+async def test_container_snapshot_patching_err(
+    weird_torch_module, mock_get_open_connections, container_client, tmpdir, servicer
+):
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = temp_restore_path(tmpdir)
 
@@ -188,11 +186,10 @@ async def test_container_snapshot_patching_err(weird_torch_module, container_cli
 
     assert trch.IM_WEIRD == 42
 
-    with mock.patch("modal._container_io_manager.get_open_connections", lambda: []):
-        with mock.patch.dict(
-            os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
-        ):
-            io_manager.memory_snapshot()  # should not crash
+    with mock.patch.dict(
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
+    ):
+        io_manager.memory_snapshot()  # should not crash
 
 
 def test_interact(container_client, servicer):
