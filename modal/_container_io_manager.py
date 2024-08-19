@@ -166,7 +166,8 @@ class ConcurrencyManager:
     def __init__(self, input_concurrency: int):
         self._input_concurrency = input_concurrency
         self._queue = asyncio.Queue()
-        self._owed_reductions = 0
+        self._owed_releases = 0
+        # lock on access to _input_concurrency and _owed_reductions
         self._lock = asyncio.Lock()
 
         for _ in range(input_concurrency):
@@ -181,8 +182,8 @@ class ConcurrencyManager:
 
     async def release(self):
         async with self._lock:
-            if self._owed_reductions > 0:
-                self._owed_reductions -= 1
+            if self._owed_releases > 0:
+                self._owed_releases -= 1
                 return
         await self._queue.put(None)
 
@@ -190,20 +191,17 @@ class ConcurrencyManager:
         async with self._lock:
             difference = updated_input_concurrency - self._input_concurrency
             if difference > 0:
-                num_resources_to_add = difference - self._owed_reductions
-                if num_resources_to_add < 0:
-                    self._owed_reductions = abs(num_resources_to_add)
-                else:
-                    self._owed_reductions = 0
-                    for _ in range(num_resources_to_add):
-                        self._queue.put_nowait(None)
+                num_resources_to_add = difference - self._owed_releases
+                self._owed_releases = max(0, -num_resources_to_add)
+                for _ in range(max(0, num_resources_to_add)):
+                    self._queue.put_nowait(None)
 
             elif difference < 0:
                 for _ in range(abs(difference)):
                     try:
                         self._queue.get_nowait()
                     except asyncio.QueueEmpty:
-                        self._owed_reductions += 1
+                        self._owed_releases += 1
 
             self._input_concurrency = updated_input_concurrency
 
@@ -213,15 +211,15 @@ class ConcurrencyManagerSemaphore:
         self._input_concurrency = input_concurrency
         self._semaphore = asyncio.Semaphore(input_concurrency)
         self._lock = asyncio.Lock()
-        self._owed_reductions = 0
+        self._owed_releases = 0
 
     async def acquire(self) -> None:
         await self._semaphore.acquire()
 
     async def release(self):
         async with self._lock:
-            if self._owed_reductions > 0:
-                self._owed_reductions -= 1
+            if self._owed_releases > 0:
+                self._owed_releases -= 1
                 return
         self._semaphore.release()
 
@@ -229,20 +227,17 @@ class ConcurrencyManagerSemaphore:
         async with self._lock:
             difference = updated_input_concurrency - self._input_concurrency
             if difference > 0:
-                num_resources_to_add = difference - self._owed_reductions
-                if num_resources_to_add < 0:
-                    self._owed_reductions = abs(num_resources_to_add)
-                else:
-                    self._owed_reductions = 0
-                    for _ in range(num_resources_to_add):
-                        self._semaphore.release()
+                num_resources_to_add = difference - self._owed_releases
+                self._owed_releases = max(0, -num_resources_to_add)
+                for _ in range(max(0, num_resources_to_add)):
+                    self._semaphore.release()
 
             elif difference < 0:
                 for _ in range(abs(difference)):
                     try:
                         self._queue.get_nowait()
                     except asyncio.QueueEmpty:
-                        self._owed_reductions += 1
+                        self._owed_releases += 1
 
             self._input_concurrency = updated_input_concurrency
 

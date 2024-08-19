@@ -1638,7 +1638,7 @@ def test_set_local_concurrent_inputs(servicer):
         servicer,
         "test.supports.experimental",
         "SetLocalConcurrentInputs.*",
-        inputs=_get_inputs((set(), {}), n=4, method_name="get_concurrent_inputs"),
+        inputs=_get_inputs(((), {}), n=4, method_name="get_concurrent_inputs"),
         is_class=True,
     )
 
