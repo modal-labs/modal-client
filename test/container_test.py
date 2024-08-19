@@ -24,7 +24,6 @@ from grpclib.exceptions import GRPCError
 
 import modal
 from modal import Client, Queue, Volume, is_local
-from modal._checkpoint_utils import get_open_connections
 from modal._container_entrypoint import UserException, main
 from modal._serialization import (
     deserialize,
@@ -39,6 +38,7 @@ from modal._utils.blob_utils import (
     blob_download as _blob_download,
     blob_upload as _blob_upload,
 )
+from modal._utils.snapshot_utils import get_open_connections
 from modal.app import _App
 from modal.exception import InvalidError
 from modal.partial_function import enter, method
@@ -878,22 +878,20 @@ def test_cls_generator(servicer):
 
 
 @skip_github_non_linux
-def test_checkpointing_cls_function(servicer):
-    # Monkey-patched to prevent side effects with other existing connections.
-    with mock.patch("modal._container_io_manager.get_open_connections", lambda: []):
-        ret = _run_container(
-            servicer,
-            "test.supports.functions",
-            "SnapshottingCls.*",
-            inputs=_get_inputs((("D",), {}), method_name="f"),
-            is_checkpointing_function=True,
-            is_class=True,
-        )
-        assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in servicer.requests)
-        for request in servicer.requests:
-            if isinstance(request, api_pb2.ContainerCheckpointRequest):
-                assert request.checkpoint_id
-        assert _unwrap_scalar(ret) == "ABCD"
+def test_checkpointing_cls_function(servicer, mock_get_open_connections):
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "SnapshottingCls.*",
+        inputs=_get_inputs((("D",), {}), method_name="f"),
+        is_checkpointing_function=True,
+        is_class=True,
+    )
+    assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in servicer.requests)
+    for request in servicer.requests:
+        if isinstance(request, api_pb2.ContainerCheckpointRequest):
+            assert request.checkpoint_id
+    assert _unwrap_scalar(ret) == "ABCD"
 
 
 @skip_github_non_linux
@@ -1300,20 +1298,19 @@ def test_call_function_that_calls_method(servicer, set_env_client):
 
 
 @skip_github_non_linux
-def test_checkpoint_and_restore_success(servicer):
+def test_checkpoint_and_restore_success(servicer, mock_get_open_connections):
     """Functions send a checkpointing request and continue to execute normally,
     simulating a restore operation."""
-    with mock.patch("modal._container_io_manager.get_open_connections", lambda: []):
-        ret = _run_container(
-            servicer,
-            "test.supports.functions",
-            "square",
-            is_checkpointing_function=True,
-        )
-        assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in servicer.requests)
-        for request in servicer.requests:
-            if isinstance(request, api_pb2.ContainerCheckpointRequest):
-                assert request.checkpoint_id
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "square",
+        is_checkpointing_function=True,
+    )
+    assert any(isinstance(request, api_pb2.ContainerCheckpointRequest) for request in servicer.requests)
+    for request in servicer.requests:
+        if isinstance(request, api_pb2.ContainerCheckpointRequest):
+            assert request.checkpoint_id
 
     assert _unwrap_scalar(ret) == 42**2
 

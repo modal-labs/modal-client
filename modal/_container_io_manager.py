@@ -19,13 +19,13 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._checkpoint_utils import get_open_connections
 from ._serialization import deserialize, serialize, serialize_data_format
 from ._traceback import extract_traceback
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
+from ._utils.snapshot_utils import get_open_connections
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InputCancellation, InvalidError
@@ -185,8 +185,8 @@ class _ContainerIOManager:
     _input_concurrency: Optional[int]
     _semaphore: Optional[asyncio.Semaphore]
     _environment_name: str
-    _heartbeat_loop: Optional[asyncio.Task]
     _heartbeat_condition: asyncio.Condition
+    _heartbeat_loop: Optional[asyncio.Task]
     _waiting_for_memory_snapshot: bool
 
     _is_interactivity_enabled: bool

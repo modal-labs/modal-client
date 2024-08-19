@@ -19,6 +19,7 @@ import traceback
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, get_args
+from unittest import mock
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -1640,6 +1641,13 @@ async def run_server(servicer, host=None, port=None, path=None):
         yield
     finally:
         await stop_servicer.aio()
+
+
+@pytest_asyncio.fixture(scope="function")
+def mock_get_open_connections():
+    """Monkey-patch get_open_connections() to prevent side effects with other existing connections."""
+    with mock.patch("modal._container_io_manager.get_open_connections", lambda: []):
+        yield
 
 
 @pytest_asyncio.fixture(scope="function")
