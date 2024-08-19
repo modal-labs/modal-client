@@ -233,7 +233,7 @@ class _Mount(_Object, type_prefix="mo"):
     ```python
     import modal
     import os
-    app = modal.App()  # Note: "app" was called "stub" up until April 2024
+    app = modal.App()
 
     @app.function(mounts=[modal.Mount.from_local_dir("~/foo", remote_path="/root/foo")])
     def f():
@@ -539,7 +539,7 @@ class _Mount(_Object, type_prefix="mo"):
         import modal
         import my_local_module
 
-        app = modal.App()  # Note: "app" was called "stub" up until April 2024
+        app = modal.App()
 
         @app.function(mounts=[
             modal.Mount.from_local_python_packages("my_local_module", "my_other_module"),
@@ -598,7 +598,7 @@ class _Mount(_Object, type_prefix="mo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         client: Optional[_Client] = None,
-    ) -> "_Mount":
+    ) -> None:
         check_object_name(deployment_name, "Mount")
         self._deployment_name = deployment_name
         self._namespace = namespace

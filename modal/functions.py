@@ -3,6 +3,7 @@ import asyncio
 import inspect
 import textwrap
 import time
+import typing
 import warnings
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -22,6 +23,7 @@ from typing import (
     Union,
 )
 
+import typing_extensions
 from aiostream import stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -275,7 +277,11 @@ class _FunctionSpec:
     _experimental_gpus: Sequence[GPU_T]
 
 
-class _Function(_Object, type_prefix="fu"):
+P = typing_extensions.ParamSpec("P")
+R = typing.TypeVar("R", covariant=True)
+
+
+class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -344,6 +350,8 @@ class _Function(_Object, type_prefix="fu"):
                 is_method=True,
                 use_function_id=class_service_function.object_id,
                 use_method_name=method_name,
+                batch_max_size=partial_function.batch_max_size or 0,
+                batch_linger_ms=partial_function.batch_wait_ms or 0,
             )
             assert resolver.app_id
             request = api_pb2.FunctionCreateRequest(
@@ -351,6 +359,7 @@ class _Function(_Object, type_prefix="fu"):
                 function=function_definition,
                 #  method_bound_function.object_id usually gets set by preload
                 existing_function_id=existing_object_id or method_bound_function.object_id or "",
+                defer_updates=True,
             )
             assert resolver.client.stub is not None  # client should be connected when load is called
             with FunctionCreationStatus(resolver, full_name) as function_creation_status:
@@ -484,6 +493,8 @@ class _Function(_Object, type_prefix="fu"):
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
+        batch_max_size: Optional[int] = None,
+        batch_wait_ms: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
@@ -523,7 +534,7 @@ class _Function(_Object, type_prefix="fu"):
             )
 
         if checkpointing_enabled is not None:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 3, 4),
                 "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
             )
@@ -652,6 +663,14 @@ class _Function(_Object, type_prefix="fu"):
                 )
             else:
                 raise InvalidError("Webhooks cannot be generators")
+
+        if info.raw_f and batch_max_size:
+            func_name = info.raw_f.__name__
+            if is_generator:
+                raise InvalidError(f"Modal batched function {func_name} cannot return generators")
+            for arg in inspect.signature(info.raw_f).parameters.values():
+                if arg.default is not inspect.Parameter.empty:
+                    raise InvalidError(f"Modal batched function {func_name} does not accept default arguments.")
 
         if container_idle_timeout is not None and container_idle_timeout <= 0:
             raise InvalidError("`container_idle_timeout` must be > 0")
@@ -808,6 +827,8 @@ class _Function(_Object, type_prefix="fu"):
                     app_name=app_name,
                     is_builder_function=is_builder_function,
                     allow_concurrent_inputs=allow_concurrent_inputs or 0,
+                    batch_max_size=batch_max_size or 0,
+                    batch_linger_ms=batch_wait_ms or 0,
                     worker_id=config.get("worker_id"),
                     is_auto_snapshot=is_auto_snapshot,
                     is_method=bool(info.user_cls) and not info.is_service_class(),
@@ -834,6 +855,7 @@ class _Function(_Object, type_prefix="fu"):
                     function=function_definition,
                     schedule=schedule.proto_message if schedule is not None else None,
                     existing_function_id=existing_object_id or "",
+                    defer_updates=True,
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
@@ -1092,7 +1114,7 @@ class _Function(_Object, type_prefix="fu"):
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
-        assert metadata and isinstance(metadata, (api_pb2.Function, api_pb2.FunctionHandleMetadata))
+        assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata)
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
@@ -1100,6 +1122,7 @@ class _Function(_Object, type_prefix="fu"):
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
+        self._definition_id = metadata.definition_id
 
     def _invocation_function_id(self) -> str:
         return self._use_function_id or self.object_id
@@ -1119,6 +1142,7 @@ class _Function(_Object, type_prefix="fu"):
             use_function_id=self._use_function_id,
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
+            definition_id=self._definition_id,
         )
 
     def _set_mute_cancellation(self, value: bool = True):
@@ -1177,7 +1201,7 @@ class _Function(_Object, type_prefix="fu"):
         ):
             yield item
 
-    async def _call_function(self, args, kwargs):
+    async def _call_function(self, args, kwargs) -> R:
         invocation = await _Invocation.create(self, args, kwargs, client=self._client)
         try:
             return await invocation.run_function()
@@ -1185,6 +1209,8 @@ class _Function(_Object, type_prefix="fu"):
             # this can happen if the user terminates a program, triggering a cancellation cascade
             if not self._mute_cancellation:
                 raise
+            # TODO (elias): remove _mute_cancellation hack
+            return  # type: ignore
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
         return await _Invocation.create(self, args, kwargs, client=self._client)
@@ -1203,7 +1229,7 @@ class _Function(_Object, type_prefix="fu"):
 
     @synchronizer.no_io_translation
     @live_method
-    async def remote(self, *args, **kwargs) -> Any:
+    async def remote(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -1263,7 +1289,7 @@ class _Function(_Object, type_prefix="fu"):
             return self._obj
 
     @synchronizer.nowrap
-    def local(self, *args, **kwargs) -> Any:
+    def local(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """
         Calls the function locally, executing it with the given arguments and returning the execution's result.
 
@@ -1304,14 +1330,14 @@ class _Function(_Object, type_prefix="fu"):
                     await obj.aenter()
                     return await fun(*args, **kwargs)
 
-                return coro()
+                return coro()  # type: ignore
             else:
                 obj.enter()
                 return fun(*args, **kwargs)
 
     @synchronizer.no_input_translation
     @live_method
-    async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
+    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> Optional["_FunctionCall[R]"]:
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
@@ -1355,7 +1381,7 @@ class _Function(_Object, type_prefix="fu"):
 Function = synchronize_api(_Function)
 
 
-class _FunctionCall(_Object, type_prefix="fc"):
+class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
     """A reference to an executed function call.
 
     Constructed using `.spawn(...)` on a Modal function with the same
@@ -1370,7 +1396,7 @@ class _FunctionCall(_Object, type_prefix="fc"):
         assert self._client.stub
         return _Invocation(self._client.stub, self.object_id, self._client)
 
-    async def get(self, timeout: Optional[float] = None):
+    async def get(self, timeout: Optional[float] = None) -> R:
         """Get the result of the function call.
 
         This function waits indefinitely by default. It takes an optional

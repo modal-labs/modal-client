@@ -10,6 +10,106 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.38 (2024-08-16)
+
+- Added a `modal app rollback` CLI command for rolling back an App deployment to a previous version.
+
+
+
+### 0.64.33 (2024-08-16)
+
+- Commands in the `modal app` CLI now accept an App name as a positional argument, in addition to an App ID:
+
+    ```
+    modal app history my-app
+    ```
+
+    Accordingly, the explicit `--name` option has been deprecated. Providing a name that can be confused with an App ID will also now raise an error.
+
+
+
+### 0.64.26 (2024-08-15)
+
+- `ContainerProcess` handles now support `wait()` and `poll()`, like `Sandbox` objects
+
+
+
+### 0.64.24 (2024-08-14)
+
+- Added support for dynamic batching. Functions or class methods decorated with `@modal.batched` will now automatically batch their invocations together, up to a specified `max_batch_size`.  The batch will wait for a maximum of `wait_ms` for more invocations after the first invocation is made. See guide for more details.
+
+    ```
+    @app.function()
+    @modal.batched(max_batch_size=4, wait_ms=1000)
+    async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
+        return [x * y for x, y in zip(xs, xs)]
+
+    @app.cls()
+    class BatchedClass():
+        @modal.batched(max_batch_size=4, wait_ms=1000)
+        async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
+            return [x * y for x, y in zip(xs, xs)]
+    ```
+
+    The batched function is called with individual inputs:
+    ```
+    await batched_multiply.remote.aio(2, 3)
+    ```
+
+
+
+### 0.64.18 (2024-08-12)
+
+- Sandboxes now have an `exec()` method that lets you execute a command inside the sandbox container. `exec` returns a `ContainerProcess` handle for input and output streaming.
+
+    ```python
+    sandbox = modal.Sandbox.create("sleep", "infinity")
+
+    process = sandbox.exec("bash", "-c", "for i in $(seq 1 10); do echo foo $i; sleep 0.5; done")
+
+    for line in process.stdout:
+        print(line)
+    ```
+
+
+
+### 0.64.8 (2024-08-06)
+
+- Removed support for the undocumented `modal.apps.list_apps()` function, which was internal and not intended to be part of public API.
+
+
+
+### 0.64.7 (2024-08-05)
+
+- Removed client check for CPU core request being at least 0.1, deferring to server-side enforcement.
+
+
+
+### 0.64.2 (2024-08-02)
+
+- Volumes can now be mounted to an ad hoc modal shell session:
+    
+    ```
+    modal shell --volume my-vol-name
+    ```
+    When the shell starts, the volume will be mounted at `/mnt/my-vol-name`. This may be helpful for shell-based exploration or manipulation of volume contents.
+
+    Note that the option can be used multiple times to mount additional models:
+    ```
+    modal shell --volume models --volume data
+    ```
+
+
+
+### 0.64.0 (2024-07-29)
+
+- App deployment events are now atomic, reducing the risk that a failed deploy will leave the App in a bad state.
+
+
+
+## 0.63
+
+
 
 ### 0.63.87 (2024-07-24)
 
@@ -21,9 +121,6 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 * Setting `_allow_background_volume_commits` is no longer necessary and has been deprecated. Remove this argument in your decorators.
 
-
-
-###
 
 
 ### 0.63.36 (2024-07-05)
@@ -47,7 +144,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 * Adds `Cls.lookup()` backwards compatibility with classes created by clients prior to `v0.63`.
 
-**Important**: When updating (to >=v0.63) an app with a Modal `class` that's accessed using `Cls.lookup()` - make sure to update the client of the app/service **using** `Cls.lookup()` first, and **then** update the app containing the class being looked up.
+    **Important**: When updating (to >=v0.63) an app with a Modal `class` that's accessed using `Cls.lookup()` - make sure to update the client of the app/service **using** `Cls.lookup()` first, and **then** update the app containing the class being looked up.
 
 
 
@@ -79,13 +176,13 @@ We appreciate your patience while we speedily work towards a stable release of t
 ### 0.63.0 (2024-06-24)
 
 * Changes how containers are associated with methods of `@app.cls()`-decorated Modal "classes".
+
+    Previously each `@method` and web endpoint of a class would get its own set of isolated containers and never run in the same container as other sibling methods.
+    Starting in this version, all `@methods` and web endpoints will be part of the same container pool. Notably, this means all methods will scale up/down together, and options like `keep_warm` and `concurrency_limit` will affect the total number of containers for all methods in the class combined, rather than individually.
+
+    **Version incompatibility warning:** Older clients (below 0.63) can't use classes deployed by new clients (0.63 and above), and vice versa. Apps or standalone clients using `Cls.lookup(...)` to invoke Modal classes need to be upgraded to version `0.63` at the same time as the deployed app that's being called into.
+
 * `keep_warm` for classes is now an attribute of the `@app.cls()` decorator rather than individual methods.
-
-Previously each `@method` and web endpoint of a class would get its own set of isolated containers and never run in the same container as other sibling methods. 
-Starting in this version, all `@methods` and web endpoints will be part of the same container pool. Notably, this means all methods will scale up/down together, and options like `keep_warm` and `concurrency_limit` will affect the total number of containers for all methods in the class combined, rather than individually.
-
-**Version incompatibility warning:** Older clients (below 0.63) can't use classes deployed by new clients (0.63 and above), and vice versa. Apps or standalone clients using `Cls.lookup(...)` to invoke Modal classes need to be upgraded to version `0.63` at the same time as the deployed app that's being called into.
-
 
 
 ## 0.62

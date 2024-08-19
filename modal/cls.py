@@ -191,7 +191,7 @@ class _Cls(_Object, type_prefix="cs"):
     ]  # The _Function serving *all* methods of the class, used for version >=v0.63
     _method_functions: Dict[str, _Function]  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
-    _callables: Dict[str, Callable]
+    _callables: Dict[str, Callable[..., Any]]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
     _app: Optional["modal.app._App"] = None  # not set for lookups
 
@@ -274,6 +274,16 @@ class _Cls(_Object, type_prefix="cs"):
                     )
                 )
             resp = await resolver.client.stub.ClassCreate(req)
+            # Even though we already have the function_handle_metadata for this method locally,
+            # The RPC is going to replace it with function_handle_metadata derived from the server.
+            # We need to overwrite the definition_id sent back from the server here with the definition_id
+            # previously stored in function metadata, which may have been sent back from FunctionCreate.
+            # The problem is that this metadata propagates back and overwrites the metadata on the Function
+            # object itself. This is really messy. Maybe better to exclusively populate the method metadata
+            # from the function metadata we already have locally? Really a lot to clean up here...
+            for method in resp.handle_metadata.methods:
+                f_metadata = self._method_functions[method.function_name]._get_metadata()
+                method.function_handle_metadata.definition_id = f_metadata.definition_id
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"

@@ -24,7 +24,7 @@ class _CloudBucketMount:
     ```python
     import subprocess
 
-    app = modal.App()  # Note: "app" was called "stub" up until April 2024
+    app = modal.App()
     secret = modal.Secret.from_dict({
         # Required: specify the access key of your AWS account
         "AWS_ACCESS_KEY_ID": "...",
@@ -55,7 +55,7 @@ class _CloudBucketMount:
     ```python
     import subprocess
 
-    app = modal.App()  # Note: "app" was called "stub" up until April 2024
+    app = modal.App()
     secret = modal.Secret.from_dict({
         "AWS_ACCESS_KEY_ID": "...",
         "AWS_SECRET_ACCESS_KEY": "...",
@@ -76,14 +76,14 @@ class _CloudBucketMount:
 
     **Google GCS Usage**
 
-    Google Cloud Storage (GCS) is partially [S3-compatible](https://cloud.google.com/storage/docs/interoperability).
+    Google Cloud Storage (GCS) is [S3-compatible](https://cloud.google.com/storage/docs/interoperability).
     GCS Buckets also require a secret with Google-specific key names (see below) populated with
     a [HMAC key](https://cloud.google.com/storage/docs/authentication/managing-hmackeys#create).
 
     ```python
     import subprocess
 
-    app = modal.App()  # Note: "app" was called "stub" up until April 2024
+    app = modal.App()
     gcp_hmac_secret = modal.Secret.from_dict({
         "GOOGLE_ACCESS_KEY_ID": "GOOG1ERM12345...",
         "GOOGLE_ACCESS_KEY_SECRET": "HTJ123abcdef...",

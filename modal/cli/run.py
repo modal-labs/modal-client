@@ -26,6 +26,7 @@ from ..functions import Function, _FunctionSpec
 from ..image import Image
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
+from ..volume import Volume
 from .import_refs import import_app, import_function
 from .utils import ENV_OPTION, ENV_OPTION_HELP, stream_app_logs
 
@@ -58,7 +59,7 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, ParameterMetadata]:
+def _get_signature(f: Callable[..., Any], is_method: bool = False) -> Dict[str, ParameterMetadata]:
     try:
         type_hints = get_type_hints(f)
     except Exception as exc:
@@ -278,10 +279,10 @@ def run(ctx, detach, quiet, interactive, env):
 
 def deploy(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
-    name: str = typer.Option(None, help="Name of the deployment."),
+    name: str = typer.Option("", help="Name of the deployment."),
     env: str = ENV_OPTION,
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
-    tag: str = typer.Option(None, help="Tag the deployment with a version."),
+    tag: str = typer.Option("", help="Tag the deployment with a version."),
 ):
     # this ensures that `modal.lookup()` without environment specification uses the same env as specified
     env = ensure_env(env)
@@ -292,7 +293,7 @@ def deploy(
         name = app.name
 
     with enable_output():
-        res = deploy_app(app, name=name, environment_name=env, tag=tag)
+        res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
 
     if stream_logs:
         stream_app_logs(res.app_id)
@@ -332,7 +333,10 @@ def serve(
 def shell(
     func_ref: Optional[str] = typer.Argument(
         default=None,
-        help="Path to a Python file with an App or Modal function whose container to run.",
+        help=(
+            "Path to a Python file with an App or Modal function with container parameters."
+            " Can also include a function specifier, like `module.py::func`, when the file defines multiple functions."
+        ),
         metavar="FUNC_REF",
     ),
     cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
@@ -341,6 +345,13 @@ def shell(
         default=None, help="Container image tag for inside the shell (if not using FUNC_REF)."
     ),
     add_python: Optional[str] = typer.Option(default=None, help="Add Python to the image (if not using FUNC_REF)."),
+    volume: Optional[typing.List[str]] = typer.Option(
+        default=None,
+        help=(
+            "Name of a `modal.Volume` to mount inside the shell at `/mnt/{name}` (if not using FUNC_REF)."
+            " Can be used multiple times."
+        ),
+    ),
     cpu: Optional[int] = typer.Option(
         default=None, help="Number of CPUs to allocate to the shell (if not using FUNC_REF)."
     ),
@@ -419,6 +430,7 @@ def shell(
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
+        volumes = {} if volume is None else {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
         start_shell = partial(
             interactive_shell,
             image=modal_image,
@@ -426,6 +438,7 @@ def shell(
             memory=memory,
             gpu=gpu,
             cloud=cloud,
+            volumes=volumes,
             region=region.split(",") if region else [],
         )
 

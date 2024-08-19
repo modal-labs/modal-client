@@ -33,7 +33,12 @@ from modal._serialization import (
     serialize_data_format,
 )
 from modal._utils import async_utils
-from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from modal._utils.async_utils import synchronize_api
+from modal._utils.blob_utils import (
+    MAX_OBJECT_SIZE_BYTES,
+    blob_download as _blob_download,
+    blob_upload as _blob_upload,
+)
 from modal.app import _App
 from modal.exception import InvalidError
 from modal.partial_function import enter, method
@@ -47,16 +52,27 @@ FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
 CONNECTION_CHECK_CHECKPOINTING_MESSAGE = "connection check only runs inside containers"
 
+blob_upload = synchronize_api(_blob_upload)
+blob_download = synchronize_api(_blob_download)
+
 
 def _get_inputs(
     args: Tuple[Tuple, Dict] = ((42,), {}),
     n: int = 1,
     kill_switch=True,
     method_name: Optional[str] = None,
+    upload_to_blob: bool = False,
+    client: Optional[Client] = None,
 ) -> List[api_pb2.FunctionGetInputsResponse]:
-    input_pb = api_pb2.FunctionInput(
-        args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
-    )
+    if upload_to_blob:
+        args_blob_id = blob_upload(serialize(args), client.stub)
+        input_pb = api_pb2.FunctionInput(
+            args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+        )
+    else:
+        input_pb = api_pb2.FunctionInput(
+            args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+        )
     inputs = [
         *(
             api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
@@ -65,6 +81,44 @@ def _get_inputs(
         *([api_pb2.FunctionGetInputsItem(kill_switch=True)] if kill_switch else []),
     ]
     return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
+
+
+def _get_inputs_batched(
+    args_list: List[Tuple[Tuple, Dict]],
+    batch_max_size: int,
+    kill_switch=True,
+    method_name: Optional[str] = None,
+):
+    input_pbs = [
+        api_pb2.FunctionInput(
+            args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+        )
+        for args in args_list
+    ]
+    inputs = [
+        *(
+            api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
+            for i, input_pb in enumerate(input_pbs)
+        ),
+        *([api_pb2.FunctionGetInputsItem(kill_switch=True)] if kill_switch else []),
+    ]
+    response_list = []
+    current_batch: List[Any] = []
+    while inputs:
+        input = inputs.pop(0)
+        if input.kill_switch:
+            if len(current_batch) > 0:
+                response_list.append(api_pb2.FunctionGetInputsResponse(inputs=current_batch))
+            current_batch = [input]
+            break
+        if len(current_batch) > batch_max_size:
+            response_list.append(api_pb2.FunctionGetInputsResponse(inputs=current_batch))
+            current_batch = []
+        current_batch.append(input)
+
+    if len(current_batch) > 0:
+        response_list.append(api_pb2.FunctionGetInputsResponse(inputs=current_batch))
+    return response_list
 
 
 def _get_multi_inputs(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
@@ -116,6 +170,8 @@ def _container_args(
     app_name: str = "",
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
+    batch_max_size: Optional[int] = None,
+    batch_wait_ms: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
     is_checkpointing_function: bool = False,
     deps: List[str] = ["im-1"],
@@ -135,7 +191,6 @@ def _container_args(
         )
     else:
         webhook_config = None
-
     function_def = api_pb2.Function(
         module_name=module_name,
         function_name=function_name,
@@ -147,6 +202,8 @@ def _container_args(
         is_builder_function=is_builder_function,
         is_auto_snapshot=is_auto_snapshot,
         allow_concurrent_inputs=allow_concurrent_inputs,
+        batch_max_size=batch_max_size,
+        batch_linger_ms=batch_wait_ms,
         is_checkpointing_function=is_checkpointing_function,
         object_dependencies=[api_pb2.ObjectDependency(object_id=object_id) for object_id in deps],
         max_inputs=max_inputs,
@@ -183,6 +240,8 @@ def _run_container(
     app_name: str = "",
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
+    batch_max_size: int = 0,
+    batch_wait_ms: int = 0,
     serialized_params: Optional[bytes] = None,
     is_checkpointing_function: bool = False,
     deps: List[str] = ["im-1"],
@@ -203,6 +262,8 @@ def _run_container(
         app_name,
         is_builder_function,
         allow_concurrent_inputs,
+        batch_max_size,
+        batch_wait_ms,
         serialized_params,
         is_checkpointing_function,
         deps,
@@ -272,11 +333,39 @@ def _unwrap_scalar(ret: ContainerResult):
     return deserialize(ret.items[0].result.data, ret.client)
 
 
+def _unwrap_blob_scalar(ret: ContainerResult, client: Client):
+    assert len(ret.items) == 1
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    data = blob_download(ret.items[0].result.data_blob_id, client.stub)
+    return deserialize(data, ret.client)
+
+
+def _unwrap_batch_scalar(ret: ContainerResult, batch_size):
+    assert len(ret.items) == batch_size
+    outputs = []
+    for item in ret.items:
+        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+        outputs.append(deserialize(item.result.data, ret.client))
+    assert len(outputs) == batch_size
+    return outputs
+
+
 def _unwrap_exception(ret: ContainerResult):
     assert len(ret.items) == 1
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     assert "Traceback" in ret.items[0].result.traceback
     return ret.items[0].result.exception
+
+
+def _unwrap_batch_exception(ret: ContainerResult, batch_size):
+    assert len(ret.items) == batch_size
+    outputs = []
+    for item in ret.items:
+        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+        assert "Traceback" in item.result.traceback
+        outputs.append(item.result.exception)
+    assert len(outputs) == batch_size
+    return outputs
 
 
 def _unwrap_generator(ret: ContainerResult) -> Tuple[List[Any], Optional[Exception]]:
@@ -726,7 +815,7 @@ def test_cls_web_endpoint(servicer):
 @skip_github_non_linux
 def test_cls_web_asgi_construction(servicer):
     servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
-    servicer.app_functions["fu-2"] = api_pb2.FunctionHandleMetadata()
+    servicer.app_functions["fu-2"] = api_pb2.Function()
 
     inputs = _get_web_inputs(method_name="asgi_web")
     ret = _run_container(
@@ -1024,6 +1113,133 @@ def test_concurrent_inputs_async_function(servicer):
         assert squared == 42**2
         assert input_id and input_id != outputs[i - 1][1]
         assert function_call_id and function_call_id == outputs[i - 1][2]
+
+
+def _batch_function_test_helper(batch_func, servicer, args_list, expected_outputs, expected_status="success"):
+    batch_max_size = 4
+    batch_wait_ms = 500
+    inputs = _get_inputs_batched(args_list, batch_max_size)
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        batch_func,
+        inputs=inputs,
+        batch_max_size=batch_max_size,
+        batch_wait_ms=batch_wait_ms,
+    )
+    if expected_status == "success":
+        outputs = _unwrap_batch_scalar(ret, len(expected_outputs))
+    else:
+        outputs = _unwrap_batch_exception(ret, len(expected_outputs))
+    assert outputs == expected_outputs
+
+
+@skip_github_non_linux
+def test_batch_sync_function_full_batched(servicer):
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
+    expected_outputs = [2] * 4
+    _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
+
+
+@skip_github_non_linux
+def test_batch_sync_function_partial_batched(servicer):
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(2)]
+    expected_outputs = [2] * 2
+    _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
+
+
+@skip_github_non_linux
+def test_batch_sync_function_keyword_args(servicer):
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10,), {"y": 5}) for _ in range(4)]
+    expected_outputs = [2] * 4
+    _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
+
+
+@skip_github_non_linux
+def test_batch_sync_function_arg_len_error(servicer):
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10, 5, 1), {})]
+    _batch_function_test_helper(
+        "batch_function_sync",
+        servicer,
+        inputs,
+        [
+            "InvalidError('Modal batched function batch_function_sync takes 2 positional arguments, but one invocation in the batch has 3.')"  # noqa
+        ]
+        * 2,
+        expected_status="failure",
+    )
+
+
+@skip_github_non_linux
+def test_batch_sync_function_keyword_arg_error(servicer):
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10,), {"z": 5})]
+    _batch_function_test_helper(
+        "batch_function_sync",
+        servicer,
+        inputs,
+        [
+            "InvalidError('Modal batched function batch_function_sync got unexpected keyword argument z in one invocation in the batch.')"  # noqa
+        ]
+        * 2,
+        expected_status="failure",
+    )
+
+
+@skip_github_non_linux
+def test_batch_sync_function_multiple_args_error(servicer):
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10,), {"x": 1})]
+    _batch_function_test_helper(
+        "batch_function_sync",
+        servicer,
+        inputs,
+        [
+            "InvalidError('Modal batched function batch_function_sync got multiple values for argument x in one invocation in the batch.')"  # noqa
+        ]
+        * 2,
+        expected_status="failure",
+    )
+
+
+@skip_github_non_linux
+def test_batch_sync_function_outputs_list_error(servicer):
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {})]
+    _batch_function_test_helper(
+        "batch_function_outputs_not_list",
+        servicer,
+        inputs,
+        ["InvalidError('Output of batched function batch_function_outputs_not_list must be a list.')"] * 1,
+        expected_status="failure",
+    )
+
+
+@skip_github_non_linux
+def test_batch_sync_function_outputs_len_error(servicer):
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {})]
+    _batch_function_test_helper(
+        "batch_function_outputs_wrong_len",
+        servicer,
+        inputs,
+        [
+            "InvalidError('Output of batched function batch_function_outputs_wrong_len must be a list of equal length as its inputs.')"  # noqa
+        ]
+        * 1,
+        expected_status="failure",
+    )
+
+
+@skip_github_non_linux
+def test_batch_sync_function_generic_error(servicer):
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 0), {}) for _ in range(4)]
+    expected_ouputs = ["ZeroDivisionError('division by zero')"] * 4
+    _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_ouputs, expected_status="failure")
+
+
+@skip_github_non_linux
+def test_batch_async_function(servicer):
+    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
+    expected_outputs = [2] * 4
+    _batch_function_test_helper("batch_function_async", servicer, inputs, expected_outputs)
 
 
 @skip_github_non_linux
@@ -1347,7 +1563,7 @@ def test_cancellation_aborts_current_input_on_match(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
     stdout, stderr = container_process.communicate()
-    assert stderr.decode().count("was cancelled by a user request") == live_cancellations
+    assert stderr.decode().count("Received a cancellation signal") == live_cancellations
     assert "Traceback" not in stderr.decode()
     assert container_process.returncode == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit
@@ -1389,6 +1605,18 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     )  # should not fail the outputs, as they would have been cancelled in backend already
     assert "Traceback" not in container_process.stderr.read().decode("utf8")
     assert exit_code == 0  # container should exit gracefully
+
+
+@skip_github_non_linux
+def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
+    monkeypatch.setattr("modal._container_io_manager.MAX_OBJECT_SIZE_BYTES", 0)
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "ident",
+        inputs=_get_inputs(((42,), {}), upload_to_blob=True, client=client),
+    )
+    assert _unwrap_blob_scalar(ret, client) == 42
 
 
 @skip_github_non_linux

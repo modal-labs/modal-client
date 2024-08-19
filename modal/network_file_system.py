@@ -3,7 +3,7 @@ import functools
 import os
 import time
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, BinaryIO, Callable, List, Optional, Tuple, Type, Union
+from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Tuple, Type, Union
 
 import aiostream
 from grpclib import GRPCError, Status
@@ -63,7 +63,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     import modal
 
     nfs = modal.NetworkFileSystem.from_name("my-nfs", create_if_missing=True)
-    app = modal.App()  # Note: "app" was called "stub" up until April 2024
+    app = modal.App()
 
     @app.function(network_file_systems={"/root/foo": nfs})
     def f():
@@ -235,7 +235,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         return resp.shared_volume_id
 
     @live_method
-    async def write_file(self, remote_path: str, fp: BinaryIO, progress_cb: Optional[Callable] = None) -> int:
+    async def write_file(self, remote_path: str, fp: BinaryIO, progress_cb: Optional[Callable[..., Any]] = None) -> int:
         """Write from a file object to a path on the network file system, atomically.
 
         Will create any needed parent directories automatically.
@@ -310,7 +310,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         self,
         local_path: Union[Path, str],
         remote_path: Optional[Union[str, PurePosixPath, None]] = None,
-        progress_cb: Optional[Callable] = None,
+        progress_cb: Optional[Callable[..., Any]] = None,
     ):
         local_path = Path(local_path)
         if remote_path is None:
@@ -326,7 +326,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         self,
         local_path: Union[Path, str],
         remote_path: Optional[Union[str, PurePosixPath, None]] = None,
-        progress_cb: Optional[Callable] = None,
+        progress_cb: Optional[Callable[..., Any]] = None,
     ):
         _local_path = Path(local_path)
         if remote_path is None:

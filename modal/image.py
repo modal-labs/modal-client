@@ -463,7 +463,7 @@ class _Image(_Object, type_prefix="im"):
 
     def extend(self, **kwargs) -> "_Image":
         """Deprecated! This is a low-level method not intended to be part of the public API."""
-        deprecation_warning(
+        deprecation_error(
             (2024, 3, 7),
             "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
         )
@@ -1527,7 +1527,7 @@ class _Image(_Object, type_prefix="im"):
 
     def run_function(
         self,
-        raw_f: Callable,
+        raw_f: Callable[..., Any],
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),  # Mounts attached to the function
@@ -1685,18 +1685,6 @@ class _Image(_Object, type_prefix="im"):
                 raise
             if not isinstance(exc, ImportError):
                 warnings.warn(f"Warning: caught a non-ImportError exception in an `imports()` block: {repr(exc)}")
-
-    def run_inside(self):
-        """`Image.run_inside` is deprecated - use `Image.imports` instead.
-
-        **Usage:**
-
-        ```python notest
-        with image.imports():
-            import torch
-        ```
-        """
-        deprecation_error((2023, 12, 15), Image.run_inside.__doc__)
 
     @live_method_gen
     async def _logs(self) -> AsyncGenerator[str, None]:

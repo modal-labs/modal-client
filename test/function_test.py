@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import App, Image, Mount, NetworkFileSystem, Proxy, web_endpoint
+from modal import App, Image, Mount, NetworkFileSystem, Proxy, batched, web_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import ExecutionError, InvalidError
@@ -164,7 +164,8 @@ def side_effect(_):
 
 def test_for_each(client, servicer):
     app = App()
-    side_effect_modal = app.function()(servicer.function_body(side_effect))
+    servicer.function_body(side_effect)
+    side_effect_modal = app.function()(side_effect)
     assert _side_effect_count == 0
     with app.run(client=client):
         side_effect_modal.for_each(range(10))
@@ -179,8 +180,8 @@ def custom_function(x):
 
 def test_map_none_values(client, servicer):
     app = App()
-
-    custom_function_modal = app.function()(servicer.function_body(custom_function))
+    servicer.function_body(custom_function)
+    custom_function_modal = app.function()(custom_function)
 
     with app.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, None, 2, None]
@@ -208,7 +209,7 @@ def test_function_memory_limit(client):
 
     g = app.function(memory=(2048, 2048 - 1))(custom_function)
     with pytest.raises(InvalidError), app.run(client=client):
-        g.remote()
+        g.remote(0)
 
 
 def test_function_cpu_request(client):
@@ -234,7 +235,8 @@ def later():
 def test_function_future(client, servicer):
     app = App()
 
-    later_modal = app.function()(servicer.function_body(later))
+    servicer.function_body(later)
+    later_modal = app.function()(later)
     with app.run(client=client):
         future = later_modal.spawn()
         assert isinstance(future, FunctionCall)
@@ -264,7 +266,8 @@ def test_function_future(client, servicer):
 async def test_function_future_async(client, servicer):
     app = App()
 
-    later_modal = app.function()(servicer.function_body(later))
+    servicer.function_body(later)
+    later_modal = app.function()(later)
 
     async with app.run(client=client):
         future = await later_modal.spawn.aio()
@@ -381,7 +384,8 @@ async def slo1(sleep_seconds):
 def test_sync_parallelism(client, servicer):
     app = App()
 
-    slo1_modal = app.function()(servicer.function_body(slo1))
+    servicer.function_body(slo1)
+    slo1_modal = app.function()(slo1)
     with app.run(client=client):
         t0 = time.time()
         # NOTE tests breaks in macOS CI if the smaller time is smaller than ~300ms
@@ -410,7 +414,8 @@ def failure():
 def test_function_exception(client, servicer):
     app = App()
 
-    failure_modal = app.function()(servicer.function_body(failure))
+    servicer.function_body(failure)
+    failure_modal = app.function()(failure)
     with app.run(client=client):
         with pytest.raises(CustomException) as excinfo:
             failure_modal.remote()
@@ -421,7 +426,8 @@ def test_function_exception(client, servicer):
 async def test_function_exception_async(client, servicer):
     app = App()
 
-    failure_modal = app.function()(servicer.function_body(failure))
+    servicer.function_body(failure)
+    failure_modal = app.function()(failure)
     async with app.run(client=client):
         with pytest.raises(CustomException) as excinfo:
             coro = failure_modal.remote.aio()
@@ -441,7 +447,8 @@ def custom_exception_function(x):
 def test_map_exceptions(client, servicer):
     app = App()
 
-    custom_function_modal = app.function()(servicer.function_body(custom_exception_function))
+    servicer.function_body(custom_exception_function)
+    custom_function_modal = app.function()(custom_exception_function)
 
     with app.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, 1, 4, 9]
@@ -462,7 +469,8 @@ def import_failure():
 def test_function_relative_import_hint(client, servicer):
     app = App()
 
-    import_failure_modal = app.function()(servicer.function_body(import_failure))
+    servicer.function_body(import_failure)
+    import_failure_modal = app.function()(import_failure)
 
     with app.run(client=client):
         with pytest.raises(ImportError) as excinfo:
@@ -514,7 +522,7 @@ def test_closure_valued_serialized_function(client, servicer):
 
 
 def test_new_hydrated_internal(client, servicer):
-    obj = FunctionCall._new_hydrated("fc-123", client, None)
+    obj: FunctionCall[typing.Any] = FunctionCall._new_hydrated("fc-123", client, None)
     assert obj.object_id == "fc-123"
 
 
@@ -645,7 +653,7 @@ def test_invalid_large_serialization(client):
 
 def test_call_unhydrated_function():
     with pytest.raises(ExecutionError, match="hydrated"):
-        foo.remote(123)
+        foo.remote(123, 456)
 
 
 def test_deps_explicit(client, servicer):
@@ -802,3 +810,33 @@ def test_function_decorator_on_method():
 
     with pytest.raises(InvalidError, match="@app.cls"):
         app.function()(X.f)
+
+
+def test_batch_function_invalid_error():
+    app = App()
+
+    with pytest.raises(InvalidError, match="must be a positive integer"):
+        app.function(batched(max_batch_size=0, wait_ms=1))(dummy)
+
+    with pytest.raises(InvalidError, match="must be a non-negative integer"):
+        app.function(batched(max_batch_size=1, wait_ms=-1))(dummy)
+
+    with pytest.raises(InvalidError, match="must be less than"):
+        app.function(batched(max_batch_size=1000, wait_ms=1))(dummy)
+
+    with pytest.raises(InvalidError, match="must be less than"):
+        app.function(batched(max_batch_size=1, wait_ms=10 * 60 * 1000))(dummy)
+
+    with pytest.raises(InvalidError, match="cannot return generators"):
+
+        @app.function(serialized=True)
+        @batched(max_batch_size=1, wait_ms=1)
+        def f(x):
+            yield [x_i**2 for x_i in x]
+
+    with pytest.raises(InvalidError, match="does not accept default arguments"):
+
+        @app.function(serialized=True)
+        @batched(max_batch_size=1, wait_ms=1)
+        def g(x=1):
+            return [x_i**2 for x_i in x]

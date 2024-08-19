@@ -42,6 +42,8 @@ dummy_other_module_file = "x = 42"
 
 def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
     runner = click.testing.CliRunner(mix_stderr=False)
+    # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
+    # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
     with mock.patch.object(sys, "argv", args):
         res = runner.invoke(entrypoint_cli, args)
     if res.exit_code != expected_exit_code:
@@ -353,7 +355,9 @@ def test_serve(servicer, set_env_client, server_url_env, test_dir):
 
 
 @pytest.fixture
-def mock_shell_pty():
+def mock_shell_pty(servicer):
+    servicer.shell_prompt = "TEST_PROMPT# "
+
     def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
         return api_pb2.PTYInfo(
@@ -392,7 +396,9 @@ def mock_shell_pty():
         "modal._pty.get_pty_info", mock_get_pty_info
     ), mock.patch("modal.runner.get_pty_info", mock_get_pty_info), mock.patch(
         "modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin
-    ), mock.patch("modal._sandbox_shell.write_to_fd", write_to_fd):
+    ), mock.patch("modal.container_process.stream_from_stdin", fake_stream_from_stdin), mock.patch(
+        "modal.container_process.write_to_fd", write_to_fd
+    ):
         yield fake_stdin, captured_out
 
 
@@ -406,10 +412,10 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     fake_stdin.clear()
     fake_stdin.extend([b'echo "Hello World"\n', b"exit\n"])
 
+    shell_prompt = servicer.shell_prompt.encode("utf-8")
+
     # Function is explicitly specified
     _run(["shell", app_file.as_posix() + "::foo"])
-
-    shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
 
     # first captured message is the empty message the mock server sends
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
@@ -434,9 +440,9 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     _, captured_out = mock_shell_pty
+    shell_prompt = servicer.shell_prompt.encode("utf-8")
     _run(["shell", "--cmd", "pwd", app_file.as_posix() + "::foo"])
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
-    shell_prompt = servicer.sandbox_shell_prompt.encode("utf-8")
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 
@@ -478,21 +484,19 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
     with servicer.intercept() as ctx:
         ctx.set_responder("AppGetLogs", app_done)
 
-        res = _run(["app", "logs", "ap-123"])
-        assert res.stdout == "hello\n"
+        # TODO Fix the mock servicer to use "real" App IDs so this does not get misconstrued as a name
+        # res = _run(["app", "logs", "ap-123"])
+        # assert res.stdout == "hello\n"
 
         with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
             res = _run(["deploy", "myapp.py", "--name", "my-app", "--stream-logs"])
             assert res.stdout.endswith("hello\n")
 
-    _run(
-        ["app", "logs", "app-123", "-n", "my-app"],
-        expected_exit_code=2,
-        expected_stderr="Must pass either an ID or a name",
-    )
+        res = _run(["app", "logs", "my-app"])
+        assert res.stdout == "hello\n"
 
     _run(
-        ["app", "logs", "-n", "does-not-exist"],
+        ["app", "logs", "does-not-exist"],
         expected_exit_code=1,
         expected_error="Could not find a deployed app named 'does-not-exist'",
     )
@@ -506,7 +510,7 @@ def test_app_stop(servicer, mock_dir, set_env_client):
     res = _run(["app", "list"])
     assert re.search("my_app .+ deployed", res.stdout)
 
-    _run(["app", "stop", "-n", "my_app"])
+    _run(["app", "stop", "my_app"])
 
     # Note that the mock servicer doesn't report "stopped" app statuses
     # so we just check that it's not reported as deployed
@@ -763,7 +767,7 @@ def test_profile_list(servicer, server_url_env, modal_config):
                 del os.environ["MODAL_TOKEN_SECRET"]
 
 
-def test_list_apps(servicer, mock_dir, set_env_client):
+def test_app_list(servicer, mock_dir, set_env_client):
     res = _run(["app", "list"])
     assert "my_app_foo" not in res.stdout
 
@@ -779,6 +783,48 @@ def test_list_apps(servicer, mock_dir, set_env_client):
     _run(["volume", "create", "my-vol"])
     res = _run(["app", "list"])
     assert "my-vol" not in res.stdout
+
+
+def test_app_history(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["deploy", "myapp.py", "--name", "my_app_foo"])
+
+    # app should be deployed once it exists
+    res = _run(["app", "history", "my_app_foo"])
+    assert "v1" in res.stdout, res.stdout
+
+    res = _run(["app", "history", "my_app_foo", "--json"])
+    assert json.loads(res.stdout)
+
+    # re-deploying an app should result in a new row in the history table
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["deploy", "myapp.py", "--name", "my_app_foo"])
+
+    res = _run(["app", "history", "my_app_foo"])
+    assert "v1" in res.stdout
+    assert "v2" in res.stdout, f"{res.stdout=}"
+
+    # can't fetch history for stopped apps
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["app", "stop", "my_app_foo"])
+
+    res = _run(["app", "history", "my_app_foo", "--json"], expected_exit_code=1)
+
+
+def test_app_rollback(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        # Deploy multiple times
+        for _ in range(4):
+            _run(["deploy", "myapp.py", "--name", "my_app"])
+    _run(["app", "rollback", "my_app"])
+    app_id = servicer.deployed_apps.get("my_app")
+    assert servicer.app_deployment_history[app_id][-1]["rollback_version"] == 3
+
+    _run(["app", "rollback", "my_app", "v2"])
+    app_id = servicer.deployed_apps.get("my_app")
+    assert servicer.app_deployment_history[app_id][-1]["rollback_version"] == 2
+
+    _run(["app", "rollback", "my_app", "2"], expected_exit_code=2)
 
 
 def test_dict_create_list_delete(servicer, server_url_env, set_env_client):

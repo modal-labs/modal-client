@@ -1,10 +1,9 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import TYPE_CHECKING, AsyncIterator, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
-from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
@@ -15,13 +14,15 @@ from ._location import parse_cloud_provider
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
+from .container_process import _ContainerProcess
 from .exception import deprecation_error, deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
+from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _Object
@@ -35,200 +36,6 @@ if TYPE_CHECKING:
     import modal.app
 
 
-class _LogsReader:
-    """Provides an interface to buffer and fetch logs from a sandbox stream (`stdout` or `stderr`).
-
-    As an asynchronous iterable, the object supports the async for statement.
-
-    **Usage**
-
-    ```python
-    from modal import Sandbox
-
-    sandbox = Sandbox.create(
-        "bash",
-        "-c",
-        "for i in $(seq 1 10); do echo foo; sleep 0.1; done"
-    )
-    for message in sandbox.stdout:
-        print(f"Message: {message}")
-    ```
-    """
-
-    def __init__(self, file_descriptor: int, sandbox_id: str, client: _Client) -> None:
-        """mdmd:hidden"""
-
-        self._file_descriptor = file_descriptor
-        self._sandbox_id = sandbox_id
-        self._client = client
-        self._stream = None
-        self._last_log_batch_entry_id = ""
-        # Whether the reader received an EOF. Once EOF is True, it returns
-        # an empty string for any subsequent reads (including async for)
-        self.eof = False
-
-    async def read(self) -> str:
-        """Fetch and return contents of the entire stream. If EOF was received,
-        return an empty string.
-
-        **Usage**
-
-        ```python
-        from modal import Sandbox
-
-        sandbox = Sandbox.create("echo", "hello")
-        sandbox.wait()
-
-        print(sandbox.stdout.read())
-        ```
-
-        """
-        data = ""
-        # TODO: maybe combine this with get_app_logs_loop
-        async for message in self._get_logs():
-            if message is None:
-                break
-            data += message.data
-
-        return data
-
-    async def _get_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogs]]:
-        """mdmd:hidden
-        Streams sandbox logs from the server to the reader.
-
-        When the stream receives an EOF, it yields None. Once an EOF is received,
-        subsequent invocations will not yield logs.
-        """
-        if self.eof:
-            yield None
-            return
-
-        completed = False
-
-        retries_remaining = 10
-        while not completed:
-            req = api_pb2.SandboxGetLogsRequest(
-                sandbox_id=self._sandbox_id,
-                file_descriptor=self._file_descriptor,
-                timeout=55,
-                last_entry_id=self._last_log_batch_entry_id,
-            )
-            try:
-                async for log_batch in unary_stream(self._client.stub.SandboxGetLogs, req):
-                    self._last_log_batch_entry_id = log_batch.entry_id
-
-                    for message in log_batch.items:
-                        yield message
-                    if log_batch.eof:
-                        self.eof = True
-                        completed = True
-                        yield None
-                        break
-            except (GRPCError, StreamTerminatedError) as exc:
-                if retries_remaining > 0:
-                    retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
-                    elif isinstance(exc, StreamTerminatedError):
-                        continue
-                raise
-
-    def __aiter__(self):
-        """mdmd:hidden"""
-        self._stream = self._get_logs()
-        return self
-
-    async def __anext__(self):
-        """mdmd:hidden"""
-        value = await self._stream.__anext__()
-
-        # The stream yields None if it receives an EOF batch.
-        if value is None:
-            raise StopAsyncIteration
-
-        return value.data
-
-
-MAX_BUFFER_SIZE = 2 * 1024 * 1024
-
-
-class _StreamWriter:
-    """Provides an interface to buffer and write logs to a sandbox stream (`stdin`)."""
-
-    def __init__(self, sandbox_id: str, client: _Client):
-        self._index = 1
-        self._sandbox_id = sandbox_id
-        self._client = client
-        self._is_closed = False
-        self._buffer = bytearray()
-
-    def get_next_index(self):
-        """mdmd:hidden"""
-        index = self._index
-        self._index += 1
-        return index
-
-    def write(self, data: Union[bytes, bytearray, memoryview]):
-        """
-        Writes data to stream's internal buffer, but does not drain/flush the write.
-
-        This method needs to be used along with the `drain()` method which flushes the buffer.
-
-        **Usage**
-
-        ```python
-        from modal import Sandbox
-
-        sandbox = Sandbox.create(
-            "bash",
-            "-c",
-            "while read line; do echo $line; done",
-        )
-        sandbox.stdin.write(b"foo\\n")
-        sandbox.stdin.write(b"bar\\n")
-        sandbox.stdin.write_eof()
-
-        sandbox.stdin.drain()
-        sandbox.wait()
-        ```
-        """
-        if self._is_closed:
-            raise EOFError("Stdin is closed. Cannot write to it.")
-        if isinstance(data, (bytes, bytearray, memoryview)):
-            if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
-                raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
-            self._buffer.extend(data)
-        else:
-            raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
-
-    def write_eof(self):
-        """
-        Closes the write end of the stream after the buffered write data is drained.
-        If the sandbox process was blocked on input, it will become unblocked after `write_eof()`.
-
-        This method needs to be used along with the `drain()` method which flushes the EOF to the process.
-        """
-        self._is_closed = True
-
-    async def drain(self):
-        """
-        Flushes the write buffer and EOF to the running Sandbox process.
-        """
-        data = bytes(self._buffer)
-        self._buffer.clear()
-        index = self.get_next_index()
-        await retry_transient_errors(
-            self._client.stub.SandboxStdinWrite,
-            api_pb2.SandboxStdinWriteRequest(sandbox_id=self._sandbox_id, index=index, eof=self._is_closed, input=data),
-        )
-
-
-LogsReader = synchronize_api(_LogsReader)
-StreamWriter = synchronize_api(_StreamWriter)
-
-
 class _Sandbox(_Object, type_prefix="sb"):
     """A `Sandbox` object lets you interact with a running sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
@@ -237,9 +44,10 @@ class _Sandbox(_Object, type_prefix="sb"):
     """
 
     _result: Optional[api_pb2.GenericResult]
-    _stdout: _LogsReader
-    _stderr: _LogsReader
+    _stdout: _StreamReader
+    _stderr: _StreamReader
     _stdin: _StreamWriter
+    _task_id: Optional[str] = None
 
     @staticmethod
     def _new(
@@ -418,9 +226,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
-        self._stdout = LogsReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, self._client)
-        self._stderr = LogsReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, self._client)
-        self._stdin = StreamWriter(self.object_id, self._client)
+        self._stdout = StreamReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client)
+        self._stderr = StreamReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client)
+        self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
         self._result = None
 
     @staticmethod
@@ -481,15 +289,48 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return self.returncode
 
+    async def _get_task_id(self):
+        while not self._task_id:
+            resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
+            self._task_id = resp.task_id
+            # TODO: debug why sending an exec right after a task ID exists fails silently
+            await asyncio.sleep(0.5)
+        return self._task_id
+
+    async def exec(self, *cmds: str, pty_info: Optional[api_pb2.PTYInfo] = None):
+        """Execute a command in the sandbox, and return a `ContainerProcess` handle.
+
+        **Usage**
+
+        ```
+        sandbox = modal.Sandbox.create("sleep", "infinity")
+
+        process = sandbox.exec("bash", "-c", "for i in $(seq 1 10); do echo foo $i; sleep 0.5; done")
+
+        for line in process.stdout:
+            print(line)
+        ```
+        """
+
+        task_id = await self._get_task_id()
+        resp = await self._client.stub.ContainerExec(
+            api_pb2.ContainerExecRequest(
+                task_id=task_id,
+                command=cmds,
+                pty_info=pty_info,
+            )
+        )
+        return _ContainerProcess(resp.exec_id, self._client)
+
     @property
-    def stdout(self) -> _LogsReader:
-        """`LogsReader` for the sandbox's stdout stream."""
+    def stdout(self) -> _StreamReader:
+        """`StreamReader` for the sandbox's stdout stream."""
 
         return self._stdout
 
     @property
-    def stderr(self) -> _LogsReader:
-        """`LogsReader` for the sandbox's stderr stream."""
+    def stderr(self) -> _StreamReader:
+        """`StreamReader` for the sandbox's stderr stream."""
 
         return self._stderr
 
@@ -516,3 +357,23 @@ class _Sandbox(_Object, type_prefix="sb"):
 
 
 Sandbox = synchronize_api(_Sandbox)
+
+
+def __getattr__(name):
+    if name == "LogsReader":
+        deprecation_warning(
+            (2024, 8, 12),
+            "`modal.sandbox.LogsReader` is deprecated. Please import `modal.io_streams.StreamReader` instead.",
+        )
+        from .io_streams import StreamReader
+
+        return StreamReader
+    elif name == "StreamWriter":
+        deprecation_warning(
+            (2024, 8, 12),
+            "`modal.sandbox.StreamWriter` is deprecated. Please import `modal.io_streams.StreamWriter` instead.",
+        )
+        from .io_streams import StreamWriter
+
+        return StreamWriter
+    raise AttributeError(f"module {__name__} has no attribute {name}")

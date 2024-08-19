@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import enum
 import inspect
+import typing
 from typing import (
     Any,
     Callable,
@@ -12,6 +13,8 @@ from typing import (
     Union,
 )
 
+import typing_extensions
+
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api, synchronizer
@@ -20,6 +23,9 @@ from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
 
+MAX_MAX_BATCH_SIZE = 1000
+MAX_BATCH_WAIT_MS = 10 * 60 * 1000  # 10 minutes
+
 
 class _PartialFunctionFlags(enum.IntFlag):
     FUNCTION: int = 1
@@ -27,28 +33,37 @@ class _PartialFunctionFlags(enum.IntFlag):
     ENTER_PRE_SNAPSHOT: int = 4
     ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
+    BATCHED: int = 32
 
     @staticmethod
     def all() -> "_PartialFunctionFlags":
         return ~_PartialFunctionFlags(0)  # type: ignore #  for some reason mypy things this has type int
 
 
-class _PartialFunction:
-    """Intermediate function, produced by @method or @web_endpoint"""
+P = typing_extensions.ParamSpec("P")
+T = typing_extensions.TypeVar("T", covariant=True)
 
-    raw_f: Callable[..., Any]
+
+class _PartialFunction(typing.Generic[P, T]):
+    """Intermediate function, produced by @method, @web_endpoint, or @batched"""
+
+    raw_f: Callable[P, T]
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
     is_generator: Optional[bool]
     keep_warm: Optional[int]
+    batch_max_size: Optional[int]
+    batch_wait_ms: Optional[int]
 
     def __init__(
         self,
-        raw_f: Callable[..., Any],
+        raw_f: Callable[P, T],
         flags: _PartialFunctionFlags,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
         keep_warm: Optional[int] = None,
+        batch_max_size: Optional[int] = None,
+        batch_wait_ms: Optional[int] = None,
     ):
         self.raw_f = raw_f
         self.flags = flags
@@ -56,6 +71,8 @@ class _PartialFunction:
         self.is_generator = is_generator
         self.keep_warm = keep_warm
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
+        self.batch_max_size = batch_max_size
+        self.batch_wait_ms = batch_wait_ms
 
     def __get__(self, obj, objtype=None) -> _Function:
         k = self.raw_f.__name__
@@ -93,13 +110,17 @@ class _PartialFunction:
             flags=(self.flags | flags),
             webhook_config=self.webhook_config,
             keep_warm=self.keep_warm,
+            batch_max_size=self.batch_max_size,
+            batch_wait_ms=self.batch_wait_ms,
         )
 
 
 PartialFunction = synchronize_api(_PartialFunction)
 
 
-def _find_partial_methods_for_user_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
+def _find_partial_methods_for_user_cls(
+    user_cls: Type[Any], flags: _PartialFunctionFlags
+) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class"""
     partial_functions: Dict[str, PartialFunction] = {}
     for parent_cls in user_cls.mro():
@@ -113,7 +134,7 @@ def _find_partial_methods_for_user_cls(user_cls: Type, flags: _PartialFunctionFl
     return partial_functions
 
 
-def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dict[str, Callable]:
+def _find_callables_for_cls(user_cls: Type[Any], flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
     """Grabs all method on a user class, and returns callables. Includes legacy methods."""
     functions: Dict[str, Callable] = {}
 
@@ -147,7 +168,7 @@ def _find_callables_for_cls(user_cls: Type, flags: _PartialFunctionFlags) -> Dic
     return functions
 
 
-def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict[str, Callable]:
+def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: Type = type(user_obj)
     return {k: meth.__get__(user_obj) for k, meth in _find_callables_for_cls(user_cls, flags).items()}
@@ -196,6 +217,12 @@ def _method(
                 "Web endpoints on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
+        if isinstance(raw_f, _PartialFunction) and raw_f.batch_max_size is not None:
+            raw_f.wrapped = True  # suppress later warning
+            raise InvalidError(
+                "Batched function on classes should not be wrapped by `@method`. "
+                "Suggestion: remove the `@method` decorator."
+            )
         if is_generator is None:
             is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
@@ -223,7 +250,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
+) -> Callable[[Callable[P, T]], _PartialFunction[P, T]]:
     """Register a basic web endpoint with this application.
 
     This is the simple way to create a web endpoint on Modal. The function
@@ -554,6 +581,57 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
     return wrapper
 
 
+def _batched(
+    _warn_parentheses_missing=None,
+    *,
+    max_batch_size: int,
+    wait_ms: int,
+) -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Decorator for functions or class methods that should be batched.
+
+    **Usage**
+
+    ```python notest
+    @app.function()
+    @modal.batched(max_batch_size=4, wait_ms=1000)
+    async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
+        return [x * y for x, y in zip(xs, xs)]
+
+    # call batched_multiply with individual inputs
+    batched_multiply.remote.aio(2, 100)
+    ```
+    """
+    # TODO(cathy) add link to guide to docstring
+    if _warn_parentheses_missing:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batched()`."
+        )
+    if max_batch_size < 1:
+        raise InvalidError("max_batch_size must be a positive integer.")
+    if max_batch_size >= MAX_MAX_BATCH_SIZE:
+        raise InvalidError(f"max_batch_size must be less than {MAX_MAX_BATCH_SIZE}.")
+    if wait_ms < 0:
+        raise InvalidError("wait_ms must be a non-negative integer.")
+    if wait_ms >= MAX_BATCH_WAIT_MS:
+        raise InvalidError(f"wait_ms must be less than {MAX_BATCH_WAIT_MS}.")
+
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if isinstance(raw_f, _Function):
+            raw_f = raw_f.get_raw_f()
+            raise InvalidError(
+                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
+                "@app.function()\n@modal.batched()\ndef batched_function():\n    ..."
+            )
+        return _PartialFunction(
+            raw_f,
+            _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.BATCHED,
+            batch_max_size=max_batch_size,
+            batch_wait_ms=wait_ms,
+        )
+
+    return wrapper
+
+
 method = synchronize_api(_method)
 web_endpoint = synchronize_api(_web_endpoint)
 asgi_app = synchronize_api(_asgi_app)
@@ -562,3 +640,4 @@ web_server = synchronize_api(_web_server)
 build = synchronize_api(_build)
 enter = synchronize_api(_enter)
 exit = synchronize_api(_exit)
+batched = synchronize_api(_batched)

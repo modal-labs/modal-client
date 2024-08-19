@@ -86,8 +86,13 @@ def lint_protos(ctx):
 
 @task
 def type_check(ctx):
+    type_stubs(ctx)
     # mypy will not check the *implementation* (.py) for files that also have .pyi type stubs
-    ctx.run("mypy . --exclude=playground --exclude=venv311 --exclude=venv38", pty=True)
+    ctx.run(
+        "mypy . --exclude=playground --exclude=venv311 --exclude=venv38 "
+        "--exclude=test/supports/type_assertions_negative.py",
+        pty=True,
+    )
 
     # use pyright for checking implementation of those files
     pyright_allowlist = [
@@ -227,6 +232,15 @@ build-backend = "setuptools.build_meta"
 def type_stubs(ctx):
     # We only generate type stubs for modules that contain synchronicity wrapped types
     from synchronicity.synchronizer import SYNCHRONIZER_ATTR
+
+    stubs_to_remove = []
+    for root, _, files in os.walk("modal"):
+        for file in files:
+            if file.endswith(".pyi"):
+                stubs_to_remove.append(os.path.abspath(os.path.join(root, file)))
+    for path in sorted(stubs_to_remove):
+        os.remove(path)
+        print(f"Removed {path}")
 
     def find_modal_modules(root: str = "modal"):
         modules = []

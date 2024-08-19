@@ -4,12 +4,13 @@ from __future__ import annotations
 import asyncio
 import socket
 import time
-from typing import List
+from typing import List, Tuple
 
 from modal import (
     App,
     Sandbox,
     asgi_app,
+    batched,
     build,
     current_function_call_id,
     current_input_id,
@@ -329,6 +330,37 @@ def sleep_700_sync(x):
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
+
+
+@app.function()
+@batched(max_batch_size=4, wait_ms=500)
+def batch_function_sync(x: Tuple[int], y: Tuple[int]):
+    outputs = []
+    for x_i, y_i in zip(x, y):
+        outputs.append(x_i / y_i)
+    return outputs
+
+
+@app.function()
+@batched(max_batch_size=4, wait_ms=500)
+def batch_function_outputs_not_list(x: Tuple[int], y: Tuple[int]):
+    return str(x)
+
+
+@app.function()
+@batched(max_batch_size=4, wait_ms=500)
+def batch_function_outputs_wrong_len(x: Tuple[int], y: Tuple[int]):
+    return list(x) + [0]
+
+
+@app.function()
+@batched(max_batch_size=4, wait_ms=500)
+async def batch_function_async(x: Tuple[int], y: Tuple[int]):
+    outputs = []
+    for x_i, y_i in zip(x, y):
+        outputs.append(x_i / y_i)
+    await asyncio.sleep(0.1)
+    return outputs
 
 
 def unassociated_function(x):

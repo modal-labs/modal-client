@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
+import typing_extensions
 from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -18,10 +19,6 @@ from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
 from ._utils.grpc_utils import unary_stream
 from ._utils.mount_utils import validate_volumes
-from .app_utils import (  # noqa: F401
-    _list_apps,
-    list_apps,
-)
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls
@@ -33,7 +30,12 @@ from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
-from .partial_function import _find_callables_for_cls, _PartialFunction, _PartialFunctionFlags
+from .partial_function import (
+    _find_callables_for_cls,
+    _find_partial_methods_for_user_cls,
+    _PartialFunction,
+    _PartialFunctionFlags,
+)
 from .proxy import _Proxy
 from .retries import Retries
 from .runner import _run_app
@@ -82,7 +84,11 @@ def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[ty
         raise InvalidError(error_msg)
 
 
-CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
+CLS_T = typing.TypeVar("CLS_T", bound=typing.Type[Any])
+
+
+P = typing_extensions.ParamSpec("P")
+R = typing.TypeVar("R")
 
 
 class _App:
@@ -105,7 +111,7 @@ class _App:
     ```python
     import modal
 
-    app = modal.App()  # Note: app were called "stub" up until April 2024
+    app = modal.App()
 
     @app.function(
         secrets=[modal.Secret.from_name("some_secret")],
@@ -280,16 +286,6 @@ class _App:
         for obj in self._indexed_objects.values():
             obj._unhydrate()
 
-    def is_inside(self, image: Optional[_Image] = None):
-        """Deprecated: use `Image.imports()` instead! Usage:
-        ```
-        my_image = modal.Image.debian_slim().pip_install("torch")
-        with my_image.imports():
-            import torch
-        ```
-        """
-        deprecation_error((2023, 11, 8), _App.is_inside.__doc__)
-
     @asynccontextmanager
     async def _set_local_app(self, client: _Client, running_app: RunningApp) -> AsyncGenerator[None, None]:
         self._app_id = running_app.app_id
@@ -434,7 +430,7 @@ class _App:
 
     def local_entrypoint(
         self, _warn_parentheses_missing: Any = None, *, name: Optional[str] = None
-    ) -> Callable[[Callable[..., Any]], None]:
+    ) -> Callable[[Callable[..., Any]], _LocalEntrypoint]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
         These functions can be used to define code that runs locally to set up the app,
@@ -488,7 +484,7 @@ class _App:
         if name is not None and not isinstance(name, str):
             raise InvalidError("Invalid value for `name`: Must be string.")
 
-        def wrapped(raw_f: Callable[..., Any]) -> None:
+        def wrapped(raw_f: Callable[..., Any]) -> _LocalEntrypoint:
             info = FunctionInfo(raw_f)
             tag = name if name is not None else raw_f.__qualname__
             if tag in self._local_entrypoints:
@@ -554,7 +550,7 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
-    ) -> Callable[..., _Function]:
+    ) -> Callable[[Union[Callable[P, R], _PartialFunction[P, R]]], _Function[P, R]]:
         """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg
@@ -589,13 +585,15 @@ class _App:
                 )
 
             if isinstance(f, _PartialFunction):
-                # typically for @function-wrapped @web_endpoint and @asgi_app
+                # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
                 f.wrapped = True
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
                 is_generator = f.is_generator
                 keep_warm = f.keep_warm or keep_warm
+                batch_max_size = f.batch_max_size
+                batch_wait_ms = f.batch_wait_ms
 
                 if webhook_config and interactive:
                     raise InvalidError("interactive=True is not supported with web endpoint functions")
@@ -631,6 +629,8 @@ class _App:
 
                 info = FunctionInfo(f, serialized=serialized, name_override=name)
                 webhook_config = None
+                batch_max_size = None
+                batch_wait_ms = None
                 raw_f = f
 
             if info.function_name.endswith(".app"):
@@ -668,6 +668,8 @@ class _App:
                 retries=retries,
                 concurrency_limit=concurrency_limit,
                 allow_concurrent_inputs=allow_concurrent_inputs,
+                batch_max_size=batch_max_size,
+                batch_wait_ms=batch_wait_ms,
                 container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
                 keep_warm=keep_warm,
@@ -768,6 +770,21 @@ class _App:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
 
+            batch_functions = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.BATCHED)
+            if batch_functions:
+                if len(batch_functions) > 1:
+                    raise InvalidError(f"Modal class {user_cls.__name__} can only have one batched function.")
+                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION)) > 1:
+                    raise InvalidError(
+                        f"Modal class {user_cls.__name__} with a modal batched function cannot have other modal methods."  # noqa
+                    )
+                batch_function = next(iter(batch_functions.values()))
+                batch_max_size = batch_function.batch_max_size
+                batch_wait_ms = batch_function.batch_wait_ms
+            else:
+                batch_max_size = None
+                batch_wait_ms = None
+
             cls_func = _Function.from_args(
                 info,
                 app=self,
@@ -785,6 +802,8 @@ class _App:
                 retries=retries,
                 concurrency_limit=concurrency_limit,
                 allow_concurrent_inputs=allow_concurrent_inputs,
+                batch_max_size=batch_max_size,
+                batch_wait_ms=batch_wait_ms,
                 container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
                 cpu=cpu,
