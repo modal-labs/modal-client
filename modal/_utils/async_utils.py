@@ -467,12 +467,10 @@ class DynamicSemaphore:
         self._capacity = capacity
         self._semaphore = asyncio.Semaphore(capacity)
         self._owed_releases = 0
-        # lock on access to _capacity
         self._lock = asyncio.Lock()
 
-    async def get_capacity(self) -> int:
-        async with self._lock:
-            return self._capacity
+    def get_capacity(self) -> int:
+        return self._capacity
 
     async def acquire(self) -> None:
         await self._semaphore.acquire()
