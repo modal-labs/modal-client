@@ -45,12 +45,11 @@ from modal.partial_function import enter, method
 from modal_proto import api_pb2
 
 from .helpers import deploy_app_externally
-from .supports.skip import skip_github_non_linux, skip_macos, skip_windows
+from .supports.skip import skip_github_non_linux
 
 EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
-CONNECTION_CHECK_CHECKPOINTING_MESSAGE = "connection check only runs inside containers"
 
 blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
@@ -1315,8 +1314,7 @@ def test_checkpoint_and_restore_success(servicer, mock_get_open_connections):
     assert _unwrap_scalar(ret) == 42**2
 
 
-@skip_macos(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
-@skip_windows(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
+@skip_github_non_linux
 def test_memory_snapshot_error_open_connection(servicer):
     """Functions fail to checkpoint if connections are open."""
 
@@ -1332,8 +1330,7 @@ def test_memory_snapshot_error_open_connection(servicer):
         )
 
 
-@skip_macos(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
-@skip_windows(CONNECTION_CHECK_CHECKPOINTING_MESSAGE)
+@skip_github_non_linux
 def test_get_open_connections():
     new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     remote_ip = socket.gethostbyname("modal.com")
