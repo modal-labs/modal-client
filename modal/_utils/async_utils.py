@@ -476,8 +476,8 @@ class DynamicSemaphore:
         await self._semaphore.acquire()
 
     def try_acquire(self) -> bool:
-        if self._semaphore.value > 0:
-            self._semaphore.value -= 1
+        if self._semaphore._value > 0:
+            self._semaphore._value -= 1
             return True
         return False
 
