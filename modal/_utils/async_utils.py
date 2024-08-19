@@ -460,3 +460,52 @@ def run_generator_sync(
         except BaseException as err:
             exc = err
     loop.close()
+
+
+class DynamicSemaphore:
+    def __init__(self, capacity: int):
+        self._capacity = capacity
+        self._semaphore = asyncio.Semaphore(capacity)
+        self._owed_releases = 0
+        # lock on access to _capacity
+        self._lock = asyncio.Lock()
+
+    async def get_capacity(self) -> int:
+        async with self._lock:
+            return self._capacity
+
+    async def acquire(self) -> None:
+        await self._semaphore.acquire()
+
+    def try_acquire(self) -> bool:
+        if self._semaphore.value > 0:
+            self._semaphore.value -= 1
+            return True
+        return False
+
+    async def acquire_all(self) -> None:
+        async with self._lock:
+            for _ in range(self._capacity):
+                await self._semaphore.acquire()
+
+    def release(self):
+        if self._owed_releases > 0:
+            self._owed_releases -= 1
+        else:
+            self._semaphore.release()
+
+    async def update_capacity(self, new_capacity: int):
+        async with self._lock:
+            difference = new_capacity - self._capacity
+            if difference > 0:
+                release_count = difference - self._owed_releases
+                self._owed_releases = max(0, -release_count)
+                for _ in range(max(0, release_count)):
+                    self._semaphore.release()
+
+            elif difference < 0:
+                for _ in range(abs(difference)):
+                    if not self.try_acquire():
+                        self._owed_releases += 1
+
+            self._capacity = new_capacity
