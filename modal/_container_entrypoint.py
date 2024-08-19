@@ -432,10 +432,22 @@ def call_function(
                         # This prevents leaving the task_context before outputs have been created
                         # TODO: refactor to make this a bit more easy to follow?
                         if io_context.finalized_function.is_async:
-                            task_context.create_task(run_input_async(io_context))
+                            input_task = task_context.create_task(run_input_async(io_context))
+                            io_context.set_cancel_callback(input_task.cancel)  # TODO: message on newer pythons
                         else:
                             # run sync input in thread
                             thread_pool.submit(run_input_sync, io_context)
+
+                            def cancel_callback_sync():
+                                # Kill container
+                                logger.warning(
+                                    "User cancelling input of non-async functions with allow_concurrent_inputs > 1.\n"
+                                    "This shuts down the container, causing concurrently running inputs to be\n"
+                                    "rescheduled in other containers."
+                                )
+                                os.kill(os.getpid(), signal.SIGINT)
+
+                            io_context.set_cancel_callback(cancel_callback_sync)
 
             user_code_event_loop.run(run_concurrent_inputs())
     else:
