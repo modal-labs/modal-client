@@ -639,7 +639,7 @@ class _ContainerIOManager:
             # just skip creating any output for this input and keep going with the next instead
             # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
-            logger.info(f"Received a cancellation signal while processing input {io_context.input_ids}")
+            logger.warning(f"Received a cancellation signal while processing input {io_context.input_ids}")
             await self.exit_context(started_at)
             return
         except BaseException as exc:
