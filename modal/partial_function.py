@@ -34,6 +34,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
     BATCHED: int = 32
+    FORCE_BUILD: int = 64
 
     @staticmethod
     def all() -> "_PartialFunctionFlags":
@@ -121,6 +122,8 @@ PartialFunction = synchronize_api(_PartialFunction)
 def _find_partial_methods_for_user_cls(
     user_cls: Type[Any], flags: _PartialFunctionFlags
 ) -> Dict[str, _PartialFunction]:
+    # replace with _find_callables_for_cls
+
     """Grabs all method on a user class"""
     partial_functions: Dict[str, PartialFunction] = {}
     for parent_cls in user_cls.mro():
@@ -134,9 +137,9 @@ def _find_partial_methods_for_user_cls(
     return partial_functions
 
 
-def _find_callables_for_cls(user_cls: Type[Any], flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
-    """Grabs all method on a user class, and returns callables. Includes legacy methods."""
-    functions: Dict[str, Callable] = {}
+def _find_callables_for_cls(user_cls: Type[Any], flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
+    """Grabs all method on a user class, and returns partials. Includes legacy methods."""
+    # functions: Dict[str, Callable] = {}
 
     # Build up a list of legacy attributes to check
     check_attrs: List[str] = []
@@ -162,10 +165,17 @@ def _find_callables_for_cls(user_cls: Type[Any], flags: _PartialFunctionFlags) -
             deprecation_error((2024, 2, 21), message)
 
     # Grab new decorator-based methods
-    for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items():
-        functions[k] = pf.raw_f
+    # for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items():
+    #     # TODO:
+    #     # don't unwrap the pratials here
+    #     # instead return the partials
+    #     # add dummy partial to legacy functions __build__ etc
 
-    return functions
+    #     functions[k] = pf
+
+    pfs = _find_partial_methods_for_user_cls(user_cls, flags)
+
+    return pfs
 
 
 def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
@@ -490,7 +500,7 @@ def _disallow_wrapping_method(f: _PartialFunction, wrapper: str) -> None:
 
 
 def _build(
-    _warn_parentheses_missing=None,
+    _warn_parentheses_missing=None, *, force_build: bool = False
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
     """
     Decorator for methods that should execute at _build time_ to create a new layer
@@ -515,12 +525,14 @@ def _build(
     if _warn_parentheses_missing:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
 
+    flags = _PartialFunctionFlags.BUILD | (_PartialFunctionFlags.FORCE_BUILD if force_build else 0)
+
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "build")
-            return f.add_flags(_PartialFunctionFlags.BUILD)
+            return f.add_flags(flags)
         else:
-            return _PartialFunction(f, _PartialFunctionFlags.BUILD)
+            return _PartialFunction(f, flags)
 
     return wrapper
 

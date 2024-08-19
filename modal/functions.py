@@ -612,7 +612,9 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             # Needed to avoid circular imports
             from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
 
-            build_functions = list(_find_callables_for_cls(info.user_cls, _PartialFunctionFlags.BUILD).values())
+            build_functions = [
+                pf.raw_f for pf in _find_callables_for_cls(info.user_cls, _PartialFunctionFlags.BUILD).values()
+            ]  # NOTE (kasper): used to not look at partials
             for build_function in build_functions:
                 snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)
                 snapshot_function = _Function.from_args(

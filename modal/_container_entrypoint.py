@@ -54,8 +54,8 @@ from .exception import ExecutionError, InputCancellation, InvalidError, deprecat
 from .execution_context import _set_current_context_ids, interact
 from .functions import Function, _Function
 from .partial_function import (
+    _find_callables_for_cls,
     _find_callables_for_obj,
-    _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
@@ -596,7 +596,9 @@ def import_class_service(
         method_partials = synchronizer._translate_in(cls._get_partial_functions())
     else:
         # Undecorated user class - find all methods
-        method_partials = _find_partial_methods_for_user_cls(cls, _PartialFunctionFlags.all())
+        method_partials = _find_callables_for_cls(
+            cls, _PartialFunctionFlags.all()
+        )  # NOTE (kasper): used to be _find_partial_methods_for_user_cls
 
     user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
 
