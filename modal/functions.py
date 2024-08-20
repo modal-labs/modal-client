@@ -848,6 +848,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                         )
                         for _experimental_gpu in _experimental_gpus
                     ],
+                    _experimental_queue=config.get("function_experimental_queue"),
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
