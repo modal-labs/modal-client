@@ -284,7 +284,7 @@ async def test_dynamic_semaphore_simple():
     tasks = asyncio.gather(*[acquire_for(sem, 0.1) for _ in range(2)])
     await asyncio.sleep(0.01)
     start_time = time.time()
-    await sem.acquire_all()
+    await sem.close()
     assert 0.05 < time.time() - start_time < 0.2
     await tasks
 

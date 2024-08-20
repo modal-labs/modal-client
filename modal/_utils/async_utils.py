@@ -463,26 +463,20 @@ def run_generator_sync(
 
 
 class DynamicSemaphore(asyncio.Semaphore):
-    def __init__(self, capacity: int):
+    def __init__(self, capacity: int) -> None:
         super().__init__(capacity)
         self._capacity = capacity
-        self._new_capacity = capacity
         self._owed_releases = 0
-        self._lock = asyncio.Lock()
+        self._closing = False
 
     def get_capacity(self) -> int:
         return self._capacity
 
-    async def acquire(self) -> bool:
-        async with self._lock:
-            self._update_capacity(self._new_capacity)
-        await super().acquire()
-
-    async def acquire_all(self) -> None:
-        async with self._lock:
-            self._update_capacity(self._new_capacity)
-            for _ in range(self._capacity):
-                await self.acquire()
+    async def close(self) -> None:
+        self.closing = True
+        closing_capacity = self._capacity + self._owed_releases
+        for _ in range(closing_capacity):
+            await self.acquire()
 
     def release(self) -> None:
         if self._owed_releases > 0:
@@ -490,23 +484,23 @@ class DynamicSemaphore(asyncio.Semaphore):
         else:
             super().release()
 
-    def set_capacity(self, new_capacity: int):
-        self._new_capacity = new_capacity
+    def set_capacity(self, new_capacity: int) -> None:
+        if self._closing:
+            return
+
+        if new_capacity > self._capacity:
+            for _ in range(new_capacity - self._capacity):
+                self.release()
+
+        elif new_capacity < self._capacity:
+            for _ in range(self._capacity - new_capacity):
+                if not self._try_acquire():
+                    self._owed_releases += 1
+
+        self._capacity = new_capacity
 
     def _try_acquire(self) -> bool:
         if not self.locked():
             self._value -= 1
             return True
         return False
-
-    def _update_capacity(self):
-        if self._new_capacity > self._capacity:
-            for _ in range(self._new_capacity - self._capacity):
-                self.release()
-
-        elif self._new_capacity < self._capacity:
-            for _ in range(self._capacity - self._new_capacity):
-                if not self._try_acquire():
-                    self._owed_releases += 1
-
-        self._capacity = self._new_capacity

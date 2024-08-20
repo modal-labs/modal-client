@@ -537,7 +537,7 @@ class _ContainerIOManager:
             self.current_input_id, self.current_input_started_at = (None, None)
 
         # collect all active input slots, meaning all inputs have wrapped up.
-        await self._dynamic_semaphore.acquire_all()
+        await self._dynamic_semaphore.close()
 
     @synchronizer.no_io_translation
     async def _push_outputs(
