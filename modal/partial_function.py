@@ -65,7 +65,7 @@ class _PartialFunction(typing.Generic[P, T]):
         keep_warm: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
-        force_build: Optional[int] = None,
+        force_build: Optional[bool] = None,
         build_timeout: Optional[int] = None,
     ):
         self.raw_f = raw_f
@@ -118,7 +118,7 @@ class _PartialFunction(typing.Generic[P, T]):
             batch_max_size=self.batch_max_size,
             batch_wait_ms=self.batch_wait_ms,
             force_build=self.force_build,
-            timeout=self.build_timeout,
+            build_timeout=self.build_timeout,
         )
 
 
