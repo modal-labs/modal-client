@@ -591,8 +591,9 @@ def _batched(
     # call batched_multiply with individual inputs
     batched_multiply.remote.aio(2, 100)
     ```
+
+    See the [dynamic batching guide](https://modal.com/docs/guide/dynamic-batching) for more information.
     """
-    # TODO(cathy) add link to guide to docstring
     if _warn_parentheses_missing:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batched()`."
