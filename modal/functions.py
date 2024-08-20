@@ -612,10 +612,9 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             # Needed to avoid circular imports
             from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
 
-            build_functions = [
-                pf.raw_f for pf in _find_callables_for_cls(info.user_cls, _PartialFunctionFlags.BUILD).values()
-            ]  # NOTE (kasper): used to not look at partials
-            for build_function in build_functions:
+            build_functions = _find_callables_for_cls(info.user_cls, _PartialFunctionFlags.BUILD).items()
+            for k, pf in build_functions:
+                build_function = pf.raw_f
                 snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)
                 snapshot_function = _Function.from_args(
                     snapshot_info,
@@ -627,7 +626,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     network_file_systems=network_file_systems,
                     volumes=volumes,
                     memory=memory,
-                    timeout=86400,  # TODO: make this an argument to `@build()`
+                    timeout=pf.build_timeout,  # TODO: make this an argument to `@build()`
                     cpu=cpu,
                     ephemeral_disk=ephemeral_disk,
                     is_builder_function=True,
@@ -638,7 +637,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                 image = _Image._from_args(
                     base_images={"base": image},
                     build_function=snapshot_function,
-                    force_build=image.force_build,
+                    force_build=image.force_build or pf.force_build,
                 )
 
         if keep_warm is not None and not isinstance(keep_warm, int):
