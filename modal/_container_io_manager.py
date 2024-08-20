@@ -644,7 +644,7 @@ class _ContainerIOManager:
             # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
             logger.warning(f"Received a cancellation signal while processing input {io_context.input_ids}")
-            await self.exit_context(started_at)
+            await self.exit_context(started_at, io_context.input_ids)
             return
         except BaseException as exc:
             # print exception so it's logged
@@ -683,11 +683,15 @@ class _ContainerIOManager:
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 results=results,
             )
-            await self.exit_context(started_at)
+            await self.exit_context(started_at, io_context.input_ids)
 
-    async def exit_context(self, started_at):
+    async def exit_context(self, started_at, input_ids: List[str]):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
+        self.current_input = None
+        for input_id in input_ids:
+            self.current_inputs.pop(input_id)
+
         self._semaphore.release()
 
     @synchronizer.no_io_translation
@@ -709,7 +713,7 @@ class _ContainerIOManager:
             data_format=data_format,
             results=results,
         )
-        await self.exit_context(started_at)
+        await self.exit_context(started_at, io_context.input_ids)
 
     async def memory_restore(self) -> None:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
@@ -747,6 +751,7 @@ class _ContainerIOManager:
 
         # Restore input to default state.
         self.current_input_id = None
+        self.current_inputs = {}
         self.current_input_started_at = None
 
         # Patch torch to ensure it doesn't return CUDA unavailibility due to
