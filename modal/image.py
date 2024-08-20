@@ -1538,7 +1538,6 @@ class _Image(_Object, type_prefix="im"):
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         args: Sequence[Any] = (),  # Positional arguments to the function.
@@ -1587,7 +1586,6 @@ class _Image(_Object, type_prefix="im"):
             info,
             app=None,
             image=self,
-            secret=secret,
             secrets=secrets,
             gpu=gpu,
             mounts=mounts,
