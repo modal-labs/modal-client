@@ -114,6 +114,10 @@ class IOContext:
             cb = self._cancel_callback
             self._cancel_callback = None
             cb()
+        else:
+            # TODO (elias): This should not normally happen but there is a small chance of a race
+            #  between creating a new task for an input and attaching the cancellation callback
+            logger.warning("Unexpected: Could not cancel input")
 
     def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List[Any]]]:
         if not self._is_batched:

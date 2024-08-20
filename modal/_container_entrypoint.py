@@ -419,6 +419,29 @@ def call_function(
     if input_concurrency > 1:
         with DaemonizedThreadPool(max_threads=input_concurrency) as thread_pool:
 
+            def make_async_cancel_callback(task):
+                def f():
+                    user_code_event_loop.loop.call_soon_threadsafe(task.cancel)
+
+                return f
+
+            did_sigint = False
+
+            def cancel_callback_sync():
+                nonlocal did_sigint
+                # We only want one sigint even if multiple inputs are cancelled
+                # A second sigint would forcibly shut down the event loop and spew
+                # out a bunch of tracebacks, which we only want to happen in case
+                # the worker kills this process after a failed self-termination
+                if not did_sigint:
+                    did_sigint = True
+                    logger.warning(
+                        "User cancelling input of non-async functions with allow_concurrent_inputs > 1.\n"
+                        "This shuts down the container, causing concurrently running inputs to be "
+                        "rescheduled in other containers."
+                    )
+                    os.kill(os.getpid(), signal.SIGINT)  # raises KeyboardInterrupt in main thread
+
             async def run_concurrent_inputs():
                 # all run_input coroutines will have completed by the time we leave the execution context
                 # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
@@ -433,20 +456,10 @@ def call_function(
                         # TODO: refactor to make this a bit more easy to follow?
                         if io_context.finalized_function.is_async:
                             input_task = task_context.create_task(run_input_async(io_context))
-                            io_context.set_cancel_callback(input_task.cancel)  # TODO: message on newer pythons
+                            io_context.set_cancel_callback(make_async_cancel_callback(input_task))
                         else:
                             # run sync input in thread
                             thread_pool.submit(run_input_sync, io_context)
-
-                            def cancel_callback_sync():
-                                # Kill container
-                                logger.warning(
-                                    "User cancelling input of non-async functions with allow_concurrent_inputs > 1.\n"
-                                    "This shuts down the container, causing concurrently running inputs to be\n"
-                                    "rescheduled in other containers."
-                                )
-                                os.kill(os.getpid(), signal.SIGINT)
-
                             io_context.set_cancel_callback(cancel_callback_sync)
 
             user_code_event_loop.run(run_concurrent_inputs())

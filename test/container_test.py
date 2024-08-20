@@ -1569,7 +1569,9 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
     assert (
         len(servicer.container_outputs) == 0
     )  # should not fail the outputs, as they would have been cancelled in backend already
-    assert "Traceback" not in container_process.stderr.read().decode("utf8")
+    container_stderr = container_process.stderr.read().decode("utf8")
+    print(container_stderr)
+    assert "Traceback" not in container_stderr
     assert exit_code == 0  # container should exit gracefully
 
 
