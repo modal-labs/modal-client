@@ -476,7 +476,6 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         info: FunctionInfo,
         app,
         image: _Image,
-        secret: Optional[_Secret] = None,
         secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
@@ -526,12 +525,6 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             assert info.user_cls
             assert not webhook_config
             assert not schedule
-
-        if secret is not None:
-            deprecation_error(
-                (2024, 1, 31),
-                "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
-            )
 
         if checkpointing_enabled is not None:
             deprecation_error(

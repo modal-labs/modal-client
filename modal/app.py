@@ -652,7 +652,6 @@ class _App:
                 info,
                 app=self,
                 image=image,
-                secret=secret,
                 secrets=secrets,
                 schedule=schedule,
                 is_generator=is_generator,
@@ -729,7 +728,6 @@ class _App:
         max_inputs: Optional[int] = None,
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
-        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
         _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
@@ -789,7 +787,6 @@ class _App:
                 info,
                 app=self,
                 image=image,
-                secret=secret,
                 secrets=secrets,
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],

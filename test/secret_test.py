@@ -5,7 +5,7 @@ import tempfile
 from unittest import mock
 
 from modal import App, Secret
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import InvalidError
 
 from .supports.skip import skip_old_py
 
@@ -87,10 +87,3 @@ def test_secret_from_name(servicer, client):
     app.function(secrets=[secret])(dummy)
     with app.run(client=client):
         assert secret.object_id == secret_id
-
-
-def test_secret_singular(servicer, client):
-    app = App()
-    secret = Secret.from_dict({})
-    with pytest.raises(DeprecationError, match="singular"):
-        app.function(secret=secret)(dummy)
