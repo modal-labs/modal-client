@@ -826,13 +826,13 @@ class UsingCustomConstructor:
 
 
 def test_implicit_constructor():
-    c = UsingAnnotationParameters(10)
+    c = UsingAnnotationParameters(a=10)
 
     assert c.a == 10
     assert c.get_value.local() == 10
     assert c.b == "hello"
 
-    d = UsingAnnotationParameters(11, b="goodbye")
+    d = UsingAnnotationParameters(a=11, b="goodbye")
     assert d.b == "goodbye"
 
     # TODO(elias): fix "eager" constructor call validation by looking at signature
