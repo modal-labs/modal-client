@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import pytest
+from test.container_test import _container_args
 from typing import Dict
 from unittest import mock
 
@@ -102,8 +103,11 @@ async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
 async def test_container_snapshot_restore_heartbeats_concurrent_inputs(tmpdir, servicer):
     client = _Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret"))
     async with client as async_client:
-        container_args = api_pb2.ContainerArguments()
-        container_args.allow_concurrent_inputs = 2
+        container_args = _container_args(
+            "test",
+            "test",
+            allow_concurrent_inputs=2,
+        )
         io_manager = _ContainerIOManager(container_args, async_client)
         restore_path = temp_restore_path(tmpdir)
 
