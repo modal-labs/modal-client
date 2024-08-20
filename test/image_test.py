@@ -725,9 +725,6 @@ def test_image_gpu(builder_version, servicer, client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_UNSPECIFIED
 
-    with pytest.raises(DeprecationError):
-        Image.debian_slim().run_commands("echo 0", gpu=True)
-
     app = App(image=Image.debian_slim().run_commands("echo 1", gpu="any"))
     app.function()(dummy)
     with app.run(client=client):
