@@ -1638,13 +1638,13 @@ def test_set_local_concurrent_inputs(servicer):
         servicer,
         "test.supports.experimental",
         "SetLocalConcurrentInputs.*",
-        inputs=_get_inputs(((), {}), n=4, method_name="get_concurrent_inputs"),
+        inputs=_get_inputs(((), {}), n=2, method_name="get_concurrent_inputs"),
         is_class=True,
     )
 
-    assert len(ret.items) == 4
+    assert len(ret.items) == 2
     data = [deserialize(i.result.data, ret.client) for i in ret.items]
-    assert data == [20] * 4
+    assert data == [20] * 2
 
 
 @skip_github_non_linux

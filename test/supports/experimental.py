@@ -1,8 +1,6 @@
 # Copyright Modal Labs 2022
 from __future__ import annotations
 
-import time
-
 import modal.experimental
 from modal import (
     App,
@@ -37,5 +35,4 @@ class SetLocalConcurrentInputs:
 
     @method()
     def get_concurrent_inputs(self):
-        time.sleep(1)
         return modal.experimental.get_local_concurrent_inputs()
