@@ -118,7 +118,7 @@ class _PartialFunction(typing.Generic[P, T]):
             batch_max_size=self.batch_max_size,
             batch_wait_ms=self.batch_wait_ms,
             force_build=self.force_build,
-            timeout=self.timeout,
+            timeout=self.build_timeout,
         )
 
 
