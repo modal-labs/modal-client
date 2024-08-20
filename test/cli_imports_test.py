@@ -9,6 +9,7 @@ from modal.cli.import_refs import (
     import_file_or_module,
     parse_import_ref,
 )
+from modal.exception import InvalidError
 
 # Some helper vars for import_stub tests:
 local_entrypoint_src = """
@@ -147,3 +148,8 @@ def test_get_by_object_path():
     # try to find item keys with periods in them (ugh).
     # this helps resolving lifecycled functions
     assert get_by_object_path(NS({"foo.bar": "baz"}), "foo.bar") == "baz"
+
+
+def test_invalid_source_file_exception():
+    with pytest.raises(InvalidError, match="Invalid Modal source filename: 'foo.bar.py'"):
+        import_file_or_module("path/to/foo.bar.py")

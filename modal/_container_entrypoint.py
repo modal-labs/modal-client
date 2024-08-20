@@ -817,7 +817,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 interact()
                 import pdb
 
-                pdb.set_trace()
+                frame = inspect.currentframe().f_back
+
+                pdb.Pdb().set_trace(frame)
 
             sys.breakpointhook = breakpoint_wrapper
 

@@ -30,6 +30,7 @@ from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .object import _Object, live_method_gen
+from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
 
@@ -1537,7 +1538,8 @@ class _Image(_Object, type_prefix="im"):
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         args: Sequence[Any] = (),  # Positional arguments to the function.
         kwargs: Dict[str, Any] = {},  # Keyword arguments to the function.
     ) -> "_Image":
@@ -1576,18 +1578,21 @@ class _Image(_Object, type_prefix="im"):
             # It may be possible to support lambdas eventually, but for now we don't handle them well, so reject quickly
             raise InvalidError("Image.run_function does not support lambda functions.")
 
+        scheduler_placement = SchedulerPlacement(region=region) if region else None
+
         info = FunctionInfo(raw_f)
 
         function = _Function.from_args(
             info,
             app=None,
             image=self,
-            secret=secret,
             secrets=secrets,
             gpu=gpu,
             mounts=mounts,
             volumes=volumes,
             network_file_systems=network_file_systems,
+            cloud=cloud,
+            scheduler_placement=scheduler_placement,
             memory=memory,
             timeout=timeout,
             cpu=cpu,

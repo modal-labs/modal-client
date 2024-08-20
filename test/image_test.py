@@ -565,6 +565,35 @@ def test_image_run_function_with_args(builder_version, servicer, client):
         assert input.args == serialize((("foo",), {"kwarg": "bar"}))
 
 
+def test_image_run_function_with_region_selection(servicer, client):
+    app = App()
+    app.image = Image.debian_slim().run_function(run_f, region="us-east")
+    app.function()(dummy)
+
+    with app.run(client=client):
+        pass
+
+    assert len(servicer.app_functions) == 2
+    func_def = next(iter(servicer.app_functions.values()))
+
+    assert func_def.scheduler_placement == api_pb2.SchedulerPlacement(
+        regions=["us-east"],
+    )
+
+
+def test_image_run_function_with_cloud_selection(servicer, client):
+    app = App()
+    app.image = Image.debian_slim().run_function(run_f, cloud="oci")
+    app.function()(dummy)
+
+    with app.run(client=client):
+        pass
+
+    assert len(servicer.app_functions) == 2
+    func_def = next(iter(servicer.app_functions.values()))
+    assert func_def.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
+
+
 def test_poetry(builder_version, servicer, client):
     path = os.path.join(os.path.dirname(__file__), "supports/pyproject.toml")
 
@@ -695,9 +724,6 @@ def test_image_gpu(builder_version, servicer, client):
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_UNSPECIFIED
-
-    with pytest.raises(DeprecationError):
-        Image.debian_slim().run_commands("echo 0", gpu=True)
 
     app = App(image=Image.debian_slim().run_commands("echo 1", gpu="any"))
     app.function()(dummy)
