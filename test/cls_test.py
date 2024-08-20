@@ -652,6 +652,57 @@ def test_build_image(client, servicer):
         # The function image should have added a new layer with original image as the parent
         f_image = servicer.images[service_function.image_id]
         assert f_image.base_images[0].image_id == image.object_id
+        assert servicer.force_built_images == []
+
+
+other_handler_app = App("other-handler-app")
+
+
+@other_handler_app.cls(image=image)
+class ClsWithForceBuild:
+    @build(force_build=True)
+    def build(self):
+        pass
+
+    @method()
+    def method(self):
+        pass
+
+
+def test_force_build_image(client, servicer):
+    with other_handler_app.run(client=client):
+        service_function = servicer.function_by_name("ClsWithForceBuild.*")
+        # The function image should have added a new layer with original image as the parent
+        f_image = servicer.images[service_function.image_id]
+        assert f_image.base_images[0].image_id == image.object_id
+        assert servicer.force_built_images == ["im-3"]
+
+
+build_timeout_handler_app = App("build-timeout-handler-app")
+
+
+@build_timeout_handler_app.cls(image=image)
+class ClsWithBuildTimeout:
+    @build(timeout=123)
+    def timeout_build(self):
+        pass
+
+    @build()
+    def default_timeout_build(self):
+        pass
+
+    @method()
+    def method(self):
+        pass
+
+
+def test_build_timeout_image(client, servicer):
+    with build_timeout_handler_app.run(client=client):
+        service_function = servicer.function_by_name("ClsWithBuildTimeout.timeout_build")
+        assert service_function.timeout_secs == 123
+
+        service_function = servicer.function_by_name("ClsWithBuildTimeout.default_timeout_build")
+        assert service_function.timeout_secs == 86400
 
 
 @pytest.mark.parametrize("decorator", [build, enter, exit])
