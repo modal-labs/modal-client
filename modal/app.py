@@ -690,7 +690,7 @@ class _App:
 
         return wrapped
 
-    @typing_extensions.dataclass_transform(field_specifiers=(field, parameter))
+    @typing_extensions.dataclass_transform(field_specifiers=(field, parameter), kw_only_default=True)
     def cls(
         self,
         _warn_parentheses_missing: Optional[bool] = None,
