@@ -337,7 +337,10 @@ async def _stream_function_call_data(
 ) -> AsyncIterator[Any]:
     """Read from the `data_in` or `data_out` stream of a function call."""
     last_index = 0
+
+    # TODO(gongy): generalize this logic as util for unary streams
     retries_remaining = 10
+    delay_ms = 1
 
     if variant == "data_in":
         stub_fn = client.stub.FunctionCallGetDataIn
@@ -352,23 +355,28 @@ async def _stream_function_call_data(
             async for chunk in unary_stream(stub_fn, req):
                 if chunk.index <= last_index:
                     continue
-                last_index = chunk.index
                 if chunk.data_blob_id:
                     message_bytes = await blob_download(chunk.data_blob_id, client.stub)
                 else:
                     message_bytes = chunk.data
                 message = deserialize_data_format(message_bytes, chunk.data_format, client)
+
+                last_index = chunk.index
                 yield message
         except (GRPCError, StreamTerminatedError) as exc:
             if retries_remaining > 0:
                 retries_remaining -= 1
                 if isinstance(exc, GRPCError):
                     if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                        await asyncio.sleep(1.0)
+                        logger.debug(f"{variant} stream retrying with delay {delay_ms}ms due to {exc}")
+                        await asyncio.sleep(delay_ms / 1000)
+                        delay_ms = min(1000, delay_ms * 10)
                         continue
                 elif isinstance(exc, StreamTerminatedError):
                     continue
             raise
+        else:
+            delay_ms = 1
 
 
 OUTPUTS_TIMEOUT = 55.0  # seconds

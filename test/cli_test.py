@@ -767,7 +767,7 @@ def test_profile_list(servicer, server_url_env, modal_config):
                 del os.environ["MODAL_TOKEN_SECRET"]
 
 
-def test_list_apps(servicer, mock_dir, set_env_client):
+def test_app_list(servicer, mock_dir, set_env_client):
     res = _run(["app", "list"])
     assert "my_app_foo" not in res.stdout
 
@@ -785,30 +785,46 @@ def test_list_apps(servicer, mock_dir, set_env_client):
     assert "my-vol" not in res.stdout
 
 
-def test_list_app_deployment_history(servicer, mock_dir, set_env_client):
+def test_app_history(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         _run(["deploy", "myapp.py", "--name", "my_app_foo"])
 
     # app should be deployed once it exists
     res = _run(["app", "history", "my_app_foo"])
-    assert "1" in res.stdout, res.stdout
+    assert "v1" in res.stdout, res.stdout
 
     res = _run(["app", "history", "my_app_foo", "--json"])
     assert json.loads(res.stdout)
 
-    # re-deploying an app should result in one app stopped and one app deployed
+    # re-deploying an app should result in a new row in the history table
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         _run(["deploy", "myapp.py", "--name", "my_app_foo"])
 
-    res = _run(["app", "history", "my_app_foo", "--json"])
-    assert "1" in res.stdout
-    assert "2" in res.stdout, f"{res.stdout=}"
+    res = _run(["app", "history", "my_app_foo"])
+    assert "v1" in res.stdout
+    assert "v2" in res.stdout, f"{res.stdout=}"
 
     # can't fetch history for stopped apps
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         _run(["app", "stop", "my_app_foo"])
 
-    res = _run(["app", "history", "my_app_foo", "--json"], 1)
+    res = _run(["app", "history", "my_app_foo", "--json"], expected_exit_code=1)
+
+
+def test_app_rollback(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        # Deploy multiple times
+        for _ in range(4):
+            _run(["deploy", "myapp.py", "--name", "my_app"])
+    _run(["app", "rollback", "my_app"])
+    app_id = servicer.deployed_apps.get("my_app")
+    assert servicer.app_deployment_history[app_id][-1]["rollback_version"] == 3
+
+    _run(["app", "rollback", "my_app", "v2"])
+    app_id = servicer.deployed_apps.get("my_app")
+    assert servicer.app_deployment_history[app_id][-1]["rollback_version"] == 2
+
+    _run(["app", "rollback", "my_app", "2"], expected_exit_code=2)
 
 
 def test_dict_create_list_delete(servicer, server_url_env, set_env_client):
