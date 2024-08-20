@@ -1941,12 +1941,14 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     active_input_ids = set()
     processed_inputs = 0
     triggered_assertions = []
+    peak_inputs = 0
     for io_context in io_manager.run_inputs_outputs(
         finalized_functions={"": fin_func},
         input_concurrency=concurrency_limit,
     ):
         assert len(io_context.input_ids) == 1  # for this test
         active_inputs += [io_context]
+        peak_inputs = max(peak_inputs, len(active_inputs))
         active_input_ids |= set(io_context.input_ids)
         processed_inputs += len(io_context.input_ids)
 
@@ -1966,7 +1968,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
 
                 if send_failure:
                     # trigger some errors
-                    raise Exception("Blah ")
+                    raise Exception("Blah")
                 else:
                     # and some successes
                     io_manager.push_outputs(input_to_process, 0, None, fin_func.data_format)
