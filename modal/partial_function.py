@@ -45,7 +45,7 @@ T = typing_extensions.TypeVar("T", covariant=True)
 
 
 class _PartialFunction(typing.Generic[P, T]):
-    """Intermediate function, produced by @method, @web_endpoint, or @batched"""
+    """Intermediate function, produced by @enter, @build, @method, @web_endpoint, or @batched"""
 
     raw_f: Callable[P, T]
     flags: _PartialFunctionFlags
@@ -54,6 +54,7 @@ class _PartialFunction(typing.Generic[P, T]):
     keep_warm: Optional[int]
     batch_max_size: Optional[int]
     batch_wait_ms: Optional[int]
+    force_build: Optional[bool]
     build_timeout: Optional[int]
 
     def __init__(
