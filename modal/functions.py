@@ -603,9 +603,9 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
         if info.user_cls and not is_auto_snapshot:
             # Needed to avoid circular imports
-            from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
+            from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
-            build_functions = _find_callables_for_cls(info.user_cls, _PartialFunctionFlags.BUILD).items()
+            build_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.BUILD).items()
             for k, pf in build_functions:
                 build_function = pf.raw_f
                 snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)

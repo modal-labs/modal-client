@@ -285,7 +285,7 @@ class _Image(_Object, type_prefix="im"):
         build_function_input: Optional[api_pb2.FunctionInput] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         context_mount: Optional[_Mount] = None,
-        force_build: Optional[bool] = False,
+        force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
     ):

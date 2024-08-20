@@ -23,8 +23,8 @@ from .functions import (
 from .gpu import GPU_T
 from .object import _get_environment_name, _Object
 from .partial_function import (
-    _find_callables_for_cls,
     _find_callables_for_obj,
+    _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
@@ -213,7 +213,7 @@ class _Cls(_Object, type_prefix="cs"):
     def _get_partial_functions(self) -> Dict[str, _PartialFunction]:
         if not self._user_cls:
             raise AttributeError("You can only get the partial functions of a local Cls instance")
-        return _find_callables_for_cls(self._user_cls, _PartialFunctionFlags.all())
+        return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
@@ -244,7 +244,7 @@ class _Cls(_Object, type_prefix="cs"):
     def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
         """mdmd:hidden"""
         functions: Dict[str, _Function] = {}
-        partial_functions: Dict[str, _PartialFunction] = _find_callables_for_cls(
+        partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         )
 
@@ -255,12 +255,12 @@ class _Cls(_Object, type_prefix="cs"):
             functions[method_name] = method_function
 
         # Disable the warning that these are not wrapped
-        for partial_function in _find_callables_for_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
+        for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
             partial_function.wrapped = True
 
         # Get all callables
         callables: Dict[str, Callable] = {
-            k: pf.raw_f for k, pf in _find_callables_for_cls(user_cls, ~_PartialFunctionFlags(0)).items()
+            k: pf.raw_f for k, pf in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags(0)).items()
         }
 
         def _deps() -> List[_Function]:

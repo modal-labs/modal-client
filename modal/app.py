@@ -31,7 +31,7 @@ from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .partial_function import (
-    _find_callables_for_cls,
+    _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
@@ -767,11 +767,11 @@ class _App:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
 
-            batch_functions = _find_callables_for_cls(user_cls, _PartialFunctionFlags.BATCHED)
+            batch_functions = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.BATCHED)
             if batch_functions:
                 if len(batch_functions) > 1:
                     raise InvalidError(f"Modal class {user_cls.__name__} can only have one batched function.")
-                if len(_find_callables_for_cls(user_cls, _PartialFunctionFlags.FUNCTION)) > 1:
+                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION)) > 1:
                     raise InvalidError(
                         f"Modal class {user_cls.__name__} with a modal batched function cannot have other modal methods."  # noqa
                     )
@@ -824,7 +824,7 @@ class _App:
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
 
             if (
-                _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+                _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
                 and not enable_memory_snapshot
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")

@@ -54,7 +54,7 @@ class _PartialFunction(typing.Generic[P, T]):
     keep_warm: Optional[int]
     batch_max_size: Optional[int]
     batch_wait_ms: Optional[int]
-    force_build: Optional[bool]
+    force_build: bool
     build_timeout: Optional[int]
 
     def __init__(
@@ -66,7 +66,7 @@ class _PartialFunction(typing.Generic[P, T]):
         keep_warm: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
-        force_build: Optional[bool] = None,
+        force_build: bool = False,
         build_timeout: Optional[int] = None,
     ):
         self.raw_f = raw_f
@@ -129,20 +129,6 @@ PartialFunction = synchronize_api(_PartialFunction)
 def _find_partial_methods_for_user_cls(
     user_cls: Type[Any], flags: _PartialFunctionFlags
 ) -> Dict[str, _PartialFunction]:
-    """Grabs all method on a user class"""
-    partial_functions: Dict[str, PartialFunction] = {}
-    for parent_cls in user_cls.mro():
-        if parent_cls is not object:
-            for k, v in parent_cls.__dict__.items():
-                if isinstance(v, PartialFunction):
-                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                    if partial_function.flags & flags:
-                        partial_functions[k] = partial_function
-
-    return partial_functions
-
-
-def _find_callables_for_cls(user_cls: Type[Any], flags: _PartialFunctionFlags) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class, and returns partials. Includes legacy methods."""
 
     # Build up a list of legacy attributes to check
@@ -168,15 +154,22 @@ def _find_callables_for_cls(user_cls: Type[Any], flags: _PartialFunctionFlags) -
             )
             deprecation_error((2024, 2, 21), message)
 
-    pfs = _find_partial_methods_for_user_cls(user_cls, flags)
+    partial_functions: Dict[str, PartialFunction] = {}
+    for parent_cls in user_cls.mro():
+        if parent_cls is not object:
+            for k, v in parent_cls.__dict__.items():
+                if isinstance(v, PartialFunction):
+                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
+                    if partial_function.flags & flags:
+                        partial_functions[k] = partial_function
 
-    return pfs
+    return partial_functions
 
 
 def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: Type = type(user_obj)
-    return {k: pf.raw_f.__get__(user_obj) for k, pf in _find_callables_for_cls(user_cls, flags).items()}
+    return {k: pf.raw_f.__get__(user_obj) for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items()}
 
 
 def _method(
