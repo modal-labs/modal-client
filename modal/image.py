@@ -1541,9 +1541,6 @@ class _Image(_Object, type_prefix="im"):
         secret: Optional[_Secret] = None,  # Deprecated: use `secrets`.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
-        _experimental_scheduler_placement: Optional[
-            SchedulerPlacement
-        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         args: Sequence[Any] = (),  # Positional arguments to the function.
         kwargs: Dict[str, Any] = {},  # Keyword arguments to the function.
     ) -> "_Image":
@@ -1582,11 +1579,7 @@ class _Image(_Object, type_prefix="im"):
             # It may be possible to support lambdas eventually, but for now we don't handle them well, so reject quickly
             raise InvalidError("Image.run_function does not support lambda functions.")
 
-        scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
-        if region:
-            if scheduler_placement:
-                raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
-            scheduler_placement = SchedulerPlacement(region=region)
+        scheduler_placement = SchedulerPlacement(region=region) if region else None
 
         info = FunctionInfo(raw_f)
 
