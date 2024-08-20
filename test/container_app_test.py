@@ -19,6 +19,7 @@ from modal_proto import api_pb2
 def my_f_1(x):
     pass
 
+
 def temp_restore_path(tmpdir):
     # Write out a restore file so that snapshot+restore will complete
     restore_path = tmpdir.join("fake-restore-state.json")
@@ -86,12 +87,40 @@ async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
                 {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
             ):
                 with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
-                    await asyncio.sleep(heartbeat_interval_secs*2)
+                    await asyncio.sleep(heartbeat_interval_secs * 2)
                     assert not list(
                         filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
                     )
                     await io_manager.memory_snapshot()
-                    await asyncio.sleep(heartbeat_interval_secs*2)
+                    await asyncio.sleep(heartbeat_interval_secs * 2)
+                    assert list(
+                        filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
+                    )
+
+
+@pytest.mark.asyncio
+async def test_container_snapshot_restore_heartbeats_concurrent_inputs(tmpdir, servicer):
+    client = _Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret"))
+    async with client as async_client:
+        container_args = api_pb2.ContainerArguments()
+        container_args.allow_concurrent_inputs = 2
+        io_manager = _ContainerIOManager(container_args, async_client)
+        restore_path = temp_restore_path(tmpdir)
+
+        # Ensure that heartbeats only run after the snapshot
+        heartbeat_interval_secs = 0.01
+        async with io_manager.heartbeats(True):
+            with mock.patch.dict(
+                os.environ,
+                {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
+            ):
+                with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
+                    await asyncio.sleep(heartbeat_interval_secs * 2)
+                    assert not list(
+                        filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
+                    )
+                    await io_manager.memory_snapshot()
+                    await asyncio.sleep(heartbeat_interval_secs * 2)
                     assert list(
                         filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
                     )
