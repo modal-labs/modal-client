@@ -103,14 +103,25 @@ def _is_remote() -> bool:
 
 
 def _read_user_config():
+    config_data = {}
     if not _is_remote() and os.path.exists(user_config_path):
         # Defer toml import so we don't need it in the container runtime environment
         import toml
 
-        with open(user_config_path) as f:
-            return toml.load(f)
-    else:
-        return {}
+        try:
+            with open(user_config_path) as f:
+                config_data = toml.load(f)
+        except Exception as exc:
+            config_problem = str(exc)
+        else:
+            if not all(isinstance(e, dict) for e in config_data.values()):
+                config_problem = "TOML file must contain table sections for each profile."
+            else:
+                config_problem = ""
+        if config_problem:
+            message = f"\nError when reading the modal configuration from `{user_config_path}`.\n\n{config_problem}"
+            raise InvalidError(message)
+    return config_data
 
 
 _user_config = _read_user_config()
