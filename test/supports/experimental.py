@@ -27,7 +27,7 @@ class StopFetching:
         return x * x
 
 
-@app.cls(allow_concurrent_inputs=1, concurrency_limit=1)
+@app.cls(allow_concurrent_inputs=2, concurrency_limit=1)
 class SetLocalConcurrentInputs:
     @enter()
     def init(self):

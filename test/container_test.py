@@ -1633,18 +1633,19 @@ def test_stop_fetching_inputs(servicer):
 
 
 @skip_github_non_linux
-def test_set_local_concurrent_inputs(servicer):
+def test_set_local_concurrent_inputs_exception(servicer):
     ret = _run_container(
         servicer,
         "test.supports.experimental",
         "SetLocalConcurrentInputs.*",
-        inputs=_get_inputs(((), {}), n=2, method_name="get_concurrent_inputs"),
+        allow_concurrent_inputs=2,
+        inputs=_get_inputs(((), {}), n=4, method_name="get_concurrent_inputs"),
         is_class=True,
     )
 
-    assert len(ret.items) == 2
+    assert len(ret.items) == 4
     data = [deserialize(i.result.data, ret.client) for i in ret.items]
-    assert data == [20] * 2
+    assert data == [20] * 4
 
 
 @skip_github_non_linux

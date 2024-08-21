@@ -181,6 +181,7 @@ class _ContainerIOManager:
     current_input_id: Optional[str]
     current_input_started_at: Optional[float]
 
+    _target_concurrency: Optional[int]
     _dynamic_semaphore: Optional[DynamicSemaphore]
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
@@ -208,6 +209,7 @@ class _ContainerIOManager:
         self.current_input_id = None
         self.current_input_started_at = None
 
+        self._target_concurrency = None
         self._dynamic_semaphore = None
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
@@ -837,19 +839,26 @@ class _ContainerIOManager:
             print("Error: Failed to start PTY shell.")
             raise e
 
+    def set_target_concurrency(self, target_concurrency: int) -> None:
+        self._target_concurrency = target_concurrency
+
     @classmethod
     def stop_fetching_inputs(cls):
         assert cls._singleton
         cls._singleton._fetching_inputs = False
 
     @classmethod
-    def set_input_concurrency(cls, concurrent_inputs: int) -> None:
+    def set_input_concurrency(cls, input_concurrency: int) -> None:
         assert cls._singleton
         container_io_manager = cls._singleton
+        if container_io_manager._target_concurrency == 1:
+            raise InvalidError(
+                f"Cannot set local input concurrency to {input_concurrency} on a function or class with allow_concurrent_inputs=1."  # noqa
+            )
         if container_io_manager._dynamic_semaphore is None:
-            container_io_manager._dynamic_semaphore = DynamicSemaphore(concurrent_inputs)
+            container_io_manager._dynamic_semaphore = DynamicSemaphore(input_concurrency)
         else:
-            container_io_manager._dynamic_semaphore.set_capacity(concurrent_inputs)
+            container_io_manager._dynamic_semaphore.set_capacity(input_concurrency)
 
     @classmethod
     def get_input_concurrency(cls) -> int:
