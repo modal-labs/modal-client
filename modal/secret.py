@@ -165,6 +165,7 @@ class _Secret(_Object, type_prefix="st"):
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
+        required_keys: List[str] = [],
     ) -> "_Secret":
         """Create a reference to a persisted Secret
 
@@ -182,6 +183,7 @@ class _Secret(_Object, type_prefix="st"):
                 deployment_name=label,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
+                required_keys=required_keys,
             )
             try:
                 response = await resolver.client.stub.SecretGetOrCreate(req)
