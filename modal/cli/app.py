@@ -1,22 +1,18 @@
 # Copyright Modal Labs 2022
-import re
 from typing import List, Optional, Union
 
 import rich
 import typer
-from click import UsageError
 from rich.table import Column
 from rich.text import Text
 from typer import Argument
 
-from modal._utils.async_utils import synchronizer
-from modal.client import _Client
 from modal.environments import ensure_env
 from modal.exception import deprecation_warning
-from modal.object import _get_environment_name
+from modal.utils import get_app_deployment_history, get_app_id, list_apps, rollback_app, stop_app, stream_app_logs
 from modal_proto import api_pb2
 
-from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
+from .utils import ENV_OPTION, display_table, timestamp_to_local
 
 APP_IDENTIFIER = Argument("", help="App name or ID")
 NAME_OPTION = typer.Option("", "-n", "--name", help="Deprecated: Pass App name as a positional argument")
@@ -34,14 +30,6 @@ APP_STATE_TO_MESSAGE = {
 }
 
 
-@synchronizer.create_blocking
-async def get_app_id(app_identifier: str, env: Optional[str], client: Optional[_Client] = None) -> str:
-    """Resolve an app_identifier that may be a name or an ID into an ID."""
-    if re.match(r"^ap-[a-zA-Z0-9]{22}$", app_identifier):
-        return app_identifier
-    return await get_app_id_from_name.aio(app_identifier, env, client)
-
-
 def warn_on_name_option(command: str, app_identifier: str, name: str) -> str:
     if name:
         message = (
@@ -55,16 +43,9 @@ def warn_on_name_option(command: str, app_identifier: str, name: str) -> str:
 
 
 @app_cli.command("list")
-@synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
+def list(env: Optional[str] = ENV_OPTION, json: bool = False):
     """List Modal apps that are currently deployed/running or recently stopped."""
-    env = ensure_env(env)
-    client = await _Client.from_env()
-
-    resp: api_pb2.AppListResponse = await client.stub.AppList(
-        api_pb2.AppListRequest(environment_name=_get_environment_name(env))
-    )
-
+    apps = list_apps(env=env)
     columns: List[Union[Column, str]] = [
         Column("App ID", min_width=25),  # Ensure that App ID is not truncated in slim terminals
         "Description",
@@ -74,7 +55,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
         "Stopped at",
     ]
     rows: List[List[Union[Text, str]]] = []
-    for app_stats in resp.apps:
+    for app_stats in apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
         rows.append(
             [
@@ -82,8 +63,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
                 app_stats.description,
                 state,
                 str(app_stats.n_running_tasks),
-                timestamp_to_local(app_stats.created_at, json),
-                timestamp_to_local(app_stats.stopped_at, json),
+                str(app_stats.created_at),
+                str(app_stats.stopped_at),
             ]
         )
 
@@ -121,8 +102,7 @@ def logs(
 
 
 @app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})
-@synchronizer.create_blocking
-async def rollback(
+def rollback(
     app_identifier: str = APP_IDENTIFIER,
     version: str = typer.Argument("", help="Target version for rollback."),
     *,
@@ -155,24 +135,12 @@ async def rollback(
     ```
 
     """
-    env = ensure_env(env)
-    client = await _Client.from_env()
-    app_id = await get_app_id.aio(app_identifier, env, client)
-    if not version:
-        version_number = -1
-    else:
-        if m := re.match(r"v(\d+)", version):
-            version_number = int(m.group(1))
-        else:
-            raise UsageError(f"Invalid version specifer: {version}")
-    req = api_pb2.AppRollbackRequest(app_id=app_id, version=version_number)
-    await client.stub.AppRollback(req)
+    rollback_app(app_identifier, version, env)
     rich.print("[green]✓[/green] Deployment rollback successful!")
 
 
 @app_cli.command("stop", no_args_is_help=True)
-@synchronizer.create_blocking
-async def stop(
+def stop(
     app_identifier: str = APP_IDENTIFIER,
     *,
     name: str = NAME_OPTION,
@@ -180,15 +148,11 @@ async def stop(
 ):
     """Stop an app."""
     app_identifier = warn_on_name_option("stop", app_identifier, name)
-    client = await _Client.from_env()
-    app_id = await get_app_id.aio(app_identifier, env)
-    req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
-    await client.stub.AppStop(req)
+    stop_app(app_identifier, env)
 
 
 @app_cli.command("history", no_args_is_help=True)
-@synchronizer.create_blocking
-async def history(
+def history(
     app_identifier: str = APP_IDENTIFIER,
     *,
     env: Optional[str] = ENV_OPTION,
@@ -214,9 +178,7 @@ async def history(
     """
     app_identifier = warn_on_name_option("history", app_identifier, name)
     env = ensure_env(env)
-    client = await _Client.from_env()
-    app_id = await get_app_id.aio(app_identifier, env, client)
-    resp = await client.stub.AppDeploymentHistory(api_pb2.AppDeploymentHistoryRequest(app_id=app_id))
+    histories = get_app_deployment_history(app_identifier, env)
 
     columns = [
         "Version",
@@ -226,7 +188,7 @@ async def history(
     ]
     rows = []
     deployments_with_tags = False
-    for idx, app_stats in enumerate(resp.app_deployment_histories):
+    for idx, app_stats in enumerate(histories):
         style = "bold green" if idx == 0 else ""
 
         row = [

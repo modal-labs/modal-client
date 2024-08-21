@@ -1,7 +1,5 @@
 # Copyright Modal Labs 2022
-import os
 import sys
-from pathlib import Path
 from typing import List, Optional
 
 import typer
@@ -11,16 +9,12 @@ from rich.console import Console
 from rich.syntax import Syntax
 from typer import Argument, Option, Typer
 
-import modal
 from modal._output import ProgressHandler, step_completed
 from modal._utils.async_utils import synchronizer
-from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
-from modal.client import _Client
 from modal.environments import ensure_env
 from modal.exception import deprecation_warning
-from modal.volume import _Volume, _VolumeUploadContextManager
+from modal.utils import create_volume, get_volume, list_volumes, upload_to_volume, volume_ls
 from modal_proto import api_pb2
 
 volume_cli = Typer(
@@ -56,8 +50,7 @@ def create(
     env: Optional[str] = ENV_OPTION,
     version: Optional[int] = Option(default=None, help="VolumeFS version. (Experimental)"),
 ):
-    env_name = ensure_env(env)
-    modal.Volume.create_deployed(name, environment_name=env, version=version)
+    create_volume(name, env, version)
     usage_code = f"""
 @app.function(volumes={{"/my_vol": modal.Volume.from_name("{name}")}})
 def some_func():
@@ -65,14 +58,13 @@ def some_func():
 """
 
     console = Console()
-    console.print(f"Created Volume '{name}' in environment '{env_name}'. \n\nCode example:\n")
+    console.print(f"Created Volume '{name}' in environment '{env}'. \n\nCode example:\n")
     usage = Syntax(usage_code, "python")
     console.print(usage)
 
 
 @volume_cli.command(name="get", rich_help_panel="File operations")
-@synchronizer.create_blocking
-async def get(
+def get(
     volume_name: str,
     remote_path: str,
     local_destination: str = Argument("."),
@@ -87,19 +79,16 @@ async def get(
     **Example**
 
     ```bash
-    modal volume get <volume_name> logs/april-12-1.txt
+    modal volume get <volu  me_name> logs/april-12-1.txt
     modal volume get <volume_name> / volume_data_dump
     ```
 
     Use "-" as LOCAL_DESTINATION to write file contents to standard output.
     """
-    ensure_env(env)
-    destination = Path(local_destination)
-    volume = await _Volume.lookup(volume_name, environment_name=env)
     console = Console()
     progress_handler = ProgressHandler(type="download", console=console)
     with progress_handler.live:
-        await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
+        get_volume(volume_name, remote_path, local_destination, force, env, progress_handler.progress)
     console.print(step_completed("Finished downloading files to local!"))
 
 
@@ -108,16 +97,15 @@ async def get(
     help="List the details of all modal.Volume volumes in an Environment.",
     rich_help_panel="Management",
 )
-@synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
-    client = await _Client.from_env()
-    response = await retry_transient_errors(client.stub.VolumeList, api_pb2.VolumeListRequest(environment_name=env))
+    volumes = list_volumes(env)
+
     env_part = f" in environment '{env}'" if env else ""
     column_names = ["Name", "Created at"]
     rows = []
-    for item in response.items:
-        rows.append([item.label, timestamp_to_local(item.created_at, json)])
+    for vol in volumes:
+        rows.append([vol.label, str(vol.created_at)])
     display_table(column_names, rows, json, title=f"Volumes{env_part}")
 
 
@@ -126,24 +114,13 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     help="List files and directories in a modal.Volume volume.",
     rich_help_panel="File operations",
 )
-@synchronizer.create_blocking
-async def ls(
+def ls(
     volume_name: str,
     path: str = Argument(default="/"),
     json: bool = False,
     env: Optional[str] = ENV_OPTION,
 ):
-    ensure_env(env)
-    vol = await _Volume.lookup(volume_name, environment_name=env)
-    if not isinstance(vol, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
-
-    try:
-        entries = await vol.listdir(path)
-    except GRPCError as exc:
-        if exc.status in (Status.INVALID_ARGUMENT, Status.NOT_FOUND):
-            raise UsageError(exc.message)
-        raise
+    entries = volume_ls(volume_name, path, env)
 
     if not json and not sys.stdout.isatty():
         # Legacy behavior -- I am not sure why exactly we did this originally but I don't want to break it
@@ -182,47 +159,20 @@ and the file will be uploaded with its current name under that directory.
 """,
     rich_help_panel="File operations",
 )
-@synchronizer.create_blocking
-async def put(
+def put(
     volume_name: str,
     local_path: str = Argument(),
     remote_path: str = Argument(default="/"),
     force: bool = Option(False, "-f", "--force", help="Overwrite existing files."),
     env: Optional[str] = ENV_OPTION,
 ):
-    ensure_env(env)
-    vol = await _Volume.lookup(volume_name, environment_name=env)
-    if not isinstance(vol, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
-
-    if remote_path.endswith("/"):
-        remote_path = remote_path + os.path.basename(local_path)
     console = Console()
     progress_handler = ProgressHandler(type="upload", console=console)
 
-    if Path(local_path).is_dir():
-        with progress_handler.live:
-            try:
-                async with _VolumeUploadContextManager(
-                    vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
-                ) as batch:
-                    batch.put_directory(local_path, remote_path)
-            except FileExistsError as exc:
-                raise UsageError(str(exc))
-        console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
-    elif "*" in local_path:
-        raise UsageError("Glob uploads are currently not supported")
-    else:
-        with progress_handler.live:
-            try:
-                async with _VolumeUploadContextManager(
-                    vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
-                ) as batch:
-                    batch.put_file(local_path, remote_path)
+    with progress_handler.live:
+        upload_to_volume(volume_name, local_path, remote_path, force, env, progress_handler.progress)
 
-            except FileExistsError as exc:
-                raise UsageError(str(exc))
-        console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
+    console.print(step_completed(f"Uploaded '{local_path}' to '{remote_path}'"))
 
 
 @volume_cli.command(

@@ -16,19 +16,21 @@ import typer
 from rich.console import Console
 from typing_extensions import TypedDict
 
-from .. import Cls
-from .._output import enable_output
-from ..app import App, LocalEntrypoint
-from ..config import config
-from ..environments import ensure_env
-from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
-from ..functions import Function, _FunctionSpec
-from ..image import Image
-from ..runner import deploy_app, interactive_shell, run_app
-from ..serving import serve_app
-from ..volume import Volume
+from modal import Cls
+from modal._output import enable_output
+from modal.app import App, LocalEntrypoint
+from modal.config import config
+from modal.environments import ensure_env
+from modal.exception import ExecutionError, InvalidError, _CliUserExecutionError
+from modal.functions import Function, _FunctionSpec
+from modal.image import Image
+from modal.runner import deploy_app, interactive_shell, run_app
+from modal.serving import serve_app
+from modal.utils import stream_app_logs
+from modal.volume import Volume
+
 from .import_refs import import_app, import_function
-from .utils import ENV_OPTION, ENV_OPTION_HELP, stream_app_logs
+from .utils import ENV_OPTION, ENV_OPTION_HELP
 
 
 class ParameterMetadata(TypedDict):

@@ -17,11 +17,11 @@ from modal._location import display_location
 from modal._output import ProgressHandler, step_completed
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.network_file_system import _NetworkFileSystem
+from modal.utils import _volume_download
 from modal_proto import api_pb2
 
 nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
