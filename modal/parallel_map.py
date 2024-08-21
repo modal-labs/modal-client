@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Set, Tuple
 
 from aiostream import pipe, stream
-from grpclib import Status
+from grpclib import GRPCError, Status
 
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
@@ -134,13 +134,21 @@ async def _map_invocation(
             logger.debug(
                 f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
             )
-            resp = await retry_transient_errors(
-                client.stub.FunctionPutInputs,
-                request,
-                max_retries=None,
-                max_delay=10,
-                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-            )
+            while True:
+                try:
+                    resp = await retry_transient_errors(
+                        client.stub.FunctionPutInputs,
+                        request,
+                        max_retries=1,
+                        max_delay=101,
+                        additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                    )
+                    break
+                except GRPCError as err:
+                    if err.status != Status.RESOURCE_EXHAUSTED:
+                        raise err
+                    logger.warning("Unable to push inputs. Check rate of output consumption.")
+
             count_update()
             for item in resp.inputs:
                 pending_outputs.setdefault(item.input_id, 0)
