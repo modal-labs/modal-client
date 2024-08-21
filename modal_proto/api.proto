@@ -1854,6 +1854,7 @@ message SecretGetOrCreateRequest {
   ObjectCreationType object_creation_type = 4;  // Not used atm
   map<string, string> env_dict = 5;
   string app_id = 6;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+  repeated string required_keys = 7;
 }
 
 message SecretGetOrCreateResponse {
