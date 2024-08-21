@@ -139,15 +139,18 @@ async def _map_invocation(
                     resp = await retry_transient_errors(
                         client.stub.FunctionPutInputs,
                         request,
-                        max_retries=1,
-                        max_delay=101,
+                        max_retries=7,
+                        max_delay=10,
                         additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                     )
                     break
                 except GRPCError as err:
                     if err.status != Status.RESOURCE_EXHAUSTED:
                         raise err
-                    logger.warning("Unable to push inputs. Check rate of output consumption.")
+                    logger.warning(
+                        "Warning: map progress is limited. Common bottlenecks "
+                        "include slow iteration over results, or function backlogs."
+                    )
 
             count_update()
             for item in resp.inputs:
