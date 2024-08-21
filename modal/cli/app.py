@@ -14,6 +14,7 @@ from modal.client import _Client
 from modal.environments import ensure_env
 from modal.exception import deprecation_warning
 from modal.object import _get_environment_name
+from modal.token_flow import _open_url
 from modal_proto import api_pb2
 
 from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
@@ -247,3 +248,44 @@ async def history(
 
     rows = sorted(rows, key=lambda x: int(str(x[0])[1:]), reverse=True)
     display_table(columns, rows, json)
+
+
+@app_cli.command("dashboard", no_args_is_help=True)
+@synchronizer.create_blocking
+async def dashboard(
+    app_identifier: str = APP_IDENTIFIER,
+    *,
+    env: Optional[str] = ENV_OPTION,
+):
+    """Open the dashboard for a deployed App in the web default browser.
+
+    **Examples:**
+
+    Open the dashboard based on an app ID:
+
+    ```bash
+    modal app dashboard ap-123456
+    ```
+
+    Open the dashboard based on its name:
+
+    ```bash
+    modal app dashboard my-app
+    ```
+
+    """
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    app_id = await get_app_id.aio(app_identifier, env, client)
+    web_url = f"https://modal.com/apps/modal-labs/{env}/{app_id}"
+
+    if _open_url(web_url):
+        rich.print(
+            "The web browser should have opened for you to access your app's dashboard.\n"
+            "If it didn't, please copy this URL into your web browser manually:\n"
+        )
+    else:
+        rich.print(
+            "[red]Was not able to launch web browser[/red]\n" "Please go to this URL manually to view the dashboard:\n"
+        )
+    rich.print(f"[link={web_url}]{web_url}[/link]\n")

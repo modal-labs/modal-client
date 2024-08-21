@@ -518,6 +518,18 @@ def test_app_stop(servicer, mock_dir, set_env_client):
     assert not re.search("my_app .+ deployed", res.stdout)
 
 
+def test_app_dashboard(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        _run(["deploy", "myapp"])
+
+    res = _run(["app", "list"])
+    assert re.search("my_app .+ deployed", res.stdout)
+
+    res = _run(["app", "dashboard", "my_app"])
+    expected_url = "https://modal.com/apps/modal-labs/main/ap-1"
+    assert expected_url in res.stdout
+
+
 def test_nfs_get(set_env_client, servicer):
     nfs_name = "my-shared-nfs"
     _run(["nfs", "create", nfs_name])
