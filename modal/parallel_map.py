@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Set, Tuple
 
 from aiostream import pipe, stream
-from grpclib import Status
+from grpclib import GRPCError, Status
 
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
@@ -134,13 +134,25 @@ async def _map_invocation(
             logger.debug(
                 f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
             )
-            resp = await retry_transient_errors(
-                client.stub.FunctionPutInputs,
-                request,
-                max_retries=None,
-                max_delay=10,
-                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-            )
+            while True:
+                try:
+                    resp = await retry_transient_errors(
+                        client.stub.FunctionPutInputs,
+                        request,
+                        # with 8 retries we log the warning below about every 30 secondswhich isn't too spammy.
+                        max_retries=8,
+                        max_delay=15,
+                        additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                    )
+                    break
+                except GRPCError as err:
+                    if err.status != Status.RESOURCE_EXHAUSTED:
+                        raise err
+                    logger.warning(
+                        "Warning: map progress is limited. Common bottlenecks "
+                        "include slow iteration over results, or function backlogs."
+                    )
+
             count_update()
             for item in resp.inputs:
                 pending_outputs.setdefault(item.input_id, 0)
