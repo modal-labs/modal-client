@@ -29,6 +29,7 @@ class FunctionInfoType(Enum):
     NOTEBOOK = "notebook"
 
 
+# TODO(elias): Add support for quoted/str annotations
 CLASS_PARAM_TYPE_MAP: Dict[Type, Tuple["api_pb2.ParameterType.ValueType", str]] = {
     str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
     int: (api_pb2.PARAM_TYPE_INT, "int_default"),
@@ -239,15 +240,21 @@ class FunctionInfo:
         if not self.user_cls:
             return api_pb2.ClassParameterInfo()
 
-        if not config.get("strict_parameters"):
+        # TODO(elias): Resolve circular dependencies... maybe we'll need some cls_utils module
+        from modal.cls import _get_class_constructor_signature, _use_annotation_parameters
+
+        if not _use_annotation_parameters(self.user_cls):
             return api_pb2.ClassParameterInfo(format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE)
 
+        # annotation parameters trigger strictly typed parameterization
+        # which enables web endpoint for parameterized classes
+
         modal_parameters: List[api_pb2.ClassParameterSpec] = []
-        signature = inspect.signature(self.user_cls)
+        signature = _get_class_constructor_signature(self.user_cls)
         for param in signature.parameters.values():
             has_default = param.default is not param.empty
             if param.annotation not in CLASS_PARAM_TYPE_MAP:
-                raise InvalidError("Strict class parameters need to be explicitly annotated as str or int")
+                raise InvalidError("modal.parameter() currently only support str or int types")
             param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
             class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
             if has_default:

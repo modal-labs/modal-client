@@ -36,18 +36,18 @@ class _PartialFunctionFlags(enum.IntFlag):
     BATCHED: int = 32
 
     @staticmethod
-    def all() -> "_PartialFunctionFlags":
-        return ~_PartialFunctionFlags(0)  # type: ignore #  for some reason mypy things this has type int
+    def all() -> int:
+        return ~_PartialFunctionFlags(0)
 
 
 P = typing_extensions.ParamSpec("P")
-T = typing_extensions.TypeVar("T", covariant=True)
+R = typing_extensions.TypeVar("R", covariant=True)
 
 
-class _PartialFunction(typing.Generic[P, T]):
-    """Intermediate function, produced by @enter, @build, @method, @web_endpoint, or @batched"""
+class _PartialFunction(typing.Generic[P, R]):
+    """Intermediate function, produced by @enter, @build, @method, @web_endpoint or @batched"""
 
-    raw_f: Callable[P, T]
+    raw_f: Callable[P, R]
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
     is_generator: Optional[bool]
@@ -59,7 +59,7 @@ class _PartialFunction(typing.Generic[P, T]):
 
     def __init__(
         self,
-        raw_f: Callable[P, T],
+        raw_f: Callable[P, R],
         flags: _PartialFunctionFlags,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
@@ -80,7 +80,7 @@ class _PartialFunction(typing.Generic[P, T]):
         self.force_build = force_build
         self.build_timeout = build_timeout
 
-    def __get__(self, obj, objtype=None) -> _Function:
+    def __get__(self, obj, objtype=None) -> _Function[P, R]:
         k = self.raw_f.__name__
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
@@ -126,9 +126,7 @@ class _PartialFunction(typing.Generic[P, T]):
 PartialFunction = synchronize_api(_PartialFunction)
 
 
-def _find_partial_methods_for_user_cls(
-    user_cls: Type[Any], flags: _PartialFunctionFlags
-) -> Dict[str, _PartialFunction]:
+def _find_partial_methods_for_user_cls(user_cls: Type[Any], flags: int) -> Dict[str, _PartialFunction]:
     """Grabs all method on a user class, and returns partials. Includes legacy methods."""
 
     # Build up a list of legacy attributes to check
@@ -166,7 +164,7 @@ def _find_partial_methods_for_user_cls(
     return partial_functions
 
 
-def _find_callables_for_obj(user_obj: Any, flags: _PartialFunctionFlags) -> Dict[str, Callable[..., Any]]:
+def _find_callables_for_obj(user_obj: Any, flags: int) -> Dict[str, Callable[..., Any]]:
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: Type = type(user_obj)
     return {k: pf.raw_f.__get__(user_obj) for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items()}
@@ -179,7 +177,7 @@ def _method(
     # a [sync/async] generator object
     is_generator: Optional[bool] = None,
     keep_warm: Optional[int] = None,  # Deprecated: Use keep_warm on @app.cls() instead
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
+) -> Callable[[Callable[typing_extensions.Concatenate[Any, P], R]], _PartialFunction[P, R]]:
     """Decorator for methods that should be transformed into a Modal Function registered against this class's app.
 
     **Usage:**
@@ -248,7 +246,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
-) -> Callable[[Callable[P, T]], _PartialFunction[P, T]]:
+) -> Callable[[Callable[P, R]], _PartialFunction[P, R]]:
     """Register a basic web endpoint with this application.
 
     This is the simple way to create a web endpoint on Modal. The function
@@ -600,8 +598,9 @@ def _batched(
     # call batched_multiply with individual inputs
     batched_multiply.remote.aio(2, 100)
     ```
+
+    See the [dynamic batching guide](https://modal.com/docs/guide/dynamic-batching) for more information.
     """
-    # TODO(cathy) add link to guide to docstring
     if _warn_parentheses_missing:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batched()`."

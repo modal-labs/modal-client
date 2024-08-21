@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import inspect
 import os
 import typing
 from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Type, TypeVar, Union
@@ -6,6 +7,7 @@ from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Type,
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
+from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -39,16 +41,45 @@ if typing.TYPE_CHECKING:
     import modal.app
 
 
+def _use_annotation_parameters(user_cls) -> bool:
+    has_parameters = any(is_parameter(cls_member) for cls_member in user_cls.__dict__.values())
+    has_explicit_constructor = user_cls.__init__ != object.__init__
+    return has_parameters and not has_explicit_constructor
+
+
+def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
+    if not _use_annotation_parameters(user_cls):
+        return inspect.signature(user_cls)
+    else:
+        constructor_parameters = []
+        for name, annotation_value in user_cls.__dict__.get("__annotations__", {}).items():
+            if hasattr(user_cls, name):
+                parameter_spec = getattr(user_cls, name)
+                if is_parameter(parameter_spec):
+                    maybe_default = {}
+                    if not isinstance(parameter_spec.default, _NO_DEFAULT):
+                        maybe_default["default"] = parameter_spec.default
+
+                    param = inspect.Parameter(
+                        name=name,
+                        annotation=annotation_value,
+                        kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                        **maybe_default,
+                    )
+                    constructor_parameters.append(param)
+
+        return inspect.Signature(constructor_parameters)
+
+
 class _Obj:
     """An instance of a `Cls`, i.e. `Cls("foo", 42)` returns an `Obj`.
 
     All this class does is to return `Function` objects."""
 
     _functions: Dict[str, _Function]
-    _inited: bool
     _entered: bool
-    _user_cls_instance: Optional[Any]
-    _user_cls_instance_constr: Optional[Callable[[], Any]]
+    _user_cls_instance: Optional[Any] = None
+    _construction_args: Tuple[tuple, Dict[str, Any]]
 
     _instance_service_function: Optional[_Function]
 
@@ -89,14 +120,27 @@ class _Obj:
                 self._method_functions[method_name] = method
 
         # Used for construction local object lazily
-        self._inited = False
         self._entered = False
         self._local_user_cls_instance = None
+        self._user_cls = user_cls
+        self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
 
-        if user_cls:
-            self._user_cls_instance_constr = lambda: user_cls(*args, **kwargs)
+    def _user_cls_instance_constr(self):
+        args, kwargs = self._construction_args
+        if not _use_annotation_parameters(self._user_cls):
+            # TODO(elias): deprecate this code path eventually
+            user_cls_instance = self._user_cls(*args, **kwargs)
         else:
-            self._user_cls_instance_constr = None
+            # set the attributes on the class corresponding to annotations
+            # with = parameter() specifications
+            sig = _get_class_constructor_signature(self._user_cls)
+            bound_vars = sig.bind(*args, **kwargs)
+            bound_vars.apply_defaults()
+            user_cls_instance = self._user_cls.__new__(self._user_cls)  # new instance without running __init__
+            user_cls_instance.__dict__.update(bound_vars.arguments)
+
+        user_cls_instance._modal_functions = self._method_functions  # Needed for PartialFunction.__get__
+        return user_cls_instance
 
     async def keep_warm(self, warm_pool_size: int) -> None:
         """Set the warm pool size for the class containers
@@ -119,21 +163,10 @@ class _Obj:
             )
         await self._instance_service_function.keep_warm(warm_pool_size)
 
-    def _create_user_cls_instance(self) -> Any:
-        """Constructs user cls instance without any caching and inserts hydrated methods
-
-        Used by container entrypoint."""
-        self._user_cls_instance = self._user_cls_instance_constr()
-        setattr(
-            self._user_cls_instance, "_modal_functions", self._method_functions
-        )  # Needed for PartialFunction.__get__
-        return self._user_cls_instance
-
     def _get_user_cls_instance(self):
         """Construct local object lazily. Used for .local() calls."""
-        if not self._inited:
-            self._create_user_cls_instance()  # Instantiate object
-            self._inited = True
+        if not self._user_cls_instance:
+            self._user_cls_instance = self._user_cls_instance_constr()  # Instantiate object
 
         return self._user_cls_instance
 
@@ -172,8 +205,16 @@ class _Obj:
 
     def __getattr__(self, k):
         if k in self._method_functions:
+            # if we know the user is accessing a method, we don't have to create an instance
+            # yet, since the user might just call `.remote()` on it which doesn't require
+            # a local instance (in case __init__ does stuff that can't locally)
             return self._method_functions[k]
         elif self._user_cls_instance_constr:
+            # if it's *not* a method
+            # TODO: To get lazy loading (from_name) of classes to work, we need to avoid
+            #  this path, otherwise local initialization will happen regardless if user
+            #  only runs .remote(), since we don't know methods for the class until we
+            #  load it
             user_cls_instance = self._get_user_cls_instance()
             return getattr(user_cls_instance, k)
         else:
@@ -241,8 +282,35 @@ class _Cls(_Object, type_prefix="cs"):
         return class_handle_metadata
 
     @staticmethod
+    def validate_construction_mechanism(user_cls):
+        params = {k: v for k, v in user_cls.__dict__.items() if is_parameter(v)}
+        has_custom_constructor = user_cls.__init__ != object.__init__
+        if params and has_custom_constructor:
+            raise InvalidError(
+                "A class can't have both a custom __init__ constructor "
+                "and dataclass-style modal.parameter() annotations"
+            )
+
+        annotations = user_cls.__dict__.get("__annotations__", {})  # compatible with older pythons
+        missing_annotations = params.keys() - annotations.keys()
+        if missing_annotations:
+            raise InvalidError("All modal.parameter() specifications need to be type annotated")
+
+        annotated_params = {k: t for k, t in annotations.items() if k in params}
+        for k, t in annotated_params.items():
+            if t not in CLASS_PARAM_TYPE_MAP:
+                t_name = getattr(t, "__name__", repr(t))
+                supported = ", ".join(t.__name__ for t in CLASS_PARAM_TYPE_MAP.keys())
+                raise InvalidError(
+                    f"{user_cls.__name__}.{k}: {t_name} is not a supported parameter type. Use one of: {supported}"
+                )
+
+    @staticmethod
     def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
         """mdmd:hidden"""
+        # validate signature
+        _Cls.validate_construction_mechanism(user_cls)
+
         functions: Dict[str, _Function] = {}
         partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
@@ -461,3 +529,49 @@ class _Cls(_Object, type_prefix="cs"):
 
 
 Cls = synchronize_api(_Cls)
+
+
+class _NO_DEFAULT:
+    def __repr__(self):
+        return "modal.cls._NO_DEFAULT()"
+
+
+_no_default = _NO_DEFAULT()
+
+
+class _Parameter:
+    default: Any
+    init: bool
+
+    def __init__(self, default: Any, init: bool):
+        self.default = default
+        self.init = init
+
+    def __get__(self, obj, obj_type=None) -> Any:
+        if obj:
+            if self.default is _no_default:
+                raise AttributeError("field has no default value and no specified value")
+            return self.default
+        return self
+
+
+def is_parameter(p: Any) -> bool:
+    return isinstance(p, _Parameter) and p.init
+
+
+def parameter(*, default: Any = _no_default, init: bool = True) -> Any:
+    """Used to specify options for modal.cls parameters, similar to dataclass.field for dataclasses
+    ```
+    class A:
+        a: str = modal.parameter()
+
+    ```
+
+    If `init=False` is specified, the field is not considered a parameter for the
+    Modal class and not used in the synthesized constructor. This can be used to
+    optionally annotate the type of a field that's used internally, for example values
+    being set by @enter lifecycle methods, without breaking type checkers, but it has
+    no runtime effect on the class.
+    """
+    # has to return Any to be assignable to any annotation (https://github.com/microsoft/pyright/issues/5102)
+    return _Parameter(default=default, init=init)

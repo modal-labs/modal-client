@@ -21,7 +21,7 @@ from ._utils.grpc_utils import unary_stream
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
-from .cls import _Cls
+from .cls import _Cls, _get_class_constructor_signature, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
@@ -688,6 +688,7 @@ class _App:
 
         return wrapped
 
+    @typing_extensions.dataclass_transform(field_specifiers=(parameter,), kw_only_default=True)
     def cls(
         self,
         _warn_parentheses_missing: Optional[bool] = None,
@@ -733,7 +734,7 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
-    ) -> Callable[[CLS_T], _Cls]:
+    ) -> Callable[[CLS_T], CLS_T]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
@@ -752,7 +753,7 @@ class _App:
 
         secrets = [*self._secrets, *secrets]
 
-        def wrapper(user_cls: CLS_T) -> _Cls:
+        def wrapper(user_cls: CLS_T) -> CLS_T:
             nonlocal keep_warm
 
             # Check if the decorated object is a class
@@ -831,10 +832,9 @@ class _App:
 
             # Disallow enable_memory_snapshot for parameterized classes
             # TODO(matt) Temporary fix for MOD-3048
-            constructor = dict(inspect.getmembers(user_cls, inspect.isfunction)).get("__init__")
-            if enable_memory_snapshot and constructor:
-                params = inspect.signature(constructor).parameters
-                if len(params) > 1:
+            if enable_memory_snapshot:
+                signature = _get_class_constructor_signature(user_cls)
+                if len(signature.parameters) > 0:
                     name = user_cls.__name__
                     raise InvalidError(
                         f"Cannot use class parameterization in class {name} with `enable_memory_snapshot=True`."
@@ -842,7 +842,7 @@ class _App:
 
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
-            return cls
+            return cls  # type: ignore  # a _Cls instance "simulates" being the user provided class
 
         return wrapper
 

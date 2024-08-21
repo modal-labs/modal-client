@@ -13,6 +13,7 @@ import modal.partial_function
 from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
 from modal._serialization import deserialize, serialize
 from modal._utils.async_utils import synchronizer
+from modal._utils.function_utils import FunctionInfo
 from modal.exception import DeprecationError, ExecutionError, InvalidError, PendingDeprecationError
 from modal.partial_function import (
     PartialFunction,
@@ -268,8 +269,8 @@ class NoArgRemote:
         pass
 
     @method()
-    def baz(self, z: int):
-        return z**3
+    def baz(self, z: int) -> float:
+        return z**3.0
 
 
 def test_call_cls_remote_no_args(client):
@@ -281,7 +282,9 @@ def test_call_cls_remote_no_args(client):
 if TYPE_CHECKING:
     # Check that type annotations carry through to the decorated classes
     assert_type(Foo(), Foo)
-    assert_type(Foo().bar, Function)
+    # can't use assert_type with named arguments, as it will diff in the name
+    # vs the anonymous argument in the assertion type
+    # assert_type(Foo().bar, Function[[int], float])
 
 
 def test_lookup(client, servicer):
@@ -480,7 +483,7 @@ app_unhydrated = App()
 @app_unhydrated.cls()
 class FooUnhydrated:
     @method()
-    def bar(self):
+    def bar(self, x):
         ...
 
 
@@ -720,14 +723,14 @@ def test_disallow_lifecycle_decorators_with_method(decorator):
 def test_deprecated_sync_methods():
     class ClsWithDeprecatedSyncMethods:
         def __enter__(self):
-            return 42
+            ...
 
         @enter()
         def my_enter(self):
-            return 43
+            ...
 
         def __exit__(self, exc_type, exc, tb):
-            return 44
+            ...
 
     obj = ClsWithDeprecatedSyncMethods()
 
@@ -742,7 +745,7 @@ def test_deprecated_sync_methods():
         class ClsWithDeprecatedSyncExitMethod:
             @exit()
             def my_exit(self, exc_type, exc, tb):
-                return 45
+                ...
 
 
 @pytest.mark.asyncio
@@ -769,9 +772,9 @@ async def test_deprecated_async_methods():
     with pytest.raises(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
 
         class ClsWithDeprecatedAsyncExitMethod:
-            @exit()
+            @exit()  # type: ignore  # TODO: fix type for the exit decorator to support async exit handlers
             async def my_exit(self, exc_type, exc, tb):
-                return 45
+                ...
 
 
 class HasSnapMethod:
@@ -808,7 +811,7 @@ def test_partial_function_descriptors(client):
 
     assert isinstance(Foo.bar, PartialFunction)
 
-    assert Foo().bar() == "a"
+    assert Foo().bar() == "a"  # type: ignore   # edge case - using a non-decorated class should just return the bound original method
     assert inspect.ismethod(Foo().bar)
     app = modal.App()
 
@@ -828,7 +831,9 @@ def test_partial_function_descriptors(client):
     )  # but it should be a PartialFunction, so it keeps associated metadata!
 
     # ensure that webhook metadata is kept
-    assert synchronizer._translate_in(revived_class.web).webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
+    web_partial_function: _PartialFunction = synchronizer._translate_in(revived_class.web)  # type: ignore
+    assert web_partial_function.webhook_config
+    assert web_partial_function.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
 
 
 def test_cross_process_userclass_serde(supports_dir):
@@ -840,59 +845,68 @@ def test_cross_process_userclass_serde(supports_dir):
     assert revived_cls().method() == "a"  # this should be bound to the object
 
 
-def test_cls_strict_parameters_added_to_definition(client, servicer, monkeypatch):
-    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
-    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
-
-    strict_param_cls_app = App("strict-param-app")
-
-    @strict_param_cls_app.cls(serialized=True)
-    class StrictParamCls:
-        def __init__(self, x: str, y: int = 20):
-            pass
-
-    deploy_app(strict_param_cls_app, "my-cls-app", client=client)
-
-    definition: api_pb2.Function
-    (definition,) = servicer.app_functions.values()
-    assert definition.function_name == "StrictParamCls.*"
-    assert definition.class_parameter_info == api_pb2.ClassParameterInfo(
-        format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
-        schema=[
-            api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING, has_default=False),
-            api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_INT, has_default=True, int_default=20),
-        ],
-    )
+app2 = modal.App("app2")
 
 
-def test_cls_strict_parameters_unsupported_type(client, servicer, monkeypatch):
-    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
-    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+@app2.cls()
+class UsingAnnotationParameters:
+    a: int = modal.parameter()
+    b: str = modal.parameter(default="hello")
+    c: float = modal.parameter(init=False)
 
-    strict_param_cls_app = App("strict-param-app")
-
-    @strict_param_cls_app.cls(serialized=True)
-    class StrictParamCls:
-        def __init__(self, x: float):
-            pass
-
-    with pytest.raises(InvalidError, match="class parameters"):
-        deploy_app(strict_param_cls_app, "my-cls-app", client=client)
+    @method()
+    def get_value(self):
+        return self.a
 
 
-def test_cls_strict_parameters_without_type(client, servicer, monkeypatch):
-    monkeypatch.setenv("MODAL_STRICT_PARAMETERS", "1")
-    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+init_side_effects = []
 
-    strict_param_cls_app = App("strict-param-app")
 
-    @strict_param_cls_app.cls(serialized=True)
-    class StrictParamCls:
-        def __init__(self, x):
-            pass
+@app2.cls()
+class UsingCustomConstructor:
+    # might want to deprecate this soon
+    a: int
 
-    with pytest.raises(InvalidError, match="class parameters"):
-        deploy_app(strict_param_cls_app, "my-cls-app", client=client)
+    def __init__(self, a: int):
+        self._a = a
+        init_side_effects.append("did_run")
+
+    @method()
+    def get_value(self):
+        return self._a
+
+
+def test_implicit_constructor():
+    c = UsingAnnotationParameters(a=10)
+
+    assert c.a == 10
+    assert c.get_value.local() == 10
+    assert c.b == "hello"
+
+    d = UsingAnnotationParameters(a=11, b="goodbye")
+    assert d.b == "goodbye"
+
+    # TODO(elias): fix "eager" constructor call validation by looking at signature
+    # with pytest.raises(TypeError, match="missing a required argument: 'a'"):
+    #     UsingAnnotationParameters()
+
+    # check that implicit constructors trigger strict parameterization
+    function_info: FunctionInfo = synchronizer._translate_in(UsingAnnotationParameters)._class_service_function._info  # type: ignore
+    assert function_info.class_parameter_info().format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
+
+
+def test_custom_constructor():
+    d = UsingCustomConstructor(10)
+    assert not init_side_effects
+
+    assert d._a == 10  # lazily run constructor when accessing non-method attributes (!)
+    assert init_side_effects == ["did_run"]
+
+    d2 = UsingCustomConstructor(11)
+    assert d2.get_value.local() == 11  # run constructor before running locally
+    # check that explicit constructors trigger pickle parameterization
+    function_info: FunctionInfo = synchronizer._translate_in(UsingCustomConstructor)._class_service_function._info  # type: ignore
+    assert function_info.class_parameter_info().format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE
 
 
 class ParameterizedClass1:
@@ -900,9 +914,17 @@ class ParameterizedClass1:
         pass
 
 
+class ParameterizedClass1Implicit:
+    a: int = modal.parameter()
+
+
 class ParameterizedClass2:
     def __init__(self, a: int = 1):
         pass
+
+
+class ParameterizedClass2Implicit:
+    a: int = modal.parameter(default=1)
 
 
 class ParameterizedClass3:
@@ -915,7 +937,13 @@ def test_disabled_parameterized_snap_cls():
         app.cls(enable_memory_snapshot=True)(ParameterizedClass1)
 
     with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
+        app.cls(enable_memory_snapshot=True)(ParameterizedClass1Implicit)
+
+    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
         app.cls(enable_memory_snapshot=True)(ParameterizedClass2)
+
+    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
+        app.cls(enable_memory_snapshot=True)(ParameterizedClass2Implicit)
 
     app.cls(enable_memory_snapshot=True)(ParameterizedClass3)
 
@@ -949,3 +977,30 @@ def test_batched_method_duplicate_error(client):
             @modal.batched(max_batch_size=2, wait_ms=0)
             def batched_method_2(self):
                 pass
+
+
+def test_cls_with_both_constructor_and_parameters_is_invalid():
+    with pytest.raises(InvalidError, match="constructor"):
+
+        @app.cls(serialized=True)
+        class A:
+            a: int = modal.parameter()
+
+            def __init__(self, a):
+                self.a = a
+
+
+def test_unannotated_parameters_are_invalid():
+    with pytest.raises(InvalidError, match="annotated"):
+
+        @app.cls(serialized=True)
+        class B:
+            b = modal.parameter()  # type: ignore
+
+
+def test_unsupported_type_parameters_raise_errors():
+    with pytest.raises(InvalidError, match="float"):
+
+        @app.cls(serialized=True)
+        class C:
+            c: float = modal.parameter()
