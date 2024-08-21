@@ -43,7 +43,7 @@ if typing.TYPE_CHECKING:
 
 
 def _use_annotation_parameters(user_cls) -> bool:
-    has_parameters = any(isinstance(cls_member, _Parameter) for cls_member in user_cls.__dict__.values())
+    has_parameters = any(is_parameter(cls_member) for cls_member in user_cls.__dict__.values())
     has_explicit_constructor = user_cls.__init__ != object.__init__
     return has_parameters and not has_explicit_constructor
 
@@ -56,7 +56,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         for name, annotation_value in user_cls.__dict__.get("__annotations__", {}).items():
             if hasattr(user_cls, name):
                 parameter_spec = getattr(user_cls, name)
-                if isinstance(parameter_spec, _Parameter):
+                if is_parameter(parameter_spec):
                     maybe_default = {}
                     if not isinstance(parameter_spec.default, _NO_DEFAULT):
                         maybe_default["default"] = parameter_spec.default
@@ -284,7 +284,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     @staticmethod
     def validate_construction_mechanism(user_cls):
-        params = {k: v for k, v in user_cls.__dict__.items() if isinstance(v, _Parameter)}
+        params = {k: v for k, v in user_cls.__dict__.items() if is_parameter(v)}
         has_custom_constructor = user_cls.__init__ != object.__init__
         if params and has_custom_constructor:
             raise InvalidError(
@@ -535,45 +535,42 @@ class _NO_DEFAULT:
         return "modal.cls._NO_DEFAULT()"
 
 
+_no_default = _NO_DEFAULT()
+
+
 class _Parameter:
     default: Any
+    init: bool
 
-    def __init__(self, default: Any):
+    def __init__(self, default: Any, init: bool):
         self.default = default
+        self.init = init
+
+    def __get__(self, obj, obj_type=None) -> Any:
+        if obj:
+            if self.default is _no_default:
+                raise AttributeError("field has no default value and no specified value")
+            return self.default
+        return self
 
 
-def parameter(*, default: Any = _NO_DEFAULT()) -> Any:
+def is_parameter(p: Any) -> bool:
+    return isinstance(p, _Parameter) and p.init
+
+
+def parameter(*, default: Any = _no_default, init: bool = True) -> Any:
     """Used to specify options for modal.cls parameters, similar to dataclass.field for dataclasses
     ```
     class A:
         a: str = modal.parameter()
 
     ```
+
+    If `init=False` is specified, the field is not considered a parameter for the
+    Modal class and not used in the synthesized constructor. This can be used to
+    optionally annotate the type of a field that's used internally, for example values
+    being set by @enter lifecycle methods, without breaking type checkers, but it has
+    no runtime effect on the class.
     """
     # has to return Any to be assignable to any annotation (https://github.com/microsoft/pyright/issues/5102)
-    return _Parameter(default)
-
-
-def field(*, default: Any = None, init: bool = False) -> Any:
-    """Optional field descriptor for non-parameter fields on a Modal class
-
-    Using this on an annotated field allows *type checkers* and editors to omit the field in
-    the implicit constructor of the class. It has no effect on the actual runtime constructor
-    which always includes *only* `parameter()`-designated fields.
-
-    E.g.
-    ```
-    class A:
-        a: str = modal.parameter()
-        b: int = modal.field()
-        c: float
-    ```
-    a <- part of A constructor
-    b <- not part of A constructor
-    c <- not part of A constructor, but type checkers think it is
-
-    Note: This probably only works in pyright/vscode
-    """
-    # TODO(elias): Try to get init_default for dataclass_transform into the
-    #              typing standard which would let us get rid of this
-    return default
+    return _Parameter(default=default, init=init)

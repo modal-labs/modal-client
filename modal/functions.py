@@ -932,7 +932,10 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             ):
                 if args:
                     # TODO(elias) - We could potentially support positional args as well, if we want to?
-                    raise InvalidError("Can't use positional arguments with implicit class constructors")
+                    raise InvalidError(
+                        "Can't use positional arguments with modal.parameter-based synthetic constructors.\n"
+                        "Use (<parameter_name>=value) keyword arguments when constructing classes instead."
+                    )
                 serialized_params = serialize_proto_params(kwargs, self._parent._class_parameter_info.schema)
             else:
                 serialized_params = serialize((args, kwargs))

@@ -6,7 +6,7 @@ from test.supports.skip import skip_old_py, skip_windows
 
 @pytest.fixture(scope="module")
 def generate_type_stubs():
-    subprocess.call(["inv", "type-stubs"])
+    subprocess.check_call(["inv", "type-stubs"])
 
 
 @skip_windows("Type tests fail on windows since they don't exclude non-windows features")

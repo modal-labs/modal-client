@@ -14,7 +14,7 @@ try:
     from .app import App, Stub
     from .client import Client
     from .cloud_bucket_mount import CloudBucketMount
-    from .cls import Cls, field, parameter
+    from .cls import Cls, parameter
     from .dict import Dict
     from .exception import Error
     from .execution_context import current_function_call_id, current_input_id, interact, is_local
@@ -71,7 +71,6 @@ __all__ = [
     "enable_output",
     "enter",
     "exit",
-    "field",
     "forward",
     "is_local",
     "interact",

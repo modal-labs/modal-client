@@ -801,7 +801,7 @@ app2 = modal.App("app2")
 class UsingAnnotationParameters:
     a: int = modal.parameter()
     b: str = modal.parameter(default="hello")
-    c: float = modal.field()
+    c: float = modal.parameter(init=False)
 
     @method()
     def get_value(self):
