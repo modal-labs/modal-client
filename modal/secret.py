@@ -162,10 +162,12 @@ class _Secret(_Object, type_prefix="st"):
 
     @staticmethod
     def from_name(
-        label: str,
+        label: str,  # Some global identifier, such as "aws-secret"
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
-        required_keys: List[str] = [],
+        required_keys: List[
+            str
+        ] = [],  # Optionally, a list of required environment variables (will be asserted server-side)
     ) -> "_Secret":
         """Create a reference to a persisted Secret
 
