@@ -544,6 +544,7 @@ message CancelInputEvent {
 
 message CheckpointInfo {
   string checksum = 1;
+  int64 size = 5;
   CheckpointStatus status = 2;
   string checkpoint_id = 3;
   string runtime_fingerprint = 4;
