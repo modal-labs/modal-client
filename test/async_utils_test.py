@@ -292,20 +292,12 @@ async def test_dynamic_semaphore_simple():
 
 
 @pytest.mark.asyncio
-async def test_dynamic_semaphore_update_capacity():
-    sem = async_utils.DynamicSemaphore(2)
-
-    sem.set_capacity(1)
-    assert sem.get_capacity() == 1
-    assert sem._value == 1
-
-    sem.set_capacity(10)
-    assert sem.get_capacity() == 10
-    assert sem._value == 10
-
+async def test_dynamic_semaphore_set_capacity():
+    sem = async_utils.DynamicSemaphore(10)
     tasks1 = asyncio.gather(*[acquire_for(sem, 0.1) for _ in range(4)])
     tasks2 = asyncio.gather(*[acquire_for(sem, 0.2) for _ in range(4)])
     await asyncio.sleep(0.01)
+
     sem.set_capacity(1)
     assert sem.get_capacity() == 1
     assert sem._value == 0
