@@ -425,7 +425,7 @@ def call_function(
                 # for them to resolve gracefully:
                 async with TaskContext(0.01) as task_context:
                     async for io_context in container_io_manager.run_inputs_outputs.aio(
-                        finalized_functions, input_concurrency, batch_max_size, batch_wait_ms
+                        finalized_functions, batch_max_size, batch_wait_ms
                     ):
                         # Note that run_inputs_outputs will not return until the concurrency semaphore has
                         # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
@@ -439,9 +439,7 @@ def call_function(
 
             user_code_event_loop.run(run_concurrent_inputs())
     else:
-        for io_context in container_io_manager.run_inputs_outputs(
-            finalized_functions, input_concurrency, batch_max_size, batch_wait_ms
-        ):
+        for io_context in container_io_manager.run_inputs_outputs(finalized_functions, batch_max_size, batch_wait_ms):
             if io_context.finalized_function.is_async:
                 user_code_event_loop.run(run_input_async(io_context))
             else:
@@ -747,7 +745,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             input_concurrency = function_def.allow_concurrent_inputs or 1
             batch_max_size = function_def.batch_max_size or 0
             batch_wait_ms = function_def.batch_linger_ms or 0
-        container_io_manager.set_target_concurrency(input_concurrency)
+        container_io_manager.set_initial_concurrency(input_concurrency)
 
         # Get ids and metadata for objects (primarily functions and classes) on the app
         container_app: RunningApp = container_io_manager.get_app_objects()

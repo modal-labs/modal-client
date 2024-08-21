@@ -182,7 +182,9 @@ class _ContainerIOManager:
     current_input_started_at: Optional[float]
 
     _target_concurrency: Optional[int]
+    _initial_concurrency: Optional[int]
     _dynamic_semaphore: Optional[DynamicSemaphore]
+
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
     _heartbeat_condition: asyncio.Condition
@@ -210,7 +212,9 @@ class _ContainerIOManager:
         self.current_input_started_at = None
 
         self._target_concurrency = None
+        self._initial_concurrency = None
         self._dynamic_semaphore = None
+
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
         self._heartbeat_condition = asyncio.Condition()
@@ -520,7 +524,6 @@ class _ContainerIOManager:
     async def run_inputs_outputs(
         self,
         finalized_functions: Dict[str, FinalizedFunction],
-        input_concurrency: int = 1,
         batch_max_size: int = 0,
         batch_wait_ms: int = 0,
     ) -> AsyncIterator[IOContext]:
@@ -528,9 +531,7 @@ class _ContainerIOManager:
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
         # - or, when the output for the fetched input is sent, release the semaphore.
-
-        if self._dynamic_semaphore is None:
-            self._dynamic_semaphore = DynamicSemaphore(input_concurrency)
+        self._dynamic_semaphore = DynamicSemaphore(self._initial_concurrency)
 
         async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
             io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
@@ -839,8 +840,9 @@ class _ContainerIOManager:
             print("Error: Failed to start PTY shell.")
             raise e
 
-    def set_target_concurrency(self, target_concurrency: int) -> None:
-        self._target_concurrency = target_concurrency
+    def set_initial_concurrency(self, initial_concurrency: int) -> None:
+        self._initial_concurrency = initial_concurrency
+        self._target_concurrency = initial_concurrency
 
     @classmethod
     def stop_fetching_inputs(cls):
@@ -851,12 +853,12 @@ class _ContainerIOManager:
     def set_input_concurrency(cls, input_concurrency: int) -> None:
         assert cls._singleton
         container_io_manager = cls._singleton
-        if container_io_manager._target_concurrency == 1:
+        if container_io_manager._target_concurrency == 1 and input_concurrency != 1:
             raise InvalidError(
                 f"Cannot set local input concurrency to {input_concurrency} on a function or class with allow_concurrent_inputs=1."  # noqa
             )
         if container_io_manager._dynamic_semaphore is None:
-            container_io_manager._dynamic_semaphore = DynamicSemaphore(input_concurrency)
+            container_io_manager._initial_concurrency = input_concurrency
         else:
             container_io_manager._dynamic_semaphore.set_capacity(input_concurrency)
 
