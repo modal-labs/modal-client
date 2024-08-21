@@ -139,8 +139,9 @@ async def _map_invocation(
                     resp = await retry_transient_errors(
                         client.stub.FunctionPutInputs,
                         request,
-                        max_retries=7,
-                        max_delay=10,
+                        # with 8 retries we log the warning below about every 30 secondswhich isn't too spammy.
+                        max_retries=8,
+                        max_delay=15,
                         additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                     )
                     break
