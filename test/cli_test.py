@@ -525,7 +525,7 @@ def test_app_dashboard(servicer, mock_dir, set_env_client):
     res = _run(["app", "list"])
     assert re.search("my_app .+ deployed", res.stdout)
 
-    res = _run(["app", "dashboard", "my_app"])
+    res = _run(["app", "my_app"])
     expected_url = "https://modal.com/apps/modal-labs/main/ap-1"
     assert expected_url in res.stdout
 

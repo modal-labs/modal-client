@@ -2387,9 +2387,9 @@ service ModalClient {
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
 
-  // Workspaces
-  rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
-
   // Web
   rpc WebDashboard(WebDashboardRequest) returns (WebDashboardResponse);
+
+  // Workspaces
+  rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
 }
