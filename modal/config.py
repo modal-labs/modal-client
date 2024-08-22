@@ -29,7 +29,7 @@ Setting tokens using the CLI
 
 You can set a token by running the command::
 
-```bash
+```
 modal token set \
   --token-id <token id> \
   --token-secret <token secret>

@@ -76,7 +76,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
     Also see the CLI methods for accessing network file systems:
 
-    ```bash
+    ```
     modal nfs --help
     ```
 
