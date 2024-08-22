@@ -1044,6 +1044,8 @@ message Function {
   reserved 59;
   uint32 batch_max_size = 60; // Maximum number of inputs to fetch at once
   uint64 batch_linger_ms = 61; // Miliseconds to block before a response is needed
+
+  bool i6pn_enabled = 62;
 }
 
 message FunctionBindParamsRequest {
