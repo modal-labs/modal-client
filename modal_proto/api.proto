@@ -1732,6 +1732,8 @@ message Sandbox {
   reserved 16; // _experimental_scheduler
   optional SchedulerPlacement scheduler_placement = 17;
   repeated Resources _experimental_resources = 18; // overrides `resources` field above
+
+  string worker_id = 19; // for internal debugging use only
 }
 
 message SandboxCreateRequest {
