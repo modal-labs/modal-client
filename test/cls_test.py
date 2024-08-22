@@ -663,7 +663,7 @@ other_handler_app = App("other-handler-app")
 
 @other_handler_app.cls(image=image)
 class ClsWithForceBuild:
-    @build(force_build=True)
+    @build(force=True)
     def build(self):
         pass
 

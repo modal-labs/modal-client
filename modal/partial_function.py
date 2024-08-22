@@ -45,7 +45,7 @@ R = typing_extensions.TypeVar("R", covariant=True)
 
 
 class _PartialFunction(typing.Generic[P, R]):
-    """Intermediate function, produced by @enter, @build, @method, @web_endpoint or @batched"""
+    """Intermediate function, produced by @enter, @build, @method, @web_endpoint, or @batched"""
 
     raw_f: Callable[P, R]
     flags: _PartialFunctionFlags
@@ -486,7 +486,7 @@ def _disallow_wrapping_method(f: _PartialFunction, wrapper: str) -> None:
 
 
 def _build(
-    _warn_parentheses_missing=None, *, force_build: bool = False, timeout: int = 86400
+    _warn_parentheses_missing=None, *, force: bool = False, timeout: int = 86400
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
     """
     Decorator for methods that should execute at _build time_ to create a new layer
@@ -514,11 +514,11 @@ def _build(
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "build")
-            f.force_build = force_build
+            f.force_build = force
             f.build_timeout = timeout
             return f.add_flags(_PartialFunctionFlags.BUILD)
         else:
-            return _PartialFunction(f, _PartialFunctionFlags.BUILD, force_build=force_build, build_timeout=timeout)
+            return _PartialFunction(f, _PartialFunctionFlags.BUILD, force_build=force, build_timeout=timeout)
 
     return wrapper
 
