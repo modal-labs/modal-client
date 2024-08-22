@@ -498,7 +498,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
 
     You can now run this using
 
-    ```bash
+    ```
     modal shell script.py --cmd /bin/bash
     ```
 
