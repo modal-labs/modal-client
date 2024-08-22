@@ -841,6 +841,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                         )
                         for _experimental_gpu in _experimental_gpus
                     ],
+                    i6pn_enabled=config.get("i6pn_enabled"),
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
