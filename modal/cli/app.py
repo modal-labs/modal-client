@@ -8,6 +8,7 @@ from click import UsageError
 from rich.table import Column
 from rich.text import Text
 from typer import Argument
+from typing_extensions import Annotated
 
 from modal._utils.async_utils import synchronizer
 from modal.client import _Client
@@ -250,36 +251,41 @@ async def history(
     display_table(columns, rows, json)
 
 
-@app_cli.command("dashboard", no_args_is_help=True)
 @synchronizer.create_blocking
 async def dashboard(
-    app_identifier: str = APP_IDENTIFIER,
     *,
+    app_identifier: Annotated[Optional[str], typer.Argument(help="App name or ID")] = None,
     env: Optional[str] = ENV_OPTION,
 ):
-    """Open the dashboard for a deployed App in the web default browser.
+    """Open the Modal dashboard in the web default browser.
 
     **Examples:**
 
-    Open the dashboard based on an app ID:
+    Open the dashboard:
 
-    ```bash
-    modal app dashboard ap-123456
+    ```
+    modal dashboard
     ```
 
-    Open the dashboard based on its name:
+    Open the App dashboard based on an app ID:
 
-    ```bash
-    modal app dashboard my-app
+    ```
+    modal dashboard ap-123456
+    ```
+
+    Open the App dashboard based on its name:
+
+    ```
+    modal dashboard my-app
     ```
 
     """
     env = ensure_env(env)
     client = await _Client.from_env()
-    app_id = await get_app_id.aio(app_identifier, env, client)
-    web_url = f"https://modal.com/apps/modal-labs/{env}/{app_id}"
+    app_id = await get_app_id.aio(app_identifier, env, client) if app_identifier else None
+    resp = await client.stub.WebDashboard(api_pb2.WebDashboardRequest(app_id=app_id, environment_name=env))
 
-    if _open_url(web_url):
+    if _open_url(resp.url):
         rich.print(
             "The web browser should have opened for you to access your app's dashboard.\n"
             "If it didn't, please copy this URL into your web browser manually:\n"
@@ -288,4 +294,4 @@ async def dashboard(
         rich.print(
             "[red]Was not able to launch web browser[/red]\n" "Please go to this URL manually to view the dashboard:\n"
         )
-    rich.print(f"[link={web_url}]{web_url}[/link]\n")
+    rich.print(f"[link={resp.url}]{resp.url}[/link]\n")
