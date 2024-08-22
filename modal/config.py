@@ -220,6 +220,7 @@ _SETTINGS = {
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
+    "i6pn_enabled": _Setting(False, transform=_to_boolean),
 }
 
 
