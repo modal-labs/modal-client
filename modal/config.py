@@ -29,7 +29,7 @@ Setting tokens using the CLI
 
 You can set a token by running the command::
 
-```bash
+```
 modal token set \
   --token-id <token id> \
   --token-secret <token secret>
@@ -220,6 +220,7 @@ _SETTINGS = {
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
+    "i6pn_enabled": _Setting(False, transform=_to_boolean),  # For internal/experimental use
 }
 
 
