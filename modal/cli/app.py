@@ -283,7 +283,7 @@ async def dashboard(
     env = ensure_env(env)
     client = await _Client.from_env()
     app_id = await get_app_id.aio(app_identifier, env, client) if app_identifier else None
-    resp = await client.stub.WebDashboardLookup(api_pb2.WebDashboardRequest(app_id=app_id, environment_name=env))
+    resp = await client.stub.WebDashboardLookup(api_pb2.WebDashboardLookupRequest(app_id=app_id, environment_name=env))
 
     if _open_url(resp.url):
         rich.print(
