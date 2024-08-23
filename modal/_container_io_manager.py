@@ -21,7 +21,7 @@ from modal_proto import api_pb2
 
 from ._serialization import deserialize, serialize, serialize_data_format
 from ._traceback import extract_traceback
-from ._utils.async_utils import DynamicSemaphore, TaskContext, asyncify, synchronize_api, synchronizer
+from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
@@ -162,6 +162,74 @@ class IOContext:
         return data
 
 
+class ConcurrencyManager(asyncio.Semaphore):
+    def __init__(self) -> None:
+        self._target_concurrency = None
+        self._concurrency = None
+        self._intialized = False
+        self._owed_releases = 0
+        self._closed = False
+
+    def set_initial_concurrency(self, concurrency: int) -> None:
+        assert self._target_concurrency is None
+        self._target_concurrency = concurrency
+        self._concurrency = concurrency
+
+    def initialize(self) -> None:
+        """Initialize the semaphore with the number of concurrent inputs."""
+        assert self._concurrency
+        super().__init__(self._concurrency)
+        self._intialized = True
+
+    def get_concurrency(self) -> int:
+        return self._concurrency
+
+    def acquire(self) -> bool:
+        assert self._intialized
+        return super().acquire()
+
+    async def close(self) -> None:
+        assert self._intialized
+        if self._closed:
+            return
+        self._closed = True
+        closing_concurrency = self._concurrency + self._owed_releases
+        for _ in range(closing_concurrency):
+            await self.acquire()
+
+    def release(self) -> None:
+        assert self._intialized
+        if self._owed_releases > 0:
+            self._owed_releases -= 1
+        else:
+            super().release()
+
+    def set_concurrency(self, new_concurrency: int) -> None:
+        if self._closed:
+            return
+        if not self._intialized:
+            self._concurrency = new_concurrency
+            return
+
+        if new_concurrency > self._concurrency:
+            for _ in range(new_concurrency - self._concurrency):
+                self.release()
+
+        elif new_concurrency < self._concurrency:
+            for _ in range(self._concurrency - new_concurrency):
+                if not self._try_acquire():
+                    self._owed_releases += 1
+
+        self._concurrency = new_concurrency
+
+    def _try_acquire(self) -> bool:
+        assert self._intialized
+        if not self.locked():
+            self._value -= 1
+            return True
+        return False
+
+
 class _ContainerIOManager:
     """Synchronizes all RPC calls and network operations for a running container.
 
@@ -181,9 +249,7 @@ class _ContainerIOManager:
     current_input_id: Optional[str]
     current_input_started_at: Optional[float]
 
-    _target_concurrency: Optional[int]
-    _initial_concurrency: Optional[int]
-    _dynamic_semaphore: Optional[DynamicSemaphore]
+    _concurrency_manager: ConcurrencyManager
 
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
@@ -211,9 +277,7 @@ class _ContainerIOManager:
         self.current_input_id = None
         self.current_input_started_at = None
 
-        self._target_concurrency = None
-        self._initial_concurrency = None
-        self._dynamic_semaphore = None
+        self._concurrency_manager = ConcurrencyManager()
 
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
@@ -468,7 +532,7 @@ class _ContainerIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
-            await self._dynamic_semaphore.acquire()
+            await self._concurrency_manager.acquire()
 
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
@@ -518,7 +582,7 @@ class _ContainerIOManager:
                         return
             finally:
                 if not yielded:
-                    self._dynamic_semaphore.release()
+                    self._concurrency_manager.release()
 
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
@@ -531,7 +595,7 @@ class _ContainerIOManager:
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
         # - or, when the output for the fetched input is sent, release the semaphore.
-        self._dynamic_semaphore = DynamicSemaphore(self._initial_concurrency)
+        self._concurrency_manager.initialize()
 
         async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
             io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
@@ -540,7 +604,7 @@ class _ContainerIOManager:
             self.current_input_id, self.current_input_started_at = (None, None)
 
         # collect all active input slots, meaning all inputs have wrapped up.
-        await self._dynamic_semaphore.close()
+        await self._concurrency_manager.close()
 
     @synchronizer.no_io_translation
     async def _push_outputs(
@@ -683,7 +747,7 @@ class _ContainerIOManager:
     async def exit_context(self, started_at):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
-        self._dynamic_semaphore.release()
+        self._concurrency_manager.release()
 
     @synchronizer.no_io_translation
     async def push_outputs(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
@@ -840,9 +904,8 @@ class _ContainerIOManager:
             print("Error: Failed to start PTY shell.")
             raise e
 
-    def set_initial_concurrency(self, initial_concurrency: int) -> None:
-        self._initial_concurrency = initial_concurrency
-        self._target_concurrency = initial_concurrency
+    def set_initial_concurrency(self, concurrency: int) -> None:
+        self._concurrency_manager.set_initial_concurrency(concurrency)
 
     @classmethod
     def stop_fetching_inputs(cls):
@@ -850,22 +913,19 @@ class _ContainerIOManager:
         cls._singleton._fetching_inputs = False
 
     @classmethod
-    def set_input_concurrency(cls, input_concurrency: int) -> None:
+    def set_input_concurrency(cls, concurrency: int) -> None:
         assert cls._singleton
         container_io_manager = cls._singleton
-        if container_io_manager._target_concurrency == 1 and input_concurrency != 1:
+        if container_io_manager._concurrency_manager._target_concurrency == 1 and concurrency != 1:
             raise InvalidError(
-                f"Cannot set local input concurrency to {input_concurrency} on a function or class with allow_concurrent_inputs=1."  # noqa
+                f"Cannot set local input concurrency to {concurrency} on a function or class with allow_concurrent_inputs=1."  # noqa
             )
-        if container_io_manager._dynamic_semaphore is None:
-            container_io_manager._initial_concurrency = input_concurrency
-        else:
-            container_io_manager._dynamic_semaphore.set_capacity(input_concurrency)
+        container_io_manager._concurrency_manager.set_concurrency(concurrency)
 
     @classmethod
     def get_input_concurrency(cls) -> int:
         assert cls._singleton
-        return cls._singleton._dynamic_semaphore.get_capacity() if cls._singleton._dynamic_semaphore else 0
+        return cls._singleton._concurrency_manager.get_concurrency() if cls._singleton._concurrency_manager else 0
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)

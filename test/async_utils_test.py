@@ -5,7 +5,6 @@ import logging
 import os
 import platform
 import pytest
-import time
 
 from synchronicity import Synchronizer
 
@@ -263,58 +262,3 @@ def test_synchronize_api_blocking_name():
     myfunc = synchronize_api(_myfunc)
     assert myfunc.__name__ == "myfunc"
     assert myfunc() == "bar"
-
-
-async def acquire_for(sem, secs):
-    await sem.acquire()
-    await asyncio.sleep(secs)
-    sem.release()
-
-
-@pytest.mark.asyncio
-async def test_dynamic_semaphore_simple():
-    sem = async_utils.DynamicSemaphore(2)
-
-    await sem.acquire()
-    await sem.acquire()
-    assert sem.locked()
-    for _ in range(2):
-        sem.release()
-
-    tasks = asyncio.gather(*[acquire_for(sem, 0.1) for _ in range(2)])
-    await asyncio.sleep(0.01)
-    start_time = time.time()
-    await sem.close()
-    assert 0.05 < time.time() - start_time < 0.2
-    await tasks
-
-    assert sem.get_capacity() == 2
-
-
-@pytest.mark.asyncio
-async def test_dynamic_semaphore_set_capacity():
-    sem = async_utils.DynamicSemaphore(10)
-    tasks1 = asyncio.gather(*[acquire_for(sem, 0.1) for _ in range(4)])
-    tasks2 = asyncio.gather(*[acquire_for(sem, 0.2) for _ in range(4)])
-    await asyncio.sleep(0.01)
-
-    sem.set_capacity(1)
-    assert sem.get_capacity() == 1
-    assert sem._value == 0
-    assert sem._owed_releases == 7
-    await tasks1
-    assert sem._value == 0
-    assert sem._owed_releases == 3
-
-    sem.set_capacity(2)
-    assert sem.get_capacity() == 2
-    assert sem._value == 0
-    assert sem._owed_releases == 2
-
-    sem.set_capacity(10)
-    assert sem.get_capacity() == 10
-    assert sem._value == 6
-    assert sem._owed_releases == 0
-    await tasks2
-    assert sem._value == 10
-    assert sem._owed_releases == 0

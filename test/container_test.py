@@ -24,6 +24,7 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
+from modal._container_io_manager import ConcurrencyManager
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -1933,3 +1934,63 @@ def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env
         warning = str(recwarn.pop().message)
         assert "and will not have access to the mounted Volume or NetworkFileSystem data" not in warning
     assert len(recwarn) == 0
+
+
+async def acquire_for(cm, secs):
+    await cm.acquire()
+    await asyncio.sleep(secs)
+    cm.release()
+
+
+@pytest.mark.asyncio
+async def test_dynamic_semaphore_simple():
+    cm = ConcurrencyManager()
+    cm.set_initial_concurrency(2)
+    cm.initialize()
+
+    await cm.acquire()
+    await cm.acquire()
+    assert cm.locked()
+    for _ in range(2):
+        cm.release()
+
+    tasks = asyncio.gather(*[acquire_for(cm, 0.1) for _ in range(2)])
+    await asyncio.sleep(0.01)
+    start_time = time.time()
+    await cm.close()
+    assert 0.05 < time.time() - start_time < 0.2
+    await tasks
+
+    assert cm.get_concurrency() == 2
+
+
+@pytest.mark.asyncio
+async def test_dynamic_semaphore_set_capacity():
+    cm = ConcurrencyManager()
+    cm.set_initial_concurrency(10)
+    cm.initialize()
+
+    tasks1 = asyncio.gather(*[acquire_for(cm, 0.1) for _ in range(4)])
+    tasks2 = asyncio.gather(*[acquire_for(cm, 0.2) for _ in range(4)])
+    await asyncio.sleep(0.01)
+
+    cm.set_concurrency(1)
+    assert cm.get_concurrency() == 1
+    assert cm._value == 0
+    assert cm._owed_releases == 7
+    await tasks1
+    assert cm._value == 0
+    assert cm._owed_releases == 3
+
+    cm.set_concurrency(2)
+    assert cm.get_concurrency() == 2
+    assert cm._value == 0
+    assert cm._owed_releases == 2
+
+    cm.set_concurrency(10)
+    assert cm.get_concurrency() == 10
+    assert cm._value == 6
+    assert cm._owed_releases == 0
+    await tasks2
+    assert cm._value == 10
+    assert cm._owed_releases == 0
