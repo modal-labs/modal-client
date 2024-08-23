@@ -2192,12 +2192,12 @@ message VolumeRemoveFileRequest {
   bool recursive = 3;
 }
 
-message WebDashboardRequest {
+message WebDashboardLookupRequest {
   optional string app_id = 1;
   string environment_name = 2;
 }
 
-message WebDashboardResponse {
+message WebDashboardLookupResponse {
   string url = 1;
 }
 
@@ -2388,7 +2388,7 @@ service ModalClient {
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
 
   // Web
-  rpc WebDashboard(WebDashboardRequest) returns (WebDashboardResponse);
+  rpc WebDashboardLookup(WebDashboardLookupRequest) returns (WebDashboardLookupResponse);
 
   // Workspaces
   rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
