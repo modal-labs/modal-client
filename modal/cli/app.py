@@ -104,13 +104,13 @@ def logs(
 
     Get the logs based on an app ID:
 
-    ```bash
+    ```
     modal app logs ap-123456
     ```
 
     Get the logs for a currently deployed App based on its name:
 
-    ```bash
+    ```
     modal app logs my-app
     ```
 
@@ -201,13 +201,13 @@ async def history(
 
     Get the history based on an app ID:
 
-    ```bash
+    ```
     modal app history ap-123456
     ```
 
     Get the history for a currently deployed App based on its name:
 
-    ```bash
+    ```
     modal app history my-app
     ```
 
