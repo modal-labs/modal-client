@@ -51,7 +51,7 @@ from .client import Client, _Client
 from .cls import Cls, Obj
 from .config import logger
 from .exception import ExecutionError, InputCancellation, InvalidError, deprecation_warning
-from .execution_context import _set_current_context_ids, interact
+from .execution_context import _set_current_context_ids
 from .functions import Function, _Function
 from .partial_function import (
     _find_callables_for_obj,
@@ -785,18 +785,16 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             container_io_manager.memory_snapshot()
 
         # Install hooks for interactive functions.
-        if function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
+        def breakpoint_wrapper():
+            # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
+            container_io_manager.interact(from_breakpoint=True)
+            import pdb
 
-            def breakpoint_wrapper():
-                # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
-                interact()
-                import pdb
+            frame = inspect.currentframe().f_back
 
-                frame = inspect.currentframe().f_back
+            pdb.Pdb().set_trace(frame)
 
-                pdb.Pdb().set_trace(frame)
-
-            sys.breakpointhook = breakpoint_wrapper
+        sys.breakpointhook = breakpoint_wrapper
 
         # Identify the "enter" methods to run after resuming from a snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:
