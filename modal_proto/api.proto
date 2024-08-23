@@ -2193,8 +2193,9 @@ message VolumeRemoveFileRequest {
 }
 
 message WebDashboardLookupRequest {
-  optional string app_id = 1;
-  string environment_name = 2;
+  optional string app_identifier = 1;
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
 }
 
 message WebDashboardLookupResponse {
