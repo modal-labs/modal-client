@@ -1334,7 +1334,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     @synchronizer.no_input_translation
     @live_method
-    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> Optional["_FunctionCall[R]"]:
+    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[R]":
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
@@ -1345,10 +1345,9 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         return a function handle for polling the result.
         """
         if self._is_generator:
-            await self._call_generator_nowait(args, kwargs)
-            return None
-
-        invocation = await self._call_function_nowait(args, kwargs)
+            invocation = await self._call_generator_nowait(args, kwargs)
+        else:
+            invocation = await self._call_function_nowait(args, kwargs)
         return _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
 
     def get_raw_f(self) -> Callable[..., Any]:
