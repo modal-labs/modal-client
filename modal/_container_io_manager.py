@@ -170,39 +170,47 @@ class ConcurrencyManager(asyncio.Semaphore):
         self._owed_releases = 0
         self._closed = False
 
-    def set_initial_concurrency(self, concurrency: int) -> None:
+    def set_target_concurrency(self, concurrency: int) -> None:
         assert self._target_concurrency is None
         self._target_concurrency = concurrency
         self._concurrency = concurrency
 
     def initialize(self) -> None:
-        """Initialize the semaphore with the number of concurrent inputs."""
-        assert self._concurrency
+        # Initialize the semaphore with the number of concurrent inputs
+        assert self._concurrency and not self._intialized
         super().__init__(self._concurrency)
         self._intialized = True
 
-    def get_concurrency(self) -> int:
-        return self._concurrency
-
     def acquire(self) -> bool:
-        assert self._intialized
+        assert self._intialized and not self._closed
         return super().acquire()
+
+    def _try_acquire(self) -> bool:
+        assert self._intialized and not self._closed
+        if not self.locked():
+            self._value -= 1
+            return True
+        return False
 
     async def close(self) -> None:
         assert self._intialized
         if self._closed:
             return
-        self._closed = True
         closing_concurrency = self._concurrency + self._owed_releases
         for _ in range(closing_concurrency):
             await self.acquire()
+        self._closed = True
 
     def release(self) -> None:
-        assert self._intialized
+        assert self._intialized and not self._closed
         if self._owed_releases > 0:
             self._owed_releases -= 1
         else:
             super().release()
+
+    def get_concurrency(self) -> int:
+        # Return 0 if concurrency manager not initialized
+        return self._concurrency or 0
 
     def set_concurrency(self, new_concurrency: int) -> None:
         if self._closed:
@@ -221,13 +229,6 @@ class ConcurrencyManager(asyncio.Semaphore):
                     self._owed_releases += 1
 
         self._concurrency = new_concurrency
-
-    def _try_acquire(self) -> bool:
-        assert self._intialized
-        if not self.locked():
-            self._value -= 1
-            return True
-        return False
 
 
 class _ContainerIOManager:
@@ -904,8 +905,8 @@ class _ContainerIOManager:
             print("Error: Failed to start PTY shell.")
             raise e
 
-    def set_initial_concurrency(self, concurrency: int) -> None:
-        self._concurrency_manager.set_initial_concurrency(concurrency)
+    def set_target_concurrency(self, concurrency: int) -> None:
+        self._concurrency_manager.set_target_concurrency(concurrency)
 
     @classmethod
     def stop_fetching_inputs(cls):
@@ -925,7 +926,7 @@ class _ContainerIOManager:
     @classmethod
     def get_input_concurrency(cls) -> int:
         assert cls._singleton
-        return cls._singleton._concurrency_manager.get_concurrency() if cls._singleton._concurrency_manager else 0
+        return cls._singleton._concurrency_manager.get_concurrency()
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)

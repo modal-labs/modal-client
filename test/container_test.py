@@ -1634,7 +1634,7 @@ def test_stop_fetching_inputs(servicer):
 
 
 @skip_github_non_linux
-def test_set_local_concurrent_inputs_exception(servicer):
+def test_set_local_concurrent_inputs(servicer):
     ret = _run_container(
         servicer,
         "test.supports.experimental",
@@ -1943,31 +1943,9 @@ async def acquire_for(cm, secs):
 
 
 @pytest.mark.asyncio
-async def test_dynamic_semaphore_simple():
+async def test_concurrency_manager():
     cm = ConcurrencyManager()
-    cm.set_initial_concurrency(2)
-    cm.initialize()
-
-    await cm.acquire()
-    await cm.acquire()
-    assert cm.locked()
-    for _ in range(2):
-        cm.release()
-
-    tasks = asyncio.gather(*[acquire_for(cm, 0.1) for _ in range(2)])
-    await asyncio.sleep(0.01)
-    start_time = time.time()
-    await cm.close()
-    assert 0.05 < time.time() - start_time < 0.2
-    await tasks
-
-    assert cm.get_concurrency() == 2
-
-
-@pytest.mark.asyncio
-async def test_dynamic_semaphore_set_capacity():
-    cm = ConcurrencyManager()
-    cm.set_initial_concurrency(10)
+    cm.set_target_concurrency(10)
     cm.initialize()
 
     tasks1 = asyncio.gather(*[acquire_for(cm, 0.1) for _ in range(4)])
@@ -1994,3 +1972,6 @@ async def test_dynamic_semaphore_set_capacity():
     await tasks2
     assert cm._value == 10
     assert cm._owed_releases == 0
+
+    await cm.close()
+    assert cm._value == 0

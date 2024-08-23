@@ -104,7 +104,6 @@ async def test_task_context_infinite_loop():
 @pytest.mark.asyncio
 async def test_task_context_infinite_loop_non_functions():
     async with TaskContext(grace=0.01) as task_context:
-
         async def f(x):
             pass
 
