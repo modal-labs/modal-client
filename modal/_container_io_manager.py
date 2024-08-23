@@ -10,7 +10,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Set, Tuple
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Literal, Optional, Set, Tuple
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -163,6 +163,12 @@ class IOContext:
 
 
 class ConcurrencyManager(asyncio.Semaphore):
+    _target_concurrency: Optional[int]
+    _concurrency: Optional[int]
+    _intialized: bool
+    _owed_releases: int
+    _closed: bool
+
     def __init__(self) -> None:
         self._target_concurrency = None
         self._concurrency = None
@@ -181,9 +187,9 @@ class ConcurrencyManager(asyncio.Semaphore):
         super().__init__(self._concurrency)
         self._intialized = True
 
-    def acquire(self) -> bool:
+    async def acquire(self) -> Literal[True]:
         assert self._intialized and not self._closed
-        return super().acquire()
+        return await super().acquire()
 
     def _try_acquire(self) -> bool:
         assert self._intialized and not self._closed
