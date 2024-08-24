@@ -19,7 +19,7 @@ def parse_cloud_provider(value: str) -> "modal_proto.api_pb2.CloudProvider.V":
     except KeyError:
         # provider's int identifier may be directly specified
         try:
-            return int(value)
+            return int(value)  # type: ignore
         except ValueError:
             pass
 
