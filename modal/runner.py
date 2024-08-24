@@ -508,7 +508,8 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
     client = await _Client.from_env()
     async with _run_app(_app, client=client, environment_name=environment_name):
         sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
-        sandbox = await _Sandbox.create("sleep", "100000", app=_app, **kwargs)
+        with OutputManager.enable_output():  # show any image build logs
+            sandbox = await _Sandbox.create("sleep", "100000", app=_app, **kwargs)
 
         container_process = await sandbox.exec(*sandbox_cmds, pty_info=get_pty_info(shell=True))
         try:
