@@ -7,10 +7,12 @@ import os
 import platform
 import re
 import time
+import typing
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import (
     IO,
+    Any,
     AsyncGenerator,
     AsyncIterator,
     BinaryIO,
@@ -27,6 +29,7 @@ import aiostream
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal_proto.api_pb2
 from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_error, deprecation_warning
 from modal_proto import api_pb2
 
@@ -112,7 +115,7 @@ class _Volume(_Object, type_prefix="vo"):
     ```python
     import modal
 
-    app = modal.App()  # Note: "app" was called "stub" up until April 2024
+    app = modal.App()
     volume = modal.Volume.from_name("my-persisted-volume", create_if_missing=True)
 
     @app.function(volumes={"/root/foo": volume})
@@ -152,7 +155,7 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
-        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
+        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
         """Create a reference to a persisted volume. Optionally create it lazily.
 
@@ -163,7 +166,7 @@ class _Volume(_Object, type_prefix="vo"):
 
         volume = modal.Volume.from_name("my-volume", create_if_missing=True)
 
-        app = modal.App()  # Note: "app" was called "stub" up until April 2024
+        app = modal.App()
 
         # Volume refers to the same object, even across instances of `app`.
         @app.function(volumes={"/vol": volume})
@@ -192,7 +195,7 @@ class _Volume(_Object, type_prefix="vo"):
         cls: Type["_Volume"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
+        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Volume"]:
         """Creates a new ephemeral volume within a context manager:
@@ -236,7 +239,7 @@ class _Volume(_Object, type_prefix="vo"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
-        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
+        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
         """Lookup a volume with a given name
 
@@ -264,7 +267,7 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        version: "Optional[api_pb2.VolumeFsVersion.ValueType]" = None,
+        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "Volume")
@@ -547,10 +550,12 @@ class _VolumeUploadContextManager:
     _volume_id: str
     _client: _Client
     _force: bool
-    progress_cb: Callable
+    progress_cb: Callable[..., Any]
     _upload_generators: List[Generator[Callable[[], FileUploadSpec], None, None]]
 
-    def __init__(self, volume_id: str, client: _Client, progress_cb: Optional[Callable] = None, force: bool = False):
+    def __init__(
+        self, volume_id: str, client: _Client, progress_cb: Optional[Callable[..., Any]] = None, force: bool = False
+    ):
         """mdmd:hidden"""
         self._volume_id = volume_id
         self._client = client

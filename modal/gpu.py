@@ -4,7 +4,7 @@ from typing import Optional, Union
 
 from modal_proto import api_pb2
 
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import InvalidError, deprecation_warning
 
 
 @dataclass(frozen=True)
@@ -190,7 +190,7 @@ Other configurations can be created using the constructors documented below.
 GPU_T = Union[None, bool, str, _GPUConfig]
 
 
-def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPUConfig]:
+def _parse_gpu_config(value: GPU_T) -> Optional[_GPUConfig]:
     if isinstance(value, _GPUConfig):
         return value
     elif isinstance(value, str):
@@ -215,11 +215,6 @@ def _parse_gpu_config(value: GPU_T, raise_on_true: bool = True) -> Optional[_GPU
             )
         else:
             return STRING_TO_GPU_CONFIG[value.lower()](count=count)
-    elif value is True:
-        deprecation_error(
-            (2023, 12, 13), 'Setting gpu=True is deprecated. Use `gpu="any"` or `gpu=modal.gpu.Any()` instead.'
-        )
-        return None
     elif value is None or value is False:
         return None
     else:

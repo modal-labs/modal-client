@@ -10,6 +10,7 @@ from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
 
+import modal_proto
 from modal_proto import api_pb2
 
 from .._serialization import deserialize, deserialize_data_format, serialize
@@ -28,6 +29,7 @@ class FunctionInfoType(Enum):
     NOTEBOOK = "notebook"
 
 
+# TODO(elias): Add support for quoted/str annotations
 CLASS_PARAM_TYPE_MAP: Dict[Type, Tuple["api_pb2.ParameterType.ValueType", str]] = {
     str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
     int: (api_pb2.PARAM_TYPE_INT, "int_default"),
@@ -88,7 +90,7 @@ class FunctionInfo:
     raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
     user_cls: Optional[Type[Any]]
-    definition_type: "api_pb2.Function.DefinitionType.ValueType"
+    definition_type: "modal_proto.api_pb2.Function.DefinitionType.ValueType"
     module_name: Optional[str]
 
     _type: FunctionInfoType
@@ -238,15 +240,21 @@ class FunctionInfo:
         if not self.user_cls:
             return api_pb2.ClassParameterInfo()
 
-        if not config.get("strict_parameters"):
+        # TODO(elias): Resolve circular dependencies... maybe we'll need some cls_utils module
+        from modal.cls import _get_class_constructor_signature, _use_annotation_parameters
+
+        if not _use_annotation_parameters(self.user_cls):
             return api_pb2.ClassParameterInfo(format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE)
 
+        # annotation parameters trigger strictly typed parameterization
+        # which enables web endpoint for parameterized classes
+
         modal_parameters: List[api_pb2.ClassParameterSpec] = []
-        signature = inspect.signature(self.user_cls)
+        signature = _get_class_constructor_signature(self.user_cls)
         for param in signature.parameters.values():
             has_default = param.default is not param.empty
             if param.annotation not in CLASS_PARAM_TYPE_MAP:
-                raise InvalidError("Strict class parameters need to be explicitly annotated as str or int")
+                raise InvalidError("modal.parameter() currently only support str or int types")
             param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
             class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
             if has_default:
@@ -312,7 +320,7 @@ class FunctionInfo:
         return True
 
 
-def method_has_params(f: Callable) -> bool:
+def method_has_params(f: Callable[..., Any]) -> bool:
     """Return True if a method (bound or unbound) has parameters other than self.
 
     Used for deprecation of @exit() parameters.
@@ -329,7 +337,10 @@ async def _stream_function_call_data(
 ) -> AsyncIterator[Any]:
     """Read from the `data_in` or `data_out` stream of a function call."""
     last_index = 0
+
+    # TODO(gongy): generalize this logic as util for unary streams
     retries_remaining = 10
+    delay_ms = 1
 
     if variant == "data_in":
         stub_fn = client.stub.FunctionCallGetDataIn
@@ -344,23 +355,28 @@ async def _stream_function_call_data(
             async for chunk in unary_stream(stub_fn, req):
                 if chunk.index <= last_index:
                     continue
-                last_index = chunk.index
                 if chunk.data_blob_id:
                     message_bytes = await blob_download(chunk.data_blob_id, client.stub)
                 else:
                     message_bytes = chunk.data
                 message = deserialize_data_format(message_bytes, chunk.data_format, client)
+
+                last_index = chunk.index
                 yield message
         except (GRPCError, StreamTerminatedError) as exc:
             if retries_remaining > 0:
                 retries_remaining -= 1
                 if isinstance(exc, GRPCError):
                     if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                        await asyncio.sleep(1.0)
+                        logger.debug(f"{variant} stream retrying with delay {delay_ms}ms due to {exc}")
+                        await asyncio.sleep(delay_ms / 1000)
+                        delay_ms = min(1000, delay_ms * 10)
                         continue
                 elif isinstance(exc, StreamTerminatedError):
                     continue
             raise
+        else:
+            delay_ms = 1
 
 
 OUTPUTS_TIMEOUT = 55.0  # seconds

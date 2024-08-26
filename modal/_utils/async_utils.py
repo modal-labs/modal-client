@@ -181,9 +181,13 @@ class TaskContext:
             while True:
                 try:
                     await asyncio.wait_for(async_f(), timeout=timeout)
-                except Exception:
-                    if log_exception:
-                        logger.exception(f"Loop attempt failed for {function_name}")
+                except Exception as exc:
+                    if log_exception and isinstance(exc, asyncio.TimeoutError):
+                        # Asyncio sends an empty message in this case, so let's use logger.error
+                        logger.error(f"Loop attempt for {function_name} timed out")
+                    elif log_exception:
+                        # Propagate the exception to the logger
+                        logger.exception(f"Loop attempt for {function_name} failed")
                 try:
                     await asyncio.wait_for(self._exited.wait(), timeout=sleep)
                 except asyncio.TimeoutError:

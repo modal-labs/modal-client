@@ -135,6 +135,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     )
                     for _experimental_gpu in _experimental_gpus
                 ],
+                worker_id=config.get("worker_id"),
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes

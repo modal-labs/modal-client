@@ -86,7 +86,7 @@ async def get(
 
     **Example**
 
-    ```bash
+    ```
     modal volume get <volume_name> logs/april-12-1.txt
     modal volume get <volume_name> / volume_data_dump
     ```

@@ -59,7 +59,7 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _get_signature(f: Callable, is_method: bool = False) -> Dict[str, ParameterMetadata]:
+def _get_signature(f: Callable[..., Any], is_method: bool = False) -> Dict[str, ParameterMetadata]:
     try:
         type_hints = get_type_hints(f)
     except Exception as exc:
@@ -253,7 +253,7 @@ def run(ctx, detach, quiet, interactive, env):
 
     To run the hello_world function (or local entrypoint) in my_app.py:
 
-    ```bash
+    ```
     modal run my_app.py::hello_world
     ```
 
@@ -261,13 +261,13 @@ def run(ctx, detach, quiet, interactive, env):
     single local entrypoint (or single function), you can omit the app and
     function parts:
 
-    ```bash
+    ```
     modal run my_app.py
     ```
 
     Instead of pointing to a file, you can also use the Python module path:
 
-    ```bash
+    ```
     modal run my_project.my_app
     ```
     """
@@ -308,7 +308,7 @@ def serve(
 
     **Examples:**
 
-    ```bash
+    ```
     modal serve hello_world.py
     ```
     """
@@ -383,19 +383,19 @@ def shell(
 
     Start a shell inside the default Debian-based image:
 
-    ```bash
+    ```
     modal shell
     ```
 
     Start a bash shell using the spec for `my_function` in your app:
 
-    ```bash
+    ```
     modal shell hello_world.py::my_function
     ```
 
     Start a `python` shell:
 
-    ```bash
+    ```
     modal shell hello_world.py --cmd=python
     ```
     """

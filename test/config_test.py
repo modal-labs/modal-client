@@ -9,6 +9,7 @@ import toml
 
 import modal
 from modal.config import Config, _lookup_workspace, config
+from modal.exception import InvalidError
 
 
 def _cli(args, env={}):
@@ -147,3 +148,21 @@ def test_config_boolean(modal_config, automount):
     """
     with modal_config(modal_toml):
         assert not Config().get("automount", "prof-1")
+
+
+def test_malformed_config_better(modal_config):
+    modal_toml = """
+    token_id = 'ak-abc'
+    token_secret = 'as_xyz'
+    """
+    with pytest.raises(InvalidError, match="must contain table sections"):
+        with modal_config(modal_toml):
+            pass
+
+    modal_toml = """
+    [default]
+    token_id
+    """
+    with pytest.raises(InvalidError, match="Key name found without value"):
+        with modal_config(modal_toml):
+            pass
