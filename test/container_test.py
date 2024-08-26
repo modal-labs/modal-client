@@ -1946,7 +1946,8 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
         finalized_functions={"": fin_func},
         input_concurrency=concurrency_limit,
     ):
-        assert len(io_context.input_ids) == 1  # for this test
+        assert len(io_context.input_ids) == 1  # no batching in this test
+        assert _io_manager.current_input_id == io_context.input_ids[0]
         active_inputs += [io_context]
         peak_inputs = max(peak_inputs, len(active_inputs))
         active_input_ids |= set(io_context.input_ids)

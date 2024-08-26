@@ -688,7 +688,7 @@ class _ContainerIOManager:
     async def exit_context(self, started_at, input_ids: List[str]):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
-        self.current_input = None
+
         for input_id in input_ids:
             self.current_inputs.pop(input_id)
 
