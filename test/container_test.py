@@ -24,6 +24,7 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
+from modal._container_io_manager import ConcurrencyManager
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -1633,6 +1634,22 @@ def test_stop_fetching_inputs(servicer):
 
 
 @skip_github_non_linux
+def test_set_local_concurrent_inputs(servicer):
+    ret = _run_container(
+        servicer,
+        "test.supports.experimental",
+        "SetLocalConcurrentInputs.*",
+        allow_concurrent_inputs=2,
+        inputs=_get_inputs(((), {}), n=4, method_name="get_concurrent_inputs"),
+        is_class=True,
+    )
+
+    assert len(ret.items) == 4
+    data = [deserialize(i.result.data, ret.client) for i in ret.items]
+    assert data == [20] * 4
+
+
+@skip_github_non_linux
 def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypatch):
     monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     num_heartbeats = 0
@@ -1917,3 +1934,44 @@ def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env
         warning = str(recwarn.pop().message)
         assert "and will not have access to the mounted Volume or NetworkFileSystem data" not in warning
     assert len(recwarn) == 0
+
+
+async def acquire_for(cm, secs):
+    await cm.acquire()
+    await asyncio.sleep(secs)
+    cm.release()
+
+
+@pytest.mark.asyncio
+async def test_concurrency_manager():
+    cm = ConcurrencyManager()
+    cm.set_target_concurrency(10)
+    cm.initialize()
+
+    tasks1 = asyncio.gather(*[acquire_for(cm, 0.1) for _ in range(4)])
+    tasks2 = asyncio.gather(*[acquire_for(cm, 0.2) for _ in range(4)])
+    await asyncio.sleep(0.01)
+
+    cm.set_concurrency(1)
+    assert cm.get_concurrency() == 1
+    assert cm._value == 0
+    assert cm._owed_releases == 7
+    await tasks1
+    assert cm._value == 0
+    assert cm._owed_releases == 3
+
+    cm.set_concurrency(2)
+    assert cm.get_concurrency() == 2
+    assert cm._value == 0
+    assert cm._owed_releases == 2
+
+    cm.set_concurrency(10)
+    assert cm.get_concurrency() == 10
+    assert cm._value == 6
+    assert cm._owed_releases == 0
+    await tasks2
+    assert cm._value == 10
+    assert cm._owed_releases == 0
+
+    await cm.close()
+    assert cm._value == 0

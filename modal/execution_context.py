@@ -86,9 +86,3 @@ def _set_current_context_ids(input_ids: List[str], function_call_ids: List[str])
 
 _current_input_id: ContextVar = ContextVar("_current_input_id")
 _current_function_call_id: ContextVar = ContextVar("_current_function_call_id")
-
-
-def get_local_concurrent_inputs() -> Optional[int]:
-    """Get the number of concurrent inputs for the local container."""
-
-    return _ContainerIOManager._singleton.get_concurrent_inputs()

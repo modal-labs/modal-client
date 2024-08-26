@@ -6,11 +6,12 @@ import math
 import os
 import signal
 import sys
+import threading
 import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Set, Tuple
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Literal, Optional, Set, Tuple
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -162,6 +163,107 @@ class IOContext:
         return data
 
 
+class ConcurrencyManager(asyncio.Semaphore):
+    _target_concurrency: Optional[int]
+    _max_concurrency: Optional[int]
+    _concurrency: Optional[int]
+    _intialized: bool
+    _owed_releases: int
+    _closed: bool
+    _monitor_thread: Optional[threading.Thread]
+
+    def __init__(self) -> None:
+        self._target_concurrency = None
+        self._max_concurrency = None
+        self._concurrency = None
+        self._intialized = False
+        self._owed_releases = 0
+        self._closed = False
+
+    def set_concurrency_specs(self, target_concurrency: int, max_concurrency: int) -> None:
+        assert self._target_concurrency is None
+        assert max_concurrency >= target_concurrency or max_concurrency == 0
+        self._concurrency = target_concurrency
+        self._target_concurrency = target_concurrency
+        self._max_concurrency = max_concurrency
+
+        if max_concurrency > 1:
+            self._monitor_thread = threading.Thread(target=self.monitor_concurrency, daemon=True)
+            self._monitor_thread.start()
+
+    def monitor_concurrency(self) -> None:
+        asyncio.run(self.async_monitor_concurrency())
+
+    async def async_monitor_concurrency(self) -> None:
+        while not self._closed:
+            function_stats = await _ContainerIOManager.get_current_function_stats()
+            desired_concurrency = (
+                min(
+                    self._max_concurrency,
+                    self._target_concurrency + math.ceil(function_stats.backlog / function_stats.num_total_tasks),
+                )
+                if function_stats.num_desired_tasks > function_stats.num_total_tasks
+                else self._target_concurrency
+            )
+            self.set_concurrency(desired_concurrency)
+            # time.sleep(1)
+
+    def initialize(self) -> None:
+        # Initialize the semaphore with the number of concurrent inputs
+        assert self._concurrency and not self._intialized
+        super().__init__(self._concurrency)
+        self._intialized = True
+
+    async def acquire(self) -> Literal[True]:
+        assert self._intialized and not self._closed
+        return await super().acquire()
+
+    def _try_acquire(self) -> bool:
+        assert self._intialized and not self._closed
+        if not self.locked():
+            self._value -= 1
+            return True
+        return False
+
+    async def close(self) -> None:
+        assert self._intialized
+        if self._closed:
+            return
+        closing_concurrency = self._concurrency + self._owed_releases
+        for _ in range(closing_concurrency):
+            await self.acquire()
+        self._closed = True
+
+    def release(self) -> None:
+        assert self._intialized and not self._closed
+        if self._owed_releases > 0:
+            self._owed_releases -= 1
+        else:
+            super().release()
+
+    def get_concurrency(self) -> int:
+        # Return 0 if concurrency manager not initialized
+        return self._concurrency or 0
+
+    def set_concurrency(self, new_concurrency: int) -> None:
+        if self._closed:
+            return
+        if not self._intialized:
+            self._concurrency = new_concurrency
+            return
+
+        if new_concurrency > self._concurrency:
+            for _ in range(new_concurrency - self._concurrency):
+                self.release()
+
+        elif new_concurrency < self._concurrency:
+            for _ in range(self._concurrency - new_concurrency):
+                if not self._try_acquire():
+                    self._owed_releases += 1
+
+        self._concurrency = new_concurrency
+
+
 class _ContainerIOManager:
     """Synchronizes all RPC calls and network operations for a running container.
 
@@ -181,11 +283,8 @@ class _ContainerIOManager:
     current_input_id: Optional[str]
     current_input_started_at: Optional[float]
 
-    _input_concurrency: Optional[int]
-    _orig_input_concurrency: Optional[int]
-    _override_input_concurrency: Optional[int]
+    _concurrency_manager: ConcurrencyManager
 
-    _semaphore: Optional[asyncio.Semaphore]
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
     _heartbeat_condition: asyncio.Condition
@@ -212,11 +311,8 @@ class _ContainerIOManager:
         self.current_input_id = None
         self.current_input_started_at = None
 
-        self._input_concurrency = None
-        self._orig_input_concurrency = None
-        self._override_input_concurrency = None
+        self._concurrency_manager = ConcurrencyManager()
 
-        self._semaphore = None
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
         self._heartbeat_condition = asyncio.Condition()
@@ -287,7 +383,7 @@ class _ContainerIOManager:
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
-                if self._input_concurrency > 1:
+                if self.get_input_concurrency() > 1:
                     logger.info(
                         "Shutting down task to stop some subset of inputs "
                         "(concurrent functions don't support fine-grained cancellation)"
@@ -470,10 +566,11 @@ class _ContainerIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
-            await self._semaphore.acquire()
+            await self._concurrency_manager.acquire()
+
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
-            request.input_concurrency = self._input_concurrency
+            request.input_concurrency = self.get_input_concurrency()
             request.batch_max_size, request.batch_linger_ms = batch_max_size, batch_wait_ms
 
             yielded = False
@@ -519,39 +616,12 @@ class _ContainerIOManager:
                         return
             finally:
                 if not yielded:
-                    self._semaphore.release()
-
-    async def update_input_concurrency(self, input_concurrency_override_max: int) -> None:
-        if input_concurrency_override_max != 0:
-            function_stats = await retry_transient_errors(
-                self._client.stub.FunctionGetCurrentStats,
-                api_pb2.FunctionGetCurrentStatsRequest(function_id=self.function_id),
-                total_timeout=10.0,
-            )
-            if function_stats.num_desired_tasks > function_stats.num_total_tasks:
-                self._override_input_concurrency = min(
-                    input_concurrency_override_max,
-                    math.ceil(
-                        self._orig_input_concurrency * function_stats.num_desired_tasks / function_stats.num_total_tasks
-                    ),
-                )
-            else:
-                self._override_input_concurrency = self._orig_input_concurrency
-
-            # Change semaphore count if input_concurrency is changed
-            if self._override_input_concurrency != self._input_concurrency:
-                for _ in range(self._input_concurrency):
-                    await self._semaphore.acquire()
-                self._input_concurrency = self._override_input_concurrency
-                for _ in range(self._input_concurrency):
-                    self._semaphore.release()
+                    self._concurrency_manager.release()
 
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
         self,
         finalized_functions: Dict[str, FinalizedFunction],
-        input_concurrency: int = 1,
-        input_concurrency_override_max: int = 0,
         batch_max_size: int = 0,
         batch_wait_ms: int = 0,
     ) -> AsyncIterator[IOContext]:
@@ -559,21 +629,16 @@ class _ContainerIOManager:
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
         # - or, when the output for the fetched input is sent, release the semaphore.
-        self._input_concurrency = input_concurrency
-        self._orig_input_concurrency = input_concurrency
-        self._override_input_concurrency = input_concurrency
-        self._semaphore = asyncio.Semaphore(input_concurrency)
+        self._concurrency_manager.initialize()
 
         async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
             io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
             self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
             yield io_context
             self.current_input_id, self.current_input_started_at = (None, None)
-            await self.update_input_concurrency(input_concurrency_override_max)
 
         # collect all active input slots, meaning all inputs have wrapped up.
-        for _ in range(input_concurrency):
-            await self._semaphore.acquire()
+        await self._concurrency_manager.close()
 
     @synchronizer.no_io_translation
     async def _push_outputs(
@@ -716,7 +781,7 @@ class _ContainerIOManager:
     async def exit_context(self, started_at):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
-        self._semaphore.release()
+        self._concurrency_manager.release()
 
     @synchronizer.no_io_translation
     async def push_outputs(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
@@ -873,13 +938,50 @@ class _ContainerIOManager:
             print("Error: Failed to start PTY shell.")
             raise e
 
+    def set_concurrency_specs(self, target_concurrency: int, max_concurrency: int) -> None:
+        if max_concurrency < target_concurrency and max_concurrency != 0:
+            raise InvalidError("max_concurrent_inputs must be greater than or equal to allow_concurrent_inputs.")
+        if target_concurrency <= 1:
+            raise InvalidError(
+                "allow_concurrent_inputs must be greater than 1 " "to enable automatic input concurrency scaling."
+            )
+        self._concurrency_manager.set_concurrency_specs(target_concurrency, max_concurrency)
+
     @classmethod
     def stop_fetching_inputs(cls):
         assert cls._singleton
         cls._singleton._fetching_inputs = False
 
-    def get_concurrent_inputs(self) -> Optional[int]:
-        return self._input_concurrency
+    @classmethod
+    def set_input_concurrency(cls, concurrency: int) -> None:
+        assert cls._singleton
+        container_io_manager = cls._singleton
+        if container_io_manager._concurrency_manager._target_concurrency == 1 and concurrency != 1:
+            raise InvalidError(
+                f"Cannot set local input concurrency to {concurrency} on a function "
+                "or class with allow_concurrent_inputs=1."
+            )
+        if container_io_manager._concurrency_manager._max_concurrency != 0:
+            print(
+                "Warning: You have enabled automatic input concurrency scaling with `max_concurrent_inputs. "
+                "Setting input concurrency manually will disable this feature."
+            )
+        container_io_manager._concurrency_manager.set_concurrency(concurrency)
+
+    @classmethod
+    def get_input_concurrency(cls) -> int:
+        assert cls._singleton
+        return cls._singleton._concurrency_manager.get_concurrency()
+
+    @classmethod
+    async def get_current_function_stats(cls) -> api_pb2.FunctionStats:
+        assert cls._singleton
+        container_io_manager = cls._singleton
+        return await retry_transient_errors(
+            container_io_manager._client.stub.FunctionGetCurrentStats,
+            api_pb2.FunctionGetCurrentStatsRequest(function_id=container_io_manager.function_id),
+            total_timeout=10.0,
+        )
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)

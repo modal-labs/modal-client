@@ -321,8 +321,7 @@ def call_function(
     user_code_event_loop: UserCodeEventLoop,
     container_io_manager: "modal._container_io_manager.ContainerIOManager",
     finalized_functions: Dict[str, FinalizedFunction],
-    input_concurrency: int,
-    input_concurrency_override_max: int,
+    target_input_concurrency: int,
     batch_max_size: int,
     batch_wait_ms: int,
 ):
@@ -417,10 +416,8 @@ def call_function(
                 )
         reset_context()
 
-    if input_concurrency_override_max and input_concurrency_override_max < input_concurrency:
-        raise InvalidError("input_concurrency_override_max must be greater than or equal to input_concurrency")
-    if input_concurrency > 1:
-        with DaemonizedThreadPool(max_threads=input_concurrency) as thread_pool:
+    if target_input_concurrency > 1:
+        with DaemonizedThreadPool(max_threads=target_input_concurrency) as thread_pool:
 
             async def run_concurrent_inputs():
                 # all run_input coroutines will have completed by the time we leave the execution context
@@ -428,11 +425,7 @@ def call_function(
                 # for them to resolve gracefully:
                 async with TaskContext(0.01) as task_context:
                     async for io_context in container_io_manager.run_inputs_outputs.aio(
-                        finalized_functions,
-                        input_concurrency,
-                        input_concurrency_override_max,
-                        batch_max_size,
-                        batch_wait_ms,
+                        finalized_functions, batch_max_size, batch_wait_ms
                     ):
                         # Note that run_inputs_outputs will not return until the concurrency semaphore has
                         # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
@@ -446,9 +439,7 @@ def call_function(
 
             user_code_event_loop.run(run_concurrent_inputs())
     else:
-        for io_context in container_io_manager.run_inputs_outputs(
-            finalized_functions, input_concurrency, input_concurrency_override_max, batch_max_size, batch_wait_ms
-        ):
+        for io_context in container_io_manager.run_inputs_outputs(finalized_functions, batch_max_size, batch_wait_ms):
             if io_context.finalized_function.is_async:
                 user_code_event_loop.run(run_input_async(io_context))
             else:
@@ -744,18 +735,19 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 # if the app can't be inferred by the imported function, use name-based fallback
                 active_app = get_active_app_fallback(function_def)
 
-        # Container can fetch multiple inputs simultaneously
-        if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-            # Concurrency and batching doesn't apply for `modal shell`.
-            input_concurrency = 1
-            input_concurrency_override_max = 0
-            batch_max_size = 0
-            batch_wait_ms = 0
-        else:
-            input_concurrency = function_def.allow_concurrent_inputs or 1
-            input_concurrency_override_max = function_def.concurrent_inputs_override_max or 0
-            batch_max_size = function_def.batch_max_size or 0
-            batch_wait_ms = function_def.batch_linger_ms or 0
+            # Container can fetch multiple inputs simultaneously
+            if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+                # Concurrency and batching doesn't apply for `modal shell`.
+                target_input_concurrency = 1
+                max_input_concurrency = 0
+                batch_max_size = 0
+                batch_wait_ms = 0
+            else:
+                target_input_concurrency = function_def.allow_concurrent_inputs or 1
+                max_input_concurrency = function_def.max_concurrent_inputs or 0
+                batch_max_size = function_def.batch_max_size or 0
+                batch_wait_ms = function_def.batch_linger_ms or 0
+            container_io_manager.set_concurrency_specs(target_input_concurrency, max_input_concurrency)
 
         # Get ids and metadata for objects (primarily functions and classes) on the app
         container_app: RunningApp = container_io_manager.get_app_objects()
@@ -821,8 +813,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 event_loop,
                 container_io_manager,
                 finalized_functions,
-                input_concurrency,
-                input_concurrency_override_max,
+                target_input_concurrency,
                 batch_max_size,
                 batch_wait_ms,
             )
