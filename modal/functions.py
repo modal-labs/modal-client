@@ -843,6 +843,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                         for _experimental_gpu in _experimental_gpus
                     ],
                     i6pn_enabled=config.get("i6pn_enabled"),
+                    _experimental_concurrent_cancellations=True,
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
@@ -1417,10 +1418,19 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
         response = await retry_transient_errors(self._client.stub.FunctionGetCallGraph, request)
         return _reconstruct_call_graph(response)
 
-    async def cancel(self):
+    async def cancel(
+        self,
+        terminate_containers: bool = False,  # if true, containers running the inputs are forcibly terminated
+    ):
         """Cancels the function call, which will stop its execution and mark its inputs as
-        [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus)."""
-        request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
+        [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus).
+
+        If `terminate_containers=True` - the containers running the cancelled inputs are all terminated
+        causing any non-cancelled inputs on those containers to be rescheduled in new containers.
+        """
+        request = api_pb2.FunctionCallCancelRequest(
+            function_call_id=self.object_id, terminate_containers=terminate_containers
+        )
         assert self._client and self._client.stub
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 
