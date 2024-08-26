@@ -169,17 +169,12 @@ class ConcurrencyManager(asyncio.Semaphore):
     _owed_releases: int
     _closed: bool
 
-    def __init__(self) -> None:
-        self._target_concurrency = None
-        self._concurrency = None
+    def __init__(self, input_concurrency) -> None:
+        self._target_concurrency = input_concurrency
+        self._concurrency = input_concurrency
         self._intialized = False
         self._owed_releases = 0
         self._closed = False
-
-    def set_target_concurrency(self, concurrency: int) -> None:
-        assert self._target_concurrency is None
-        self._target_concurrency = concurrency
-        self._concurrency = concurrency
 
     def initialize(self) -> None:
         # Initialize the semaphore with the number of concurrent inputs
@@ -271,7 +266,7 @@ class _ContainerIOManager:
     _GENERATOR_STOP_SENTINEL: ClassVar[Sentinel] = Sentinel()
     _singleton: ClassVar[Optional["_ContainerIOManager"]] = None
 
-    def _init(self, container_args: api_pb2.ContainerArguments, client: _Client):
+    def _init(self, container_args: api_pb2.ContainerArguments, client: _Client, input_concurrency) -> None:
         self.cancelled_input_ids = set()
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
@@ -284,7 +279,7 @@ class _ContainerIOManager:
         self.current_input_id = None
         self.current_input_started_at = None
 
-        self._concurrency_manager = ConcurrencyManager()
+        self._concurrency_manager = ConcurrencyManager(input_concurrency)
 
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
@@ -297,9 +292,11 @@ class _ContainerIOManager:
         self._client = client
         assert isinstance(self._client, _Client)
 
-    def __new__(cls, container_args: api_pb2.ContainerArguments, client: _Client) -> "_ContainerIOManager":
+    def __new__(
+        cls, container_args: api_pb2.ContainerArguments, client: _Client, input_concurrency: int
+    ) -> "_ContainerIOManager":
         cls._singleton = super().__new__(cls)
-        cls._singleton._init(container_args, client)
+        cls._singleton._init(container_args, client, input_concurrency)
         return cls._singleton
 
     @classmethod

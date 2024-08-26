@@ -211,9 +211,6 @@ class DaemonizedThreadPool:
     # Used instead of ThreadPoolExecutor, since the latter won't allow
     # the interpreter to shut down before the currently running tasks
     # have finished
-    def __init__(self, max_threads):
-        self.max_threads = max_threads
-
     def __enter__(self):
         self.spawned_workers = 0
         self.inputs: queue.Queue[Any] = queue.Queue()
@@ -246,9 +243,8 @@ class DaemonizedThreadPool:
                     logger.exception(f"Exception raised by {_func} in DaemonizedThreadPool worker!")
                 self.inputs.task_done()
 
-        if self.spawned_workers < self.max_threads:
-            threading.Thread(target=worker_thread, daemon=True).start()
-            self.spawned_workers += 1
+        threading.Thread(target=worker_thread, daemon=True).start()
+        self.spawned_workers += 1
 
         self.inputs.put((func, args))
 
@@ -417,7 +413,7 @@ def call_function(
         reset_context()
 
     if input_concurrency > 1:
-        with DaemonizedThreadPool(max_threads=input_concurrency) as thread_pool:
+        with DaemonizedThreadPool() as thread_pool:
 
             async def run_concurrent_inputs():
                 # all run_input coroutines will have completed by the time we leave the execution context
@@ -690,10 +686,20 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
-    container_io_manager = ContainerIOManager(container_args, client)
+    # Container can fetch multiple inputs simultaneously
+    function_def = container_args.function_def
+    if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+        # Concurrency and batching doesn't apply for `modal shell`.
+        input_concurrency = 1
+        batch_max_size = 0
+        batch_wait_ms = 0
+    else:
+        input_concurrency = function_def.allow_concurrent_inputs or 1
+        batch_max_size = function_def.batch_max_size or 0
+        batch_wait_ms = function_def.batch_linger_ms or 0
+    container_io_manager = ContainerIOManager(container_args, client, input_concurrency)
     active_app: Optional[_App] = None
     service: Service
-    function_def = container_args.function_def
     is_auto_snapshot: bool = function_def.is_auto_snapshot
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
@@ -734,18 +740,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             if active_app is None:
                 # if the app can't be inferred by the imported function, use name-based fallback
                 active_app = get_active_app_fallback(function_def)
-
-        # Container can fetch multiple inputs simultaneously
-        if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-            # Concurrency and batching doesn't apply for `modal shell`.
-            input_concurrency = 1
-            batch_max_size = 0
-            batch_wait_ms = 0
-        else:
-            input_concurrency = function_def.allow_concurrent_inputs or 1
-            batch_max_size = function_def.batch_max_size or 0
-            batch_wait_ms = function_def.batch_linger_ms or 0
-        container_io_manager.set_target_concurrency(input_concurrency)
 
         # Get ids and metadata for objects (primarily functions and classes) on the app
         container_app: RunningApp = container_io_manager.get_app_objects()
