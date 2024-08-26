@@ -911,6 +911,7 @@ message EnvironmentDeleteRequest {
 message EnvironmentListItem {
   string name = 1;
   string webhook_suffix = 2;
+  double created_at = 3;
 }
 
 message EnvironmentListResponse {
