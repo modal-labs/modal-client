@@ -11,5 +11,18 @@ def typed_func(a: str) -> float:
     return 0.0
 
 
-ret = typed_func.remote(a="hello")
-assert_type(ret, float)
+should_be_float = typed_func.remote(a="hello")
+assert_type(should_be_float, float)
+
+
+@app.function()
+async def async_typed_func(b: bool) -> str:
+    return ""
+
+
+async def async_block() -> None:
+    should_be_str = async_typed_func.remote(False)
+    assert_type(should_be_str, str)
+
+    should_be_str_2 = async_typed_func.remote.aio(True)
+    assert_type(should_be_str_2, str)
