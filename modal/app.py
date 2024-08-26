@@ -541,7 +541,6 @@ class _App:
         max_inputs: Optional[int] = None,
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
-        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
         _allow_background_volume_commits: None = None,
         _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
