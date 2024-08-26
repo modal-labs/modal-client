@@ -368,7 +368,7 @@ class _ContainerIOManager:
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
-                if self._input_concurrency > 1:
+                if self._concurrency_manager._target_concurrency > 1:
                     for input_id in input_ids_to_cancel:
                         if input_id in self.current_inputs:
                             self.current_inputs[input_id].cancel()
@@ -908,9 +908,6 @@ class _ContainerIOManager:
         except Exception as e:
             print("Error: Failed to start PTY shell.")
             raise e
-
-    def set_target_concurrency(self, concurrency: int) -> None:
-        self._concurrency_manager.set_target_concurrency(concurrency)
 
     @classmethod
     def stop_fetching_inputs(cls):

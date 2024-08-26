@@ -199,6 +199,6 @@ def test_interact(container_client, servicer):
 
 def test_interact_no_pty_error(container_client, servicer):
     # Initialize container singleton
-    ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    ContainerIOManager(api_pb2.ContainerArguments(), container_client, 1)
     with pytest.raises(InvalidError, match=r"modal.interact\(\) without running Modal in interactive mode"):
         interact()

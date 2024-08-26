@@ -1971,7 +1971,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     dummy_container_args = api_pb2.ContainerArguments(function_id="fu-123")
     from modal._utils.async_utils import synchronizer
 
-    io_manager = ContainerIOManager(dummy_container_args, client)
+    io_manager = ContainerIOManager(dummy_container_args, client, concurrency_limit)
     _io_manager = synchronizer._translate_in(io_manager)
 
     async def _func(x):
@@ -1988,7 +1988,6 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     peak_inputs = 0
     for io_context in io_manager.run_inputs_outputs(
         finalized_functions={"": fin_func},
-        input_concurrency=concurrency_limit,
     ):
         assert len(io_context.input_ids) == 1  # no batching in this test
         assert _io_manager.current_input_id == io_context.input_ids[0]
