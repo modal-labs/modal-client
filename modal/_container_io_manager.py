@@ -32,6 +32,7 @@ from .exception import InputCancellation, InvalidError
 from .running_app import RunningApp
 
 MAX_OUTPUT_BATCH_SIZE: int = 49
+INPUT_CONCURRENCY_AUTOSCALE_TIME_INTERVAL_SECS = 1
 
 RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
 
@@ -197,16 +198,12 @@ class ConcurrencyManager(asyncio.Semaphore):
     async def async_monitor_concurrency(self) -> None:
         while not self._closed:
             function_stats = await _ContainerIOManager.get_current_function_stats()
-            desired_concurrency = (
-                min(
-                    self._max_concurrency,
-                    self._target_concurrency + math.ceil(function_stats.backlog / function_stats.num_total_tasks),
-                )
-                if function_stats.num_desired_tasks > function_stats.num_total_tasks
-                else self._target_concurrency
+            desired_concurrency = min(
+                self._max_concurrency,
+                self._target_concurrency + math.ceil(function_stats.backlog / function_stats.num_total_tasks),
             )
             self.set_concurrency(desired_concurrency)
-            # time.sleep(1)
+            time.sleep(INPUT_CONCURRENCY_AUTOSCALE_TIME_INTERVAL_SECS)
 
     def initialize(self) -> None:
         # Initialize the semaphore with the number of concurrent inputs
@@ -939,11 +936,11 @@ class _ContainerIOManager:
             raise e
 
     def set_concurrency_specs(self, target_concurrency: int, max_concurrency: int) -> None:
-        if max_concurrency < target_concurrency and max_concurrency != 0:
+        if max_concurrency != 0 and max_concurrency < target_concurrency:
             raise InvalidError("max_concurrent_inputs must be greater than or equal to allow_concurrent_inputs.")
-        if target_concurrency <= 1:
+        if max_concurrency != 0 and target_concurrency <= 1:
             raise InvalidError(
-                "allow_concurrent_inputs must be greater than 1 " "to enable automatic input concurrency scaling."
+                "allow_concurrent_inputs must be greater than 1 to enable automatic input concurrency scaling."
             )
         self._concurrency_manager.set_concurrency_specs(target_concurrency, max_concurrency)
 

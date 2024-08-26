@@ -1945,7 +1945,7 @@ async def acquire_for(cm, secs):
 @pytest.mark.asyncio
 async def test_concurrency_manager():
     cm = ConcurrencyManager()
-    cm.set_target_concurrency(10)
+    cm.set_concurrency_specs(10, 0)
     cm.initialize()
 
     tasks1 = asyncio.gather(*[acquire_for(cm, 0.1) for _ in range(4)])
