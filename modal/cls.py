@@ -25,7 +25,6 @@ from .functions import (
 from .gpu import GPU_T
 from .object import _get_environment_name, _Object
 from .partial_function import (
-    _find_callables_for_cls,
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
     _PartialFunction,
@@ -328,7 +327,9 @@ class _Cls(_Object, type_prefix="cs"):
             partial_function.wrapped = True
 
         # Get all callables
-        callables: Dict[str, Callable] = _find_callables_for_cls(user_cls, ~_PartialFunctionFlags(0))
+        callables: Dict[str, Callable] = {
+            k: pf.raw_f for k, pf in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags(0)).items()
+        }
 
         def _deps() -> List[_Function]:
             return [class_service_function] + list(functions.values())

@@ -587,10 +587,11 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
         if info.user_cls and not is_auto_snapshot:
             # Needed to avoid circular imports
-            from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
+            from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
-            build_functions = list(_find_callables_for_cls(info.user_cls, _PartialFunctionFlags.BUILD).values())
-            for build_function in build_functions:
+            build_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.BUILD).items()
+            for k, pf in build_functions:
+                build_function = pf.raw_f
                 snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)
                 snapshot_function = _Function.from_args(
                     snapshot_info,
@@ -602,7 +603,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     network_file_systems=network_file_systems,
                     volumes=volumes,
                     memory=memory,
-                    timeout=86400,  # TODO: make this an argument to `@build()`
+                    timeout=pf.build_timeout,
                     cpu=cpu,
                     ephemeral_disk=ephemeral_disk,
                     is_builder_function=True,
@@ -613,7 +614,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                 image = _Image._from_args(
                     base_images={"base": image},
                     build_function=snapshot_function,
-                    force_build=image.force_build,
+                    force_build=image.force_build or pf.force_build,
                 )
 
         if keep_warm is not None and not isinstance(keep_warm, int):
@@ -826,6 +827,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                         for _experimental_gpu in _experimental_gpus
                     ],
                     i6pn_enabled=config.get("i6pn_enabled"),
+                    _experimental_concurrent_cancellations=True,
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
@@ -1400,10 +1402,19 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
         response = await retry_transient_errors(self._client.stub.FunctionGetCallGraph, request)
         return _reconstruct_call_graph(response)
 
-    async def cancel(self):
+    async def cancel(
+        self,
+        terminate_containers: bool = False,  # if true, containers running the inputs are forcibly terminated
+    ):
         """Cancels the function call, which will stop its execution and mark its inputs as
-        [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus)."""
-        request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
+        [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus).
+
+        If `terminate_containers=True` - the containers running the cancelled inputs are all terminated
+        causing any non-cancelled inputs on those containers to be rescheduled in new containers.
+        """
+        request = api_pb2.FunctionCallCancelRequest(
+            function_call_id=self.object_id, terminate_containers=terminate_containers
+        )
         assert self._client and self._client.stub
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 
