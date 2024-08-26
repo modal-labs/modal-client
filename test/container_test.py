@@ -1545,16 +1545,44 @@ def test_cancellation_aborts_current_input_on_match(
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-@pytest.mark.parametrize(
-    ["function_name"],
-    [("delay",), ("delay_async",)],
-)
-def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name):
+def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
             "test.supports.functions",
-            function_name,
+            "delay_async",
+            inputs=[("", (1,), {})] * 2,  # two inputs
+            allow_concurrent_inputs=2,
+        )
+        input_lock.wait()
+        input_lock.wait()
+
+    time.sleep(0.05)  # let the container get and start processing the input
+    servicer.container_heartbeat_return_now(
+        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-001"]))
+    )
+    # container should exit soon!
+    exit_code = container_process.wait(5)
+    assert (
+        len(servicer.container_outputs) == 1
+    )  # should not fail the outputs, as they would have been cancelled in backend already
+
+    outputs: List[api_pb2.FunctionPutOutputsRequest] = servicer.container_outputs
+    assert deserialize(outputs[0].outputs[0].result.data, None) == 1
+    container_stderr = container_process.stderr.read().decode("utf8")
+    print(container_stderr)
+    assert "Traceback" not in container_stderr
+    assert exit_code == 0  # container should exit gracefully
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_cancellation_stops_task_with_concurrent_inputs(servicer):
+    with servicer.input_lockstep() as input_lock:
+        container_process = _run_container_process(
+            servicer,
+            "test.supports.functions",
+            "delay",
             inputs=[("", (20,), {})] * 2,  # two inputs
             allow_concurrent_inputs=2,
         )
@@ -1563,9 +1591,9 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
 
     time.sleep(0.05)  # let the container get and start processing the input
     servicer.container_heartbeat_return_now(
-        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000", "in-001"]))
+        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-001"]))
     )
-    # container should exit soon!
+    # container should exit immediately, stopping execution of both inputs
     exit_code = container_process.wait(5)
     assert (
         len(servicer.container_outputs) == 0
