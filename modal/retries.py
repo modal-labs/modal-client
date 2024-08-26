@@ -13,7 +13,7 @@ class Retries:
 
     ```python
     import modal
-    app = modal.App()  # Note: called "stub" up until April 2024
+    app = modal.App()
 
     # Basic configuration.
     # This sets a policy of max 4 retries with 1-second delay between failures.

@@ -66,7 +66,7 @@ class IOContext:
         input_ids: List[str],
         function_call_ids: List[str],
         finalized_function: FinalizedFunction,
-        deserialized_args: List,
+        deserialized_args: List[Any],
         is_batched: bool,
     ):
         self.input_ids = input_ids
@@ -105,7 +105,7 @@ class IOContext:
         deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in inputs]
         return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
 
-    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List]]:
+    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List[Any]]]:
         if not self._is_batched:
             return self._deserialized_args[0]
 
@@ -446,7 +446,7 @@ class _ContainerIOManager:
             object_handle_metadata=object_handle_metadata,
         )
 
-    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable]:
+    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable[..., Any]]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)
@@ -912,26 +912,16 @@ class _ContainerIOManager:
             else:
                 logger.debug(f"modal.Volume background commit success for {volume_id}.")
 
-    async def interact(self):
+    async def interact(self, from_breakpoint: bool = False):
         if self._is_interactivity_enabled:
             # Currently, interactivity is enabled forever
             return
         self._is_interactivity_enabled = True
 
-        if not self.function_def.pty_info:
-            raise InvalidError(
-                "Interactivity is not enabled in this function. "
-                "Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
-            )
+        if not self.function_def.pty_info.pty_type:
+            trigger = "breakpoint()" if from_breakpoint else "modal.interact()"
+            raise InvalidError(f"Cannot use {trigger} without running Modal in interactive mode.")
 
-        if self.function_def.concurrency_limit > 1:
-            print(
-                "Warning: Interactivity is not supported on functions with concurrency > 1. "
-                "You may experience unexpected behavior."
-            )
-
-        # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here
-        # todo(nathan): check if function interactivity is enabled
         try:
             await self._client.stub.FunctionStartPtyShell(Empty())
         except Exception as e:

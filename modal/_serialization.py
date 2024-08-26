@@ -2,6 +2,7 @@
 import io
 import pickle
 import typing
+from dataclasses import dataclass
 from typing import Any
 
 from synchronicity.synchronizer import Interface
@@ -386,24 +387,43 @@ def check_valid_cls_constructor_arg(key, obj):
         )
 
 
+@dataclass
+class ParamTypeInfo:
+    default_field: str
+    proto_field: str
+    converter: typing.Callable[[str], typing.Any]
+
+
+PARAM_TYPE_MAPPING = {
+    api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(default_field="string_default", proto_field="string_value", converter=str),
+    api_pb2.PARAM_TYPE_INT: ParamTypeInfo(default_field="int_default", proto_field="int_value", converter=int),
+}
+
+
 def serialize_proto_params(
     python_params: typing.Dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]
 ) -> bytes:
     proto_params: typing.List[api_pb2.ClassParameterValue] = []
     for schema_param in schema:
-        python_value = python_params[schema_param.name]
-        if schema_param.type == api_pb2.PARAM_TYPE_STRING:
-            proto_param = api_pb2.ClassParameterValue(
-                name=schema_param.name, type=api_pb2.PARAM_TYPE_STRING, string_value=python_value
-            )
-        elif schema_param.type == api_pb2.PARAM_TYPE_INT:
-            proto_param = api_pb2.ClassParameterValue(
-                name=schema_param.name, type=api_pb2.PARAM_TYPE_INT, int_value=python_value
-            )
-        else:
-            raise ValueError(f"Unsupported type: {schema_param.type}")
+        type_info = PARAM_TYPE_MAPPING.get(schema_param.type)
+        if not type_info:
+            raise ValueError(f"Unsupported parameter type: {schema_param.type}")
+        proto_param = api_pb2.ClassParameterValue(
+            name=schema_param.name,
+            type=schema_param.type,
+        )
+        python_value = python_params.get(schema_param.name)
+        if python_value is None:
+            if schema_param.has_default:
+                python_value = getattr(schema_param, type_info.default_field)
+            else:
+                raise ValueError(f"Missing required parameter: {schema_param.name}")
+        try:
+            converted_value = type_info.converter(python_value)
+        except ValueError as exc:
+            raise ValueError(f"Invalid type for parameter {schema_param.name}: {exc}")
+        setattr(proto_param, type_info.proto_field, converted_value)
         proto_params.append(proto_param)
-
     proto_bytes = api_pb2.ClassParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
     return proto_bytes
 

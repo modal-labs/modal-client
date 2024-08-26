@@ -8,9 +8,10 @@ from rich.console import Console
 from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext, synchronize_api
+from ._utils.grpc_utils import retry_transient_errors
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
-from .exception import InteractiveTimeoutError
+from .exception import InteractiveTimeoutError, InvalidError
 from .io_streams import _StreamReader, _StreamWriter
 
 
@@ -19,6 +20,7 @@ class _ContainerProcess:
     _stdout: _StreamReader
     _stderr: _StreamReader
     _stdin: _StreamWriter
+    _returncode: Optional[int] = None
 
     def __init__(self, process_id: str, client: _Client) -> None:
         self._process_id = process_id
@@ -44,6 +46,48 @@ class _ContainerProcess:
         """`StreamWriter` for the container process's stdin stream."""
 
         return self._stdin
+
+    @property
+    def returncode(self) -> _StreamWriter:
+        if self._returncode is None:
+            raise InvalidError(
+                "You must call wait() before accessing the returncode. "
+                "To poll for the status of a running process, use poll() instead."
+            )
+
+        return self._returncode
+
+    async def poll(self) -> Optional[int]:
+        """Check if the container process has finished running.
+
+        Returns `None` if the process is still running, else returns the exit code.
+        """
+        if self._returncode is not None:
+            return self._returncode
+
+        req = api_pb2.ContainerExecWaitRequest(exec_id=self._process_id, timeout=0)
+        resp: api_pb2.ContainerExecWaitResponse = await retry_transient_errors(self._client.stub.ContainerExecWait, req)
+
+        if resp.completed:
+            self._returncode = resp.exit_code
+            return self._returncode
+
+        return None
+
+    async def wait(self) -> int:
+        """Wait for the container process to finish running. Returns the exit code."""
+
+        if self._returncode is not None:
+            return self._returncode
+
+        while True:
+            req = api_pb2.ContainerExecWaitRequest(exec_id=self._process_id, timeout=50)
+            resp: api_pb2.ContainerExecWaitResponse = await retry_transient_errors(
+                self._client.stub.ContainerExecWait, req
+            )
+            if resp.completed:
+                self._returncode = resp.exit_code
+                return self._returncode
 
     async def attach(self, *, pty: bool):
         if platform.system() == "Windows":

@@ -95,6 +95,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.slow_put_inputs = False
         self.container_inputs = []
         self.container_outputs = []
+        self.fail_get_data_out = []
         self.fc_data_in = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.fc_data_out = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.queue: Dict[bytes, List[bytes]] = {b"": []}
@@ -339,6 +340,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
         ]
         await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
 
+    async def AppRollback(self, stream):
+        request: api_pb2.AppRollbackRequest = await stream.recv_message()
+        current_version = self.app_deployment_history[request.app_id][-1]["version"]
+        if request.version < 0:
+            rollback_version = current_version + request.version
+        else:
+            rollback_version = request.version
+        rollback_client = self.app_deployment_history[request.app_id][rollback_version - 1]["client_version"]
+        self.app_deployment_history[request.app_id].append(
+            {
+                "app_id": request.app_id,
+                "deployed_at": datetime.datetime.now().timestamp(),
+                "version": current_version + 1,
+                "client_version": rollback_client,
+                "deployed_by": "foo-user",
+                "tag": "latest",
+                "rollback_version": rollback_version,
+            }
+        )
+
+        self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
+        await stream.send_message(Empty())
+
     async def AppSetObjects(self, stream):
         request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
         self.app_objects[request.app_id] = dict(request.indexed_object_ids)
@@ -372,15 +396,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             await stream.send_message(api_pb2.AppPublishResponse())
 
-        # start new version
+        if current_history := self.app_deployment_history[request.app_id]:
+            current_version = current_history[-1]["version"]
+        else:
+            current_version = 0
         self.app_deployment_history[request.app_id].append(
             {
                 "app_id": request.app_id,
                 "deployed_at": datetime.datetime.now().timestamp(),
-                "version": 1,
+                "version": current_version + 1,
                 "client_version": str(pkg_resources.parse_version(__version__)),
                 "deployed_by": "foo-user",
                 "tag": "latest",
+                "rollback_version": None,
             }
         )
 
@@ -562,6 +590,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
             stdin=asyncio.subprocess.PIPE,
         )
         await stream.send_message(api_pb2.ContainerExecResponse(exec_id="container_exec_id"))
+
+    async def ContainerExecWait(self, stream):
+        request: api_pb2.ContainerExecWaitRequest = await stream.recv_message()
+        try:
+            await asyncio.wait_for(self.container_exec.wait(), request.timeout)
+        except asyncio.TimeoutError:
+            pass
+
+        if self.container_exec.returncode is None:
+            await stream.send_message(api_pb2.ContainerExecWaitResponse(completed=False))
+        else:
+            await stream.send_message(
+                api_pb2.ContainerExecWaitResponse(completed=True, exit_code=self.container_exec.returncode)
+            )
 
     async def ContainerExecGetOutput(self, stream):
         request: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
@@ -923,6 +965,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionCallGetDataOut(self, stream):
         req: api_pb2.FunctionCallGetDataRequest = await stream.recv_message()
+
+        if len(self.fail_get_data_out) > 0:
+            status_code = self.fail_get_data_out.pop()
+            raise GRPCError(status_code, "foobar")
+
         while True:
             chunk = await self.fc_data_out[req.function_call_id].get()
             await stream.send_message(chunk)

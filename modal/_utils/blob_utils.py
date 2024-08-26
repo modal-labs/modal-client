@@ -303,17 +303,17 @@ async def blob_upload_file(
 
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
-async def _download_from_url(download_url) -> bytes:
-    async with ClientSessionRegistry.get_session().get(download_url) as resp:
+async def _download_from_url(download_url: str) -> bytes:
+    async with ClientSessionRegistry.get_session().get(download_url) as s3_resp:
         # S3 signal to slow down request rate.
-        if resp.status == 503:
+        if s3_resp.status == 503:
             logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
             await asyncio.sleep(1)
 
-        if resp.status != 200:
-            text = await resp.text()
-            raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
-        return await resp.read()
+        if s3_resp.status != 200:
+            text = await s3_resp.text()
+            raise ExecutionError(f"Get from url failed with status {s3_resp.status}: {text}")
+        return await s3_resp.read()
 
 
 async def blob_download(blob_id: str, stub: ModalClientStub) -> bytes:
@@ -328,17 +328,17 @@ async def blob_iter(blob_id: str, stub: ModalClientStub) -> AsyncIterator[bytes]
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await retry_transient_errors(stub.BlobGet, req)
     download_url = resp.download_url
-    async with ClientSessionRegistry.get_session().get(download_url) as resp:
+    async with ClientSessionRegistry.get_session().get(download_url) as s3_resp:
         # S3 signal to slow down request rate.
-        if resp.status == 503:
+        if s3_resp.status == 503:
             logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
             await asyncio.sleep(1)
 
-        if resp.status != 200:
-            text = await resp.text()
-            raise ExecutionError(f"Get from url failed with status {resp.status}: {text}")
+        if s3_resp.status != 200:
+            text = await s3_resp.text()
+            raise ExecutionError(f"Get from url failed with status {s3_resp.status}: {text}")
 
-        async for chunk in resp.content.iter_any():
+        async for chunk in s3_resp.content.iter_any():
             yield chunk
 
 

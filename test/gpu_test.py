@@ -2,19 +2,12 @@
 import pytest
 
 from modal import App
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 
 def dummy():
     pass  # not actually used in test (servicer returns sum of square of all args)
-
-
-def test_gpu_true_function(client, servicer):
-    app = App()
-
-    with pytest.raises(DeprecationError):
-        app.function(gpu=True)(dummy)
 
 
 def test_gpu_any_function(client, servicer):

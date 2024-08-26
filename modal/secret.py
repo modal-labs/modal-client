@@ -162,9 +162,12 @@ class _Secret(_Object, type_prefix="st"):
 
     @staticmethod
     def from_name(
-        label: str,
+        label: str,  # Some global identifier, such as "aws-secret"
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
+        required_keys: List[
+            str
+        ] = [],  # Optionally, a list of required environment variables (will be asserted server-side)
     ) -> "_Secret":
         """Create a reference to a persisted Secret
 
@@ -182,6 +185,7 @@ class _Secret(_Object, type_prefix="st"):
                 deployment_name=label,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
+                required_keys=required_keys,
             )
             try:
                 response = await resolver.client.stub.SecretGetOrCreate(req)
@@ -200,6 +204,7 @@ class _Secret(_Object, type_prefix="st"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
+        required_keys: List[str] = [],
     ) -> "_Secret":
         """Lookup a secret with a given name
 
@@ -208,7 +213,9 @@ class _Secret(_Object, type_prefix="st"):
         print(s.object_id)
         ```
         """
-        obj = _Secret.from_name(label, namespace=namespace, environment_name=environment_name)
+        obj = _Secret.from_name(
+            label, namespace=namespace, environment_name=environment_name, required_keys=required_keys
+        )
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
