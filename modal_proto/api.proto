@@ -1044,6 +1044,8 @@ message Function {
   reserved 59;
   uint32 batch_max_size = 60; // Maximum number of inputs to fetch at once
   uint64 batch_linger_ms = 61; // Miliseconds to block before a response is needed
+  bool i6pn_enabled = 62;
+  bool _experimental_concurrent_cancellations = 63;
 }
 
 message FunctionBindParamsRequest {
@@ -1067,6 +1069,7 @@ message FunctionCallCallGraphInfo {
 
 message FunctionCallCancelRequest {
   string function_call_id = 1;
+  bool terminate_containers = 2;
 }
 
 message FunctionCallGetDataRequest {
@@ -1732,6 +1735,8 @@ message Sandbox {
   reserved 16; // _experimental_scheduler
   optional SchedulerPlacement scheduler_placement = 17;
   repeated Resources _experimental_resources = 18; // overrides `resources` field above
+
+  string worker_id = 19; // for internal debugging use only
 }
 
 message SandboxCreateRequest {
@@ -1854,6 +1859,7 @@ message SecretGetOrCreateRequest {
   ObjectCreationType object_creation_type = 4;  // Not used atm
   map<string, string> env_dict = 5;
   string app_id = 6;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+  repeated string required_keys = 7;
 }
 
 message SecretGetOrCreateResponse {

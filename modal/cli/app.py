@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
+import re
 from typing import List, Optional, Union
 
+import rich
 import typer
 from click import UsageError
 from rich.table import Column
@@ -10,10 +12,14 @@ from typer import Argument
 from modal._utils.async_utils import synchronizer
 from modal.client import _Client
 from modal.environments import ensure_env
+from modal.exception import deprecation_warning
 from modal.object import _get_environment_name
 from modal_proto import api_pb2
 
-from .utils import ENV_OPTION, NAME_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
+from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
+
+APP_IDENTIFIER = Argument("", help="App name or ID")
+NAME_OPTION = typer.Option("", "-n", "--name", help="Deprecated: Pass App name as a positional argument")
 
 app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
@@ -26,6 +32,26 @@ APP_STATE_TO_MESSAGE = {
     api_pb2.APP_STATE_STOPPED: Text("stopped", style="blue"),
     api_pb2.APP_STATE_STOPPING: Text("stopping...", style="blue"),
 }
+
+
+@synchronizer.create_blocking
+async def get_app_id(app_identifier: str, env: Optional[str], client: Optional[_Client] = None) -> str:
+    """Resolve an app_identifier that may be a name or an ID into an ID."""
+    if re.match(r"^ap-[a-zA-Z0-9]{22}$", app_identifier):
+        return app_identifier
+    return await get_app_id_from_name.aio(app_identifier, env, client)
+
+
+def warn_on_name_option(command: str, app_identifier: str, name: str) -> str:
+    if name:
+        message = (
+            "Passing an App name using --name is deprecated;"
+            " App names can now be passed directly as positional arguments:"
+            f"\n\n    modal app {command} {name} ..."
+        )
+        deprecation_warning((2024, 8, 15), message, show_source=False)
+        return name
+    return app_identifier
 
 
 @app_cli.command("list")
@@ -67,7 +93,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
 
 @app_cli.command("logs", no_args_is_help=True)
 def logs(
-    app_id: str = Argument("", help="Look up any App by its ID"),
+    app_identifier: str = APP_IDENTIFIER,
     *,
     name: str = NAME_OPTION,
     env: Optional[str] = ENV_OPTION,
@@ -78,37 +104,84 @@ def logs(
 
     Get the logs based on an app ID:
 
-    ```bash
+    ```
     modal app logs ap-123456
     ```
 
     Get the logs for a currently deployed App based on its name:
 
-    ```bash
-    modal app logs --name my-app
+    ```
+    modal app logs my-app
     ```
 
     """
-    if not bool(app_id) ^ bool(name):
-        raise UsageError("Must pass either an ID or a name.")
-
-    if not app_id:
-        app_id = get_app_id_from_name(name, env)
+    app_identifier = warn_on_name_option("stop", app_identifier, name)
+    app_id = get_app_id(app_identifier, env)
     stream_app_logs(app_id)
+
+
+@app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})
+@synchronizer.create_blocking
+async def rollback(
+    app_identifier: str = APP_IDENTIFIER,
+    version: str = typer.Argument("", help="Target version for rollback."),
+    *,
+    env: Optional[str] = ENV_OPTION,
+):
+    """Redeploy a previous version of an App.
+
+    Note that the App must currently be in a "deployed" state.
+    Rollbacks will appear as a new deployment in the App history, although
+    the App state will be reset to the state at the time of the previous deployment.
+
+    **Examples:**
+
+    Rollback an App to its previous version:
+
+    ```
+    modal app rollback my-app
+    ```
+
+    Rollback an App to a specific version:
+
+    ```
+    modal app rollback my-app v3
+    ```
+
+    Rollback an App using its App ID instead of its name:
+
+    ```
+    modal app rollback ap-abcdefghABCDEFGH123456
+    ```
+
+    """
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    app_id = await get_app_id.aio(app_identifier, env, client)
+    if not version:
+        version_number = -1
+    else:
+        if m := re.match(r"v(\d+)", version):
+            version_number = int(m.group(1))
+        else:
+            raise UsageError(f"Invalid version specifer: {version}")
+    req = api_pb2.AppRollbackRequest(app_id=app_id, version=version_number)
+    await client.stub.AppRollback(req)
+    rich.print("[green]✓[/green] Deployment rollback successful!")
 
 
 @app_cli.command("stop", no_args_is_help=True)
 @synchronizer.create_blocking
 async def stop(
-    app_id: str = Argument(""),
+    app_identifier: str = APP_IDENTIFIER,
     *,
     name: str = NAME_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
     """Stop an app."""
+    app_identifier = warn_on_name_option("stop", app_identifier, name)
     client = await _Client.from_env()
-    if not app_id:
-        app_id = await get_app_id_from_name.aio(name, env, client)
+    app_id = await get_app_id.aio(app_identifier, env)
     req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
     await client.stub.AppStop(req)
 
@@ -116,7 +189,7 @@ async def stop(
 @app_cli.command("history", no_args_is_help=True)
 @synchronizer.create_blocking
 async def history(
-    app_id: str = Argument("", help="Look up an App's deployment history by its ID"),
+    app_identifier: str = APP_IDENTIFIER,
     *,
     env: Optional[str] = ENV_OPTION,
     name: str = NAME_OPTION,
@@ -128,26 +201,21 @@ async def history(
 
     Get the history based on an app ID:
 
-    ```bash
+    ```
     modal app history ap-123456
     ```
 
     Get the history for a currently deployed App based on its name:
 
-    ```bash
-    modal app history --name my-app
+    ```
+    modal app history my-app
     ```
 
     """
-    if not bool(app_id) ^ bool(name):
-        raise UsageError("Must pass either an ID or a name.")
-
+    app_identifier = warn_on_name_option("history", app_identifier, name)
     env = ensure_env(env)
     client = await _Client.from_env()
-
-    if not app_id:
-        app_id = await get_app_id_from_name.aio(name, env, client)
-
+    app_id = await get_app_id.aio(app_identifier, env, client)
     resp = await client.stub.AppDeploymentHistory(api_pb2.AppDeploymentHistoryRequest(app_id=app_id))
 
     columns = [
@@ -162,7 +230,7 @@ async def history(
         style = "bold green" if idx == 0 else ""
 
         row = [
-            Text(str(app_stats.version), style=style),
+            Text(f"v{app_stats.version}", style=style),
             Text(timestamp_to_local(app_stats.deployed_at, json), style=style),
             Text(app_stats.client_version, style=style),
             Text(app_stats.deployed_by, style=style),
@@ -177,5 +245,5 @@ async def history(
     if deployments_with_tags:
         columns.append("Tag")
 
-    rows = sorted(rows, key=lambda x: str(x[0]), reverse=True)
+    rows = sorted(rows, key=lambda x: int(str(x[0])[1:]), reverse=True)
     display_table(columns, rows, json)

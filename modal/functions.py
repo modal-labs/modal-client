@@ -3,6 +3,7 @@ import asyncio
 import inspect
 import textwrap
 import time
+import typing
 import warnings
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -22,6 +23,7 @@ from typing import (
     Union,
 )
 
+import typing_extensions
 from aiostream import stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -275,7 +277,11 @@ class _FunctionSpec:
     _experimental_gpus: Sequence[GPU_T]
 
 
-class _Function(_Object, type_prefix="fu"):
+P = typing_extensions.ParamSpec("P")
+R = typing.TypeVar("R", covariant=True)
+
+
+class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -470,7 +476,6 @@ class _Function(_Object, type_prefix="fu"):
         info: FunctionInfo,
         app,
         image: _Image,
-        secret: Optional[_Secret] = None,
         secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
@@ -521,14 +526,8 @@ class _Function(_Object, type_prefix="fu"):
             assert not webhook_config
             assert not schedule
 
-        if secret is not None:
-            deprecation_error(
-                (2024, 1, 31),
-                "The singular `secret` parameter is deprecated. Pass a list to `secrets` instead.",
-            )
-
         if checkpointing_enabled is not None:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 3, 4),
                 "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
             )
@@ -604,10 +603,11 @@ class _Function(_Object, type_prefix="fu"):
 
         if info.user_cls and not is_auto_snapshot:
             # Needed to avoid circular imports
-            from .partial_function import _find_callables_for_cls, _PartialFunctionFlags
+            from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
-            build_functions = list(_find_callables_for_cls(info.user_cls, _PartialFunctionFlags.BUILD).values())
-            for build_function in build_functions:
+            build_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.BUILD).items()
+            for k, pf in build_functions:
+                build_function = pf.raw_f
                 snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)
                 snapshot_function = _Function.from_args(
                     snapshot_info,
@@ -619,7 +619,7 @@ class _Function(_Object, type_prefix="fu"):
                     network_file_systems=network_file_systems,
                     volumes=volumes,
                     memory=memory,
-                    timeout=86400,  # TODO: make this an argument to `@build()`
+                    timeout=pf.build_timeout,
                     cpu=cpu,
                     ephemeral_disk=ephemeral_disk,
                     is_builder_function=True,
@@ -630,7 +630,7 @@ class _Function(_Object, type_prefix="fu"):
                 image = _Image._from_args(
                     base_images={"base": image},
                     build_function=snapshot_function,
-                    force_build=image.force_build,
+                    force_build=image.force_build or pf.force_build,
                 )
 
         if keep_warm is not None and not isinstance(keep_warm, int):
@@ -842,6 +842,8 @@ class _Function(_Object, type_prefix="fu"):
                         )
                         for _experimental_gpu in _experimental_gpus
                     ],
+                    i6pn_enabled=config.get("i6pn_enabled"),
+                    _experimental_concurrent_cancellations=True,
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
@@ -933,7 +935,10 @@ class _Function(_Object, type_prefix="fu"):
             ):
                 if args:
                     # TODO(elias) - We could potentially support positional args as well, if we want to?
-                    raise InvalidError("Can't use positional arguments with strict parameter classes")
+                    raise InvalidError(
+                        "Can't use positional arguments with modal.parameter-based synthetic constructors.\n"
+                        "Use (<parameter_name>=value) keyword arguments when constructing classes instead."
+                    )
                 serialized_params = serialize_proto_params(kwargs, self._parent._class_parameter_info.schema)
             else:
                 serialized_params = serialize((args, kwargs))
@@ -1195,7 +1200,7 @@ class _Function(_Object, type_prefix="fu"):
         ):
             yield item
 
-    async def _call_function(self, args, kwargs):
+    async def _call_function(self, args, kwargs) -> R:
         invocation = await _Invocation.create(self, args, kwargs, client=self._client)
         try:
             return await invocation.run_function()
@@ -1203,6 +1208,8 @@ class _Function(_Object, type_prefix="fu"):
             # this can happen if the user terminates a program, triggering a cancellation cascade
             if not self._mute_cancellation:
                 raise
+            # TODO (elias): remove _mute_cancellation hack
+            return  # type: ignore
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
         return await _Invocation.create(self, args, kwargs, client=self._client)
@@ -1221,7 +1228,7 @@ class _Function(_Object, type_prefix="fu"):
 
     @synchronizer.no_io_translation
     @live_method
-    async def remote(self, *args, **kwargs) -> Any:
+    async def remote(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -1281,7 +1288,7 @@ class _Function(_Object, type_prefix="fu"):
             return self._obj
 
     @synchronizer.nowrap
-    def local(self, *args, **kwargs) -> Any:
+    def local(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """
         Calls the function locally, executing it with the given arguments and returning the execution's result.
 
@@ -1322,14 +1329,14 @@ class _Function(_Object, type_prefix="fu"):
                     await obj.aenter()
                     return await fun(*args, **kwargs)
 
-                return coro()
+                return coro()  # type: ignore
             else:
                 obj.enter()
                 return fun(*args, **kwargs)
 
     @synchronizer.no_input_translation
     @live_method
-    async def spawn(self, *args, **kwargs) -> Optional["_FunctionCall"]:
+    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> Optional["_FunctionCall[R]"]:
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
@@ -1373,7 +1380,7 @@ class _Function(_Object, type_prefix="fu"):
 Function = synchronize_api(_Function)
 
 
-class _FunctionCall(_Object, type_prefix="fc"):
+class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
     """A reference to an executed function call.
 
     Constructed using `.spawn(...)` on a Modal function with the same
@@ -1388,7 +1395,7 @@ class _FunctionCall(_Object, type_prefix="fc"):
         assert self._client.stub
         return _Invocation(self._client.stub, self.object_id, self._client)
 
-    async def get(self, timeout: Optional[float] = None):
+    async def get(self, timeout: Optional[float] = None) -> R:
         """Get the result of the function call.
 
         This function waits indefinitely by default. It takes an optional
@@ -1411,10 +1418,19 @@ class _FunctionCall(_Object, type_prefix="fc"):
         response = await retry_transient_errors(self._client.stub.FunctionGetCallGraph, request)
         return _reconstruct_call_graph(response)
 
-    async def cancel(self):
+    async def cancel(
+        self,
+        terminate_containers: bool = False,  # if true, containers running the inputs are forcibly terminated
+    ):
         """Cancels the function call, which will stop its execution and mark its inputs as
-        [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus)."""
-        request = api_pb2.FunctionCallCancelRequest(function_call_id=self.object_id)
+        [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus).
+
+        If `terminate_containers=True` - the containers running the cancelled inputs are all terminated
+        causing any non-cancelled inputs on those containers to be rescheduled in new containers.
+        """
+        request = api_pb2.FunctionCallCancelRequest(
+            function_call_id=self.object_id, terminate_containers=terminate_containers
+        )
         assert self._client and self._client.stub
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 

@@ -10,7 +10,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Literal, Optional, Set, Tuple
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Literal, Optional, Tuple
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -60,12 +60,14 @@ class IOContext:
     function_call_ids: List[str]
     finalized_function: FinalizedFunction
 
+    _cancel_callback: Optional[Callable[[], None]] = None
+
     def __init__(
         self,
         input_ids: List[str],
         function_call_ids: List[str],
         finalized_function: FinalizedFunction,
-        deserialized_args: List,
+        deserialized_args: List[Any],
         is_batched: bool,
     ):
         self.input_ids = input_ids
@@ -104,7 +106,20 @@ class IOContext:
         deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in inputs]
         return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
 
-    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List]]:
+    def set_cancel_callback(self, cb: Callable[[], None]):
+        self._cancel_callback = cb
+
+    def cancel(self):
+        if self._cancel_callback:
+            cb = self._cancel_callback
+            self._cancel_callback = None
+            cb()
+        else:
+            # TODO (elias): This should not normally happen but there is a small chance of a race
+            #  between creating a new task for an input and attaching the cancellation callback
+            logger.warning("Unexpected: Could not cancel input")
+
+    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List[Any]]]:
         if not self._is_batched:
             return self._deserialized_args[0]
 
@@ -239,7 +254,6 @@ class _ContainerIOManager:
     Then we could potentially move a bunch of the global functions onto it.
     """
 
-    cancelled_input_ids: Set[str]
     task_id: str
     function_id: str
     app_id: str
@@ -249,6 +263,7 @@ class _ContainerIOManager:
     calls_completed: int
     total_user_time: float
     current_input_id: Optional[str]
+    current_inputs: Dict[str, IOContext]  # input_id -> IOContext
     current_input_started_at: Optional[float]
 
     _concurrency_manager: ConcurrencyManager
@@ -267,7 +282,6 @@ class _ContainerIOManager:
     _singleton: ClassVar[Optional["_ContainerIOManager"]] = None
 
     def _init(self, container_args: api_pb2.ContainerArguments, client: _Client, input_concurrency) -> None:
-        self.cancelled_input_ids = set()
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
@@ -277,6 +291,7 @@ class _ContainerIOManager:
         self.calls_completed = 0
         self.total_user_time = 0.0
         self.current_input_id = None
+        self.current_inputs = {}
         self.current_input_started_at = None
 
         self._concurrency_manager = ConcurrencyManager(input_concurrency)
@@ -353,20 +368,10 @@ class _ContainerIOManager:
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
-                if self.get_input_concurrency() > 1:
-                    logger.info(
-                        "Shutting down task to stop some subset of inputs "
-                        "(concurrent functions don't support fine-grained cancellation)"
-                    )
-                    # This is equivalent to a task cancellation or preemption from worker code,
-                    # except we do not send a SIGKILL to forcefully exit after 30 seconds.
-                    #
-                    # SIGINT always interrupts the main thread, but not any auxiliary threads. On a
-                    # sync function without concurrent inputs, this raises a KeyboardInterrupt. When
-                    # there are concurrent inputs, we cannot interrupt the thread pool, but the
-                    # interpreter stops waiting for daemon threads and exits. On async functions,
-                    # this signal lands outside the event loop, stopping `run_until_complete()`.
-                    os.kill(os.getpid(), signal.SIGINT)
+                if self._input_concurrency > 1:
+                    for input_id in input_ids_to_cancel:
+                        if input_id in self.current_inputs:
+                            self.current_inputs[input_id].cancel()
 
                 elif self.current_input_id in input_ids_to_cancel:
                     # This goes to a registered signal handler for sync Modal functions, or to the
@@ -416,7 +421,7 @@ class _ContainerIOManager:
             object_handle_metadata=object_handle_metadata,
         )
 
-    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable]:
+    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable[..., Any]]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)
@@ -567,8 +572,6 @@ class _ContainerIOManager:
                         if item.kill_switch:
                             logger.debug(f"Task {self.task_id} input kill signal input.")
                             return
-                        if item.input_id in self.cancelled_input_ids:
-                            continue
 
                         inputs.append((item.input_id, item.function_call_id, item.input))
                         if item.input.final_input:
@@ -603,6 +606,9 @@ class _ContainerIOManager:
 
         async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
             io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
+            for input_id in io_context.input_ids:
+                self.current_inputs[input_id] = io_context
+
             self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
             yield io_context
             self.current_input_id, self.current_input_started_at = (None, None)
@@ -707,7 +713,7 @@ class _ContainerIOManager:
             # it should have been marked as cancelled already in the backend at this point so it
             # won't be retried
             logger.warning(f"Received a cancellation signal while processing input {io_context.input_ids}")
-            await self.exit_context(started_at)
+            await self.exit_context(started_at, io_context.input_ids)
             return
         except BaseException as exc:
             # print exception so it's logged
@@ -746,11 +752,15 @@ class _ContainerIOManager:
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 results=results,
             )
-            await self.exit_context(started_at)
+            await self.exit_context(started_at, io_context.input_ids)
 
-    async def exit_context(self, started_at):
+    async def exit_context(self, started_at, input_ids: List[str]):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
+
+        for input_id in input_ids:
+            self.current_inputs.pop(input_id)
+
         self._concurrency_manager.release()
 
     @synchronizer.no_io_translation
@@ -772,7 +782,7 @@ class _ContainerIOManager:
             data_format=data_format,
             results=results,
         )
-        await self.exit_context(started_at)
+        await self.exit_context(started_at, io_context.input_ids)
 
     async def memory_restore(self) -> None:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
@@ -810,6 +820,7 @@ class _ContainerIOManager:
 
         # Restore input to default state.
         self.current_input_id = None
+        self.current_inputs = {}
         self.current_input_started_at = None
 
         # Patch torch to ensure it doesn't return CUDA unavailibility due to
@@ -882,26 +893,16 @@ class _ContainerIOManager:
             else:
                 logger.debug(f"modal.Volume background commit success for {volume_id}.")
 
-    async def interact(self):
+    async def interact(self, from_breakpoint: bool = False):
         if self._is_interactivity_enabled:
             # Currently, interactivity is enabled forever
             return
         self._is_interactivity_enabled = True
 
-        if not self.function_def.pty_info:
-            raise InvalidError(
-                "Interactivity is not enabled in this function. "
-                "Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
-            )
+        if not self.function_def.pty_info.pty_type:
+            trigger = "breakpoint()" if from_breakpoint else "modal.interact()"
+            raise InvalidError(f"Cannot use {trigger} without running Modal in interactive mode.")
 
-        if self.function_def.concurrency_limit > 1:
-            print(
-                "Warning: Interactivity is not supported on functions with concurrency > 1. "
-                "You may experience unexpected behavior."
-            )
-
-        # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here
-        # todo(nathan): check if function interactivity is enabled
         try:
             await self._client.stub.FunctionStartPtyShell(Empty())
         except Exception as e:

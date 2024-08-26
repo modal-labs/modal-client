@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
 
+import typing_extensions
 from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -20,7 +21,7 @@ from ._utils.grpc_utils import unary_stream
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
-from .cls import _Cls
+from .cls import _Cls, _get_class_constructor_signature, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
@@ -30,7 +31,6 @@ from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .partial_function import (
-    _find_callables_for_cls,
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
@@ -83,7 +83,11 @@ def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[ty
         raise InvalidError(error_msg)
 
 
-CLS_T = typing.TypeVar("CLS_T", bound=typing.Type)
+CLS_T = typing.TypeVar("CLS_T", bound=typing.Type[Any])
+
+
+P = typing_extensions.ParamSpec("P")
+R = typing.TypeVar("R")
 
 
 class _App:
@@ -106,7 +110,7 @@ class _App:
     ```python
     import modal
 
-    app = modal.App()  # Note: app were called "stub" up until April 2024
+    app = modal.App()
 
     @app.function(
         secrets=[modal.Secret.from_name("some_secret")],
@@ -280,16 +284,6 @@ class _App:
         # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
         for obj in self._indexed_objects.values():
             obj._unhydrate()
-
-    def is_inside(self, image: Optional[_Image] = None):
-        """Deprecated: use `Image.imports()` instead! Usage:
-        ```
-        my_image = modal.Image.debian_slim().pip_install("torch")
-        with my_image.imports():
-            import torch
-        ```
-        """
-        deprecation_error((2023, 11, 8), _App.is_inside.__doc__)
 
     @asynccontextmanager
     async def _set_local_app(self, client: _Client, running_app: RunningApp) -> AsyncGenerator[None, None]:
@@ -547,7 +541,6 @@ class _App:
         max_inputs: Optional[int] = None,
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
-        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
         _allow_background_volume_commits: None = None,
         _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
@@ -555,7 +548,7 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
-    ) -> Callable[..., _Function]:
+    ) -> Callable[[Union[Callable[P, R], _PartialFunction[P, R]]], _Function[P, R]]:
         """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg
@@ -657,7 +650,6 @@ class _App:
                 info,
                 app=self,
                 image=image,
-                secret=secret,
                 secrets=secrets,
                 schedule=schedule,
                 is_generator=is_generator,
@@ -695,6 +687,7 @@ class _App:
 
         return wrapped
 
+    @typing_extensions.dataclass_transform(field_specifiers=(parameter,), kw_only_default=True)
     def cls(
         self,
         _warn_parentheses_missing: Optional[bool] = None,
@@ -734,14 +727,13 @@ class _App:
         max_inputs: Optional[int] = None,
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
-        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`
         # Parameters below here are experimental. Use with caution!
         _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
-    ) -> Callable[[CLS_T], _Cls]:
+    ) -> Callable[[CLS_T], CLS_T]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
@@ -760,7 +752,7 @@ class _App:
 
         secrets = [*self._secrets, *secrets]
 
-        def wrapper(user_cls: CLS_T) -> _Cls:
+        def wrapper(user_cls: CLS_T) -> CLS_T:
             nonlocal keep_warm
 
             # Check if the decorated object is a class
@@ -794,7 +786,6 @@ class _App:
                 info,
                 app=self,
                 image=image,
-                secret=secret,
                 secrets=secrets,
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
@@ -833,17 +824,16 @@ class _App:
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
 
             if (
-                _find_callables_for_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+                _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
                 and not enable_memory_snapshot
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
             # Disallow enable_memory_snapshot for parameterized classes
             # TODO(matt) Temporary fix for MOD-3048
-            constructor = dict(inspect.getmembers(user_cls, inspect.isfunction)).get("__init__")
-            if enable_memory_snapshot and constructor:
-                params = inspect.signature(constructor).parameters
-                if len(params) > 1:
+            if enable_memory_snapshot:
+                signature = _get_class_constructor_signature(user_cls)
+                if len(signature.parameters) > 0:
                     name = user_cls.__name__
                     raise InvalidError(
                         f"Cannot use class parameterization in class {name} with `enable_memory_snapshot=True`."
@@ -851,7 +841,7 @@ class _App:
 
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
-            return cls
+            return cls  # type: ignore  # a _Cls instance "simulates" being the user provided class
 
         return wrapper
 

@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import contextlib
+import typing
 from asyncio import Future
 from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
 
@@ -8,7 +9,6 @@ from grpclib import GRPCError, Status
 
 from ._utils.async_utils import TaskContext
 from .client import _Client
-from .config import logger
 from .exception import NotFoundError
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 class StatusRow:
-    def __init__(self, progress: "Optional[Tree]"):
+    def __init__(self, progress: "typing.Optional[Tree]"):
         from ._output import (
             step_progress,
         )
@@ -138,11 +138,7 @@ class Resolver:
             self._local_uuid_to_future[obj.local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
-        try:
-            return await cached_future
-        except:
-            logger.exception(f"Exception when resolving {obj}")
-            raise
+        return await cached_future
 
     def objects(self) -> List["_Object"]:
         unique_objects: Dict[str, "_Object"] = {}

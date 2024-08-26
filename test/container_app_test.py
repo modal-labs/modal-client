@@ -12,6 +12,7 @@ from google.protobuf.message import Message
 from modal import App, interact
 from modal._container_io_manager import ContainerIOManager, _ContainerIOManager
 from modal.client import _Client
+from modal.exception import InvalidError
 from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
@@ -189,7 +190,15 @@ async def test_container_snapshot_patching_err(weird_torch_module, container_cli
 
 def test_interact(container_client, servicer):
     # Initialize container singleton
-    ContainerIOManager(api_pb2.ContainerArguments(), container_client, 1)
+    function_def = api_pb2.Function(pty_info=api_pb2.PTYInfo(pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL))
+    ContainerIOManager(api_pb2.ContainerArguments(function_def=function_def), container_client, 1)
     with servicer.intercept() as ctx:
         ctx.add_response("FunctionStartPtyShell", Empty())
+        interact()
+
+
+def test_interact_no_pty_error(container_client, servicer):
+    # Initialize container singleton
+    ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    with pytest.raises(InvalidError, match=r"modal.interact\(\) without running Modal in interactive mode"):
         interact()

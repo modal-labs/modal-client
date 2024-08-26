@@ -51,7 +51,7 @@ from .client import Client, _Client
 from .cls import Cls, Obj
 from .config import logger
 from .exception import ExecutionError, InputCancellation, InvalidError, deprecation_warning
-from .execution_context import _set_current_context_ids, interact
+from .execution_context import _set_current_context_ids
 from .functions import Function, _Function
 from .partial_function import (
     _find_callables_for_obj,
@@ -415,6 +415,29 @@ def call_function(
     if input_concurrency > 1:
         with DaemonizedThreadPool() as thread_pool:
 
+            def make_async_cancel_callback(task):
+                def f():
+                    user_code_event_loop.loop.call_soon_threadsafe(task.cancel)
+
+                return f
+
+            did_sigint = False
+
+            def cancel_callback_sync():
+                nonlocal did_sigint
+                # We only want one sigint even if multiple inputs are cancelled
+                # A second sigint would forcibly shut down the event loop and spew
+                # out a bunch of tracebacks, which we only want to happen in case
+                # the worker kills this process after a failed self-termination
+                if not did_sigint:
+                    did_sigint = True
+                    logger.warning(
+                        "User cancelling input of non-async functions with allow_concurrent_inputs > 1.\n"
+                        "This shuts down the container, causing concurrently running inputs to be "
+                        "rescheduled in other containers."
+                    )
+                    os.kill(os.getpid(), signal.SIGINT)  # raises KeyboardInterrupt in main thread
+
             async def run_concurrent_inputs():
                 # all run_input coroutines will have completed by the time we leave the execution context
                 # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
@@ -428,10 +451,12 @@ def call_function(
                         # This prevents leaving the task_context before outputs have been created
                         # TODO: refactor to make this a bit more easy to follow?
                         if io_context.finalized_function.is_async:
-                            task_context.create_task(run_input_async(io_context))
+                            input_task = task_context.create_task(run_input_async(io_context))
+                            io_context.set_cancel_callback(make_async_cancel_callback(input_task))
                         else:
                             # run sync input in thread
                             thread_pool.submit(run_input_sync, io_context)
+                            io_context.set_cancel_callback(cancel_callback_sync)
 
             user_code_event_loop.run(run_concurrent_inputs())
     else:
@@ -649,7 +674,7 @@ def get_active_app_fallback(function_def: api_pb2.Function) -> Optional[_App]:
 def call_lifecycle_functions(
     event_loop: UserCodeEventLoop,
     container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
-    funcs: Sequence[Callable],
+    funcs: Sequence[Callable[..., Any]],
 ) -> None:
     """Call function(s), can be sync or async, but any return values are ignored."""
     with container_io_manager.handle_user_exception():
@@ -778,16 +803,16 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             container_io_manager.memory_snapshot()
 
         # Install hooks for interactive functions.
-        if function_def.pty_info.pty_type != api_pb2.PTYInfo.PTY_TYPE_UNSPECIFIED:
+        def breakpoint_wrapper():
+            # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
+            container_io_manager.interact(from_breakpoint=True)
+            import pdb
 
-            def breakpoint_wrapper():
-                # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
-                interact()
-                import pdb
+            frame = inspect.currentframe().f_back
 
-                pdb.set_trace()
+            pdb.Pdb().set_trace(frame)
 
-            sys.breakpointhook = breakpoint_wrapper
+        sys.breakpointhook = breakpoint_wrapper
 
         # Identify the "enter" methods to run after resuming from a snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:

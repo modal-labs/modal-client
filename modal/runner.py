@@ -2,12 +2,14 @@
 import asyncio
 import dataclasses
 import os
+import time
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Coroutine, Dict, List, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal_proto.api_pb2
 from modal_proto import api_pb2
 
 from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
@@ -196,7 +198,7 @@ async def _publish_app(
 async def _disconnect(
     client: _Client,
     app_id: str,
-    reason: "api_pb2.AppDisconnectReason.ValueType",
+    reason: "modal_proto.api_pb2.AppDisconnectReason.ValueType",
     exc_str: str = "",
 ) -> None:
     """Tell the server the client has disconnected for this app. Terminates all running tasks
@@ -445,6 +447,8 @@ async def _deploy_app(
     if client is None:
         client = await _Client.from_env()
 
+    t0 = time.time()
+
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
     )
@@ -471,7 +475,8 @@ async def _deploy_app(
             raise e
 
     if output_mgr := OutputManager.get():
-        output_mgr.print(step_completed("App deployed! 🎉"))
+        t = time.time() - t0
+        output_mgr.print(step_completed(f"App deployed in {t:.3f}s! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(app_id=running_app.app_id)
 
@@ -493,7 +498,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
 
     You can now run this using
 
-    ```bash
+    ```
     modal shell script.py --cmd /bin/bash
     ```
 
@@ -503,7 +508,8 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
     client = await _Client.from_env()
     async with _run_app(_app, client=client, environment_name=environment_name):
         sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
-        sandbox = await _Sandbox.create("sleep", "100000", app=_app, **kwargs)
+        with OutputManager.enable_output():  # show any image build logs
+            sandbox = await _Sandbox.create("sleep", "100000", app=_app, **kwargs)
 
         container_process = await sandbox.exec(*sandbox_cmds, pty_info=get_pty_info(shell=True))
         try:

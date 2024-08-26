@@ -30,6 +30,7 @@ from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .object import _Object, live_method_gen
+from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
 
@@ -463,7 +464,7 @@ class _Image(_Object, type_prefix="im"):
 
     def extend(self, **kwargs) -> "_Image":
         """Deprecated! This is a low-level method not intended to be part of the public API."""
-        deprecation_warning(
+        deprecation_error(
             (2024, 3, 7),
             "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
         )
@@ -1527,7 +1528,7 @@ class _Image(_Object, type_prefix="im"):
 
     def run_function(
         self,
-        raw_f: Callable,
+        raw_f: Callable[..., Any],
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
         mounts: Sequence[_Mount] = (),  # Mounts attached to the function
@@ -1537,7 +1538,8 @@ class _Image(_Object, type_prefix="im"):
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 86400,  # Maximum execution time of the function in seconds.
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        secret: Optional[_Secret] = None,  # Deprecated: use `secrets`.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         args: Sequence[Any] = (),  # Positional arguments to the function.
         kwargs: Dict[str, Any] = {},  # Keyword arguments to the function.
     ) -> "_Image":
@@ -1576,18 +1578,21 @@ class _Image(_Object, type_prefix="im"):
             # It may be possible to support lambdas eventually, but for now we don't handle them well, so reject quickly
             raise InvalidError("Image.run_function does not support lambda functions.")
 
+        scheduler_placement = SchedulerPlacement(region=region) if region else None
+
         info = FunctionInfo(raw_f)
 
         function = _Function.from_args(
             info,
             app=None,
             image=self,
-            secret=secret,
             secrets=secrets,
             gpu=gpu,
             mounts=mounts,
             volumes=volumes,
             network_file_systems=network_file_systems,
+            cloud=cloud,
+            scheduler_placement=scheduler_placement,
             memory=memory,
             timeout=timeout,
             cpu=cpu,
@@ -1685,18 +1690,6 @@ class _Image(_Object, type_prefix="im"):
                 raise
             if not isinstance(exc, ImportError):
                 warnings.warn(f"Warning: caught a non-ImportError exception in an `imports()` block: {repr(exc)}")
-
-    def run_inside(self):
-        """`Image.run_inside` is deprecated - use `Image.imports` instead.
-
-        **Usage:**
-
-        ```python notest
-        with image.imports():
-            import torch
-        ```
-        """
-        deprecation_error((2023, 12, 15), Image.run_inside.__doc__)
 
     @live_method_gen
     async def _logs(self) -> AsyncGenerator[str, None]:

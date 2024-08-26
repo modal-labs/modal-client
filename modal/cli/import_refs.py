@@ -18,9 +18,8 @@ import click
 from rich.console import Console
 from rich.markdown import Markdown
 
-import modal
 from modal.app import App, LocalEntrypoint
-from modal.exception import _CliUserExecutionError, deprecation_warning
+from modal.exception import InvalidError, _CliUserExecutionError, deprecation_warning
 from modal.functions import Function
 
 
@@ -34,7 +33,7 @@ def parse_import_ref(object_ref: str) -> ImportRef:
     if object_ref.find("::") > 1:
         file_or_module, object_path = object_ref.split("::", 1)
     elif object_ref.find(":") > 1:
-        raise modal.exception.InvalidError(f"Invalid object reference: {object_ref}. Did you mean '::' instead of ':'?")
+        raise InvalidError(f"Invalid object reference: {object_ref}. Did you mean '::' instead of ':'?")
     else:
         file_or_module, object_path = object_ref, None
 
@@ -55,6 +54,11 @@ def import_file_or_module(file_or_module: str):
         # when using a script path, that scripts directory should also be on the path as it is
         # with `python some/script.py`
         full_path = Path(file_or_module).resolve()
+        if "." in full_path.name[:-3]:  # use removesuffix once we drop 3.8 support
+            raise InvalidError(
+                f"Invalid Modal source filename: {full_path.name!r}."
+                "\n\nSource filename cannot contain additional period characters."
+            )
         sys.path.insert(0, str(full_path.parent))
 
         module_name = inspect.getmodulename(file_or_module)
@@ -238,7 +242,7 @@ Usage:
 
 Given the following example `app.py`:
 ```
-app = modal.App()  # Note: "app" was called "stub" up until April 2024
+app = modal.App()
 
 @app.function()
 def foo():

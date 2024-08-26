@@ -181,7 +181,7 @@ async def get(
 
     For example, to download an entire network file system into `dump_volume`:
 
-    ```bash
+    ```
     modal nfs get <volume-name> "**" dump_volume
     ```
 
