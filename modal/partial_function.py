@@ -45,7 +45,7 @@ R = typing_extensions.TypeVar("R", covariant=True)
 
 
 class _PartialFunction(typing.Generic[P, R]):
-    """Intermediate function, produced by @method, @web_endpoint, or @batched"""
+    """Intermediate function, produced by @enter, @build, @method, @web_endpoint, or @batched"""
 
     raw_f: Callable[P, R]
     flags: _PartialFunctionFlags
@@ -54,6 +54,8 @@ class _PartialFunction(typing.Generic[P, R]):
     keep_warm: Optional[int]
     batch_max_size: Optional[int]
     batch_wait_ms: Optional[int]
+    force_build: bool
+    build_timeout: Optional[int]
 
     def __init__(
         self,
@@ -64,6 +66,8 @@ class _PartialFunction(typing.Generic[P, R]):
         keep_warm: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
+        force_build: bool = False,
+        build_timeout: Optional[int] = None,
     ):
         self.raw_f = raw_f
         self.flags = flags
@@ -73,6 +77,8 @@ class _PartialFunction(typing.Generic[P, R]):
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
         self.batch_max_size = batch_max_size
         self.batch_wait_ms = batch_wait_ms
+        self.force_build = force_build
+        self.build_timeout = build_timeout
 
     def __get__(self, obj, objtype=None) -> _Function[P, R]:
         k = self.raw_f.__name__
@@ -112,6 +118,8 @@ class _PartialFunction(typing.Generic[P, R]):
             keep_warm=self.keep_warm,
             batch_max_size=self.batch_max_size,
             batch_wait_ms=self.batch_wait_ms,
+            force_build=self.force_build,
+            build_timeout=self.build_timeout,
         )
 
 
@@ -119,22 +127,7 @@ PartialFunction = synchronize_api(_PartialFunction)
 
 
 def _find_partial_methods_for_user_cls(user_cls: Type[Any], flags: int) -> Dict[str, _PartialFunction]:
-    """Grabs all method on a user class"""
-    partial_functions: Dict[str, PartialFunction] = {}
-    for parent_cls in user_cls.mro():
-        if parent_cls is not object:
-            for k, v in parent_cls.__dict__.items():
-                if isinstance(v, PartialFunction):
-                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                    if partial_function.flags & flags:
-                        partial_functions[k] = partial_function
-
-    return partial_functions
-
-
-def _find_callables_for_cls(user_cls: Type[Any], flags: int) -> Dict[str, Callable[..., Any]]:
-    """Grabs all method on a user class, and returns callables. Includes legacy methods."""
-    functions: Dict[str, Callable] = {}
+    """Grabs all method on a user class, and returns partials. Includes legacy methods."""
 
     # Build up a list of legacy attributes to check
     check_attrs: List[str] = []
@@ -159,17 +152,22 @@ def _find_callables_for_cls(user_cls: Type[Any], flags: int) -> Dict[str, Callab
             )
             deprecation_error((2024, 2, 21), message)
 
-    # Grab new decorator-based methods
-    for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items():
-        functions[k] = pf.raw_f
+    partial_functions: Dict[str, PartialFunction] = {}
+    for parent_cls in user_cls.mro():
+        if parent_cls is not object:
+            for k, v in parent_cls.__dict__.items():
+                if isinstance(v, PartialFunction):
+                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
+                    if partial_function.flags & flags:
+                        partial_functions[k] = partial_function
 
-    return functions
+    return partial_functions
 
 
 def _find_callables_for_obj(user_obj: Any, flags: int) -> Dict[str, Callable[..., Any]]:
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: Type = type(user_obj)
-    return {k: meth.__get__(user_obj) for k, meth in _find_callables_for_cls(user_cls, flags).items()}
+    return {k: pf.raw_f.__get__(user_obj) for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items()}
 
 
 def _method(
@@ -488,7 +486,7 @@ def _disallow_wrapping_method(f: _PartialFunction, wrapper: str) -> None:
 
 
 def _build(
-    _warn_parentheses_missing=None,
+    _warn_parentheses_missing=None, *, force: bool = False, timeout: int = 86400
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
     """
     Decorator for methods that should execute at _build time_ to create a new layer
@@ -516,9 +514,11 @@ def _build(
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "build")
+            f.force_build = force
+            f.build_timeout = timeout
             return f.add_flags(_PartialFunctionFlags.BUILD)
         else:
-            return _PartialFunction(f, _PartialFunctionFlags.BUILD)
+            return _PartialFunction(f, _PartialFunctionFlags.BUILD, force_build=force, build_timeout=timeout)
 
     return wrapper
 

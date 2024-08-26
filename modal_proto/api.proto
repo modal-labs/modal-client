@@ -1045,6 +1045,7 @@ message Function {
   uint32 batch_max_size = 60; // Maximum number of inputs to fetch at once
   uint64 batch_linger_ms = 61; // Miliseconds to block before a response is needed
   bool i6pn_enabled = 62;
+  bool _experimental_concurrent_cancellations = 63;
   uint32 max_concurrent_inputs = 63; // Maximum when attempting to override input concurrency
 }
 
@@ -1069,6 +1070,7 @@ message FunctionCallCallGraphInfo {
 
 message FunctionCallCancelRequest {
   string function_call_id = 1;
+  bool terminate_containers = 2;
 }
 
 message FunctionCallGetDataRequest {

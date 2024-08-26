@@ -24,7 +24,7 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
-from modal._container_io_manager import ConcurrencyManager
+from modal._container_io_manager import ConcurrencyManager, ContainerIOManager, FinalizedFunction, IOContext
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -1545,16 +1545,44 @@ def test_cancellation_aborts_current_input_on_match(
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-@pytest.mark.parametrize(
-    ["function_name"],
-    [("delay",), ("delay_async",)],
-)
-def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name):
+def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
             "test.supports.functions",
-            function_name,
+            "delay_async",
+            inputs=[("", (1,), {})] * 2,  # two inputs
+            allow_concurrent_inputs=2,
+        )
+        input_lock.wait()
+        input_lock.wait()
+
+    time.sleep(0.05)  # let the container get and start processing the input
+    servicer.container_heartbeat_return_now(
+        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-001"]))
+    )
+    # container should exit soon!
+    exit_code = container_process.wait(5)
+    assert (
+        len(servicer.container_outputs) == 1
+    )  # should not fail the outputs, as they would have been cancelled in backend already
+
+    outputs: List[api_pb2.FunctionPutOutputsRequest] = servicer.container_outputs
+    assert deserialize(outputs[0].outputs[0].result.data, None) == 1
+    container_stderr = container_process.stderr.read().decode("utf8")
+    print(container_stderr)
+    assert "Traceback" not in container_stderr
+    assert exit_code == 0  # container should exit gracefully
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_cancellation_stops_task_with_concurrent_inputs(servicer):
+    with servicer.input_lockstep() as input_lock:
+        container_process = _run_container_process(
+            servicer,
+            "test.supports.functions",
+            "delay",
             inputs=[("", (20,), {})] * 2,  # two inputs
             allow_concurrent_inputs=2,
         )
@@ -1563,14 +1591,16 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
 
     time.sleep(0.05)  # let the container get and start processing the input
     servicer.container_heartbeat_return_now(
-        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000", "in-001"]))
+        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-001"]))
     )
-    # container should exit soon!
+    # container should exit immediately, stopping execution of both inputs
     exit_code = container_process.wait(5)
     assert (
         len(servicer.container_outputs) == 0
     )  # should not fail the outputs, as they would have been cancelled in backend already
-    assert "Traceback" not in container_process.stderr.read().decode("utf8")
+    container_stderr = container_process.stderr.read().decode("utf8")
+    print(container_stderr)
+    assert "Traceback" not in container_stderr
     assert exit_code == 0  # container should exit gracefully
 
 
@@ -1934,6 +1964,60 @@ def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env
         warning = str(recwarn.pop().message)
         assert "and will not have access to the mounted Volume or NetworkFileSystem data" not in warning
     assert len(recwarn) == 0
+
+    
+@pytest.mark.parametrize("concurrency_limit", [1, 2])
+def test_container_io_manager_concurrency_tracking(client, servicer, concurrency_limit):
+    dummy_container_args = api_pb2.ContainerArguments(function_id="fu-123")
+    from modal._utils.async_utils import synchronizer
+
+    io_manager = ContainerIOManager(dummy_container_args, client)
+    _io_manager = synchronizer._translate_in(io_manager)
+
+    async def _func(x):
+        await asyncio.sleep(x)
+
+    fin_func = FinalizedFunction(_func, is_async=True, is_generator=False, data_format=api_pb2.DATA_FORMAT_PICKLE)
+
+    total_inputs = 5
+    servicer.container_inputs = _get_inputs(((42,), {}), n=total_inputs)
+    active_inputs: List[IOContext] = []
+    active_input_ids = set()
+    processed_inputs = 0
+    triggered_assertions = []
+    peak_inputs = 0
+    for io_context in io_manager.run_inputs_outputs(
+        finalized_functions={"": fin_func},
+        input_concurrency=concurrency_limit,
+    ):
+        assert len(io_context.input_ids) == 1  # no batching in this test
+        assert _io_manager.current_input_id == io_context.input_ids[0]
+        active_inputs += [io_context]
+        peak_inputs = max(peak_inputs, len(active_inputs))
+        active_input_ids |= set(io_context.input_ids)
+        processed_inputs += len(io_context.input_ids)
+
+        while active_inputs and (len(active_inputs) == concurrency_limit or processed_inputs == total_inputs):
+            input_to_process = active_inputs.pop(0)
+            send_failure = processed_inputs % 2 == 1
+            # return values for inputs
+            with io_manager.handle_input_exception(input_to_process, time.time()):
+                try:
+                    # can't raise assertions in here, since they are caught and forwarded as input exceptions
+                    assert set(_io_manager.current_inputs.keys()) == set(active_input_ids)
+                except AssertionError as assertion:
+                    triggered_assertions.append(assertion)
+                    raise
+
+                active_input_ids -= set(input_to_process.input_ids)
+
+                if send_failure:
+                    # trigger some errors
+                    raise Exception("Blah")
+                else:
+                    # and some successes
+                    io_manager.push_outputs(input_to_process, 0, None, fin_func.data_format)
+    assert not triggered_assertions
 
 
 async def acquire_for(cm, secs):
