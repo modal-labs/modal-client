@@ -824,26 +824,16 @@ class _ContainerIOManager:
             else:
                 logger.debug(f"modal.Volume background commit success for {volume_id}.")
 
-    async def interact(self):
+    async def interact(self, from_breakpoint: bool = False):
         if self._is_interactivity_enabled:
             # Currently, interactivity is enabled forever
             return
         self._is_interactivity_enabled = True
 
-        if not self.function_def.pty_info:
-            raise InvalidError(
-                "Interactivity is not enabled in this function. "
-                "Use MODAL_INTERACTIVE_FUNCTIONS=1 to enable interactivity."
-            )
+        if not self.function_def.pty_info.pty_type:
+            trigger = "breakpoint()" if from_breakpoint else "modal.interact()"
+            raise InvalidError(f"Cannot use {trigger} without running Modal in interactive mode.")
 
-        if self.function_def.concurrency_limit > 1:
-            print(
-                "Warning: Interactivity is not supported on functions with concurrency > 1. "
-                "You may experience unexpected behavior."
-            )
-
-        # todo(nathan): add warning if concurrency limit > 1. but idk how to check this here
-        # todo(nathan): check if function interactivity is enabled
         try:
             await self._client.stub.FunctionStartPtyShell(Empty())
         except Exception as e:
