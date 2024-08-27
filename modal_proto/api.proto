@@ -739,6 +739,14 @@ message ContainerStopRequest {
 message ContainerStopResponse {
 }
 
+message ContainerConcurrencyStatusRequest{
+  uint32 max_concurrency = 1;
+}
+
+message ContainerConcurrencyStatusResponse {
+  uint32 concurrency = 1;
+}
+
 message CustomDomainConfig {
   string name = 1;
 }
