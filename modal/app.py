@@ -324,10 +324,19 @@ class _App:
                 some_modal_function.remote()
         ```
 
-        You can call the function using `modal run` directly from the CLI:
+        Note that you cannot invoke this in global scope. If you want to run it as your entrypoint,
+        consider wrapping it:
+
+        ```python
+        if __name__ == "__main__":
+            with app.run():
+                some_modal_function.remote()
+        ```
+
+        You can then run your script with:
 
         ```shell
-        modal run app_module.py
+        python app_module.py
         ```
 
 
