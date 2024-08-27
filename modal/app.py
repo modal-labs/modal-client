@@ -309,6 +309,28 @@ class _App:
         to Modal functions should be made within the scope of this context
         manager, and they will correspond to the current app.
 
+        **Example**
+
+        ```python
+        with app.run():
+            some_modal_function.remote()
+        ```
+
+        To enable output printing, use `modal.enable_output()`:
+
+        ```python
+        with modal.enable_output():
+            with app.run():
+                some_modal_function.remote()
+        ```
+
+        You can call the function using `modal run` directly from the CLI:
+
+        ```shell
+        modal run app_module.py
+        ```
+
+
         Note that this method used to return a separate "App" object. This is
         no longer useful since you can use the app itself for access to all
         objects. For backwards compatibility reasons, it returns the same app.
