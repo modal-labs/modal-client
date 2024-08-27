@@ -1136,9 +1136,20 @@ message FunctionGetCallGraphResponse {
   repeated FunctionCallCallGraphInfo function_calls = 2;
 }
 
+message FunctionGetConcurrencyRequest{
+  string function_id = 1;
+  uint32 target_concurrency = 2;
+  uint32 max_concurrency = 3;
+}
+
+message FunctionGetConcurrencyResponse {
+  uint32 concurrency = 1;
+}
+
 message FunctionGetCurrentStatsRequest {
   string function_id = 1;
 }
+
 message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
@@ -2301,6 +2312,7 @@ service ModalClient {
   rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
+  rpc FunctionGetConcurrency(FunctionGetConcurrencyRequest) returns (FunctionGetConcurrencyResponse);
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);

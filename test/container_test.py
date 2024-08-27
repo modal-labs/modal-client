@@ -1665,22 +1665,6 @@ def test_stop_fetching_inputs(servicer):
 
 
 @skip_github_non_linux
-def test_set_local_concurrent_inputs(servicer):
-    ret = _run_container(
-        servicer,
-        "test.supports.experimental",
-        "SetLocalConcurrentInputs.*",
-        allow_concurrent_inputs=2,
-        inputs=_get_inputs(((), {}), n=4, method_name="get_concurrent_inputs"),
-        is_class=True,
-    )
-
-    assert len(ret.items) == 4
-    data = [deserialize(i.result.data, ret.client) for i in ret.items]
-    assert data == [20] * 4
-
-
-@skip_github_non_linux
 def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypatch):
     monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     num_heartbeats = 0
@@ -1972,7 +1956,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     dummy_container_args = api_pb2.ContainerArguments(function_id="fu-123")
     from modal._utils.async_utils import synchronizer
 
-    io_manager = ContainerIOManager(dummy_container_args, client)
+    io_manager = ContainerIOManager(dummy_container_args, client, concurrency_limit, 0)
     _io_manager = synchronizer._translate_in(io_manager)
 
     async def _func(x):
@@ -1989,7 +1973,6 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     peak_inputs = 0
     for io_context in io_manager.run_inputs_outputs(
         finalized_functions={"": fin_func},
-        input_concurrency=concurrency_limit,
     ):
         assert len(io_context.input_ids) == 1  # no batching in this test
         assert _io_manager.current_input_id == io_context.input_ids[0]
@@ -2029,8 +2012,7 @@ async def acquire_for(cm, secs):
 
 @pytest.mark.asyncio
 async def test_concurrency_manager():
-    cm = ConcurrencyManager()
-    cm.set_concurrency_specs(10, 0)
+    cm = ConcurrencyManager(10, 0)
     cm.initialize()
 
     tasks1 = asyncio.gather(*[acquire_for(cm, 0.1) for _ in range(4)])

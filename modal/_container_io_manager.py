@@ -32,8 +32,8 @@ from .exception import InputCancellation, InvalidError
 from .running_app import RunningApp
 
 MAX_OUTPUT_BATCH_SIZE: int = 49
-INPUT_CONCURRENCY_AUTOSCALE_TIME_INTERVAL_SECS = 1
-
+CONCURRENCY_STATUS_TIMEOUT = 5  # seconds
+CONCURRENCY_STATUS_INTERVAL = 3  # seconds
 RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
 
 
@@ -188,43 +188,43 @@ class ConcurrencyManager(asyncio.Semaphore):
     _closed: bool
     _monitor_thread: Optional[threading.Thread]
 
-    def __init__(self) -> None:
-        self._target_concurrency = None
-        self._max_concurrency = None
-        self._concurrency = None
+    def __init__(self, target_concurrency: int, max_concurrency: int) -> None:
+        assert max_concurrency >= target_concurrency or max_concurrency == 0
+        self._target_concurrency = target_concurrency
+        self._max_concurrency = max_concurrency
+        self._concurrency = target_concurrency
         self._intialized = False
         self._owed_releases = 0
         self._closed = False
-
-    def set_concurrency_specs(self, target_concurrency: int, max_concurrency: int) -> None:
-        assert self._target_concurrency is None
-        assert max_concurrency >= target_concurrency or max_concurrency == 0
-        self._concurrency = target_concurrency
-        self._target_concurrency = target_concurrency
-        self._max_concurrency = max_concurrency
-
-        if max_concurrency > 1:
-            self._monitor_thread = threading.Thread(target=self.monitor_concurrency, daemon=True)
-            self._monitor_thread.start()
 
     def monitor_concurrency(self) -> None:
         asyncio.run(self.async_monitor_concurrency())
 
     async def async_monitor_concurrency(self) -> None:
+        container_io_manager = _ContainerIOManager._singleton
         while not self._closed:
-            function_stats = await _ContainerIOManager.get_current_function_stats()
-            desired_concurrency = min(
-                self._max_concurrency,
-                self._target_concurrency + math.ceil(function_stats.backlog / function_stats.num_total_tasks),
+            request = api_pb2.FunctionGetConcurrencyRequest(
+                function_id=container_io_manager.function_id,
+                target_concurrency=self._target_concurrency,
+                max_concurrency=self._max_concurrency,
             )
-            self.set_concurrency(desired_concurrency)
-            time.sleep(INPUT_CONCURRENCY_AUTOSCALE_TIME_INTERVAL_SECS)
+            resp = await retry_transient_errors(
+                container_io_manager._client.stub.FunctionGetConcurrency,
+                request,
+                attempt_timeout=CONCURRENCY_STATUS_TIMEOUT,
+            )
+            self.set_concurrency(resp.concurrency)
+            time.sleep(CONCURRENCY_STATUS_INTERVAL)
 
     def initialize(self) -> None:
         # Initialize the semaphore with the number of concurrent inputs
         assert self._concurrency and not self._intialized
         super().__init__(self._concurrency)
         self._intialized = True
+
+        if self._max_concurrency > 1:
+            self._monitor_thread = threading.Thread(target=self.monitor_concurrency, daemon=True)
+            self._monitor_thread.start()
 
     async def acquire(self) -> Literal[True]:
         assert self._intialized and not self._closed
@@ -310,7 +310,9 @@ class _ContainerIOManager:
     _GENERATOR_STOP_SENTINEL: ClassVar[Sentinel] = Sentinel()
     _singleton: ClassVar[Optional["_ContainerIOManager"]] = None
 
-    def _init(self, container_args: api_pb2.ContainerArguments, client: _Client):
+    def _init(
+        self, container_args: api_pb2.ContainerArguments, client: _Client, target_concurrency: int, max_concurrency: int
+    ) -> None:
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
@@ -323,7 +325,7 @@ class _ContainerIOManager:
         self.current_inputs = {}
         self.current_input_started_at = None
 
-        self._concurrency_manager = ConcurrencyManager()
+        self._concurrency_manager = ConcurrencyManager(target_concurrency, max_concurrency)
 
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
@@ -336,9 +338,11 @@ class _ContainerIOManager:
         self._client = client
         assert isinstance(self._client, _Client)
 
-    def __new__(cls, container_args: api_pb2.ContainerArguments, client: _Client) -> "_ContainerIOManager":
+    def __new__(
+        cls, container_args: api_pb2.ContainerArguments, client: _Client, target_concurrency: int, max_concurrency: int
+    ) -> "_ContainerIOManager":
         cls._singleton = super().__new__(cls)
-        cls._singleton._init(container_args, client)
+        cls._singleton._init(container_args, client, target_concurrency, max_concurrency)
         return cls._singleton
 
     @classmethod
@@ -395,7 +399,7 @@ class _ContainerIOManager:
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
-                if self._input_concurrency > 1:
+                if self._concurrency_manager._target_concurrency > 1:
                     for input_id in input_ids_to_cancel:
                         if input_id in self.current_inputs:
                             self.current_inputs[input_id].cancel()

@@ -84,5 +84,10 @@ def _set_current_context_ids(input_ids: List[str], function_call_ids: List[str])
     return _reset_current_context_ids
 
 
+def _container_id() -> Optional[str]:
+    container_io_manager = _ContainerIOManager._singleton
+    return id(container_io_manager)
+
+
 _current_input_id: ContextVar = ContextVar("_current_input_id")
 _current_function_call_id: ContextVar = ContextVar("_current_function_call_id")

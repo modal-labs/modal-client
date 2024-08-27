@@ -25,14 +25,3 @@ class StopFetching:
             modal.experimental.stop_fetching_inputs()
 
         return x * x
-
-
-@app.cls(allow_concurrent_inputs=2, concurrency_limit=1)
-class SetLocalConcurrentInputs:
-    @enter()
-    def init(self):
-        modal.experimental.set_local_concurrent_inputs(20)
-
-    @method()
-    def get_concurrent_inputs(self):
-        return modal.experimental.get_local_concurrent_inputs()
