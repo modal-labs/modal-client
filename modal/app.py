@@ -324,8 +324,10 @@ class _App:
                 some_modal_function.remote()
         ```
 
-        Note that you cannot invoke this in global scope. If you want to run it as your entrypoint,
-        consider wrapping it:
+        Note that you cannot invoke this in global scope of a file where you have
+        Modal functions or Classes, since that would run the block when the function
+        or class is imported in your containers as well. If you want to run it as
+        your entrypoint, consider wrapping it:
 
         ```python
         if __name__ == "__main__":
