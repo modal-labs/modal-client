@@ -1136,13 +1136,13 @@ message FunctionGetCallGraphResponse {
   repeated FunctionCallCallGraphInfo function_calls = 2;
 }
 
-message FunctionGetConcurrencyRequest{
+message FunctionGetDynamicConcurrencyRequest{
   string function_id = 1;
   uint32 target_concurrency = 2;
   uint32 max_concurrency = 3;
 }
 
-message FunctionGetConcurrencyResponse {
+message FunctionGetDynamicConcurrencyResponse {
   uint32 concurrency = 1;
 }
 
@@ -2310,7 +2310,7 @@ service ModalClient {
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
   rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
-  rpc FunctionGetConcurrency(FunctionGetConcurrencyRequest) returns (FunctionGetConcurrencyResponse);
+  rpc FunctionGetDynamicConcurrency(FunctionGetDynamicConcurrencyRequest) returns (FunctionGetDynamicConcurrencyResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
