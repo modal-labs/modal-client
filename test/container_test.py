@@ -296,6 +296,7 @@ def _run_container(
 
             # Override server URL to reproduce restore behavior.
             env["MODAL_SERVER_URL"] = servicer.container_addr
+            env["MODAL_ENABLE_SNAP_RESTORE"] = "1"
 
         # reset _App tracking state between runs
         _App._all_apps.clear()
