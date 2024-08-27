@@ -20,9 +20,12 @@ async def async_typed_func(b: bool) -> str:
     return ""
 
 
-async def async_block() -> None:
-    should_be_str = async_typed_func.remote(False)
-    assert_type(should_be_str, str)
+async_typed_func
 
-    should_be_str_2 = async_typed_func.remote.aio(True)
+should_be_str = async_typed_func.remote(False)  # should be blocking without aio
+assert_type(should_be_str, str)
+
+
+async def async_block() -> None:
+    should_be_str_2 = await async_typed_func.remote.aio(True)
     assert_type(should_be_str_2, str)
