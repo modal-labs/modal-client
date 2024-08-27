@@ -104,7 +104,12 @@ class _Client:
     @property
     def stub(self) -> api_grpc.ModalClientStub:
         """mdmd:hidden"""
-        assert self._stub
+        if self._stub is None:
+            if self.client_type == api_pb2.CLIENT_TYPE_CONTAINER:
+                logger.debug("restoring stub for memory snapshotted client instance")
+                self._open()
+            else:
+                assert self._stub
         return self._stub
 
     @property
@@ -120,9 +125,9 @@ class _Client:
             self._credentials = (config["task_id"], config["task_secret"])
         return self._credentials
 
-    async def _open(self):
+    def _open(self):
         assert self._stub is None
-        metadata = _get_metadata(self.client_type, self._credentials, self.version)
+        metadata = _get_metadata(self.client_type, self.credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 
@@ -135,7 +140,11 @@ class _Client:
             self._channel.close()
 
         if forget_credentials:
+            # force re-fetch of fresh creds
             self._credentials = None
+            # stale creds can be stored in channel
+            self._stub = None
+            self._channel = None
 
         # Remove cached client.
         self.set_env_client(None)
@@ -181,7 +190,7 @@ class _Client:
             raise ConnectionError(str(exc))
 
     async def __aenter__(self):
-        await self._open()
+        self._open()
         try:
             await self._init()
         except BaseException:
@@ -201,7 +210,7 @@ class _Client:
         logger.debug("Client: Starting client without authentication")
         client = cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials=None)
         try:
-            await client._open()
+            client._open()
             # Skip client._init
             yield client
         finally:
@@ -243,7 +252,7 @@ class _Client:
                 return cls._client_from_env
             else:
                 client = _Client(server_url, client_type, credentials)
-                await client._open()
+                client._open()
                 async_utils.on_shutdown(client._close())
                 try:
                     await client._init()
@@ -269,7 +278,7 @@ class _Client:
         client_type = api_pb2.CLIENT_TYPE_CLIENT
         credentials = (token_id, token_secret)
         client = _Client(server_url, client_type, credentials)
-        await client._open()
+        client._open()
         try:
             await client._init()
         except BaseException:

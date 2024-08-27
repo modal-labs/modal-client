@@ -747,6 +747,7 @@ class _ContainerIOManager:
         for key, value in restored_state.items():
             # Empty string indicates that value does not need to be updated.
             if value != "":
+                logger.debug(f"Updating config {key} = {value}")
                 config.override_locally(key, value)
 
         # Restore input to default state.
