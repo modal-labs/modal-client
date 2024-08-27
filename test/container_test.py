@@ -24,7 +24,12 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
-from modal._container_io_manager import ContainerIOManager, FinalizedFunction, IOContext
+from modal._container_io_manager import (
+    ConcurrencyManager,
+    ContainerIOManager,
+    FinalizedFunction,
+    IOContext,
+)
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -1956,7 +1961,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     dummy_container_args = api_pb2.ContainerArguments(function_id="fu-123")
     from modal._utils.async_utils import synchronizer
 
-    io_manager = ContainerIOManager(dummy_container_args, client)
+    io_manager = ContainerIOManager(dummy_container_args, client, concurrency_limit, 0)
     _io_manager = synchronizer._translate_in(io_manager)
 
     async def _func(x):
@@ -1973,7 +1978,6 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     peak_inputs = 0
     for io_context in io_manager.run_inputs_outputs(
         finalized_functions={"": fin_func},
-        input_concurrency=concurrency_limit,
     ):
         assert len(io_context.input_ids) == 1  # no batching in this test
         assert _io_manager.current_input_id == io_context.input_ids[0]
@@ -2003,3 +2007,43 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
                     # and some successes
                     io_manager.push_outputs(input_to_process, 0, None, fin_func.data_format)
     assert not triggered_assertions
+
+
+async def acquire_for(cm, secs):
+    await cm.acquire()
+    await asyncio.sleep(secs)
+    cm.release()
+
+
+@pytest.mark.asyncio
+async def test_concurrency_manager():
+    cm = ConcurrencyManager(10, 0)
+    cm.initialize()
+
+    tasks1 = asyncio.gather(*[acquire_for(cm, 0.1) for _ in range(4)])
+    tasks2 = asyncio.gather(*[acquire_for(cm, 0.2) for _ in range(4)])
+    await asyncio.sleep(0.01)
+
+    cm.set_concurrency(1)
+    assert cm.get_concurrency() == 1
+    assert cm._value == 0
+    assert cm._owed_releases == 7
+    await tasks1
+    assert cm._value == 0
+    assert cm._owed_releases == 3
+
+    cm.set_concurrency(2)
+    assert cm.get_concurrency() == 2
+    assert cm._value == 0
+    assert cm._owed_releases == 2
+
+    cm.set_concurrency(10)
+    assert cm.get_concurrency() == 10
+    assert cm._value == 6
+    assert cm._owed_releases == 0
+    await tasks2
+    assert cm._value == 10
+    assert cm._owed_releases == 0
+
+    await cm.close()
+    assert cm._value == 0
