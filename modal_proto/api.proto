@@ -1847,11 +1847,12 @@ message SchedulerPlacement {
   // - Fold in cloud, resource needs here too.
   // - Allow specifying list of zones, cloud, fallback and alternative
   //   GPU types.
-  optional string _region = 1 [deprecated=true];
 
   repeated string regions = 4;
   optional string _zone = 2;
   optional string _lifecycle = 3; // "on-demand" or "spot", else ignored
+
+  reserved 1;
 }
 
 message SecretCreateRequest {  // Not used by client anymore
