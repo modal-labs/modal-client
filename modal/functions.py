@@ -505,7 +505,6 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
         checkpointing_enabled: Optional[bool] = None,
-        allow_background_volume_commits: Optional[bool] = None,
         block_network: bool = False,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
@@ -533,21 +532,6 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                 "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
             )
             enable_memory_snapshot = checkpointing_enabled
-
-        if allow_background_volume_commits is False:
-            deprecation_error(
-                (2024, 5, 13),
-                "Disabling volume background commits is now deprecated. "
-                "Remove _allow_background_volume_commits=False to enable the functionality.",
-            )
-        elif allow_background_volume_commits is True:
-            deprecation_warning(
-                (2024, 7, 18),
-                "Setting volume background commits is deprecated. "
-                "The functionality is now unconditionally enabled (set to True).",
-            )
-        elif allow_background_volume_commits is None:
-            allow_background_volume_commits = True
 
         explicit_mounts = mounts
 
@@ -777,7 +761,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     api_pb2.VolumeMount(
                         mount_path=path,
                         volume_id=volume.object_id,
-                        allow_background_commits=bool(allow_background_volume_commits),
+                        allow_background_commits=True,
                     )
                     for path, volume in validated_volumes
                 ]

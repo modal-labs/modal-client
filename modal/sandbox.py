@@ -19,7 +19,7 @@ from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
-from .exception import deprecation_error, deprecation_warning
+from .exception import deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -66,7 +66,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty_info: Optional[api_pb2.PTYInfo] = None,
-        _allow_background_volume_commits: Optional[bool] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
@@ -105,7 +104,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 api_pb2.VolumeMount(
                     mount_path=path,
                     volume_id=volume.object_id,
-                    allow_background_commits=_allow_background_volume_commits,
+                    allow_background_commits=True,
                 )
                 for path, volume in validated_volumes
             ]
@@ -170,28 +169,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
         pty_info: Optional[api_pb2.PTYInfo] = None,
-        _allow_background_volume_commits: None = None,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
         _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
-        if _allow_background_volume_commits is False:
-            deprecation_error(
-                (2024, 5, 13),
-                "Disabling volume background commits is now deprecated. "
-                "Remove _allow_background_volume_commits=False to enable the functionality.",
-            )
-        elif _allow_background_volume_commits is True:
-            deprecation_warning(
-                (2024, 7, 18),
-                "Setting volume background commits is deprecated. "
-                "The functionality is now unconditionally enabled (set to True).",
-            )
-        elif _allow_background_volume_commits is None:
-            _allow_background_volume_commits = True
-
         if environment_name is None:
             environment_name = config.get("environment")
 
@@ -212,7 +195,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             block_network=block_network,
             volumes=volumes,
             pty_info=pty_info,
-            _allow_background_volume_commits=_allow_background_volume_commits,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             _experimental_gpus=_experimental_gpus,
         )
@@ -234,7 +216,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def from_id(sandbox_id: str, client: Optional[_Client] = None) -> "_Sandbox":
-        """Construct a Sandbox from an id and look up the sandbox result.
+        """Construct a Sandbox from an id and look up the Sandbox result.
 
         The ID of a Sandbox object can be accessed using `.object_id`.
         """
@@ -252,7 +234,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     # Live handle methods
 
     async def wait(self, raise_on_termination: bool = True):
-        """Wait for the sandbox to finish running."""
+        """Wait for the Sandbox to finish running."""
 
         while True:
             req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=50)
@@ -267,9 +249,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 break
 
     async def terminate(self):
-        """Terminate sandbox execution.
+        """Terminate Sandbox execution.
 
-        This is a no-op if the sandbox has already finished running."""
+        This is a no-op if the Sandbox has already finished running."""
 
         await retry_transient_errors(
             self._client.stub.SandboxTerminate, api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
@@ -277,9 +259,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         await self.wait(raise_on_termination=False)
 
     async def poll(self) -> Optional[int]:
-        """Check if the sandbox has finished running.
+        """Check if the Sandbox has finished running.
 
-        Returns `None` if the sandbox is still running, else returns the exit code.
+        Returns `None` if the Sandbox is still running, else returns the exit code.
         """
 
         req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=0)
@@ -299,11 +281,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self._task_id
 
     async def exec(self, *cmds: str, pty_info: Optional[api_pb2.PTYInfo] = None):
-        """Execute a command in the sandbox, and return a `ContainerProcess` handle.
+        """Execute a command in the Sandbox and return
+        a [`ContainerProcess`](/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
 
         **Usage**
 
-        ```
+        ```python
         sandbox = modal.Sandbox.create("sleep", "infinity")
 
         process = sandbox.exec("bash", "-c", "for i in $(seq 1 10); do echo foo $i; sleep 0.5; done")
@@ -325,19 +308,27 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @property
     def stdout(self) -> _StreamReader:
-        """`StreamReader` for the sandbox's stdout stream."""
+        """
+        [`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
+        the sandbox's stdout stream.
+        """
 
         return self._stdout
 
     @property
     def stderr(self) -> _StreamReader:
-        """`StreamReader` for the sandbox's stderr stream."""
+        """[`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
+        the sandbox's stderr stream.
+        """
 
         return self._stderr
 
     @property
     def stdin(self) -> _StreamWriter:
-        """`StreamWriter` for the sandbox's stdin stream."""
+        """
+        [`StreamWriter`](/docs/reference/modal.io_streams#modalio_streamsstreamwriter) for
+        the sandbox's stdin stream.
+        """
 
         return self._stdin
 

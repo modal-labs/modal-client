@@ -720,10 +720,15 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     service: Service
     function_def = container_args.function_def
     is_auto_snapshot: bool = function_def.is_auto_snapshot
+    # The worker sets this flag to "1" for snapshot and restore tasks. Otherwise, this flag is unset,
+    # in which case snapshots should be disabled.
+    is_snapshotting_function = (
+        function_def.is_checkpointing_function and os.environ.get("MODAL_ENABLE_SNAP_RESTORE", "0") == "1"
+    )
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
 
-    with container_io_manager.heartbeats(function_def.is_checkpointing_function), UserCodeEventLoop() as event_loop:
+    with container_io_manager.heartbeats(is_snapshotting_function), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
             ser_cls, ser_fun = container_io_manager.get_serialized_function()
@@ -807,7 +812,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and innitialization. Checkpointed containers run from this point onwards.
-        if function_def.is_checkpointing_function:
+        if is_snapshotting_function:
             container_io_manager.memory_snapshot()
 
         # Install hooks for interactive functions.

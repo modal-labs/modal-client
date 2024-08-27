@@ -547,6 +547,7 @@ message CheckpointInfo {
   CheckpointStatus status = 2;
   string checkpoint_id = 3;
   string runtime_fingerprint = 4;
+  int64 size = 5;
 }
 
 message ClassCreateRequest {
@@ -910,6 +911,7 @@ message EnvironmentDeleteRequest {
 message EnvironmentListItem {
   string name = 1;
   string webhook_suffix = 2;
+  double created_at = 3;
 }
 
 message EnvironmentListResponse {
