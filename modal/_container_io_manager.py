@@ -32,7 +32,7 @@ from .exception import InputCancellation, InvalidError
 from .running_app import RunningApp
 
 CONCURRENCY_STATUS_INTERVAL = 3  # seconds
-CONCURRENCY_STATUS_TIMEOUT = 5  # seconds
+CONCURRENCY_STATUS_TIMEOUT = 10  # seconds
 MAX_OUTPUT_BATCH_SIZE: int = 49
 RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
 
@@ -182,8 +182,8 @@ class IOContext:
 class ConcurrencyManager(asyncio.Semaphore):
     """Manages the concurrency of inputs for a running container.
 
-    The class allows dynamically adjusting the concurrency by adjusting the semaphore value.
-    It eagerly increases concurrency and lazily decreases concurrency with `_owed_releases`.
+    The class allows dynamically adjusting the concurrency by changing the semaphore value.
+    It eagerly increases and lazily decreases concurrency with `_owed_releases`.
     """
 
     _target_concurrency: int
@@ -206,14 +206,13 @@ class ConcurrencyManager(asyncio.Semaphore):
         self._monitor_thread = None
 
     def initialize(self) -> None:
-        # Initialize the semaphore with the number of concurrent inputs
+        # Initialize the semaphore with the current concurrency
         assert self._concurrency and not self._initialized
         super().__init__(self._concurrency)
         self._initialized = True
 
-        # Spin up thread to dynamically adjust concurrency given user specified target and max concurrency
+        # Spin up thread to dynamically adjust concurrency if user specified target and max concurrency
         if self._max_concurrency > 1:
-            print("thread launched!")
             self._monitor_thread = threading.Thread(target=self.monitor_concurrency, daemon=True)
             self._monitor_thread.start()
 
@@ -323,13 +322,6 @@ class _ContainerIOManager:
     def _init(
         self, container_args: api_pb2.ContainerArguments, client: _Client, target_concurrency: int, max_concurrency: int
     ) -> None:
-        with self.handle_user_exception():
-            if max_concurrency != 0 and max_concurrency <= target_concurrency:
-                raise InvalidError("max_concurrent_inputs must be greater than or equal to allow_concurrent_inputs.")
-            if max_concurrency != 0 and target_concurrency <= 1:
-                raise InvalidError(
-                    "allow_concurrent_inputs must be greater than 1 to enable automatic input concurrency scaling."
-                )
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
@@ -650,8 +642,7 @@ class _ContainerIOManager:
         # Before trying to fetch an input, acquire the semaphore:
         # - if no input is fetched, release the semaphore.
         # - or, when the output for the fetched input is sent, release the semaphore.
-        with self.handle_user_exception():
-            self._concurrency_manager.initialize()
+        self._concurrency_manager.initialize()
 
         async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
             io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)

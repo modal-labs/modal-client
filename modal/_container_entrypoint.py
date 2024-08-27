@@ -211,6 +211,9 @@ class DaemonizedThreadPool:
     # Used instead of ThreadPoolExecutor, since the latter won't allow
     # the interpreter to shut down before the currently running tasks
     # have finished
+    def __init__(self, container_io_manager: "modal._container_io_manager.ContainerIOManager"):
+        self.container_io_manager = container_io_manager
+
     def __enter__(self):
         self.spawned_workers = 0
         self.inputs: queue.Queue[Any] = queue.Queue()
@@ -243,8 +246,9 @@ class DaemonizedThreadPool:
                     logger.exception(f"Exception raised by {_func} in DaemonizedThreadPool worker!")
                 self.inputs.task_done()
 
-        threading.Thread(target=worker_thread, daemon=True).start()
-        self.spawned_workers += 1
+        if self.spawned_workers < self.concurrency_manager.get_input_concurrency():
+            threading.Thread(target=worker_thread, daemon=True).start()
+            self.spawned_workers += 1
 
         self.inputs.put((func, args))
 
@@ -413,7 +417,7 @@ def call_function(
         reset_context()
 
     if target_input_concurrency > 1:
-        with DaemonizedThreadPool() as thread_pool:
+        with DaemonizedThreadPool(container_io_manager) as thread_pool:
 
             def make_async_cancel_callback(task):
                 def f():
@@ -730,7 +734,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         batch_wait_ms = 0
     else:
         target_concurrency = function_def.allow_concurrent_inputs or 1
-        max_concurrency = function_def.max_concurrent_inputs or 0
+        max_concurrency = 0  # TODO(cathy) add this with interface
         batch_max_size = function_def.batch_max_size or 0
         batch_wait_ms = function_def.batch_linger_ms or 0
 
@@ -747,6 +751,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
+            if max_concurrency != 0 and max_concurrency <= target_concurrency:
+                raise InvalidError("max_concurrent_inputs must be greater than or equal to allow_concurrent_inputs.")
+            if max_concurrency != 0 and target_concurrency <= 1:
+                raise InvalidError(
+                    "allow_concurrent_inputs must be greater than 1 to enable automatic input concurrency scaling."
+                )
             if container_args.serialized_params:
                 param_args, param_kwargs = deserialize_params(container_args.serialized_params, function_def, _client)
             else:
