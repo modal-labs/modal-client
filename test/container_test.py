@@ -2089,7 +2089,6 @@ def test_max_concurrency(servicer, function_name, monkeypatch):
 
     async def patch_concurrency_loop(self):
         self._concurrency_manager.set_value(n_inputs)
-        self._concurrency = n_inputs
         await asyncio.sleep(2)
 
     monkeypatch.setattr(

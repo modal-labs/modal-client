@@ -8,6 +8,7 @@ import signal
 import sys
 import time
 import traceback
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Tuple
@@ -222,9 +223,6 @@ class ConcurrencyManager:
         for _ in range(self.value):
             await self.acquire()
 
-    def is_closed(self) -> bool:
-        return self.closed
-
 
 class _ContainerIOManager:
     """Synchronizes all RPC calls and network operations for a running container.
@@ -247,9 +245,8 @@ class _ContainerIOManager:
 
     _target_concurrency: int
     _max_concurrency: int
-    _concurrency: int
     _concurrency_loop: Optional[asyncio.Task]
-    _semaphore: ConcurrencyManager
+    _concurrency_manager: ConcurrencyManager
 
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
@@ -281,7 +278,6 @@ class _ContainerIOManager:
 
         self._target_concurrency = target_concurrency
         self._max_concurrency = max_concurrency
-        self._concurrency = target_concurrency
         self._concurrency_loop = None
         self._concurrency_manager = ConcurrencyManager(target_concurrency)
 
@@ -404,8 +400,6 @@ class _ContainerIOManager:
         while 1:
             t0 = time.monotonic()
             try:
-                if self._concurrency_manager.is_closed():
-                    break
                 if self._max_concurrency > 0:
                     request = api_pb2.FunctionGetDynamicConcurrencyRequest(
                         function_id=self.function_id,
@@ -419,7 +413,9 @@ class _ContainerIOManager:
                     )
 
                     self._concurrency_manager.set_value(resp.concurrency)
-                    self._concurrency = resp.concurrency
+                    logger.debug(
+                        f"Dynamic concurrency set from {self._concurrency_manager.value} to {resp.concurrency}"
+                    )
                     continue
 
             except Exception as exc:
@@ -608,7 +604,7 @@ class _ContainerIOManager:
                             final_input_received = True
                             break
 
-                    # If yielded, allow semaphore to be released via exit_context
+                    # If yielded, allow concurrency_manager to be released via exit_context
                     yield inputs
                     yielded = True
 
@@ -627,20 +623,24 @@ class _ContainerIOManager:
         batch_wait_ms: int = 0,
     ) -> AsyncIterator[IOContext]:
         # Ensure we do not fetch new inputs when container is too busy.
-        # Before trying to fetch an input, acquire the semaphore:
-        # - if no input is fetched, release the semaphore.
-        # - or, when the output for the fetched input is sent, release the semaphore.
-        async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
-            io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
-            for input_id in io_context.input_ids:
-                self.current_inputs[input_id] = io_context
+        # Before trying to fetch an input, acquire the concurrency_manager:
+        # - if no input is fetched, release the concurrency_manager.
+        # - or, when the output for the fetched input is sent, release the concurrency_manager.
+        dynamic_concurrency_manager = (
+            self.dynamic_concurrency_manager() if self._max_concurrency > self._target_concurrency else nullcontext()
+        )
+        async with dynamic_concurrency_manager:
+            async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
+                io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
+                for input_id in io_context.input_ids:
+                    self.current_inputs[input_id] = io_context
 
-            self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
-            yield io_context
-            self.current_input_id, self.current_input_started_at = (None, None)
+                self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
+                yield io_context
+                self.current_input_id, self.current_input_started_at = (None, None)
 
-        # collect all active input slots, meaning all inputs have wrapped up.
-        await self._concurrency_manager.close()
+            # collect all active input slots, meaning all inputs have wrapped up.
+            await self._concurrency_manager.close()
 
     @synchronizer.no_io_translation
     async def _push_outputs(
@@ -944,7 +944,7 @@ class _ContainerIOManager:
     def get_input_concurrency(cls) -> int:
         io_manager = cls._singleton
         assert io_manager
-        return io_manager._concurrency
+        return io_manager._concurrency_manager.value
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
