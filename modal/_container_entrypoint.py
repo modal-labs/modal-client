@@ -69,7 +69,7 @@ if TYPE_CHECKING:
 def construct_webhook_callable(
     user_defined_callable: Callable,
     webhook_config: api_pb2.WebhookConfig,
-    container_io_manager: "modal._container_io_manager.ContainerIOManager",
+    container_io_manager: ContainerIOManager,
 ):
     # For webhooks, the user function is used to construct an asgi app:
     if webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:

@@ -31,8 +31,8 @@ from .config import config, logger
 from .exception import InputCancellation, InvalidError
 from .running_app import RunningApp
 
-CONCURRENCY_STATUS_INTERVAL = 3  # seconds
-CONCURRENCY_STATUS_TIMEOUT = 10  # seconds
+DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
+DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
 MAX_OUTPUT_BATCH_SIZE: int = 49
 RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
 
@@ -183,7 +183,7 @@ class ConcurrencyManager(asyncio.Semaphore):
     """Manages the concurrency of inputs for a running container.
 
     The class allows dynamically adjusting the concurrency by changing the semaphore value.
-    It eagerly increases and lazily decreases concurrency with `_owed_releases`.
+    It eagerly increases and lazily decreases concurrency.
     """
 
     _target_concurrency: int
@@ -230,10 +230,10 @@ class ConcurrencyManager(asyncio.Semaphore):
             resp = await retry_transient_errors(
                 container_io_manager._client.stub.FunctionGetDynamicConcurrency,
                 request,
-                attempt_timeout=CONCURRENCY_STATUS_TIMEOUT,
+                attempt_timeout=DYNAMIC_CONCURRENCY_INTERVAL_SECS,
             )
             self.set_concurrency(resp.concurrency)
-            await asyncio.sleep(CONCURRENCY_STATUS_INTERVAL)
+            await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
 
     async def acquire(self) -> Literal[True]:
         assert self._initialized and not self._closed

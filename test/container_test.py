@@ -2056,6 +2056,7 @@ async def test_concurrency_manager():
 
 
 @skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
 def test_max_concurrency_error(servicer):
     n_inputs = 15
     target_concurrency = 10
