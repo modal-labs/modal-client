@@ -733,7 +733,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         batch_max_size = 0
         batch_wait_ms = 0
     else:
-        target_concurrency = function_def.allow_concurrent_inputs or 1
+        target_concurrency = function_def.target_concurrent_inputs or 1
         max_concurrency = function_def.max_concurrent_inputs or 0
         batch_max_size = function_def.batch_max_size or 0
         batch_wait_ms = function_def.batch_linger_ms or 0
@@ -752,10 +752,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
             if max_concurrency != 0 and max_concurrency <= target_concurrency:
-                raise InvalidError("max_concurrent_inputs must be greater than or equal to allow_concurrent_inputs.")
+                raise InvalidError("allow_concurrent_inputs must be greater than or equal to target_concurrent_inputs.")
             if max_concurrency != 0 and target_concurrency <= 1:
                 raise InvalidError(
-                    "allow_concurrent_inputs must be greater than 1 to enable automatic input concurrency scaling."
+                    "target_concurrent_inputs must be greater than 1 to enable automatic input concurrency scaling."
                 )
             if container_args.serialized_params:
                 param_args, param_kwargs = deserialize_params(container_args.serialized_params, function_def, _client)
