@@ -246,7 +246,7 @@ class DaemonizedThreadPool:
                     logger.exception(f"Exception raised by {_func} in DaemonizedThreadPool worker!")
                 self.inputs.task_done()
 
-        if self.spawned_workers < self.concurrency_manager.get_input_concurrency():
+        if self.spawned_workers < self.container_io_manager.get_input_concurrency():
             threading.Thread(target=worker_thread, daemon=True).start()
             self.spawned_workers += 1
 
@@ -734,7 +734,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         batch_wait_ms = 0
     else:
         target_concurrency = function_def.allow_concurrent_inputs or 1
-        max_concurrency = 0  # TODO(cathy) add this with interface
+        max_concurrency = function_def.max_concurrent_inputs or 0
         batch_max_size = function_def.batch_max_size or 0
         batch_wait_ms = function_def.batch_linger_ms or 0
 

@@ -1048,6 +1048,7 @@ message Function {
   uint64 batch_linger_ms = 61; // Miliseconds to block before a response is needed
   bool i6pn_enabled = 62;
   bool _experimental_concurrent_cancellations = 63;
+  uint32 max_concurrent_inputs = 64;
 }
 
 message FunctionBindParamsRequest {

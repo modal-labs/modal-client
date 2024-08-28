@@ -954,8 +954,10 @@ class _ContainerIOManager:
         assert cls._singleton
         cls._singleton._fetching_inputs = False
 
-    def get_input_concurrency(self) -> int:
-        return self._concurrency_manager.get_concurrency()
+    @classmethod
+    def get_input_concurrency(cls) -> int:
+        io_manager = cls._singleton
+        return io_manager._concurrency_manager.get_concurrency()
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)

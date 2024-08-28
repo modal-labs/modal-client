@@ -173,6 +173,7 @@ def _container_args(
     app_name: str = "",
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
+    max_concurrent_inputs: Optional[int] = None,
     batch_max_size: Optional[int] = None,
     batch_wait_ms: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
@@ -205,6 +206,7 @@ def _container_args(
         is_builder_function=is_builder_function,
         is_auto_snapshot=is_auto_snapshot,
         allow_concurrent_inputs=allow_concurrent_inputs,
+        max_concurrent_inputs=max_concurrent_inputs,
         batch_max_size=batch_max_size,
         batch_linger_ms=batch_wait_ms,
         is_checkpointing_function=is_checkpointing_function,
@@ -243,6 +245,7 @@ def _run_container(
     app_name: str = "",
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
+    max_concurrent_inputs: Optional[int] = None,
     batch_max_size: int = 0,
     batch_wait_ms: int = 0,
     serialized_params: Optional[bytes] = None,
@@ -265,6 +268,7 @@ def _run_container(
         app_name,
         is_builder_function,
         allow_concurrent_inputs,
+        max_concurrent_inputs,
         batch_max_size,
         batch_wait_ms,
         serialized_params,
@@ -1472,6 +1476,7 @@ def _run_container_process(
     *,
     inputs: List[Tuple[str, Tuple, Dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
+    max_concurrent_inputs: Optional[int] = None,
     cls_params: Tuple[Tuple, Dict[str, Any]] = ((), {}),
     print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
@@ -1481,6 +1486,7 @@ def _run_container_process(
         module_name,
         function_name,
         allow_concurrent_inputs=allow_concurrent_inputs,
+        max_concurrent_inputs=max_concurrent_inputs,
         serialized_params=serialize(cls_params),
         is_class=is_class,
     )
@@ -2047,3 +2053,61 @@ async def test_concurrency_manager():
 
     await cm.close()
     assert cm._value == 0
+
+
+@skip_github_non_linux
+def test_max_concurrency_error(servicer):
+    n_inputs = 15
+    target_concurrency = 10
+    max_concurrency = 5
+
+    container_process = _run_container_process(
+        servicer,
+        "test.supports.functions",
+        "square",
+        inputs=[("", (1,), {})] * n_inputs,
+        allow_concurrent_inputs=target_concurrency,
+        max_concurrent_inputs=max_concurrency,
+    )
+    _, stderr = container_process.communicate(timeout=5)
+    assert len(servicer.container_outputs) == 0
+    assert "Traceback" in stderr.decode()
+    assert "max_concurrent_inputs must be greater than or equal to allow_concurrent_inputs" in stderr.decode()
+
+    target_concurrency = 1
+    container_process = _run_container_process(
+        servicer,
+        "test.supports.functions",
+        "square",
+        inputs=[("", (1,), {})] * n_inputs,
+        allow_concurrent_inputs=target_concurrency,
+        max_concurrent_inputs=max_concurrency,
+    )
+    _, stderr = container_process.communicate()
+    assert "Traceback" in stderr.decode()
+    assert "allow_concurrent_inputs must be greater than 1" in stderr.decode()
+
+
+@pytest.mark.parametrize("function_name", ["get_input_concurrency"])
+@skip_github_non_linux
+def test_max_concurrency(servicer, function_name, monkeypatch):
+    n_inputs = 5
+    target_concurrency = 2
+    max_concurrency = 10
+
+    async def patch_async_monitor(self):
+        self.set_concurrency(n_inputs)
+
+    monkeypatch.setattr("modal._container_io_manager.ConcurrencyManager.async_monitor_concurrency", patch_async_monitor)
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        function_name,
+        inputs=_get_inputs(((1,), {}), n=n_inputs),
+        allow_concurrent_inputs=target_concurrency,
+        max_concurrent_inputs=max_concurrency,
+    )
+
+    outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
+    assert n_inputs in outputs
