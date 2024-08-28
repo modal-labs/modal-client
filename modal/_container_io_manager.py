@@ -263,7 +263,6 @@ class ConcurrencyManager(asyncio.Semaphore):
             super().release()
 
     def get_concurrency(self) -> int:
-        # Return 0 if concurrency manager not initialized
         return self._concurrency or 0
 
     def set_concurrency(self, new_concurrency: int) -> None:
