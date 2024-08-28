@@ -1199,6 +1199,7 @@ class _Image(_Object, type_prefix="im"):
         builder_version: ImageBuilderVersion,
         setup_commands: List[str],
         add_python: Optional[str] = None,
+        skip_modal_requirements: bool = False,
     ) -> List[str]:
         add_python_commands: List[str] = []
         if add_python:
@@ -1209,13 +1210,16 @@ class _Image(_Object, type_prefix="im"):
                 "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
             ]
 
-        modal_requirements_commands = [
-            f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
-            f"RUN python -m pip install --upgrade {'pip' if builder_version == '2023.12' else 'pip wheel uv'}",
-            f"RUN python -m {_get_modal_requirements_command(builder_version)}",
-        ]
-        if builder_version > "2023.12":
-            modal_requirements_commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
+        if skip_modal_requirements:
+            modal_requirements_commands = []
+        else:
+            modal_requirements_commands = [
+                f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
+                f"RUN python -m pip install --upgrade {'pip' if builder_version == '2023.12' else 'pip wheel uv'}",
+                f"RUN python -m {_get_modal_requirements_command(builder_version)}",
+            ]
+            if builder_version > "2023.12":
+                modal_requirements_commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
 
         return [
             f"FROM {tag}",
@@ -1272,9 +1276,18 @@ class _Image(_Object, type_prefix="im"):
         if "image_registry_config" not in kwargs and secret is not None:
             kwargs["image_registry_config"] = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS, secret)
 
+        skip_modal_requirements = kwargs.pop("skip_modal_requirements", False)
+
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = _Image._registry_setup_commands(tag, version, setup_dockerfile_commands, add_python)
-            context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, add_python)}
+            commands = _Image._registry_setup_commands(
+                tag, version, setup_dockerfile_commands, add_python, skip_modal_requirements
+            )
+            context_files = (
+                {}
+                if skip_modal_requirements
+                else {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, add_python)}
+            )
+
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
