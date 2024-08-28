@@ -447,20 +447,21 @@ def call_function(
                 # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
                 # for them to resolve gracefully:
                 async with TaskContext(0.01) as task_context:
-                    async for io_context in container_io_manager.run_inputs_outputs.aio(
-                        finalized_functions, batch_max_size, batch_wait_ms
-                    ):
-                        # Note that run_inputs_outputs will not return until the concurrency semaphore has
-                        # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
-                        # This prevents leaving the task_context before outputs have been created
-                        # TODO: refactor to make this a bit more easy to follow?
-                        if io_context.finalized_function.is_async:
-                            input_task = task_context.create_task(run_input_async(io_context))
-                            io_context.set_cancel_callback(make_async_cancel_callback(input_task))
-                        else:
-                            # run sync input in thread
-                            thread_pool.submit(run_input_sync, io_context)
-                            io_context.set_cancel_callback(cancel_callback_sync)
+                    with container_io_manager.dynamic_concurrency_manager():
+                        async for io_context in container_io_manager.run_inputs_outputs.aio(
+                            finalized_functions, batch_max_size, batch_wait_ms
+                        ):
+                            # Note that run_inputs_outputs will not return until the concurrency semaphore has
+                            # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
+                            # This prevents leaving the task_context before outputs have been created
+                            # TODO: refactor to make this a bit more easy to follow?
+                            if io_context.finalized_function.is_async:
+                                input_task = task_context.create_task(run_input_async(io_context))
+                                io_context.set_cancel_callback(make_async_cancel_callback(input_task))
+                            else:
+                                # run sync input in thread
+                                thread_pool.submit(run_input_sync, io_context)
+                                io_context.set_cancel_callback(cancel_callback_sync)
 
             user_code_event_loop.run(run_concurrent_inputs())
     else:

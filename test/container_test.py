@@ -2015,44 +2015,35 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     assert not triggered_assertions
 
 
-async def acquire_for(cm, secs):
-    await cm.acquire()
-    await asyncio.sleep(secs)
-    cm.release()
-
-
 @pytest.mark.asyncio
 async def test_concurrency_manager():
-    cm = ConcurrencyManager(10, 0)
-    cm.initialize()
+    cm = ConcurrencyManager(10)
+
+    async def acquire_for(cm, secs):
+        await cm.acquire()
+        await asyncio.sleep(secs)
+        cm.release()
 
     tasks1 = asyncio.gather(*[acquire_for(cm, 0.1) for _ in range(4)])
     tasks2 = asyncio.gather(*[acquire_for(cm, 0.2) for _ in range(4)])
     await asyncio.sleep(0.01)
 
-    cm.set_concurrency(1)
-    assert cm.get_concurrency() == 1
-    assert cm._value == 0
-    assert cm._owed_releases == 7
+    cm.set_value(1)
+    assert cm.value == 1
+    assert cm.active == 8
     await tasks1
-    assert cm._value == 0
-    assert cm._owed_releases == 3
+    assert cm.active == 4
 
-    cm.set_concurrency(2)
-    assert cm.get_concurrency() == 2
-    assert cm._value == 0
-    assert cm._owed_releases == 2
+    cm.set_value(2)
+    assert cm.active == 4
 
-    cm.set_concurrency(10)
-    assert cm.get_concurrency() == 10
-    assert cm._value == 6
-    assert cm._owed_releases == 0
+    cm.set_value(10)
     await tasks2
-    assert cm._value == 10
-    assert cm._owed_releases == 0
+    assert cm.active == 0
 
     await cm.close()
-    assert cm._value == 0
+    assert cm.active == 10
+    assert cm.value == 10
 
 
 @skip_github_non_linux
@@ -2096,10 +2087,14 @@ def test_max_concurrency(servicer, function_name, monkeypatch):
     target_concurrency = 2
     max_concurrency = 10
 
-    async def patch_async_monitor(self):
-        self.set_concurrency(n_inputs)
+    async def patch_concurrency_loop(self):
+        self._concurrency_manager.set_value(n_inputs)
+        self._concurrency = n_inputs
+        await asyncio.sleep(2)
 
-    monkeypatch.setattr("modal._container_io_manager.ConcurrencyManager.async_monitor_concurrency", patch_async_monitor)
+    monkeypatch.setattr(
+        "modal._container_io_manager._ContainerIOManager._dynamic_concurrency_loop", patch_concurrency_loop
+    )
 
     ret = _run_container(
         servicer,
