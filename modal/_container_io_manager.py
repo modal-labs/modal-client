@@ -181,10 +181,15 @@ class IOContext:
 class ConcurrencyManager:
     """A semaphore that allows dynamically adjusting the concurrency."""
 
+    active: int
+    value: int
+    waiter: Optional[asyncio.Future]
+    closed: bool
+
     def __init__(self, value: int) -> None:
         self.active = 0
         self.value = value
-        self.waiter: asyncio.Future | None = None
+        self.waiter = None
         self.closed = False
 
     async def acquire(self) -> None:
@@ -410,7 +415,7 @@ class _ContainerIOManager:
                     resp = await retry_transient_errors(
                         self._client.stub.FunctionGetDynamicConcurrency,
                         request,
-                        attempt_timeout=DYNAMIC_CONCURRENCY_INTERVAL_SECS,
+                        attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS,
                     )
 
                     self._concurrency_manager.set_value(resp.concurrency)
