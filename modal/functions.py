@@ -1002,6 +1002,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         """
 
         async def _load_remote(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            print(f"loading remote {self}")
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
