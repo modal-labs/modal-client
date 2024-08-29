@@ -1112,6 +1112,12 @@ message FunctionCallPutDataRequest {
   repeated DataChunk data_chunks = 2;
 }
 
+enum FunctionCallInvocationType {
+  FUNCTION_CALL_INVOCATION_TYPE_UNSPECIFIED = 0;
+  FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY = 1;
+  FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY = 2;
+}
+
 message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
@@ -1253,17 +1259,13 @@ message FunctionInput {
 }
 
 message FunctionMapRequest {
-  enum InvokeType {
-    INVOKE_TYPE_UNSPECIFIED = 0;
-    INVOKE_TYPE_SYNC = 2;
-    INVOKE_TYPE_ASYNC = 1;
-  }
+
   string function_id = 1;
   string parent_input_id = 2;
   bool return_exceptions = 3;
   FunctionCallType function_call_type = 4;
   repeated FunctionPutInputsItem pipelined_inputs = 5;
-  InvokeType invoke_type = 6;
+  FunctionCallInvocationType function_call_invocation_type = 6;
 }
 
 message FunctionMapResponse {

@@ -113,7 +113,7 @@ class _Invocation:
         kwargs,
         *,
         client: _Client,
-        invoke_type: api_pb2.FunctionMapRequest.InvokeType.ValueType,
+        function_call_invocation_type: api_pb2.FunctionCallInvocationType.ValueType,
     ) -> "_Invocation":
         assert client.stub
         function_id = function._invocation_function_id()
@@ -124,7 +124,7 @@ class _Invocation:
             parent_input_id=current_input_id() or "",
             function_call_type=api_pb2.FUNCTION_CALL_TYPE_UNARY,
             pipelined_inputs=[item],
-            invoke_type=invoke_type,
+            function_call_invocation_type=function_call_invocation_type,
         )
         response = await retry_transient_errors(client.stub.FunctionMap, request)
         function_call_id = response.function_call_id
@@ -1194,7 +1194,11 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     async def _call_function(self, args, kwargs) -> R:
         invocation = await _Invocation.create(
-            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_TYPE_SYNC
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
         )
         try:
             return await invocation.run_function()
@@ -1207,7 +1211,11 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
         return await _Invocation.create(
-            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_TYPE_ASYNC
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
         )
 
     @warn_if_generator_is_not_consumed()
@@ -1215,7 +1223,11 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
         invocation = await _Invocation.create(
-            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_TYPE_SYNC
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
         )
         async for res in invocation.run_generator():
             yield res
@@ -1223,7 +1235,11 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
     @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
         return await _Invocation.create(
-            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_TYPE_ASYNC
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
         )
 
     @synchronizer.no_io_translation
