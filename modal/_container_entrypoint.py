@@ -321,7 +321,6 @@ def call_function(
     user_code_event_loop: UserCodeEventLoop,
     container_io_manager: "modal._container_io_manager.ContainerIOManager",
     finalized_functions: Dict[str, FinalizedFunction],
-    target_input_concurrency: int,
     batch_max_size: int,
     batch_wait_ms: int,
 ):
@@ -416,7 +415,7 @@ def call_function(
                 )
         reset_context()
 
-    if target_input_concurrency > 1:
+    if container_io_manager._target_concurrency > 1:
         with DaemonizedThreadPool(container_io_manager) as thread_pool:
 
             def make_async_cancel_callback(task):
@@ -728,17 +727,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # Container can fetch multiple inputs simultaneously
     if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
         # Concurrency and batching doesn't apply for `modal shell`.
-        target_concurrency = 1
-        max_concurrency = 0
         batch_max_size = 0
         batch_wait_ms = 0
     else:
-        target_concurrency = function_def.allow_concurrent_inputs or 1
-        max_concurrency = function_def.max_concurrent_inputs or 0
         batch_max_size = function_def.batch_max_size or 0
         batch_wait_ms = function_def.batch_linger_ms or 0
 
-    container_io_manager = ContainerIOManager(container_args, client, target_concurrency, max_concurrency)
+    container_io_manager = ContainerIOManager(container_args, client)
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
 
@@ -751,12 +746,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
-            if max_concurrency != 0 and max_concurrency <= target_concurrency:
-                raise InvalidError("max_concurrent_inputs must be greater than or equal to allow_concurrent_inputs.")
-            if max_concurrency != 0 and target_concurrency <= 1:
-                raise InvalidError(
-                    "allow_concurrent_inputs must be greater than 1 to enable automatic input concurrency scaling."
-                )
             if container_args.serialized_params:
                 param_args, param_kwargs = deserialize_params(container_args.serialized_params, function_def, _client)
             else:
@@ -849,7 +838,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 event_loop,
                 container_io_manager,
                 finalized_functions,
-                target_concurrency,
                 batch_max_size,
                 batch_wait_ms,
             )

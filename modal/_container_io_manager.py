@@ -179,7 +179,7 @@ class IOContext:
         return data
 
 
-class ConcurrencyManager:
+class InputSlots:
     """A semaphore that allows dynamically adjusting the concurrency."""
 
     active: int
@@ -246,7 +246,7 @@ class _ContainerIOManager:
     _target_concurrency: int
     _max_concurrency: int
     _concurrency_loop: Optional[asyncio.Task]
-    _concurrency_manager: ConcurrencyManager
+    _input_slots: InputSlots
 
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
@@ -261,9 +261,7 @@ class _ContainerIOManager:
     _GENERATOR_STOP_SENTINEL: ClassVar[Sentinel] = Sentinel()
     _singleton: ClassVar[Optional["_ContainerIOManager"]] = None
 
-    def _init(
-        self, container_args: api_pb2.ContainerArguments, client: _Client, target_concurrency: int, max_concurrency: int
-    ) -> None:
+    def _init(self, container_args: api_pb2.ContainerArguments, client: _Client) -> None:
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
@@ -276,10 +274,17 @@ class _ContainerIOManager:
         self.current_inputs = {}
         self.current_input_started_at = None
 
+        if container_args.function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+            target_concurrency = 1
+            max_concurrency = 0
+        else:
+            target_concurrency = container_args.function_def.target_concurrency or 1
+            max_concurrency = container_args.function_def.max_concurrency or 0
+
         self._target_concurrency = target_concurrency
         self._max_concurrency = max_concurrency
         self._concurrency_loop = None
-        self._concurrency_manager = ConcurrencyManager(target_concurrency)
+        self._input_slots = InputSlots(target_concurrency)
 
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
@@ -292,11 +297,9 @@ class _ContainerIOManager:
         self._client = client
         assert isinstance(self._client, _Client)
 
-    def __new__(
-        cls, container_args: api_pb2.ContainerArguments, client: _Client, target_concurrency: int, max_concurrency: int
-    ) -> "_ContainerIOManager":
+    def __new__(cls, container_args: api_pb2.ContainerArguments, client: _Client) -> "_ContainerIOManager":
         cls._singleton = super().__new__(cls)
-        cls._singleton._init(container_args, client, target_concurrency, max_concurrency)
+        cls._singleton._init(container_args, client)
         return cls._singleton
 
     @classmethod
@@ -397,29 +400,26 @@ class _ContainerIOManager:
                 t.cancel()
 
     async def _dynamic_concurrency_loop(self):
+        logger.debug(f"Starting dynamic concurrency loop for task {self.task_id}")
         while 1:
             t0 = time.monotonic()
             try:
-                if self._max_concurrency > 0:
-                    request = api_pb2.FunctionGetDynamicConcurrencyRequest(
-                        function_id=self.function_id,
-                        target_concurrency=self._target_concurrency,
-                        max_concurrency=self._max_concurrency,
-                    )
-                    resp = await retry_transient_errors(
-                        self._client.stub.FunctionGetDynamicConcurrency,
-                        request,
-                        attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS,
-                    )
-
-                    self._concurrency_manager.set_value(resp.concurrency)
-                    logger.debug(
-                        f"Dynamic concurrency set from {self._concurrency_manager.value} to {resp.concurrency}"
-                    )
-                    continue
+                request = api_pb2.FunctionGetDynamicConcurrencyRequest(
+                    function_id=self.function_id,
+                    target_concurrency=self._target_concurrency,
+                    max_concurrency=self._max_concurrency,
+                )
+                resp = await retry_transient_errors(
+                    self._client.stub.FunctionGetDynamicConcurrency,
+                    request,
+                    attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS,
+                )
+                if resp.concurrency != self._input_slots.value:
+                    logger.debug(f"Dynamic concurrency set from {self._input_slots.value} to {resp.concurrency}")
+                self._input_slots.set_value(resp.concurrency)
 
             except Exception as exc:
-                logger.debug(f"Failed to get dynamic concurrency: {exc}")
+                logger.debug(f"Failed to get dynamic concurrency for task {self.task_id}, {exc}")
 
             duration = time.monotonic() - t0
             time_until_next = max(0.0, DYNAMIC_CONCURRENCY_INTERVAL_SECS - duration)
@@ -565,7 +565,7 @@ class _ContainerIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
-            await self._concurrency_manager.acquire()
+            await self._input_slots.acquire()
 
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
@@ -604,7 +604,7 @@ class _ContainerIOManager:
                             final_input_received = True
                             break
 
-                    # If yielded, allow concurrency_manager to be released via exit_context
+                    # If yielded, allow input slots to be released via exit_context
                     yield inputs
                     yielded = True
 
@@ -613,7 +613,7 @@ class _ContainerIOManager:
                         return
             finally:
                 if not yielded:
-                    self._concurrency_manager.release()
+                    self._input_slots.release()
 
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
@@ -623,9 +623,9 @@ class _ContainerIOManager:
         batch_wait_ms: int = 0,
     ) -> AsyncIterator[IOContext]:
         # Ensure we do not fetch new inputs when container is too busy.
-        # Before trying to fetch an input, acquire the concurrency_manager:
-        # - if no input is fetched, release the concurrency_manager.
-        # - or, when the output for the fetched input is sent, release the concurrency_manager.
+        # Before trying to fetch an input, acquire an input slot:
+        # - if no input is fetched, release the input slot.
+        # - or, when the output for the fetched input is sent, release the input slot.
         dynamic_concurrency_manager = (
             self.dynamic_concurrency_manager() if self._max_concurrency > self._target_concurrency else AsyncExitStack()
         )
@@ -640,7 +640,7 @@ class _ContainerIOManager:
                 self.current_input_id, self.current_input_started_at = (None, None)
 
             # collect all active input slots, meaning all inputs have wrapped up.
-            await self._concurrency_manager.close()
+            await self._input_slots.close()
 
     @synchronizer.no_io_translation
     async def _push_outputs(
@@ -787,7 +787,7 @@ class _ContainerIOManager:
         for input_id in input_ids:
             self.current_inputs.pop(input_id)
 
-        self._concurrency_manager.release()
+        self._input_slots.release()
 
     @synchronizer.no_io_translation
     async def push_outputs(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
@@ -944,7 +944,7 @@ class _ContainerIOManager:
     def get_input_concurrency(cls) -> int:
         io_manager = cls._singleton
         assert io_manager
-        return io_manager._concurrency_manager.value
+        return io_manager._input_slots.value
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)

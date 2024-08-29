@@ -25,9 +25,9 @@ import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
 from modal._container_io_manager import (
-    ConcurrencyManager,
     ContainerIOManager,
     FinalizedFunction,
+    InputSlots,
     IOContext,
 )
 from modal._serialization import (
@@ -1967,7 +1967,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     dummy_container_args = api_pb2.ContainerArguments(function_id="fu-123")
     from modal._utils.async_utils import synchronizer
 
-    io_manager = ContainerIOManager(dummy_container_args, client, concurrency_limit, 0)
+    io_manager = ContainerIOManager(dummy_container_args, client)
     _io_manager = synchronizer._translate_in(io_manager)
 
     async def _func(x):
@@ -2016,34 +2016,34 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
 
 
 @pytest.mark.asyncio
-async def test_concurrency_manager():
-    cm = ConcurrencyManager(10)
+async def test_input_slots():
+    slots = InputSlots(10)
 
     async def acquire_for(cm, secs):
         await cm.acquire()
         await asyncio.sleep(secs)
         cm.release()
 
-    tasks1 = asyncio.gather(*[acquire_for(cm, 0.1) for _ in range(4)])
-    tasks2 = asyncio.gather(*[acquire_for(cm, 0.2) for _ in range(4)])
+    tasks1 = asyncio.gather(*[acquire_for(slots, 0.1) for _ in range(4)])
+    tasks2 = asyncio.gather(*[acquire_for(slots, 0.2) for _ in range(4)])
     await asyncio.sleep(0.01)
 
-    cm.set_value(1)
-    assert cm.value == 1
-    assert cm.active == 8
+    slots.set_value(1)
+    assert slots.value == 1
+    assert slots.active == 8
     await tasks1
-    assert cm.active == 4
+    assert slots.active == 4
 
-    cm.set_value(2)
-    assert cm.active == 4
+    slots.set_value(2)
+    assert slots.active == 4
 
-    cm.set_value(10)
+    slots.set_value(10)
     await tasks2
-    assert cm.active == 0
+    assert slots.active == 0
 
-    await cm.close()
-    assert cm.active == 10
-    assert cm.value == 10
+    await slots.close()
+    assert slots.active == 10
+    assert slots.value == 10
 
 
 @skip_github_non_linux
