@@ -8,7 +8,7 @@ import signal
 import sys
 import time
 import traceback
-from contextlib import nullcontext
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Tuple
@@ -627,7 +627,7 @@ class _ContainerIOManager:
         # - if no input is fetched, release the concurrency_manager.
         # - or, when the output for the fetched input is sent, release the concurrency_manager.
         dynamic_concurrency_manager = (
-            self.dynamic_concurrency_manager() if self._max_concurrency > self._target_concurrency else nullcontext()
+            self.dynamic_concurrency_manager() if self._max_concurrency > self._target_concurrency else AsyncExitStack()
         )
         async with dynamic_concurrency_manager:
             async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):

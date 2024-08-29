@@ -795,7 +795,7 @@ class _App:
 
         secrets = [*self._secrets, *secrets]
 
-        # TODO Temporary alias of allow_concurrent_inputs to target_concurrent_inputs
+        # TODO: Temporary alias of allow_concurrent_inputs to target_concurrent_inputs
         target_concurrent_inputs = target_concurrent_inputs or allow_concurrent_inputs
         max_concurrent_inputs = allow_concurrent_inputs if target_concurrent_inputs else None
 

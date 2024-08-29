@@ -481,7 +481,7 @@ class _Cls(_Object, type_prefix="cs"):
             task_idle_timeout_secs=container_idle_timeout,
             replace_volume_mounts=replace_volume_mounts,
             volume_mounts=volume_mounts,
-            allow_concurrent_inputs=allow_concurrent_inputs,
+            target_concurrent_inputs=allow_concurrent_inputs,
         )
 
         return cls
