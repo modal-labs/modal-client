@@ -1394,11 +1394,11 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
         """
 
         if self._is_generator:
-            raise Exception("Cannot get the result of a generator function call. Use `iter_gen` instead.")
+            raise Exception("Cannot get the result of a generator function call. Use `get_gen` instead.")
 
         return await self._invocation().poll_function(timeout=timeout)
 
-    async def iter_gen(self) -> AsyncGenerator[Any, None]:
+    async def get_gen(self) -> AsyncGenerator[Any, None]:
         """
         Calls the generator remotely, executing it with the given arguments and returning the execution's result.
         """

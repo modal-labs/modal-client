@@ -262,7 +262,7 @@ def test_function_future(client, servicer):
         assert future.object_id not in servicer.cleared_function_calls
 
         with pytest.raises(Exception, match="Cannot iterate"):
-            next(future.iter_gen())
+            next(future.get_gen())
 
 
 @pytest.mark.asyncio
@@ -377,7 +377,7 @@ async def test_generator_future(client, servicer):
         with pytest.raises(Exception, match="Cannot get"):
             future.get()
 
-        assert next(future.iter_gen()) == "foo"
+        assert next(future.get_gen()) == "foo"
 
 
 def gen_with_arg(i):
@@ -574,7 +574,7 @@ def test_from_id_iter_gen(client, servicer, is_generator):
     assert rehydrated_function_call.object_id == future.object_id
 
     if is_generator:
-        assert next(rehydrated_function_call.iter_gen()) == "foo"
+        assert next(rehydrated_function_call.get_gen()) == "foo"
     else:
         assert rehydrated_function_call.get() == "hello"
 
