@@ -83,9 +83,7 @@ class Resolver:
             await obj._preload(obj, self, existing_object_id)
 
     async def load(self, obj: "_Object", existing_object_id: Optional[str] = None):
-        print(f"load({obj}, {existing_object_id=})")
         if not obj.is_rehydrating and obj._is_hydrated and obj._is_another_app:
-            print(f"{obj._is_hydrated=} {obj._is_another_app=} {obj.local_uuid}")
             # No need to reload this, it won't typically change
             if obj.local_uuid not in self._local_uuid_to_future:
                 # a bit dumb - but we still need to store a reference to the object here
@@ -101,16 +99,13 @@ class Resolver:
 
         cached_future = self._local_uuid_to_future.get(obj.local_uuid)
 
-        print(f"{cached_future=} {deduplication_key=}")
         if not cached_future and deduplication_key is not None:
             # deduplication cache makes sure duplicate mounts are resolved only
             # once, even if they are different instances - as long as they have
             # the same content
             cached_future = self._deduplication_cache.get(deduplication_key)
             if cached_future:
-                print(f"{cached_future=}")
                 hydrated_object = await cached_future
-                print(f"{hydrated_object=}")
                 obj._hydrate(hydrated_object.object_id, self._client, hydrated_object._get_metadata())
                 return obj
 
@@ -118,12 +113,10 @@ class Resolver:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
                 # Wait for all its dependencies
-                print("Wait for dependencies")
                 # TODO(erikbern): do we need existing_object_id for those?
                 await TaskContext.gather(*[self.load(dep) for dep in obj.deps()])
 
                 # Load the object itself
-                print("Load the object itself")
                 try:
                     await obj._load(obj, self, existing_object_id)
                 except GRPCError as exc:

@@ -223,18 +223,16 @@ class _Object:
     async def resolve(self):
         """mdmd:hidden"""
         if self._is_hydrated:
+            # memory snapshots capture references which must be rehydrated
+            # on restore to handle staleness.
             if self._client._snapshotted and not self._is_rehydrated:
                 self._is_rehydrating = True
-                print(f"hello! {self._client} {self._client._snapshotted}")
-                print(f"BEFORE {self._object_id=} {self._deduplication_key}")
                 self._deduplication_key = None
                 resolver = Resolver(await _Client.from_env())
                 await resolver.load(self)
-                print(f"AFTER {self._object_id=}")
                 self._is_rehydrating = False
             return
         elif not self._hydrate_lazily:
-            print("validting!")
             self._validate_is_hydrated()
         else:
             # TODO: this client and/or resolver can't be changed by a caller to X.from_name()

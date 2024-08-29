@@ -814,30 +814,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         if is_snapshotting_function:
             container_io_manager.memory_snapshot()
 
-            # HACK
-            # Refetch ids and metadata
-            container_app: RunningApp = container_io_manager.get_app_objects()
-            # Re-initialize objects on the app.
-            # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
-            if active_app is not None:
-                app: App = synchronizer._translate_out(active_app, Interface.BLOCKING)
-                app._init_container(client, container_app)
-
-            # Hydrate all function dependencies.
-            # TODO(erikbern): we an remove this once we
-            # 1. Enable lazy hydration for all objects
-            # 2. Fully deprecate .new() objects
-            if service.code_deps is not None:  # this is not set for serialized or non-global scope functions
-                dep_object_ids: List[str] = [dep.object_id for dep in function_def.object_dependencies]
-                if len(service.code_deps) != len(dep_object_ids):
-                    raise ExecutionError(
-                        f"Function has {len(service.code_deps)} dependencies"
-                        f" but container got {len(dep_object_ids)} object ids."
-                    )
-                for object_id, obj in zip(dep_object_ids, service.code_deps):
-                    metadata: Message = container_app.object_handle_metadata[object_id]
-                    obj._hydrate(object_id, _client, metadata)
-
         # Install hooks for interactive functions.
         def breakpoint_wrapper():
             # note: it would be nice to not have breakpoint_wrapper() included in the backtrace

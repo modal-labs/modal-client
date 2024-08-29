@@ -786,7 +786,7 @@ class _ContainerIOManager:
                 api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
             )
 
-            await self._client._close(prep_for_restore=True)
+            await self._client._close(forget_credentials=True)
 
             logger.debug("Memory snapshot request sent. Connection closed.")
             await self.memory_restore()
