@@ -1138,6 +1138,17 @@ message FunctionGetCallGraphResponse {
 message FunctionGetCurrentStatsRequest {
   string function_id = 1;
 }
+
+message FunctionGetDynamicConcurrencyRequest{
+  string function_id = 1;
+  uint32 target_concurrency = 2;
+  uint32 max_concurrency = 3;
+}
+
+message FunctionGetDynamicConcurrencyResponse {
+  uint32 concurrency = 1;
+}
+
 message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
@@ -1836,11 +1847,12 @@ message SchedulerPlacement {
   // - Fold in cloud, resource needs here too.
   // - Allow specifying list of zones, cloud, fallback and alternative
   //   GPU types.
-  optional string _region = 1 [deprecated=true];
 
   repeated string regions = 4;
   optional string _zone = 2;
   optional string _lifecycle = 3; // "on-demand" or "spot", else ignored
+
+  reserved 1;
 }
 
 message SecretCreateRequest {  // Not used by client anymore
@@ -2299,6 +2311,7 @@ service ModalClient {
   rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
+  rpc FunctionGetDynamicConcurrency(FunctionGetDynamicConcurrencyRequest) returns (FunctionGetDynamicConcurrencyResponse);
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
