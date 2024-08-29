@@ -1253,11 +1253,17 @@ message FunctionInput {
 }
 
 message FunctionMapRequest {
+  enum InvokeType {
+    INVOKE_TYPE_UNSPECIFIED = 0;
+    INVOKE_TYPE_SYNC = 2;
+    INVOKE_TYPE_ASYNC = 1;
+  }
   string function_id = 1;
   string parent_input_id = 2;
   bool return_exceptions = 3;
   FunctionCallType function_call_type = 4;
   repeated FunctionPutInputsItem pipelined_inputs = 5;
+  InvokeType invoke_type = 6;
 }
 
 message FunctionMapResponse {
