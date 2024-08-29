@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+from os import environ
 from typing import Optional
 
 import typer
@@ -39,10 +40,24 @@ class RenderableBool:
 def list(json: Optional[bool] = False):
     envs = environments.list_environments()
     table_data = []
+
+    env_var_default = environ.get("MODAL_ENVIRONMENT") or None
+    active_env_count = 0
     for item in envs:
-        is_active = item.name == config.get("environment")
+        is_active = item.name == config.get("environment") or item.default is True or item.name == env_var_default
+        if is_active:
+            active_env_count += 1
         row = [item.name, item.webhook_suffix, is_active if json else RenderableBool(is_active)]
         table_data.append(row)
+
+    if active_env_count > 1:
+        # set is_active column to false for all rows except for the env in config
+        active_env = env_var_default or config.get("environment")
+        for i in range(0, len(table_data)):
+            env = table_data[i]
+            is_active = env[0] == active_env
+            env[2] = is_active if json else RenderableBool(is_active)
+
     display_table(["name", "web suffix", "active"], table_data, json=json)
 
 
