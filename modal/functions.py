@@ -113,7 +113,7 @@ class _Invocation:
         kwargs,
         *,
         client: _Client,
-        function_call_invocation_type: api_pb2.FunctionCallInvocationType.ValueType,
+        function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
     ) -> "_Invocation":
         assert client.stub
         function_id = function._invocation_function_id()
