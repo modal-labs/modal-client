@@ -714,6 +714,7 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
+    container_io_manager = ContainerIOManager(container_args, client)
     active_app: Optional[_App] = None
     service: Service
     function_def = container_args.function_def
@@ -723,17 +724,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     is_snapshotting_function = (
         function_def.is_checkpointing_function and os.environ.get("MODAL_ENABLE_SNAP_RESTORE", "0") == "1"
     )
-
-    # Container can fetch multiple inputs simultaneously
-    if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-        # Concurrency and batching doesn't apply for `modal shell`.
-        batch_max_size = 0
-        batch_wait_ms = 0
-    else:
-        batch_max_size = function_def.batch_max_size or 0
-        batch_wait_ms = function_def.batch_linger_ms or 0
-
-    container_io_manager = ContainerIOManager(container_args, client)
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
 
