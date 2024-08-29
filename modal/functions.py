@@ -1194,7 +1194,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     async def _call_function(self, args, kwargs) -> R:
         invocation = await _Invocation.create(
-            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_SYNC
+            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_TYPE_SYNC
         )
         try:
             return await invocation.run_function()
@@ -1207,7 +1207,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
         return await _Invocation.create(
-            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_ASYNC
+            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_TYPE_ASYNC
         )
 
     @warn_if_generator_is_not_consumed()
@@ -1215,7 +1215,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
         invocation = await _Invocation.create(
-            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_SYNC
+            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_TYPE_SYNC
         )
         async for res in invocation.run_generator():
             yield res
@@ -1223,7 +1223,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
     @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
         return await _Invocation.create(
-            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_ASYNC
+            self, args, kwargs, client=self._client, invoke_type=api_pb2.FunctionMapRequest.INVOKE_TYPE_ASYNC
         )
 
     @synchronizer.no_io_translation
