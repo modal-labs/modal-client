@@ -731,6 +731,11 @@ message ContainerHeartbeatResponse {
   optional CancelInputEvent cancel_input_event = 1;
 }
 
+message ContainerLogRequest {
+  string message = 1;
+  string input_id = 2;
+}
+
 message ContainerStopRequest {
   string task_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -2254,6 +2259,7 @@ service ModalClient {
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
   rpc ContainerExecWait(ContainerExecWaitRequest) returns (ContainerExecWaitResponse);
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
+  rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 
   // Dicts
