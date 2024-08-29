@@ -1964,7 +1964,9 @@ def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env
 
 @pytest.mark.parametrize("concurrency_limit", [1, 2])
 def test_container_io_manager_concurrency_tracking(client, servicer, concurrency_limit):
-    dummy_container_args = api_pb2.ContainerArguments(function_id="fu-123")
+    dummy_container_args = api_pb2.ContainerArguments(
+        function_id="fu-123", function_def=api_pb2.Function(allow_concurrent_inputs=concurrency_limit)
+    )
     from modal._utils.async_utils import synchronizer
 
     io_manager = ContainerIOManager(dummy_container_args, client)
@@ -2046,54 +2048,12 @@ async def test_input_slots():
     assert slots.value == 10
 
 
-@skip_github_non_linux
-@pytest.mark.usefixtures("server_url_env")
-def test_max_concurrency_error(servicer):
-    n_inputs = 15
-    target_concurrency = 10
-    max_concurrency = 5
-
-    container_process = _run_container_process(
-        servicer,
-        "test.supports.functions",
-        "square",
-        inputs=[("", (1,), {})] * n_inputs,
-        allow_concurrent_inputs=target_concurrency,
-        max_concurrent_inputs=max_concurrency,
-    )
-    _, stderr = container_process.communicate(timeout=5)
-    assert len(servicer.container_outputs) == 0
-    assert "Traceback" in stderr.decode()
-    assert "max_concurrent_inputs must be greater than or equal to allow_concurrent_inputs" in stderr.decode()
-
-    target_concurrency = 1
-    container_process = _run_container_process(
-        servicer,
-        "test.supports.functions",
-        "square",
-        inputs=[("", (1,), {})] * n_inputs,
-        allow_concurrent_inputs=target_concurrency,
-        max_concurrent_inputs=max_concurrency,
-    )
-    _, stderr = container_process.communicate()
-    assert "Traceback" in stderr.decode()
-    assert "allow_concurrent_inputs must be greater than 1" in stderr.decode()
-
-
 @pytest.mark.parametrize("function_name", ["get_input_concurrency"])
 @skip_github_non_linux
 def test_max_concurrency(servicer, function_name, monkeypatch):
     n_inputs = 5
     target_concurrency = 2
     max_concurrency = 10
-
-    async def patch_concurrency_loop(self):
-        self._concurrency_manager.set_value(n_inputs)
-        await asyncio.sleep(2)
-
-    monkeypatch.setattr(
-        "modal._container_io_manager._ContainerIOManager._dynamic_concurrency_loop", patch_concurrency_loop
-    )
 
     ret = _run_container(
         servicer,

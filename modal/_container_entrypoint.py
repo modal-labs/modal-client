@@ -69,7 +69,7 @@ if TYPE_CHECKING:
 def construct_webhook_callable(
     user_defined_callable: Callable,
     webhook_config: api_pb2.WebhookConfig,
-    container_io_manager: ContainerIOManager,
+    container_io_manager: "modal._container_io_manager.ContainerIOManager",
 ):
     # For webhooks, the user function is used to construct an asgi app:
     if webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
@@ -211,7 +211,7 @@ class DaemonizedThreadPool:
     # Used instead of ThreadPoolExecutor, since the latter won't allow
     # the interpreter to shut down before the currently running tasks
     # have finished
-    def __init__(self, container_io_manager: "modal._container_io_manager.ContainerIOManager"):
+    def __init__(self, container_io_manager: ContainerIOManager):
         self.container_io_manager = container_io_manager
 
     def __enter__(self):
@@ -415,7 +415,7 @@ def call_function(
                 )
         reset_context()
 
-    if container_io_manager._target_concurrency > 1:
+    if container_io_manager.target_concurrency > 1:
         with DaemonizedThreadPool(container_io_manager) as thread_pool:
 
             def make_async_cancel_callback(task):
@@ -449,8 +449,8 @@ def call_function(
                     async for io_context in container_io_manager.run_inputs_outputs.aio(
                         finalized_functions, batch_max_size, batch_wait_ms
                     ):
-                        # Note that run_inputs_outputs will not return until the concurrency manager has
-                        # released all its slots so that they can be acquired by the run_inputs_outputs finalizer
+                        # Note that run_inputs_outputs will not return until all the input slots are released
+                        # so that they can be acquired by the run_inputs_outputs finalizer
                         # This prevents leaving the task_context before outputs have been created
                         # TODO: refactor to make this a bit more easy to follow?
                         if io_context.finalized_function.is_async:
@@ -773,6 +773,14 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             if active_app is None:
                 # if the app can't be inferred by the imported function, use name-based fallback
                 active_app = get_active_app_fallback(function_def)
+
+            if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+                # Concurrency and batching doesn't apply for `modal shell`.
+                batch_max_size = 0
+                batch_wait_ms = 0
+            else:
+                batch_max_size = function_def.batch_max_size or 0
+                batch_wait_ms = function_def.batch_linger_ms or 0
 
         # Get ids and metadata for objects (primarily functions and classes) on the app
         container_app: RunningApp = container_io_manager.get_app_objects()

@@ -34,6 +34,7 @@ from .running_app import RunningApp
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
 DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
 MAX_OUTPUT_BATCH_SIZE: int = 49
+
 RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
 
 
@@ -261,7 +262,7 @@ class _ContainerIOManager:
     _GENERATOR_STOP_SENTINEL: ClassVar[Sentinel] = Sentinel()
     _singleton: ClassVar[Optional["_ContainerIOManager"]] = None
 
-    def _init(self, container_args: api_pb2.ContainerArguments, client: _Client) -> None:
+    def _init(self, container_args: api_pb2.ContainerArguments, client: _Client):
         self.task_id = container_args.task_id
         self.function_id = container_args.function_id
         self.app_id = container_args.app_id
@@ -278,8 +279,8 @@ class _ContainerIOManager:
             target_concurrency = 1
             max_concurrency = 0
         else:
-            target_concurrency = container_args.function_def.target_concurrency or 1
-            max_concurrency = container_args.function_def.max_concurrency or 0
+            target_concurrency = container_args.function_def.allow_concurrent_inputs or 1
+            max_concurrency = container_args.function_def.max_concurrent_inputs or 0
 
         self._target_concurrency = target_concurrency
         self._max_concurrency = max_concurrency
@@ -935,16 +936,20 @@ class _ContainerIOManager:
             print("Error: Failed to start PTY shell.")
             raise e
 
-    @classmethod
-    def stop_fetching_inputs(cls):
-        assert cls._singleton
-        cls._singleton._fetching_inputs = False
+    @property
+    def target_concurrency(self) -> int:
+        return self._target_concurrency
 
     @classmethod
     def get_input_concurrency(cls) -> int:
         io_manager = cls._singleton
         assert io_manager
         return io_manager._input_slots.value
+
+    @classmethod
+    def stop_fetching_inputs(cls):
+        assert cls._singleton
+        cls._singleton._fetching_inputs = False
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
