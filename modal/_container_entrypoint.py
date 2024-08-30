@@ -246,7 +246,7 @@ class DaemonizedThreadPool:
                     logger.exception(f"Exception raised by {_func} in DaemonizedThreadPool worker!")
                 self.inputs.task_done()
 
-        if self.spawned_workers < self.container_io_manager.get_input_concurrency():
+        if self.spawned_workers < self.max_threads:
             threading.Thread(target=worker_thread, daemon=True).start()
             self.spawned_workers += 1
 

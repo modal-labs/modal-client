@@ -420,6 +420,7 @@ class _ContainerIOManager:
 
             except Exception as exc:
                 logger.debug(f"Failed to get dynamic concurrency for task {self.task_id}, {exc}")
+
             await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
 
     async def get_app_objects(self) -> RunningApp:

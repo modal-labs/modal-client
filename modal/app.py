@@ -557,7 +557,7 @@ class _App:
         allow_concurrent_inputs: Optional[int] = None,  # Maximum number of inputs the container may fetch concurrently.
         target_concurrent_inputs: Optional[
             int
-        ] = None,  # .# Desired input concurrency for autoscaling. Must be <= allow_concurrent_inputs.
+        ] = None,  # Desired input concurrency for autoscaling. Must be <= allow_concurrent_inputs.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Optional[
@@ -763,7 +763,7 @@ class _App:
         allow_concurrent_inputs: Optional[int] = None,  # Maximum number of inputs the container may fetch concurrently.
         target_concurrent_inputs: Optional[
             int
-        ] = None,  # .# Desired input concurrency for autoscaling. Must be <= allow_concurrent_inputs.
+        ] = None,  # Desired input concurrency for autoscaling. Must be <= allow_concurrent_inputs.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
