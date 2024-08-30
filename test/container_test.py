@@ -2048,9 +2048,8 @@ async def test_input_slots():
     assert slots.value == 10
 
 
-@pytest.mark.parametrize("function_name", ["get_input_concurrency"])
 @skip_github_non_linux
-def test_max_concurrency(servicer, function_name, monkeypatch):
+def test_max_concurrency(servicer):
     n_inputs = 5
     target_concurrency = 2
     max_concurrency = 10
@@ -2058,9 +2057,9 @@ def test_max_concurrency(servicer, function_name, monkeypatch):
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        function_name,
+        "get_input_concurrency",
         inputs=_get_inputs(((1,), {}), n=n_inputs),
-        allow_concurrent_inputs=target_concurrency,
+        target_concurrent_inputs=target_concurrency,
         max_concurrent_inputs=max_concurrency,
     )
 
