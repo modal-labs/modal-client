@@ -279,8 +279,8 @@ class _ContainerIOManager:
             target_concurrency = 1
             max_concurrency = 0
         else:
-            target_concurrency = container_args.function_def.target_concurrent_inputs or 1
-            max_concurrency = container_args.function_def.max_concurrent_inputs or 0
+            target_concurrency = container_args.function_def.allow_concurrent_inputs or 1
+            max_concurrency = container_args.function_def.max_concurrent_inputs or target_concurrency
 
         self._target_concurrency = target_concurrency
         self._max_concurrency = max_concurrency
@@ -403,7 +403,6 @@ class _ContainerIOManager:
     async def _dynamic_concurrency_loop(self):
         logger.debug(f"Starting dynamic concurrency loop for task {self.task_id}")
         while 1:
-            t0 = time.monotonic()
             try:
                 request = api_pb2.FunctionGetDynamicConcurrencyRequest(
                     function_id=self.function_id,
@@ -421,10 +420,7 @@ class _ContainerIOManager:
 
             except Exception as exc:
                 logger.debug(f"Failed to get dynamic concurrency for task {self.task_id}, {exc}")
-
-            duration = time.monotonic() - t0
-            time_until_next = max(0.0, DYNAMIC_CONCURRENCY_INTERVAL_SECS - duration)
-            await asyncio.sleep(time_until_next)
+            await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
 
     async def get_app_objects(self) -> RunningApp:
         req = api_pb2.AppGetObjectsRequest(app_id=self.app_id, include_unindexed=True)
@@ -939,6 +935,10 @@ class _ContainerIOManager:
     @property
     def target_concurrency(self) -> int:
         return self._target_concurrency
+
+    @property
+    def max_concurrency(self) -> int:
+        return self._max_concurrency
 
     @classmethod
     def get_input_concurrency(cls) -> int:

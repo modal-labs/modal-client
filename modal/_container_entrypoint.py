@@ -211,8 +211,8 @@ class DaemonizedThreadPool:
     # Used instead of ThreadPoolExecutor, since the latter won't allow
     # the interpreter to shut down before the currently running tasks
     # have finished
-    def __init__(self, container_io_manager: ContainerIOManager):
-        self.container_io_manager = container_io_manager
+    def __init__(self, max_threads: int):
+        self.max_threads = max_threads
 
     def __enter__(self):
         self.spawned_workers = 0
@@ -416,7 +416,7 @@ def call_function(
         reset_context()
 
     if container_io_manager.target_concurrency > 1:
-        with DaemonizedThreadPool(container_io_manager) as thread_pool:
+        with DaemonizedThreadPool(max_threads=container_io_manager.max_concurrency) as thread_pool:
 
             def make_async_cancel_callback(task):
                 def f():
