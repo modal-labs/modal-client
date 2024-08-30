@@ -211,11 +211,6 @@ class _Object:
         return self._is_hydrated
 
     @property
-    def is_rehydrating(self) -> bool:
-        """mdmd:hidden"""
-        return self._is_rehydrating
-
-    @property
     def deps(self) -> Callable[..., List["_Object"]]:
         """mdmd:hidden"""
         return self._deps if self._deps is not None else lambda: []
@@ -227,7 +222,6 @@ class _Object:
             # on restore to handle staleness.
             if self._client._snapshotted and not self._is_rehydrated:
                 self._is_rehydrating = True
-                self._deduplication_key = None
                 resolver = Resolver(await _Client.from_env())
                 await resolver.load(self)
                 self._is_rehydrating = False

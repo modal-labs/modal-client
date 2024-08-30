@@ -83,7 +83,7 @@ class Resolver:
             await obj._preload(obj, self, existing_object_id)
 
     async def load(self, obj: "_Object", existing_object_id: Optional[str] = None):
-        if not obj.is_rehydrating and obj._is_hydrated and obj._is_another_app:
+        if not obj._is_rehydrating and obj._is_hydrated and obj._is_another_app:
             # No need to reload this, it won't typically change
             if obj.local_uuid not in self._local_uuid_to_future:
                 # a bit dumb - but we still need to store a reference to the object here
