@@ -26,8 +26,12 @@ CLIENT_CREATE_ATTEMPT_TIMEOUT: float = 4.0
 CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 
 
-def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], version: str) -> Dict[str, str]:
-    # This implements a simplified version of platform.platform() that's still machine-readable
+def _get_metadata(
+    client_type: int,
+    credentials: Optional[Tuple[str, str]],
+    session_credentials: Optional[Tuple[str, str, str]],
+    version: str,
+) -> Dict[str, str]:  # This implements a simplified version of platform.platform() that's still machine-readable
     uname: platform.uname_result = platform.uname()
     if uname.system == "Darwin":
         system, release = "macOS", platform.mac_ver()[0]
@@ -56,6 +60,15 @@ def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], vers
             {
                 "x-modal-task-id": task_id,
                 "x-modal-task-secret": task_secret,
+            }
+        )
+    elif session_credentials and client_type == api_pb2.CLIENT_TYPE_CONTAINER:
+        session_id, session_secret, workspace_id = session_credentials
+        metadata.update(
+            {
+                "x-modal-session-id": session_id,
+                "x-modal-session-secret": session_secret,
+                "x-modal-workspace": workspace_id,
             }
         )
     return metadata
@@ -88,12 +101,14 @@ class _Client:
         server_url: str,
         client_type: int,
         credentials: Optional[Tuple[str, str]],
+        session_credentials: Optional[Tuple[str, str, str]] = None,
         version: str = __version__,
     ):
         """The Modal client object is not intended to be instantiated directly by users."""
         self.server_url = server_url
         self.client_type = client_type
         self._credentials = credentials
+        self._session_credentials = session_credentials
         self.version = version
         self._authenticated = False
         self.image_builder_version: Optional[str] = None
@@ -116,13 +131,14 @@ class _Client:
     def credentials(self) -> tuple:
         """mdmd:hidden"""
         if self._credentials is None and self.client_type == api_pb2.CLIENT_TYPE_CONTAINER:
-            logger.debug("restoring credentials for memory snapshotted client instance")
-            self._credentials = (config["task_id"], config["task_secret"])
+            if config["task_id"] and config["task_secret"]:
+                logger.debug("restoring credentials for memory snapshotted client instance")
+                self._credentials = (config["task_id"], config["task_secret"])
         return self._credentials
 
     async def _open(self):
         assert self._stub is None
-        metadata = _get_metadata(self.client_type, self._credentials, self.version)
+        metadata = _get_metadata(self.client_type, self._credentials, self._session_credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 
@@ -136,6 +152,7 @@ class _Client:
 
         if forget_credentials:
             self._credentials = None
+            self._session_credentials = None
 
         # Remove cached client.
         self.set_env_client(None)
@@ -225,15 +242,23 @@ class _Client:
         task_id = c["task_id"]
         task_secret = c["task_secret"]
 
+        session_id = c.get("session_id")
+        session_secret = c.get("session_secret")
+        workspace = c.get("workspace")
+
+        client_type = api_pb2.CLIENT_TYPE_CONTAINER
+        session_credentials = None
+        credentials = None
+
         if task_id and task_secret:
             client_type = api_pb2.CLIENT_TYPE_CONTAINER
             credentials = (task_id, task_secret)
         elif token_id and token_secret:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
             credentials = (token_id, token_secret)
-        else:
-            client_type = api_pb2.CLIENT_TYPE_CLIENT
-            credentials = None
+        elif session_id and session_secret and workspace:
+            client_type = api_pb2.CLIENT_TYPE_CONTAINER
+            session_credentials = (session_id, session_secret, workspace)
 
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
@@ -242,7 +267,7 @@ class _Client:
             if cls._client_from_env:
                 return cls._client_from_env
             else:
-                client = _Client(server_url, client_type, credentials)
+                client = _Client(server_url, client_type, credentials, session_credentials)
                 await client._open()
                 async_utils.on_shutdown(client._close())
                 try:
