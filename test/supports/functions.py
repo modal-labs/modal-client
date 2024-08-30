@@ -21,6 +21,7 @@ from modal import (
     wsgi_app,
 )
 from modal.exception import deprecation_warning
+from modal.experimental import get_local_input_concurrency
 
 SLEEP_DELAY = 0.1
 
@@ -478,3 +479,9 @@ def is_local_f(x):
 def raise_large_unicode_exception():
     byte_str = (b"k" * 120_000_000) + b"\x99"
     byte_str.decode("utf-8")
+
+
+@app.function()
+def get_input_concurrency(timeout: int):
+    time.sleep(timeout)
+    return get_local_input_concurrency()
