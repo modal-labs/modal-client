@@ -102,7 +102,7 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     ):
         io_manager.memory_snapshot()
 
-    # Stop the App, invaliding the fu- ID stored in `f`.
+    # Stop the App, invalidating the fu- ID stored in `f`.
     assert await retry_transient_errors(client_stub.AppStop, api_pb2.AppStopRequest(app_id=app_id))
     # After snapshot-restore the previously looked-up Function should get refreshed and have the
     # new fu- ID. ie. the ID should not be stale and invalid.
