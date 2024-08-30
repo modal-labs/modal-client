@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 from typer import Typer
 
+from .._output import enable_output
 from ..app import App
 from ..exception import _CliUserExecutionError
 from ..runner import run_app
@@ -35,14 +36,15 @@ def _launch_program(name: str, filename: str, args: Dict[str, Any]) -> None:
     # `launch/` scripts must have a `local_entrypoint()` with no args, for simplicity here.
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
-    with run_app(app):
-        try:
-            if isasync:
-                asyncio.run(func())
-            else:
-                func()
-        except Exception as exc:
-            raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
+    with enable_output():
+        with run_app(app):
+            try:
+                if isasync:
+                    asyncio.run(func())
+                else:
+                    func()
+            except Exception as exc:
+                raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
 
 
 @launch_cli.command(name="jupyter", help="Start Jupyter Lab on Modal.")

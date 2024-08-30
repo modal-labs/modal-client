@@ -2104,6 +2104,7 @@ message TunnelData {
   uint32 port = 2;
   optional string unencrypted_host = 3;
   optional uint32 unencrypted_port = 4;
+  uint32 container_port = 5;
 }
 
 message TunnelStartRequest {
