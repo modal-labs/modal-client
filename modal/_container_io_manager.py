@@ -279,7 +279,7 @@ class _ContainerIOManager:
             target_concurrency = 1
             max_concurrency = 0
         else:
-            target_concurrency = container_args.function_def.allow_concurrent_inputs or 1
+            target_concurrency = container_args.function_def.target_concurrent_inputs or 1
             max_concurrency = container_args.function_def.max_concurrent_inputs or target_concurrency
 
         self._target_concurrency = target_concurrency
@@ -357,7 +357,7 @@ class _ContainerIOManager:
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
-                if self._target_concurrency > 1:
+                if self._max_concurrency > 1:
                     for input_id in input_ids_to_cancel:
                         if input_id in self.current_inputs:
                             self.current_inputs[input_id].cancel()
@@ -932,10 +932,6 @@ class _ContainerIOManager:
         except Exception as e:
             print("Error: Failed to start PTY shell.")
             raise e
-
-    @property
-    def target_concurrency(self) -> int:
-        return self._target_concurrency
 
     @property
     def max_concurrency(self) -> int:

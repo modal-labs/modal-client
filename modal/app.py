@@ -611,13 +611,8 @@ class _App:
         # target_concurrent_inputs is set. This will be removed in the future.
         target_concurrent_inputs = target_concurrent_inputs or allow_concurrent_inputs
         max_concurrent_inputs = allow_concurrent_inputs if target_concurrent_inputs else None
-
         if max_concurrent_inputs and max_concurrent_inputs < target_concurrent_inputs:
             raise InvalidError("allow_concurrent_inputs must be greater than or equal to target_concurrent_inputs.")
-        if max_concurrent_inputs and target_concurrent_inputs <= 1 and max_concurrent_inputs > 1:
-            raise InvalidError(
-                "target_concurrent_inputs must be greater than 1 to enable automatic input concurrency scaling."
-            )
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
@@ -805,13 +800,8 @@ class _App:
         # TODO: Temporary alias of allow_concurrent_inputs to target_concurrent_inputs
         target_concurrent_inputs = target_concurrent_inputs or allow_concurrent_inputs
         max_concurrent_inputs = allow_concurrent_inputs if target_concurrent_inputs else None
-
         if max_concurrent_inputs and max_concurrent_inputs < target_concurrent_inputs:
             raise InvalidError("allow_concurrent_inputs must be greater than or equal to target_concurrent_inputs.")
-        if max_concurrent_inputs and target_concurrent_inputs <= 1 and max_concurrent_inputs > 1:
-            raise InvalidError(
-                "target_concurrent_inputs must be greater than 1 to enable automatic input concurrency scaling."
-            )
 
         def wrapper(user_cls: CLS_T) -> CLS_T:
             nonlocal keep_warm
