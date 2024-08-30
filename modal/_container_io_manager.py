@@ -759,6 +759,8 @@ class _ContainerIOManager:
                 repr_exc = repr_exc[: MAX_OBJECT_SIZE_BYTES - 1000]
                 repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
 
+            data: bytes = self.serialize_exception(exc) or b""
+            data_result_part = await self.format_blob_data(data)
             results = [
                 api_pb2.GenericResult(
                     status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
@@ -766,7 +768,7 @@ class _ContainerIOManager:
                     traceback=traceback.format_exc(),
                     serialized_tb=serialized_tb,
                     tb_line_cache=tb_line_cache,
-                    **await self.format_blob_data(self.serialize_exception(exc)),
+                    **data_result_part,
                 )
                 for _ in io_context.input_ids
             ]
