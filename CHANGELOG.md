@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.67 (2024-08-30)
+
+- Fix a regression in `modal launch` behavior not showing progress output when starting the container.
+
+
+
 ### 0.64.38 (2024-08-16)
 
 - Added a `modal app rollback` CLI command for rolling back an App deployment to a previous version.
