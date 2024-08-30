@@ -1568,6 +1568,15 @@ message PTYInfo {
   PTYType pty_type = 7;
 }
 
+message PortSpec {
+  uint32 port = 1;
+  bool unencrypted = 2;
+}
+
+message PortSpecs {
+  repeated PortSpec ports = 1;
+}
+
 message ProxyGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
@@ -1755,6 +1764,9 @@ message Sandbox {
   repeated Resources _experimental_resources = 18; // overrides `resources` field above
 
   string worker_id = 19; // for internal debugging use only
+  oneof open_ports_oneof {
+    PortSpecs open_ports = 20;
+  }
 }
 
 message SandboxCreateRequest {
@@ -1779,6 +1791,15 @@ message SandboxGetTaskIdRequest {
 
 message SandboxGetTaskIdResponse {
   string task_id = 1;
+}
+
+message SandboxGetTunnelsRequest {
+  bool poll = 1;
+  string sandbox_id = 2;
+}
+
+message SandboxGetTunnelsResponse {
+  repeated TunnelData tunnels = 1;
 }
 
 message SandboxHandleMetadata {
@@ -2076,6 +2097,13 @@ message TokenFlowWaitResponse {
   string workspace_username = 4;
 }
 
+message TunnelData {
+  string host = 1;
+  uint32 port = 2;
+  optional string unencrypted_host = 3;
+  optional uint32 unencrypted_port = 4;
+}
+
 message TunnelStartRequest {
   uint32 port = 1;
   bool unencrypted = 2;
@@ -2356,6 +2384,7 @@ service ModalClient {
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
+  rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
