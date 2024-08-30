@@ -2,7 +2,8 @@
 import asyncio
 import platform
 import warnings
-from typing import AsyncIterator, Awaitable, Callable, ClassVar, Dict, Optional, Tuple
+from functools import wraps
+from typing import AsyncIterator, ClassVar, Dict, Optional, Tuple
 
 import grpclib.client
 from aiohttp import ClientConnectorError, ClientResponseError
@@ -14,7 +15,7 @@ from modal_proto import api_grpc, api_pb2
 from modal_version import __version__
 
 from ._utils import async_utils
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
 from .config import _check_config, config, logger
@@ -79,9 +80,31 @@ async def _grpc_exc_string(exc: GRPCError, method_name: str, server_url: str, ti
     return f"{method_name}: {exc.message} [gRPC status: {exc.status.name}, {http_status}]"
 
 
+class ClientShutdown(Exception):
+    pass
+
+
+def wrap_rpc_client(tc: TaskContext, api_stub: api_grpc.ModalClientStub):
+    def wrap_method(method):
+        @wraps(method)
+        async def wrapped_method(*args, **kwargs):
+            try:
+                return await tc.create_task(method(*args, **kwargs))
+            except asyncio.CancelledError:
+                raise ClientShutdown()
+
+        return wrapped_method
+
+    for method_name, method in api_stub.__dict__.copy().items():
+        api_stub.__dict__[method_name] = wrap_method(method)
+
+    return api_stub
+
+
 class _Client:
     _client_from_env: ClassVar[Optional["_Client"]] = None
     _client_from_env_lock: ClassVar[Optional[asyncio.Lock]] = None
+    _rpc_context: TaskContext
 
     def __init__(
         self,
@@ -97,7 +120,6 @@ class _Client:
         self.version = version
         self._authenticated = False
         self.image_builder_version: Optional[str] = None
-        self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[api_grpc.ModalClientStub] = None
 
@@ -124,12 +146,14 @@ class _Client:
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
-        self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
+        self._rpc_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
+        await self._rpc_context.__aenter__()
+        self._stub = wrap_rpc_client(self._rpc_context, api_grpc.ModalClientStub(self._channel))  # type: ignore
 
     async def _close(self, forget_credentials: bool = False):
-        if self._pre_stop is not None:
-            logger.debug("Client: running pre-stop coroutine before shutting down")
-            await self._pre_stop()  # type: ignore
+        print("Closing stuff", id(self))
+        await self._rpc_context.__aexit__(None, None, None)
+        print("Done closing")
 
         if self._channel is not None:
             self._channel.close()
@@ -139,16 +163,6 @@ class _Client:
 
         # Remove cached client.
         self.set_env_client(None)
-
-    def set_pre_stop(self, pre_stop: Callable[[], Awaitable[None]]):
-        """mdmd:hidden"""
-        # hack: stub.serve() gets into a losing race with the `on_shutdown` client
-        # teardown when an interrupt signal is received (eg. KeyboardInterrupt).
-        # By registering a pre-stop fn stub.serve() can have its teardown
-        # performed before the client is disconnected.
-        #
-        # ref: github.com/modal-labs/modal-client/pull/108
-        self._pre_stop = pre_stop
 
     async def _init(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
@@ -185,11 +199,13 @@ class _Client:
         try:
             await self._init()
         except BaseException:
+            print("Exception during _init")
             await self._close()
             raise
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
+        print("aexit close")
         await self._close()
 
     @classmethod
