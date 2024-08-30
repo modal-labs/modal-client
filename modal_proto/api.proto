@@ -1799,7 +1799,8 @@ message SandboxGetTunnelsRequest {
 }
 
 message SandboxGetTunnelsResponse {
-  repeated TunnelData tunnels = 1;
+  GenericResult result = 1;
+  repeated TunnelData tunnels = 2;
 }
 
 message SandboxHandleMetadata {
