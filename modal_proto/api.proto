@@ -1795,8 +1795,8 @@ message SandboxGetTaskIdResponse {
 }
 
 message SandboxGetTunnelsRequest {
-  bool poll = 1;
-  string sandbox_id = 2;
+  string sandbox_id = 1;
+  float timeout = 2;
 }
 
 message SandboxGetTunnelsResponse {
