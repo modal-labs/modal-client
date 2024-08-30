@@ -205,7 +205,7 @@ def _container_args(
         app_name=app_name or "",
         is_builder_function=is_builder_function,
         is_auto_snapshot=is_auto_snapshot,
-        allow_concurrent_inputs=allow_concurrent_inputs,
+        target_concurrent_inputs=allow_concurrent_inputs,
         max_concurrent_inputs=max_concurrent_inputs,
         batch_max_size=batch_max_size,
         batch_linger_ms=batch_wait_ms,
@@ -1965,7 +1965,7 @@ def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env
 @pytest.mark.parametrize("concurrency_limit", [1, 2])
 def test_container_io_manager_concurrency_tracking(client, servicer, concurrency_limit):
     dummy_container_args = api_pb2.ContainerArguments(
-        function_id="fu-123", function_def=api_pb2.Function(allow_concurrent_inputs=concurrency_limit)
+        function_id="fu-123", function_def=api_pb2.Function(target_concurrent_inputs=concurrency_limit)
     )
     from modal._utils.async_utils import synchronizer
 

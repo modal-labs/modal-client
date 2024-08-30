@@ -1002,7 +1002,7 @@ message Function {
 
   repeated VolumeMount volume_mounts = 33;
 
-  uint32 allow_concurrent_inputs = 34;
+  uint32 target_concurrent_inputs = 34;
 
   repeated CustomDomainInfo custom_domain_info = 35;
 
