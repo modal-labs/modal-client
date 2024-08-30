@@ -100,12 +100,13 @@ class _Client:
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[api_grpc.ModalClientStub] = None
+        self._snapshotted = False
 
     @property
     def stub(self) -> api_grpc.ModalClientStub:
         """mdmd:hidden"""
         if self._stub is None:
-            if self.client_type == api_pb2.CLIENT_TYPE_CONTAINER:
+            if self._snapshotted:
                 logger.debug("restoring stub for memory snapshotted client instance")
                 self._open()
             else:
@@ -120,7 +121,7 @@ class _Client:
     @property
     def credentials(self) -> tuple:
         """mdmd:hidden"""
-        if self._credentials is None and self.client_type == api_pb2.CLIENT_TYPE_CONTAINER:
+        if self._credentials is None and self._snapshotted:
             logger.debug("restoring credentials for memory snapshotted client instance")
             self._credentials = (config["task_id"], config["task_secret"])
         return self._credentials
@@ -140,6 +141,7 @@ class _Client:
             self._channel.close()
 
         if forget_credentials:
+            self._snapshotted = True
             # force re-fetch of fresh creds
             self._credentials = None
             # stale creds can be stored in channel
