@@ -1002,7 +1002,7 @@ message Function {
 
   repeated VolumeMount volume_mounts = 33;
 
-  uint32 allow_concurrent_inputs = 34;
+  uint32 target_concurrent_inputs = 34;
 
   repeated CustomDomainInfo custom_domain_info = 35;
 
@@ -1276,7 +1276,7 @@ message FunctionOptions {
   optional uint32 task_idle_timeout_secs = 7;
   optional uint32 warm_pool_size = 8;
   repeated VolumeMount volume_mounts = 9;
-  optional uint32 allow_concurrent_inputs = 10;
+  optional uint32 target_concurrent_inputs = 10;
   bool replace_volume_mounts = 11;
   bool replace_secret_ids = 12;
 }

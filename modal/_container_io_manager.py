@@ -279,7 +279,7 @@ class _ContainerIOManager:
             target_concurrency = 1
             max_concurrency = 0
         else:
-            target_concurrency = container_args.function_def.allow_concurrent_inputs or 1
+            target_concurrency = container_args.function_def.target_concurrent_inputs or 1
             max_concurrency = container_args.function_def.max_concurrent_inputs or target_concurrency
 
         self._target_concurrency = target_concurrency
