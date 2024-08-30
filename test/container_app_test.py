@@ -95,7 +95,7 @@ async def test_container_snapshot_restore_stale_credentials_in_stub(container_cl
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
     ):
         io_manager.memory_snapshot()
-        # RPC should have use credentials, not old credentials
+        # RPC should have used new credentials, not old credentials
         await f.remote.aio()
     creds = (servicer.function_map_metadata["x-modal-task-id"], servicer.function_map_metadata["x-modal-task-secret"])
     assert creds == ("ta-i-am-restored", "ts-i-am-restored")
