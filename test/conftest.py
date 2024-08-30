@@ -855,6 +855,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionMap(self, stream):
         self.fcidx += 1
         request: api_pb2.FunctionMapRequest = await stream.recv_message()
+        self.function_map_metadata = stream.metadata
         function_call_id = f"fc-{self.fcidx}"
         self.function_id_for_function_call[function_call_id] = request.function_id
         await stream.send_message(api_pb2.FunctionMapResponse(function_call_id=function_call_id))

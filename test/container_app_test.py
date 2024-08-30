@@ -60,7 +60,7 @@ async def test_container_function_lazily_imported(container_client):
 
 
 @pytest.mark.asyncio
-async def test_container_snapshot_restore(container_client, tmpdir, servicer):
+async def test_container_snapshot_restore_stale_credentials(container_client, tmpdir, servicer):
     # Get a reference to a Client instance in memory
     old_client = container_client
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
@@ -71,6 +71,34 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
         io_manager.memory_snapshot()
         # In-memory Client instance should have update credentials, not old credentials
         assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
+
+
+def square(x):
+    return x**2
+
+
+@pytest.mark.asyncio
+async def test_container_snapshot_restore_stale_credentials_in_stub(container_client, tmpdir, servicer):
+    app = App()
+    from modal import Function
+    from modal.runner import deploy_app
+
+    app.function()(square)
+    app_name = "my-app"
+    deploy_app(app, app_name, client=container_client).app_id
+    f = Function.lookup(app_name, "square", client=container_client)
+    await f.remote.aio()
+    print(servicer.function_map_metadata)
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    restore_path = temp_restore_path(tmpdir)
+    with mock.patch.dict(
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
+    ):
+        io_manager.memory_snapshot()
+        # RPC should have use credentials, not old credentials
+        await f.remote.aio()
+    creds = (servicer.function_map_metadata["x-modal-task-id"], servicer.function_map_metadata["x-modal-task-secret"])
+    assert creds == ("ta-i-am-restored", "ts-i-am-restored")
 
 
 @pytest.mark.asyncio
