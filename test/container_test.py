@@ -2059,7 +2059,7 @@ def test_max_concurrency(servicer):
         "test.supports.functions",
         "get_input_concurrency",
         inputs=_get_inputs(((1,), {}), n=n_inputs),
-        target_concurrent_inputs=target_concurrency,
+        allow_concurrent_inputs=target_concurrency,
         max_concurrent_inputs=max_concurrency,
     )
 
