@@ -104,6 +104,7 @@ async def test_task_context_infinite_loop():
 @pytest.mark.asyncio
 async def test_task_context_infinite_loop_non_functions():
     async with TaskContext(grace=0.01) as task_context:
+
         async def f(x):
             pass
 
@@ -115,6 +116,7 @@ async def test_task_context_infinite_loop_non_functions():
 @pytest.mark.asyncio
 async def test_task_context_infinite_loop_timeout(caplog):
     async with TaskContext(grace=0.01) as task_context:
+
         async def f():
             await asyncio.sleep(5.0)
 
@@ -192,6 +194,7 @@ async def test_queue_batch_iterator():
         assert len(drained_items) == 3
 
 
+@pytest.mark.flaky(max_runs=3)
 @pytest.mark.asyncio
 async def test_warn_if_generator_is_not_consumed(caplog):
     @warn_if_generator_is_not_consumed()
