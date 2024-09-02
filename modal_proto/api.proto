@@ -1002,7 +1002,7 @@ message Function {
 
   repeated VolumeMount volume_mounts = 33;
 
-  uint32 allow_concurrent_inputs = 34;
+  uint32 target_concurrent_inputs = 34;
 
   repeated CustomDomainInfo custom_domain_info = 35;
 
@@ -1053,6 +1053,7 @@ message Function {
   uint64 batch_linger_ms = 61; // Miliseconds to block before a response is needed
   bool i6pn_enabled = 62;
   bool _experimental_concurrent_cancellations = 63;
+  uint32 max_concurrent_inputs = 64;
 }
 
 message FunctionBindParamsRequest {
@@ -1275,7 +1276,7 @@ message FunctionOptions {
   optional uint32 task_idle_timeout_secs = 7;
   optional uint32 warm_pool_size = 8;
   repeated VolumeMount volume_mounts = 9;
-  optional uint32 allow_concurrent_inputs = 10;
+  optional uint32 target_concurrent_inputs = 10;
   bool replace_volume_mounts = 11;
   bool replace_secret_ids = 12;
 }
@@ -1794,8 +1795,8 @@ message SandboxGetTaskIdResponse {
 }
 
 message SandboxGetTunnelsRequest {
-  bool poll = 1;
-  string sandbox_id = 2;
+  string sandbox_id = 1;
+  float timeout = 2;
 }
 
 message SandboxGetTunnelsResponse {
@@ -2103,6 +2104,7 @@ message TunnelData {
   uint32 port = 2;
   optional string unencrypted_host = 3;
   optional uint32 unencrypted_port = 4;
+  uint32 container_port = 5;
 }
 
 message TunnelStartRequest {
