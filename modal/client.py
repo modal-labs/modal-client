@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import asyncio
 import platform
+import typing
 import warnings
-from functools import wraps
-from typing import AsyncIterator, ClassVar, Dict, Optional, Tuple
+from typing import Any, AsyncIterator, ClassVar, Dict, Optional, Tuple
 
 import grpclib.client
 from aiohttp import ClientConnectorError, ClientResponseError
@@ -80,31 +80,52 @@ async def _grpc_exc_string(exc: GRPCError, method_name: str, server_url: str, ti
     return f"{method_name}: {exc.message} [gRPC status: {exc.status.name}, {http_status}]"
 
 
-class ClientShutdown(Exception):
+class ClientClosed(Exception):
     pass
 
 
-def wrap_rpc_client(tc: TaskContext, api_stub: api_grpc.ModalClientStub):
-    def wrap_method(method):
-        @wraps(method)
-        async def wrapped_method(*args, **kwargs):
-            try:
-                return await tc.create_task(method(*args, **kwargs))
-            except asyncio.CancelledError:
-                raise ClientShutdown()
+_SendType = typing.TypeVar("_SendType")
+_RecvType = typing.TypeVar("_RecvType")
 
-        return wrapped_method
 
-    for method_name, method in api_stub.__dict__.copy().items():
-        api_stub.__dict__[method_name] = wrap_method(method)
+class ClientBoundMethod:
+    def __init__(self, client, wrapped_method):
+        self._wrapped_method = wrapped_method
+        self._client = client
 
-    return api_stub
+    async def __call__(self, *args, **kwargs):
+        if self._client.is_closed():
+            raise ClientClosed()
+        # TODO(elias) we could extend this to incorporate retry_transient_errors
+        try:
+            return await self._client._rpc_context.create_task(self._wrapped_method(*args, **kwargs))
+        except asyncio.CancelledError:
+            raise ClientClosed()
+
+    async def unary_stream(
+        self,
+        request,
+        metadata: Optional[Any] = None,
+    ):
+        """Helper for making a unary-streaming gRPC request."""
+        async with self._wrapped_method.open(metadata=metadata) as stream:
+            await stream.send_message(request, end=True)
+            async for item in stream:
+                yield item
+
+
+class WrappedModalClientStub(api_grpc.ModalClientStub):
+    def __init__(self, client: "_Client", tc: TaskContext, raw_api_stub: api_grpc.ModalClientStub):
+        # transfer all methods, but wrapped
+        for method_name, method in raw_api_stub.__dict__.copy().items():
+            self.__dict__[method_name] = ClientBoundMethod(client, method)
 
 
 class _Client:
     _client_from_env: ClassVar[Optional["_Client"]] = None
     _client_from_env_lock: ClassVar[Optional[asyncio.Lock]] = None
     _rpc_context: TaskContext
+    _stub: Optional[api_grpc.ModalClientStub]
 
     def __init__(
         self,
@@ -122,6 +143,9 @@ class _Client:
         self.image_builder_version: Optional[str] = None
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[api_grpc.ModalClientStub] = None
+
+    def is_closed(self) -> bool:
+        return self._channel is None
 
     @property
     def stub(self) -> api_grpc.ModalClientStub:
@@ -148,15 +172,14 @@ class _Client:
         self._channel = create_channel(self.server_url, metadata=metadata)
         self._rpc_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
         await self._rpc_context.__aenter__()
-        self._stub = wrap_rpc_client(self._rpc_context, api_grpc.ModalClientStub(self._channel))  # type: ignore
+        self._stub = WrappedModalClientStub(self, self._rpc_context, api_grpc.ModalClientStub(self._channel))  # type: ignore
 
     async def _close(self, forget_credentials: bool = False):
-        print("Closing stuff", id(self))
-        await self._rpc_context.__aexit__(None, None, None)
-        print("Done closing")
+        await self._rpc_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
 
         if self._channel is not None:
             self._channel.close()
+            self._channel = None
 
         if forget_credentials:
             self._credentials = None
@@ -199,13 +222,11 @@ class _Client:
         try:
             await self._init()
         except BaseException:
-            print("Exception during _init")
             await self._close()
             raise
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        print("aexit close")
         await self._close()
 
     @classmethod

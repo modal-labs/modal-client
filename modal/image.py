@@ -22,7 +22,7 @@ from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
@@ -414,7 +414,7 @@ class _Image(_Object, type_prefix="im"):
                 nonlocal last_entry_id, result
 
                 request = api_pb2.ImageJoinStreamingRequest(image_id=image_id, timeout=55, last_entry_id=last_entry_id)
-                async for response in unary_stream(resolver.client.stub.ImageJoinStreaming, request):
+                async for response in resolver.client.stub.ImageJoinStreaming.unary_stream(request):
                     if response.entry_id:
                         last_entry_id = response.entry_id
                     if response.result.status:
@@ -1702,7 +1702,7 @@ class _Image(_Object, type_prefix="im"):
         request = api_pb2.ImageJoinStreamingRequest(
             image_id=self._object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
         )
-        async for response in unary_stream(self._client.stub.ImageJoinStreaming, request):
+        async for response in self._client.stub.ImageJoinStreaming.unary_stream(request):
             if response.result.status:
                 return
             if response.entry_id:

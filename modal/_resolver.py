@@ -138,6 +138,8 @@ class Resolver:
             self._local_uuid_to_future[obj.local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
+
+        # TODO(elias): print original exception/trace rather than the Resolver-internal trace
         return await cached_future
 
     def objects(self) -> List["_Object"]:

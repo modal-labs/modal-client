@@ -7,8 +7,6 @@ import time
 import urllib.parse
 import uuid
 from typing import (
-    Any,
-    AsyncIterator,
     Dict,
     Optional,
     TypeVar,
@@ -25,6 +23,11 @@ from grpclib.protocol import H2Protocol
 from modal_version import __version__
 
 from .logger import logger
+
+
+def unary_stream():
+    pass
+
 
 RequestType = TypeVar("RequestType", bound=Message)
 ResponseType = TypeVar("ResponseType", bound=Message)
@@ -109,18 +112,6 @@ def create_channel(
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
     return channel
-
-
-async def unary_stream(
-    method: grpclib.client.UnaryStreamMethod[_SendType, _RecvType],
-    request: _SendType,
-    metadata: Optional[Any] = None,
-) -> AsyncIterator[_RecvType]:
-    """Helper for making a unary-streaming gRPC request."""
-    async with method.open(metadata=metadata) as stream:
-        await stream.send_message(request, end=True)
-        async for item in stream:
-            yield item
 
 
 async def retry_transient_errors(

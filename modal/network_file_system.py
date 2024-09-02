@@ -15,7 +15,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
-from ._utils.grpc_utils import retry_transient_errors, unary_stream
+from ._utils.grpc_utils import retry_transient_errors
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -301,7 +301,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         that glob path (using absolute paths)
         """
         req = api_pb2.SharedVolumeListFilesRequest(shared_volume_id=self.object_id, path=path)
-        async for batch in unary_stream(self._client.stub.SharedVolumeListFilesStream, req):
+        async for batch in self._client.stub.SharedVolumeListFilesStream.unary_stream(req):
             for entry in batch.entries:
                 yield FileEntry._from_proto(entry)
 

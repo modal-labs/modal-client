@@ -1,6 +1,6 @@
 import threading
 
-from modal._utils.grpc_utils import ClientShutdown
+from modal.client import ClientClosed
 from modal.queue import Queue
 
 event = threading.Event()
@@ -20,5 +20,5 @@ with Queue.ephemeral() as q:
     try:
         event.set()
         q.get()
-    except ClientShutdown:
+    except ClientClosed:
         print("Graceful shutdown")

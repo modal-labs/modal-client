@@ -42,7 +42,7 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
 )
-from ._utils.grpc_utils import retry_transient_errors, unary_stream
+from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
@@ -365,7 +365,7 @@ class _Volume(_Object, type_prefix="vo"):
             )
 
         req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
-        async for batch in unary_stream(self._client.stub.VolumeListFiles, req):
+        async for batch in self._client.stub.VolumeListFiles.unary_stream(req):
             for entry in batch.entries:
                 yield FileEntry._from_proto(entry)
 

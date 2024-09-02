@@ -7,7 +7,7 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from .client import _Client
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ async def _sandbox_logs_iterator(
         timeout=55,
         last_entry_id=last_entry_id,
     )
-    async for log_batch in unary_stream(client.stub.SandboxGetLogs, req):
+    async for log_batch in client.stub.SandboxGetLogs.unary_stream(req):
         last_entry_id = log_batch.entry_id
 
         for message in log_batch.items:
@@ -42,7 +42,7 @@ async def _container_process_logs_iterator(
         last_batch_index=last_entry_id or 0,
         file_descriptor=file_descriptor,
     )
-    async for batch in unary_stream(client.stub.ContainerExecGetOutput, req):
+    async for batch in client.stub.ContainerExecGetOutput.unary_stream(req):
         if batch.HasField("exit_code"):
             yield (None, batch.batch_index)
             break
