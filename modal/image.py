@@ -264,9 +264,11 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
+    _mounts: Sequence[_Mount]
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
+        self._mounts = ()
 
     def _hydrate_metadata(self, message: Optional[Message]):
         env_image_id = config.get("image_id")
@@ -288,6 +290,7 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        _mounts: Sequence[_Mount] = (),
     ):
         if base_images is None:
             base_images = {}
@@ -522,6 +525,23 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
             context_mount=mount,
         )
+
+    def copy_local_file2(
+        self, local_path: Union[str, Path], remote_path: Optional[Union[str, Path]] = None
+    ) -> "_Image":
+        """Copy a file into the image as a part of building it.
+
+        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
+        works in a `Dockerfile`.
+        """
+        if remote_path is None:
+            # TODO: track workdir (!) to put file in workdir/basename, OR let mounts support relative paths
+            basename = str(Path(local_path).name)
+            remote_path = Path("/root") / basename
+
+        mount = _Mount.from_local_file(local_path, remote_path=remote_path)
+
+        return _Image._from_args(base_images={"base": self}, _mounts=self._mounts + (mount,))
 
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy a directory into the image as a part of building the image.
@@ -1710,6 +1730,10 @@ class _Image(_Object, type_prefix="im"):
             for task_log in response.task_logs:
                 if task_log.data:
                     yield task_log.data
+
+    def _split_mounts(self) -> Tuple["_Image", Sequence[_Mount]]:
+        if self._mounts:
+            assert not self.dockerfile_commands
 
 
 Image = synchronize_api(_Image)
