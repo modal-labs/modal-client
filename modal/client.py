@@ -92,6 +92,7 @@ class ClientBoundMethod:
     def __init__(self, client, wrapped_method):
         self._wrapped_method = wrapped_method
         self._client = client
+        self.name = wrapped_method.name
 
     async def __call__(self, *args, **kwargs):
         if self._client.is_closed():

@@ -25,7 +25,7 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
-from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
+from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, ClientClosed, _Client
 from .config import config, logger
 from .exception import InputCancellation, InvalidError
 from .running_app import RunningApp
@@ -260,6 +260,9 @@ class _ContainerIOManager:
                     # two subsequent cancellations on the same task at the moment
                     await asyncio.sleep(1.0)
                     continue
+            except ClientClosed:
+                logger.info("Stopping heartbeat loop due to client shutdown")
+                break
             except Exception as exc:
                 # don't stop heartbeat loop if there are transient exceptions!
                 time_elapsed = time.monotonic() - t0

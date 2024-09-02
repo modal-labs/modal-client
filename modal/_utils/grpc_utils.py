@@ -24,11 +24,6 @@ from modal_version import __version__
 
 from .logger import logger
 
-
-def unary_stream():
-    pass
-
-
 RequestType = TypeVar("RequestType", bound=Message)
 ResponseType = TypeVar("ResponseType", bound=Message)
 
