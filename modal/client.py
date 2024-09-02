@@ -109,10 +109,15 @@ class ClientBoundMethod:
         metadata: Optional[Any] = None,
     ):
         """Helper for making a unary-streaming gRPC request."""
-        async with self._wrapped_method.open(metadata=metadata) as stream:
-            await stream.send_message(request, end=True)
-            async for item in stream:
-                yield item
+        if self._client.is_closed():
+            raise ClientClosed()
+        try:
+            async with self._wrapped_method.open(metadata=metadata) as stream:
+                await stream.send_message(request, end=True)
+                async for item in stream:
+                    yield item
+        except asyncio.CancelledError:
+            raise ClientClosed()
 
 
 class WrappedModalClientStub(api_grpc.ModalClientStub):
