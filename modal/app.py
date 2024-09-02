@@ -765,6 +765,7 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
+        _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
     ) -> Callable[[CLS_T], CLS_T]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
@@ -848,6 +849,7 @@ class _App:
                 webhook_config=None,
                 is_generator=False,
                 _experimental_gpus=_experimental_gpus,
+                _experimental_buffer_containers=_experimental_buffer_containers,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
