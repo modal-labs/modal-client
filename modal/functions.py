@@ -508,6 +508,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
         _experimental_gpus: Sequence[GPU_T] = [],
+        _experimental_buffer_containers: Optional[int] = None,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -828,6 +829,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     ],
                     i6pn_enabled=config.get("i6pn_enabled"),
                     _experimental_concurrent_cancellations=True,
+                    _experimental_buffer_containers=_experimental_buffer_containers,
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(

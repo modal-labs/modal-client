@@ -1054,6 +1054,7 @@ message Function {
   bool i6pn_enabled = 62;
   bool _experimental_concurrent_cancellations = 63;
   uint32 max_concurrent_inputs = 64;
+  uint32 _experimental_buffer_containers = 65;
 }
 
 message FunctionBindParamsRequest {

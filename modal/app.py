@@ -580,6 +580,7 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
+        _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
     ) -> Callable[[Union[Callable[P, R], _PartialFunction[P, R]]], _Function[P, R]]:
         """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -711,6 +712,7 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
                 _experimental_gpus=_experimental_gpus,
+                _experimental_buffer_containers=_experimental_buffer_containers,
             )
 
             self._add_function(function, webhook_config is not None)
