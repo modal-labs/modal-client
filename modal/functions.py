@@ -832,7 +832,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     _experimental_concurrent_cancellations=True,
                     _experimental_task_templates=[
                         api_pb2.TaskTemplate(
-                            priority=1,
+                            rank=1,
                             resources=convert_fn_config_to_resources_config(
                                 cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
                             ),
