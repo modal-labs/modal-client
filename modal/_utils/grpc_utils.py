@@ -128,6 +128,10 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     def __init__(self, wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]):
         self.wrapped_method = wrapped_method
 
+    @property
+    def name(self) -> str:
+        return self.wrapped_method.name
+
     async def __call__(
         self,
         req: RequestType,
@@ -156,10 +160,10 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
 
 
 async def unary_stream(
-    method: grpclib.client.UnaryStreamMethod[_SendType, _RecvType],
-    request: _SendType,
+    method: UnaryStreamWrapper[RequestType, ResponseType],
+    request: RequestType,
     metadata: Optional[Any] = None,
-) -> AsyncIterator[_RecvType]:
+) -> AsyncIterator[ResponseType]:
     """Helper for making a unary-streaming gRPC request."""
     async with method.open(metadata=metadata) as stream:
         await stream.send_message(request, end=True)
@@ -168,7 +172,7 @@ async def unary_stream(
 
 
 async def retry_transient_errors(
-    fn: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
+    fn: UnaryUnaryWrapper[RequestType, ResponseType],
     *args,
     base_delay: float = 0.1,
     max_delay: float = 1,
