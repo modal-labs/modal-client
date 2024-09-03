@@ -297,7 +297,7 @@ class _ContainerIOManager:
         self._fetching_inputs = True
 
         self._client = client
-        # assert isinstance(self._client, _Client)
+        assert isinstance(self._client, _Client)
 
     def __new__(cls, container_args: api_pb2.ContainerArguments, client: _Client) -> "_ContainerIOManager":
         cls._singleton = super().__new__(cls)
@@ -672,7 +672,9 @@ class _ContainerIOManager:
             return self.serialize(exc)
         except Exception as serialization_exc:
             # We can't always serialize exceptions.
-            return self.serialize(SerializationError(f"Failed to serialize exception {exc}: {serialization_exc}"))
+            err = f"Failed to serialize exception {exc} of type {type(exc)}: {serialization_exc}"
+            logger.info(err)
+            return self.serialize(SerializationError(err))
 
     def serialize_traceback(self, exc: BaseException) -> Tuple[Optional[bytes], Optional[bytes]]:
         serialized_tb, tb_line_cache = None, None
