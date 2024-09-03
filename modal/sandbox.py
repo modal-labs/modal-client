@@ -193,7 +193,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             _experimental_gpus=_experimental_gpus,
         )
         if client is None:
-            if app:
+            if app and app._client:
                 client = app._client
             else:
                 client = await _Client.from_env()
