@@ -45,7 +45,6 @@ class _Object:
     _client: _Client
     _is_hydrated: bool
     _is_rehydrating: bool
-    _is_rehydrated: bool
 
     @classmethod
     def __init_subclass__(cls, type_prefix: Optional[str] = None):
@@ -79,7 +78,6 @@ class _Object:
         self._object_id = None
         self._client = None
         self._is_hydrated = False
-        self._is_rehydrating = False
         self._is_rehydrated = False
 
         self._initialize_from_empty()
@@ -221,10 +219,9 @@ class _Object:
             # memory snapshots capture references which must be rehydrated
             # on restore to handle staleness.
             if self._client._snapshotted and not self._is_rehydrated:
-                self._is_rehydrating = True
+                self._is_hydrated = False  # un-hydrate and re-resolve
                 resolver = Resolver(await _Client.from_env())
                 await resolver.load(self)
-                self._is_rehydrating = False
             return
         elif not self._hydrate_lazily:
             self._validate_is_hydrated()
