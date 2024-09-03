@@ -18,6 +18,7 @@ from google.protobuf.message import Message
 from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal_proto.api_pb2
 from modal_proto import api_pb2
 
 from ._serialization import deserialize, serialize, serialize_data_format
@@ -645,7 +646,7 @@ class _ContainerIOManager:
         self,
         io_context: IOContext,
         started_at: float,
-        data_format: api_pb2.DataFormat.ValueType,
+        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
         results: List[api_pb2.GenericResult],
     ) -> None:
         output_created_at = time.time()
@@ -795,7 +796,11 @@ class _ContainerIOManager:
 
     @synchronizer.no_io_translation
     async def push_outputs(
-        self, io_context: IOContext, started_at: float, data: Any, data_format: api_pb2.DataFormat.ValueType
+        self,
+        io_context: IOContext,
+        started_at: float,
+        data: Any,
+        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
     ) -> None:
         data = io_context.validate_output_data(data)
         formatted_data = await asyncio.gather(
