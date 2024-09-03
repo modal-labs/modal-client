@@ -1320,7 +1320,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     @synchronizer.no_input_translation
     @live_method
-    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> Optional["_FunctionCall[R]"]:
+    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[R]":
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
@@ -1331,11 +1331,13 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         return a function handle for polling the result.
         """
         if self._is_generator:
-            await self._call_generator_nowait(args, kwargs)
-            return None
+            invocation = await self._call_generator_nowait(args, kwargs)
+        else:
+            invocation = await self._call_function_nowait(args, kwargs)
 
-        invocation = await self._call_function_nowait(args, kwargs)
-        return _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+        fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+        fc._is_generator = self._is_generator if self._is_generator else False
+        return fc
 
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
@@ -1375,6 +1377,8 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
     Conceptually similar to a Future/Promise/AsyncResult in other contexts and languages.
     """
 
+    _is_generator: bool = False
+
     def _invocation(self):
         assert self._client.stub
         return _Invocation(self._client.stub, self.object_id, self._client)
@@ -1388,7 +1392,21 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
 
         The returned coroutine is not cancellation-safe.
         """
+
+        if self._is_generator:
+            raise Exception("Cannot get the result of a generator function call. Use `get_gen` instead.")
+
         return await self._invocation().poll_function(timeout=timeout)
+
+    async def get_gen(self) -> AsyncGenerator[Any, None]:
+        """
+        Calls the generator remotely, executing it with the given arguments and returning the execution's result.
+        """
+        if not self._is_generator:
+            raise Exception("Cannot iterate over a non-generator function call. Use `get` instead.")
+
+        async for res in self._invocation().run_generator():
+            yield res
 
     async def get_call_graph(self) -> List[InputInfo]:
         """Returns a structure representing the call graph from a given root
@@ -1419,11 +1437,15 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 
     @staticmethod
-    async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall":
+    async def from_id(
+        function_call_id: str, client: Optional[_Client] = None, is_generator: bool = False
+    ) -> "_FunctionCall":
         if client is None:
             client = await _Client.from_env()
 
-        return _FunctionCall._new_hydrated(function_call_id, client, None)
+        fc = _FunctionCall._new_hydrated(function_call_id, client, None)
+        fc._is_generator = is_generator
+        return fc
 
 
 FunctionCall = synchronize_api(_FunctionCall)
