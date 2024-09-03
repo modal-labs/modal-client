@@ -275,7 +275,9 @@ async def _run_app(
                 output_mgr.update_app_page_url(running_app.app_page_url)
 
             # Start logs loop
-            logs_loop = tc.create_task(get_app_logs_loop(client, output_mgr, running_app.app_id))
+            logs_loop = tc.create_task(
+                get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_page_url=running_app.app_page_url)
+            )
 
         exc_info: Optional[BaseException] = None
         try:
@@ -389,6 +391,7 @@ class DeployResult:
     """Dataclass representing the result of deploying an app."""
 
     app_id: str
+    app_page_url: str
 
 
 async def _deploy_app(
@@ -478,7 +481,7 @@ async def _deploy_app(
         t = time.time() - t0
         output_mgr.print(step_completed(f"App deployed in {t:.3f}s! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
-    return DeployResult(app_id=running_app.app_id)
+    return DeployResult(app_id=running_app.app_id, app_page_url=running_app.app_page_url)
 
 
 async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str = "", **kwargs: Any) -> None:

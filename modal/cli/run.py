@@ -296,7 +296,7 @@ def deploy(
         res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
 
     if stream_logs:
-        stream_app_logs(res.app_id)
+        stream_app_logs(app_id=res.app_id, app_page_url=res.app_page_url)
 
 
 def serve(
