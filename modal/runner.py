@@ -73,7 +73,7 @@ async def _init_local_app_new(
         app_state=app_state,
     )
     app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
-    app_page_url = app_resp.app_logs_url
+    app_page_url = app_resp.app_page_url
     logger.debug(f"Created new app with id {app_resp.app_id}")
     return RunningApp(
         app_resp.app_id, app_page_url=app_page_url, environment_name=environment_name, interactive=interactive

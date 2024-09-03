@@ -230,7 +230,8 @@ message AppCreateRequest {
 
 message AppCreateResponse {
   string app_id = 1;
-  string app_logs_url = 2;
+  string app_page_url = 2;
+  string app_logs_url = 3;
 }
 
 message AppDeployRequest {
