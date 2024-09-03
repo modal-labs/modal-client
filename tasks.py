@@ -25,6 +25,7 @@ copyright_header_full = f"{copyright_header_start} {year}"
 
 @task
 def protoc(ctx):
+    ctx.run("pip install ./protoc_plugin/")
     py_protoc = (
         f"{sys.executable} -m grpc_tools.protoc"
         + " --python_out=. --grpclib_python_out=. --modal-grpclib-python_out=."
