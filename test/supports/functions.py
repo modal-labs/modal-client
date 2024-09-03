@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from typing import List, Tuple
 
@@ -144,6 +145,26 @@ def fastapi_app():
     from fastapi import FastAPI
 
     web_app = FastAPI()
+
+    @web_app.get("/foo")
+    async def foo(arg="world"):
+        return {"hello": arg}
+
+    return web_app
+
+
+@app.function()
+@asgi_app()
+def fastapi_app_with_lifespan():
+    from fastapi import FastAPI
+
+    @contextlib.asynccontextmanager
+    async def lifespan(wapp: FastAPI):
+        print("enter!")
+        yield
+        print("exit!")
+
+    web_app = FastAPI(lifespan=lifespan)
 
     @web_app.get("/foo")
     async def foo(arg="world"):

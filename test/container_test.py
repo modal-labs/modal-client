@@ -669,6 +669,30 @@ def test_asgi(servicer):
 
 
 @skip_github_non_linux
+def test_asgi_with_lifespan(servicer):
+    inputs = _get_web_inputs(path="/foo")
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_app_with_lifespan",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+
+    # There should be one message for the header, and one for the body
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    assert json.loads(second_message["body"]) == {"hello": "space"}
+
+
+@skip_github_non_linux
 def test_wsgi(servicer):
     inputs = _get_web_inputs(path="/")
     _put_web_body(servicer, b"my wsgi body")

@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import Any, AsyncGenerator, Callable, Dict, NoReturn, Optional, cast
+from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, NoReturn, Optional, Tuple, cast
 
 import aiohttp
 
@@ -15,7 +15,9 @@ from .experimental import stop_fetching_inputs
 FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
 
-def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenerator]:
+def asgi_app_wrapper(
+    asgi_app, function_io_manager
+) -> Tuple[Callable[..., AsyncGenerator], Callable[..., Awaitable[None]], Callable[..., Awaitable[None]]]:
     async def fn(scope):
         function_call_id = current_function_call_id()
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
@@ -128,7 +130,39 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
                     app_task.result()  # consume/raise exceptions if there are any!
                     break
 
-    return fn
+    async def lifespan_startup():
+        async def lifespan_receive():
+            # Simulate receiving the lifespan.startup message
+            return {"type": "lifespan.startup"}
+
+        async def lifespan_send(message):
+            # Handle the response to the startup and shutdown events
+            if message["type"] == "lifespan.startup.complete":
+                print(f"lifespan_startup: Startup complete. {message=}")
+            elif message["type"] == "lifespan.startup.failed":
+                print(f"lifespan_startup: Startup failed. {message=}")
+            else:
+                print(f"lifespan_startup: Unexpected message type: {message['type']}")
+
+        await asgi_app({"type": "lifespan"}, lifespan_receive, lifespan_send)
+
+    async def lifespan_shutdown():
+        async def lifespan_receive():
+            # Simulate receiving the lifespan.startup message
+            return {"type": "lifespan.shutdown"}
+
+        async def lifespan_send(message):
+            # Handle the response to the startup and shutdown events
+            if message["type"] == "lifespan.shutdown.complete":
+                print(f"lifespan_shutdown Shutdown complete. {message=}")
+            elif message["type"] == "lifespan.shutdown.failed":
+                print(f"lifespan_shutdown Shutdown failed. {message=}")
+            else:
+                print(f"lifespan_shutdown: Unexpected message type: {message['type']}")
+
+        await asgi_app({"type": "lifespan"}, lifespan_receive, lifespan_send)
+
+    return fn, lifespan_startup, lifespan_shutdown
 
 
 def wsgi_app_wrapper(wsgi_app, function_io_manager):

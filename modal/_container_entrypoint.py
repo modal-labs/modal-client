@@ -150,13 +150,15 @@ class ImportedFunction(Service):
                 )
             }
 
-        web_callable = construct_webhook_callable(
+        web_callable, lifespan_startup, lifespan_shutdown = construct_webhook_callable(
             self._user_defined_callable, fun_def.webhook_config, container_io_manager
         )
 
         return {
             "": FinalizedFunction(
                 callable=web_callable,
+                lifespan_startup=lifespan_startup,
+                lifespan_shutdown=lifespan_shutdown,
                 is_async=True,
                 is_generator=True,
                 data_format=api_pb2.DATA_FORMAT_ASGI,
@@ -196,9 +198,13 @@ class ImportedClass(Service):
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
                 )
             else:
-                web_callable = construct_webhook_callable(bound_func, webhook_config, container_io_manager)
+                web_callable, lifespan_startup, lifespan_shutdown = construct_webhook_callable(
+                    bound_func, webhook_config, container_io_manager
+                )
                 finalized_function = FinalizedFunction(
                     callable=web_callable,
+                    lifespan_startup=lifespan_startup,
+                    lifespan_shutdown=lifespan_shutdown,
                     is_async=True,
                     is_generator=True,
                     data_format=api_pb2.DATA_FORMAT_ASGI,
@@ -832,6 +838,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Execute the function.
         try:
+            for finalized_function in finalized_functions.values():
+                call_lifecycle_functions(event_loop, container_io_manager, [finalized_function.lifespan_startup])
             call_function(
                 event_loop,
                 container_io_manager,
@@ -845,6 +853,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             # may have been sent to cancel inputs.
             int_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
             usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+
+            for finalized_function in finalized_functions.values():
+                call_lifecycle_functions(event_loop, container_io_manager, [finalized_function.lifespan_shutdown])
 
             try:
                 # Identify "exit" methods and run them.

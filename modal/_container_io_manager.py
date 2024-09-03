@@ -11,7 +11,7 @@ import traceback
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, AsyncIterator, Awaitable, Callable, ClassVar, Dict, List, Optional, Tuple
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -49,6 +49,8 @@ class Sentinel:
 @dataclass
 class FinalizedFunction:
     callable: Callable[..., Any]
+    lifespan_startup: Callable[..., Awaitable[None]]
+    lifespan_shutdown: Callable[..., Awaitable[None]]
     is_async: bool
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
