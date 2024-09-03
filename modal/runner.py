@@ -73,10 +73,13 @@ async def _init_local_app_new(
         app_state=app_state,
     )
     app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
-    app_page_url = app_resp.app_logs_url
     logger.debug(f"Created new app with id {app_resp.app_id}")
     return RunningApp(
-        app_resp.app_id, app_page_url=app_page_url, environment_name=environment_name, interactive=interactive
+        app_resp.app_id,
+        app_page_url=app_resp.app_page_url,
+        app_logs_url=app_resp.app_logs_url,
+        environment_name=environment_name,
+        interactive=interactive,
     )
 
 
@@ -276,7 +279,7 @@ async def _run_app(
 
             # Start logs loop
             logs_loop = tc.create_task(
-                get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_page_url=running_app.app_page_url)
+                get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url)
             )
 
         exc_info: Optional[BaseException] = None
