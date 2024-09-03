@@ -828,14 +828,17 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
-                    _experimental_resources=[
-                        convert_fn_config_to_resources_config(
-                            cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                    i6pn_enabled=config.get("i6pn_enabled"),
+                    _experimental_concurrent_cancellations=True,
+                    _experimental_task_templates=[
+                        api_pb2.TaskTemplate(
+                            priority=1,
+                            resources=convert_fn_config_to_resources_config(
+                                cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                            ),
                         )
                         for _experimental_gpu in _experimental_gpus
                     ],
-                    i6pn_enabled=config.get("i6pn_enabled"),
-                    _experimental_concurrent_cancellations=True,
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
