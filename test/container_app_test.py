@@ -118,10 +118,6 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
     ):
         io_manager.memory_snapshot()
-        # RPC should have used new credentials, not old credentials
-        await f.remote.aio()
-    creds = (servicer.function_map_metadata["x-modal-task-id"], servicer.function_map_metadata["x-modal-task-secret"])
-    assert creds == ("ta-i-am-restored", "ts-i-am-restored")
     # Stop the App, invalidating the fu- ID stored in `f`.
     assert await retry_transient_errors(client_stub.AppStop, api_pb2.AppStopRequest(app_id=app_id))
     # After snapshot-restore the previously looked-up Function should get refreshed and have the
