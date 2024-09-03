@@ -27,7 +27,8 @@ copyright_header_full = f"{copyright_header_start} {year}"
 def protoc(ctx):
     py_protoc = (
         f"{sys.executable} -m grpc_tools.protoc"
-        + " --python_out=. --grpclib_python_out=. --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
+        + " --python_out=. --grpclib_python_out=. --modal-grpclib-python_out=."
+        + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     )
     print(py_protoc)
     ctx.run(f"{py_protoc} -I . " "modal_proto/api.proto " "modal_proto/options.proto ")
