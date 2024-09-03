@@ -29,7 +29,7 @@ from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InputCancellation, InvalidError
+from .exception import InputCancellation, InvalidError, SerializationError
 from .running_app import RunningApp
 
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
@@ -297,7 +297,7 @@ class _ContainerIOManager:
         self._fetching_inputs = True
 
         self._client = client
-        assert isinstance(self._client, _Client)
+        # assert isinstance(self._client, _Client)
 
     def __new__(cls, container_args: api_pb2.ContainerArguments, client: _Client) -> "_ContainerIOManager":
         cls._singleton = super().__new__(cls)
@@ -671,9 +671,8 @@ class _ContainerIOManager:
         try:
             return self.serialize(exc)
         except Exception as serialization_exc:
-            logger.info(f"Failed to serialize exception {exc}: {serialization_exc}")
             # We can't always serialize exceptions.
-            return self.serialize(f"Failed to serialize exception {exc}: {serialization_exc}")
+            return self.serialize(SerializationError(f"Failed to serialize exception {exc}: {serialization_exc}"))
 
     def serialize_traceback(self, exc: BaseException) -> Tuple[Optional[bytes], Optional[bytes]]:
         serialized_tb, tb_line_cache = None, None
