@@ -24,7 +24,12 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
-from modal._container_io_manager import ContainerIOManager, FinalizedFunction, IOContext
+from modal._container_io_manager import (
+    ContainerIOManager,
+    FinalizedFunction,
+    InputSlots,
+    IOContext,
+)
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -168,6 +173,7 @@ def _container_args(
     app_name: str = "",
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
+    max_concurrent_inputs: Optional[int] = None,
     batch_max_size: Optional[int] = None,
     batch_wait_ms: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
@@ -199,7 +205,8 @@ def _container_args(
         app_name=app_name or "",
         is_builder_function=is_builder_function,
         is_auto_snapshot=is_auto_snapshot,
-        allow_concurrent_inputs=allow_concurrent_inputs,
+        target_concurrent_inputs=allow_concurrent_inputs,
+        max_concurrent_inputs=max_concurrent_inputs,
         batch_max_size=batch_max_size,
         batch_linger_ms=batch_wait_ms,
         is_checkpointing_function=is_checkpointing_function,
@@ -238,6 +245,7 @@ def _run_container(
     app_name: str = "",
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
+    max_concurrent_inputs: Optional[int] = None,
     batch_max_size: int = 0,
     batch_wait_ms: int = 0,
     serialized_params: Optional[bytes] = None,
@@ -260,6 +268,7 @@ def _run_container(
         app_name,
         is_builder_function,
         allow_concurrent_inputs,
+        max_concurrent_inputs,
         batch_max_size,
         batch_wait_ms,
         serialized_params,
@@ -1467,6 +1476,7 @@ def _run_container_process(
     *,
     inputs: List[Tuple[str, Tuple, Dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
+    max_concurrent_inputs: Optional[int] = None,
     cls_params: Tuple[Tuple, Dict[str, Any]] = ((), {}),
     print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
@@ -1476,6 +1486,7 @@ def _run_container_process(
         module_name,
         function_name,
         allow_concurrent_inputs=allow_concurrent_inputs,
+        max_concurrent_inputs=max_concurrent_inputs,
         serialized_params=serialize(cls_params),
         is_class=is_class,
     )
@@ -1953,7 +1964,9 @@ def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env
 
 @pytest.mark.parametrize("concurrency_limit", [1, 2])
 def test_container_io_manager_concurrency_tracking(client, servicer, concurrency_limit):
-    dummy_container_args = api_pb2.ContainerArguments(function_id="fu-123")
+    dummy_container_args = api_pb2.ContainerArguments(
+        function_id="fu-123", function_def=api_pb2.Function(target_concurrent_inputs=concurrency_limit)
+    )
     from modal._utils.async_utils import synchronizer
 
     io_manager = ContainerIOManager(dummy_container_args, client)
@@ -1973,7 +1986,6 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     peak_inputs = 0
     for io_context in io_manager.run_inputs_outputs(
         finalized_functions={"": fin_func},
-        input_concurrency=concurrency_limit,
     ):
         assert len(io_context.input_ids) == 1  # no batching in this test
         assert _io_manager.current_input_id == io_context.input_ids[0]
@@ -2003,3 +2015,53 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
                     # and some successes
                     io_manager.push_outputs(input_to_process, 0, None, fin_func.data_format)
     assert not triggered_assertions
+
+
+@pytest.mark.asyncio
+async def test_input_slots():
+    slots = InputSlots(10)
+
+    async def acquire_for(cm, secs):
+        await cm.acquire()
+        await asyncio.sleep(secs)
+        cm.release()
+
+    tasks1 = asyncio.gather(*[acquire_for(slots, 0.1) for _ in range(4)])
+    tasks2 = asyncio.gather(*[acquire_for(slots, 0.2) for _ in range(4)])
+    await asyncio.sleep(0.01)
+
+    slots.set_value(1)
+    assert slots.value == 1
+    assert slots.active == 8
+    await tasks1
+    assert slots.active == 4
+
+    slots.set_value(2)
+    assert slots.active == 4
+
+    slots.set_value(10)
+    await tasks2
+    assert slots.active == 0
+
+    await slots.close()
+    assert slots.active == 10
+    assert slots.value == 10
+
+
+@skip_github_non_linux
+def test_max_concurrency(servicer):
+    n_inputs = 5
+    target_concurrency = 2
+    max_concurrency = 10
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "get_input_concurrency",
+        inputs=_get_inputs(((1,), {}), n=n_inputs),
+        allow_concurrent_inputs=target_concurrency,
+        max_concurrent_inputs=max_concurrency,
+    )
+
+    outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
+    assert n_inputs in outputs

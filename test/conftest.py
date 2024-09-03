@@ -763,6 +763,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         yield self.put_outputs_barrier
         self.put_outputs_barrier = threading.Barrier(1)
 
+    async def FunctionGetDynamicConcurrency(self, stream):
+        await stream.send_message(api_pb2.FunctionGetDynamicConcurrencyResponse(concurrency=5))
+
     async def FunctionGetInputs(self, stream):
         await asyncio.get_running_loop().run_in_executor(None, self.get_inputs_barrier.wait)
         request: api_pb2.FunctionGetInputsRequest = await stream.recv_message()

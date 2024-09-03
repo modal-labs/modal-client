@@ -11,10 +11,11 @@ from google.protobuf.message import Message
 
 from modal import App, interact
 from modal._container_io_manager import ContainerIOManager, _ContainerIOManager
+from modal._utils.grpc_utils import create_channel, retry_transient_errors
 from modal.client import _Client
 from modal.exception import InvalidError
 from modal.running_app import RunningApp
-from modal_proto import api_pb2
+from modal_proto import api_grpc, api_pb2
 
 
 def my_f_1(x):
@@ -69,7 +70,7 @@ async def test_container_snapshot_restore_stale_credentials(container_client, tm
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
     ):
         io_manager.memory_snapshot()
-        # In-memory Client instance should have update credentials, not old credentials
+        # In-memory Client instance should have updated credentials, not old credentials
         assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
 
 
@@ -88,7 +89,29 @@ async def test_container_snapshot_restore_stale_credentials_in_stub(container_cl
     deploy_app(app, app_name, client=container_client).app_id
     f = Function.lookup(app_name, "square", client=container_client)
     await f.remote.aio()
-    print(servicer.function_map_metadata)
+    # RPC should have used new credentials, not old credentials
+    await f.remote.aio()
+    creds = (servicer.function_map_metadata["x-modal-task-id"], servicer.function_map_metadata["x-modal-task-secret"])
+    assert creds == ("ta-i-am-restored", "ts-i-am-restored")
+
+
+@pytest.mark.asyncio
+async def test_container_snapshot_reference_capture(container_client, tmpdir, servicer):
+    app = App()
+    from modal import Function
+    from modal.runner import deploy_app
+
+    channel = create_channel(servicer.client_addr)
+    client_stub = api_grpc.ModalClientStub(channel)
+    app.function()(square)
+    app_name = "my-app"
+    app_id = deploy_app(app, app_name, client=container_client).app_id
+
+    f = Function.lookup(app_name, "square", client=container_client)
+    assert f.object_id == "fu-1"
+    await f.remote.aio()
+    assert f.object_id == "fu-1"
+
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = temp_restore_path(tmpdir)
     with mock.patch.dict(
@@ -99,6 +122,19 @@ async def test_container_snapshot_restore_stale_credentials_in_stub(container_cl
         await f.remote.aio()
     creds = (servicer.function_map_metadata["x-modal-task-id"], servicer.function_map_metadata["x-modal-task-secret"])
     assert creds == ("ta-i-am-restored", "ts-i-am-restored")
+    # Stop the App, invalidating the fu- ID stored in `f`.
+    assert await retry_transient_errors(client_stub.AppStop, api_pb2.AppStopRequest(app_id=app_id))
+    # After snapshot-restore the previously looked-up Function should get refreshed and have the
+    # new fu- ID. ie. the ID should not be stale and invalid.
+    new_app_id = deploy_app(app, app_name, client=container_client).app_id
+    assert new_app_id != app_id
+    await f.remote.aio()
+    assert f.object_id == "fu-2"
+    # Purposefully break FunctionGet to check the hydration is cached.
+    del servicer.app_objects[new_app_id]
+    await f.remote.aio()  # remote call succeeds because it didn't re-hydrate Function
+    assert f.object_id == "fu-2"
+    channel.close()
 
 
 @pytest.mark.asyncio

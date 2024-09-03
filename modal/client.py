@@ -132,7 +132,7 @@ class _Client:
         self._channel = create_channel(self.server_url, metadata=metadata)
         self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 
-    async def _close(self, forget_credentials: bool = False):
+    async def _close(self, prep_for_restore: bool = False):
         if self._pre_stop is not None:
             logger.debug("Client: running pre-stop coroutine before shutting down")
             await self._pre_stop()  # type: ignore
@@ -140,7 +140,7 @@ class _Client:
         if self._channel is not None:
             self._channel.close()
 
-        if forget_credentials:
+        if prep_for_restore:
             self._snapshotted = True
             # force re-fetch of fresh creds
             self._credentials = None
