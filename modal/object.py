@@ -44,7 +44,7 @@ class _Object:
     _object_id: str
     _client: _Client
     _is_hydrated: bool
-    _is_rehydrating: bool
+    _is_rehydrated: bool
 
     @classmethod
     def __init_subclass__(cls, type_prefix: Optional[str] = None):
@@ -222,6 +222,7 @@ class _Object:
                 self._is_hydrated = False  # un-hydrate and re-resolve
                 resolver = Resolver(await _Client.from_env())
                 await resolver.load(self)
+                self._is_rehydrated = True
             return
         elif not self._hydrate_lazily:
             self._validate_is_hydrated()

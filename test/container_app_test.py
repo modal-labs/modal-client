@@ -110,6 +110,10 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     assert new_app_id != app_id
     await f.remote.aio()
     assert f.object_id == "fu-2"
+    # Purposefully break FunctionGet to check the hydration is cached.
+    del servicer.app_objects[new_app_id]
+    await f.remote.aio()  # remote call succeeds because it didn't re-hydrate Function
+    assert f.object_id == "fu-2"
     channel.close()
 
 
