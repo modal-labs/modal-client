@@ -45,12 +45,20 @@ class Cls:
 
 
 def test_method_has_params():
+    def qux():
+        pass
+
+    def foobar(baz):
+        pass
+
     assert not method_has_params(Cls.foo)
     assert not method_has_params(Cls().foo)
     assert method_has_params(Cls.bar)
     assert method_has_params(Cls().bar)
     assert method_has_params(Cls.buz)
     assert method_has_params(Cls().buz)
+    assert not method_has_params(qux)
+    assert method_has_params(foobar)
 
 
 class Foo:
