@@ -525,7 +525,11 @@ async def put_pty_content(log: api_pb2.TaskLogs, stdout):
 
 
 async def get_app_logs_loop(
-    client: _Client, output_mgr: OutputManager, app_id: Optional[str] = None, task_id: Optional[str] = None
+    client: _Client,
+    output_mgr: OutputManager,
+    app_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    app_logs_url: Optional[str] = None,
 ):
     last_log_batch_entry_id = ""
 
@@ -616,11 +620,10 @@ async def get_app_logs_loop(
         try:
             await _get_logs()
         except asyncio.CancelledError:
-            # TODO: this should come from the backend maybe
-            app_logs_url = f"https://modal.com/logs/{app_id}"
+            view_logs_url = app_logs_url if app_logs_url else "https://modal.com/logs/"
             output_mgr.print(
                 f"[red]Timed out waiting for logs. "
-                f"[grey70]View logs at [underline]{app_logs_url}[/underline] for remaining output.[/grey70]"
+                f"[grey70]View logs at [underline]{view_logs_url}[/underline] for remaining output.[/grey70]"
             )
             raise
         except (GRPCError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
