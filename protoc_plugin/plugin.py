@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright Modal Labs 2024
 # built by modifying grpclib.plugin.main, see https://github.com/vmagamedov/grpclib
 # original: Copyright (c) 2019  , Vladimir Magamedov
 import os
@@ -82,7 +83,7 @@ def render(
                     buf.add("pass")
                 for method in service.methods:
                     name, cardinality, request_type, reply_type = method
-                    wrapper_cls: type
+                    wrapper_cls: str
                     if cardinality is const.Cardinality.UNARY_UNARY:
                         wrapper_cls = "modal._utils.grpc_utils.UnaryUnaryWrapper"
                     elif cardinality is const.Cardinality.UNARY_STREAM:

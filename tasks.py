@@ -146,6 +146,7 @@ def check_copyright(ctx, fix=False):
                 and not fn.endswith(".notebook.py")
                 # vendored code has a different copyright
                 and "_vendor" not in root
+                and "protoc_plugin" not in root
                 # third-party code (i.e., in a local venv) has a different copyright
                 and "/site-packages/" not in root
             )
