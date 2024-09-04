@@ -9,10 +9,12 @@ import pkgutil
 import re
 import subprocess
 import sys
+import time
+from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import List, Optional
+from typing import Generator, List, Optional
 
 import requests
 from invoke import task
@@ -22,6 +24,21 @@ from rich.table import Table
 year = datetime.date.today().year
 copyright_header_start = "# Copyright Modal Labs"
 copyright_header_full = f"{copyright_header_start} {year}"
+
+
+@contextmanager
+def python_file_as_executable(path: Path) -> Generator[Path, None, None]:
+    if sys.platform == "win32":
+        # windows can't just run shebang:ed python files, so we create a .bat file that calls it
+        src = f"""@echo off
+{sys.executable} {path}
+"""
+        with NamedTemporaryFile(mode="w", suffix=".bat", encoding="ascii") as f:
+            f.write(src)
+            f.flush()
+            yield Path(f.name)
+    else:
+        yield path
 
 
 @task
@@ -36,19 +53,15 @@ def protoc(ctx):
     ctx.run(f"{py_protoc} -I . {input_files}")
 
     # generate modal-specific wrapper around grpclib api stub using custom plugin:
-    grpc_plugin_path = Path(__file__).parent / "protoc_plugin" / "plugin.py"
-    if sys.platform == "win32":
-        src = f"""@echo off
-{sys.executable} {grpc_plugin_path}
-"""
-        with NamedTemporaryFile(mode="w", suffix=".bat", delete=False, encoding="ascii") as f:
-            f.write(src)
-        grpc_plugin_path = Path(f.name)
+    grpc_plugin_pyfile = Path(__file__).parent / "protoc_plugin" / "plugin.py"
 
-    ctx.run(
-        f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_path}"
-        + f" --modal-grpclib-python_out=. -I . {input_files}"
-    )
+    with python_file_as_executable(grpc_plugin_pyfile) as grpc_plugin_executable:
+        print(grpc_plugin_executable)
+        time.sleep(30)
+        ctx.run(
+            f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_executable}"
+            + f" --modal-grpclib-python_out=. -I . {input_files}"
+        )
 
 
 @task
