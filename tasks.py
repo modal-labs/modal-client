@@ -25,15 +25,21 @@ copyright_header_full = f"{copyright_header_start} {year}"
 
 @task
 def protoc(ctx):
-    grpc_plugin_path = Path(__file__).parent / "protoc_plugin" / "plugin.py"
+    protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
+    input_files = "modal_proto/api.proto modal_proto/options.proto"
     py_protoc = (
-        f"{sys.executable} -m grpc_tools.protoc"
-        + " --python_out=. --grpclib_python_out=. --modal-grpclib-python_out=."
-        + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
-        + f" --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_path}"
+        protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     )
     print(py_protoc)
-    ctx.run(f"{py_protoc} -I . " "modal_proto/api.proto " "modal_proto/options.proto ")
+    # generate grpcio and grpclib proto files:
+    ctx.run(f"{py_protoc} -I . {input_files}")
+
+    # generate modal-specific wrapper around grpclib api stub using custom plugin:
+    grpc_plugin_path = Path(__file__).parent / "protoc_plugin" / "plugin.py"
+    ctx.run(
+        f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_path}"
+        + " --modal-grpclib-python_out=. -I . {input_files}"
+    )
 
 
 @task

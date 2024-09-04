@@ -12,8 +12,6 @@ from google.protobuf.compiler.plugin_pb2 import CodeGeneratorRequest, CodeGenera
 from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorProto
 from grpclib import const
 
-from modal._utils.grpc_utils import UnaryStreamWrapper, UnaryUnaryWrapper
-
 _CARDINALITY = {
     (False, False): const.Cardinality.UNARY_UNARY,
     (True, False): const.Cardinality.STREAM_UNARY,
@@ -86,9 +84,9 @@ def render(
                     name, cardinality, request_type, reply_type = method
                     wrapper_cls: type
                     if cardinality is const.Cardinality.UNARY_UNARY:
-                        wrapper_cls = UnaryUnaryWrapper
+                        wrapper_cls = "modal._utils.grpc_utils.UnaryUnaryWrapper"
                     elif cardinality is const.Cardinality.UNARY_STREAM:
-                        wrapper_cls = UnaryStreamWrapper
+                        wrapper_cls = "modal._utils.grpc_utils.UnaryStreamWrapper"
                     # elif cardinality is const.Cardinality.STREAM_UNARY:
                     #     wrapper_cls = StreamUnaryWrapper
                     # elif cardinality is const.Cardinality.STREAM_STREAM:
@@ -97,7 +95,7 @@ def render(
                         raise TypeError(cardinality)
 
                     original_method = f"grpclib_stub.{name}"
-                    buf.add(f"self.{name} = {wrapper_cls.__module__}.{wrapper_cls.__name__}({original_method})")
+                    buf.add(f"self.{name} = {wrapper_cls}({original_method})")
 
     return buf.content()
 
