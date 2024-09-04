@@ -18,7 +18,7 @@ import typing_extensions
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.function_utils import method_has_params
+from ._utils.function_utils import FunctionInfo, method_has_params
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
@@ -334,14 +334,16 @@ def _asgi_app(
     """
     if isinstance(_warn_parentheses_missing, str):
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@asgi_app(label="foo")`.')
-    elif _warn_parentheses_missing:
+    elif _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if not raw_f.is_nullary():
-            raise InvalidError(f"ASGI app function {raw_f.__name__} can't have arguments.")
+        if not FunctionInfo(raw_f).is_nullary():
+            raise InvalidError(
+                f"ASGI app function {raw_f.__name__} can't have arguments. See https://modal.com/docs/guide/webhooks#asgi."
+            )
 
         if not wait_for_response:
             deprecation_warning(
@@ -397,12 +399,17 @@ def _wsgi_app(
     """
     if isinstance(_warn_parentheses_missing, str):
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@wsgi_app(label="foo")`.')
-    elif _warn_parentheses_missing:
+    elif _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if not FunctionInfo(raw_f).is_nullary():
+            raise InvalidError(
+                f"WSGI app function {raw_f.__name__} can't have arguments. See https://modal.com/docs/guide/webhooks#wsgi."
+            )
+
         if not wait_for_response:
             deprecation_warning(
                 (2024, 5, 13),
