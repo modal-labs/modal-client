@@ -15,7 +15,7 @@ from modal._utils.grpc_utils import create_channel, retry_transient_errors
 from modal.client import _Client
 from modal.exception import InvalidError
 from modal.running_app import RunningApp
-from modal_proto import api_grpc, api_pb2
+from modal_proto import api_grpc, api_pb2, modal_api_grpc
 
 
 def my_f_1(x):
@@ -85,7 +85,7 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     from modal.runner import deploy_app
 
     channel = create_channel(servicer.client_addr)
-    client_stub = api_grpc.ModalClientStub(channel)
+    client_stub = modal_api_grpc.ModalClientModal(api_grpc.ModalClientStub(channel))
     app.function()(square)
     app_name = "my-app"
     app_id = deploy_app(app, app_name, client=container_client).app_id
