@@ -40,7 +40,6 @@ def protoc(ctx):
     if sys.platform == "win32":
         src = f"""@echo off
 {sys.executable} {grpc_plugin_path}
-PAUSE
 """
         with NamedTemporaryFile(mode="w", suffix=".bat", delete=False, encoding="ascii") as f:
             f.write(src)
