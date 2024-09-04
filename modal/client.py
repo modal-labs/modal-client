@@ -100,6 +100,7 @@ class _Client:
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[modal_api_grpc.ModalClientModal] = None
+        self._snapshotted = False
 
     @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
@@ -127,7 +128,7 @@ class _Client:
         grpclib_stub = api_grpc.ModalClientStub(self._channel)
         self._stub = modal_api_grpc.ModalClientModal(grpclib_stub)
 
-    async def _close(self, forget_credentials: bool = False):
+    async def _close(self, prep_for_restore: bool = False):
         if self._pre_stop is not None:
             logger.debug("Client: running pre-stop coroutine before shutting down")
             await self._pre_stop()  # type: ignore
@@ -135,8 +136,9 @@ class _Client:
         if self._channel is not None:
             self._channel.close()
 
-        if forget_credentials:
+        if prep_for_restore:
             self._credentials = None
+            self._snapshotted = True
 
         # Remove cached client.
         self.set_env_client(None)

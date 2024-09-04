@@ -18,6 +18,7 @@ from google.protobuf.message import Message
 from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal_proto.api_pb2
 from modal_proto import api_pb2
 
 from ._serialization import deserialize, serialize, serialize_data_format
@@ -28,7 +29,7 @@ from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InputCancellation, InvalidError
+from .exception import InputCancellation, InvalidError, SerializationError
 from .running_app import RunningApp
 
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
@@ -88,7 +89,7 @@ class IOContext:
         is_batched: bool,
     ) -> "IOContext":
         assert len(inputs) >= 1 if is_batched else len(inputs) == 1
-        input_ids, function_call_ids, inputs = zip(*inputs)
+        input_ids, function_call_ids, function_inputs = zip(*inputs)
 
         async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput) -> api_pb2.FunctionInput:
             # If we got a pointer to a blob, download it from S3.
@@ -100,13 +101,13 @@ class IOContext:
 
             return input
 
-        inputs = await asyncio.gather(*[_populate_input_blobs(client, input) for input in inputs])
+        function_inputs = await asyncio.gather(*[_populate_input_blobs(client, input) for input in function_inputs])
         # check every input in batch executes the same function
-        method_name = inputs[0].method_name
-        assert all(method_name == input.method_name for input in inputs)
+        method_name = function_inputs[0].method_name
+        assert all(method_name == input.method_name for input in function_inputs)
         finalized_function = finalized_functions[method_name]
-        # TODO(cathy) Performance decrease if we deserialize inputs later
-        deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in inputs]
+        # TODO(cathy) Performance decrease if we deserialize function_inputs later
+        deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in function_inputs]
         return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
 
     def set_cancel_callback(self, cb: Callable[[], None]):
@@ -443,7 +444,7 @@ class _ContainerIOManager:
             object_handle_metadata=object_handle_metadata,
         )
 
-    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable[..., Any]]:
+    async def get_serialized_function(self) -> Tuple[Optional[Any], Optional[Callable[..., Any]]]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)
@@ -642,7 +643,11 @@ class _ContainerIOManager:
 
     @synchronizer.no_io_translation
     async def _push_outputs(
-        self, io_context: IOContext, started_at: float, data_format: int, results: List[api_pb2.GenericResult]
+        self,
+        io_context: IOContext,
+        started_at: float,
+        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
+        results: List[api_pb2.GenericResult],
     ) -> None:
         output_created_at = time.time()
         outputs = [
@@ -662,13 +667,14 @@ class _ContainerIOManager:
             max_retries=None,  # Retry indefinitely, trying every 1s.
         )
 
-    def serialize_exception(self, exc: BaseException) -> Optional[bytes]:
+    def serialize_exception(self, exc: BaseException) -> bytes:
         try:
             return self.serialize(exc)
         except Exception as serialization_exc:
-            logger.info(f"Failed to serialize exception {exc}: {serialization_exc}")
             # We can't always serialize exceptions.
-            return None
+            err = f"Failed to serialize exception {exc} of type {type(exc)}: {serialization_exc}"
+            logger.info(err)
+            return self.serialize(SerializationError(err))
 
     def serialize_traceback(self, exc: BaseException) -> Tuple[Optional[bytes], Optional[bytes]]:
         serialized_tb, tb_line_cache = None, None
@@ -706,8 +712,8 @@ class _ContainerIOManager:
                 data=self.serialize_exception(exc),
                 exception=repr(exc),
                 traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
-                serialized_tb=serialized_tb,
-                tb_line_cache=tb_line_cache,
+                serialized_tb=serialized_tb or b"",
+                tb_line_cache=tb_line_cache or b"",
             )
 
             req = api_pb2.TaskResultRequest(result=result)
@@ -766,8 +772,8 @@ class _ContainerIOManager:
                     status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                     exception=repr_exc,
                     traceback=traceback.format_exc(),
-                    serialized_tb=serialized_tb,
-                    tb_line_cache=tb_line_cache,
+                    serialized_tb=serialized_tb or b"",
+                    tb_line_cache=tb_line_cache or b"",
                     **data_result_part,
                 )
                 for _ in io_context.input_ids
@@ -790,7 +796,13 @@ class _ContainerIOManager:
         self._input_slots.release()
 
     @synchronizer.no_io_translation
-    async def push_outputs(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
+    async def push_outputs(
+        self,
+        io_context: IOContext,
+        started_at: float,
+        data: Any,
+        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
+    ) -> None:
         data = io_context.validate_output_data(data)
         formatted_data = await asyncio.gather(
             *[self.format_blob_data(self.serialize_data_format(d, data_format)) for d in data]
@@ -869,6 +881,8 @@ class _ContainerIOManager:
         """Message server indicating that function is ready to be checkpointed."""
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
+        else:
+            logger.debug("No checkpoint ID provided (Memory Snapshot ID)")
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self._heartbeat_condition:
@@ -878,10 +892,10 @@ class _ContainerIOManager:
             self._heartbeat_condition.notify_all()
 
             await self._client.stub.ContainerCheckpoint(
-                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id or "")
             )
 
-            await self._client._close(forget_credentials=True)
+            await self._client._close(prep_for_restore=True)
 
             logger.debug("Memory snapshot request sent. Connection closed.")
             await self.memory_restore()

@@ -350,6 +350,8 @@ def web_server_proxy(host: str, port: int):
 
         try:
             if scope["type"] == "lifespan":
+                print("lifespan is not implemented")
+                raise NotImplementedError("lifespan is not implemented")
                 pass  # Do nothing for lifespan events.
             elif scope["type"] == "http":
                 await _proxy_http_request(session, scope, receive, send)

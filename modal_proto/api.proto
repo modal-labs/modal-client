@@ -118,6 +118,12 @@ enum FileDescriptor {
   FILE_DESCRIPTOR_INFO = 3;
 }
 
+enum FunctionCallInvocationType {
+  FUNCTION_CALL_INVOCATION_TYPE_UNSPECIFIED = 0;
+  FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY = 1;
+  FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY = 2;
+}
+
 enum FunctionCallType {
   FUNCTION_CALL_TYPE_UNSPECIFIED = 0;
   FUNCTION_CALL_TYPE_UNARY = 1;
@@ -224,7 +230,8 @@ message AppCreateRequest {
 
 message AppCreateResponse {
   string app_id = 1;
-  string app_logs_url = 2;
+  string app_page_url = 2;
+  string app_logs_url = 3;
 }
 
 message AppDeployRequest {
@@ -943,7 +950,6 @@ message FileEntry {
   uint64 size = 4;
 }
 
-
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -1045,8 +1051,7 @@ message Function {
 
   ClassParameterInfo class_parameter_info = 56;
 
-  repeated Resources _experimental_resources = 57; // overrides `resources` field above
-
+  reserved 57; // _experimental_resources
   reserved 58;
   reserved 59;
   uint32 batch_max_size = 60; // Maximum number of inputs to fetch at once
@@ -1054,6 +1059,9 @@ message Function {
   bool i6pn_enabled = 62;
   bool _experimental_concurrent_cancellations = 63;
   uint32 max_concurrent_inputs = 64;
+
+  bool _experimental_task_templates_enabled = 65;  // forces going through the new gpu-fallbacks integration path, even if no fallback options are specified
+  repeated TaskTemplate _experimental_task_templates = 66;  // for fallback options, where the first/most-preferred "template" is derived from fields above
 }
 
 message FunctionBindParamsRequest {
@@ -1259,6 +1267,7 @@ message FunctionMapRequest {
   bool return_exceptions = 3;
   FunctionCallType function_call_type = 4;
   repeated FunctionPutInputsItem pipelined_inputs = 5;
+  FunctionCallInvocationType function_call_invocation_type = 6;
 }
 
 message FunctionMapResponse {
@@ -1762,7 +1771,7 @@ message Sandbox {
   // to look at fine-grained placement constraints.
   reserved 16; // _experimental_scheduler
   optional SchedulerPlacement scheduler_placement = 17;
-  repeated Resources _experimental_resources = 18; // overrides `resources` field above
+  reserved 18;  // _experimental_resources
 
   string worker_id = 19; // for internal debugging use only
   oneof open_ports_oneof {
@@ -2072,6 +2081,12 @@ message TaskStats {
   double started_at = 4;
 }
 
+message TaskTemplate {
+  uint32 rank = 1;
+  Resources resources = 2;
+  uint32 target_concurrent_inputs = 3;
+  uint32 max_concurrent_inputs = 4;
+}
 
 message TokenFlowCreateRequest {
   string utm_source = 3;
