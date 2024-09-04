@@ -15,6 +15,49 @@ from .experimental import stop_fetching_inputs
 FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
 
+class LifespanManager:
+    def __init__(self, asgi_app):
+        self.asgi_app = asgi_app
+        self.queue = None
+        self.startup_complete = None
+
+    async def background_task(self):
+        self.queue = asyncio.Queue()
+        self.startup = asyncio.Future()
+        self.shutdown = asyncio.Future()
+
+        async def receive():
+            return await self.queue.get()
+
+        async def send(message):
+            if message["type"] == "lifespan.startup.complete":
+                self.startup.set_result(None)
+            elif message["type"] == "lifespan.startup.failed":
+                self.startup.set_exception(Exception("Startup failed"))
+            elif message["type"] == "lifespan.shutdown.complete":
+                self.shutdown.set_result(None)
+            elif message["type"] == "lifespan.shutdown.failed":
+                self.shutdown.set_exception(Exception("Shutdown failed"))
+            else:
+                raise ValueError(f"Unexpected message type: {message['type']}")
+
+        await self.asgi_app({"type": "lifespan"}, receive, send)
+
+    async def lifespan_startup(self):
+        if self.queue is None or self.shutdown is None:
+            raise ValueError("queue or shutdown is not initialized, call background_task first")
+
+        self.queue.put_nowait({"type": "lifespan.startup"})
+        await self.startup
+
+    async def lifespan_shutdown(self):
+        if self.queue is None or self.shutdown is None:
+            raise ValueError("queue or shutdown is not initialized, call background_task first")
+
+        self.queue.put_nowait({"type": "lifespan.shutdown"})
+        await self.shutdown
+
+
 def asgi_app_wrapper(
     asgi_app, function_io_manager
 ) -> Tuple[Callable[..., AsyncGenerator], Callable[..., Awaitable[None]], Callable[..., Awaitable[None]]]:
@@ -130,39 +173,7 @@ def asgi_app_wrapper(
                     app_task.result()  # consume/raise exceptions if there are any!
                     break
 
-    async def lifespan_startup():
-        async def lifespan_receive():
-            # Simulate receiving the lifespan.startup message
-            return {"type": "lifespan.startup"}
-
-        async def lifespan_send(message):
-            # Handle the response to the startup and shutdown events
-            if message["type"] == "lifespan.startup.complete":
-                print(f"lifespan_startup: Startup complete. {message=}")
-            elif message["type"] == "lifespan.startup.failed":
-                print(f"lifespan_startup: Startup failed. {message=}")
-            else:
-                print(f"lifespan_startup: Unexpected message type: {message['type']}")
-
-        await asgi_app({"type": "lifespan"}, lifespan_receive, lifespan_send)
-
-    async def lifespan_shutdown():
-        async def lifespan_receive():
-            # Simulate receiving the lifespan.startup message
-            return {"type": "lifespan.shutdown"}
-
-        async def lifespan_send(message):
-            # Handle the response to the startup and shutdown events
-            if message["type"] == "lifespan.shutdown.complete":
-                print(f"lifespan_shutdown Shutdown complete. {message=}")
-            elif message["type"] == "lifespan.shutdown.failed":
-                print(f"lifespan_shutdown Shutdown failed. {message=}")
-            else:
-                print(f"lifespan_shutdown: Unexpected message type: {message['type']}")
-
-        await asgi_app({"type": "lifespan"}, lifespan_receive, lifespan_send)
-
-    return fn, lifespan_startup, lifespan_shutdown
+    return fn, LifespanManager(asgi_app)
 
 
 def wsgi_app_wrapper(wsgi_app, function_io_manager):

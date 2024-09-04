@@ -150,15 +150,14 @@ class ImportedFunction(Service):
                 )
             }
 
-        web_callable, lifespan_startup, lifespan_shutdown = construct_webhook_callable(
+        web_callable, lifespan_manager = construct_webhook_callable(
             self._user_defined_callable, fun_def.webhook_config, container_io_manager
         )
 
         return {
             "": FinalizedFunction(
                 callable=web_callable,
-                lifespan_startup=lifespan_startup,
-                lifespan_shutdown=lifespan_shutdown,
+                lifespan_manager=lifespan_manager,
                 is_async=True,
                 is_generator=True,
                 data_format=api_pb2.DATA_FORMAT_ASGI,
@@ -198,13 +197,12 @@ class ImportedClass(Service):
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
                 )
             else:
-                web_callable, lifespan_startup, lifespan_shutdown = construct_webhook_callable(
+                web_callable, lifespan_manager = construct_webhook_callable(
                     bound_func, webhook_config, container_io_manager
                 )
                 finalized_function = FinalizedFunction(
                     callable=web_callable,
-                    lifespan_startup=lifespan_startup,
-                    lifespan_shutdown=lifespan_shutdown,
+                    lifespan_manager=lifespan_manager,
                     is_async=True,
                     is_generator=True,
                     data_format=api_pb2.DATA_FORMAT_ASGI,
@@ -275,13 +273,21 @@ class UserCodeEventLoop:
 
     def __enter__(self):
         self.loop = asyncio.new_event_loop()
+        self.tasks = []
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.loop.run_until_complete(self.loop.shutdown_asyncgens())
         if sys.version_info[:2] >= (3, 9):
             self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
+
+        for task in self.tasks:
+            task.cancel()
+
         self.loop.close()
+
+    def create_task(self, coro):
+        self.tasks.append(self.loop.create_task(coro))
 
     def run(self, coro):
         task = asyncio.ensure_future(coro, loop=self.loop)
@@ -835,11 +841,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         with container_io_manager.handle_user_exception():
             finalized_functions = service.get_finalized_functions(function_def, container_io_manager)
-
         # Execute the function.
         try:
             for finalized_function in finalized_functions.values():
-                call_lifecycle_functions(event_loop, container_io_manager, [finalized_function.lifespan_startup])
+                event_loop.create_task(finalized_function.lifespan_manager.background_task())
+                call_lifecycle_functions(
+                    event_loop, container_io_manager, [finalized_function.lifespan_manager.lifespan_startup]
+                )
             call_function(
                 event_loop,
                 container_io_manager,
@@ -855,7 +863,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
 
             for finalized_function in finalized_functions.values():
-                call_lifecycle_functions(event_loop, container_io_manager, [finalized_function.lifespan_shutdown])
+                call_lifecycle_functions(
+                    event_loop, container_io_manager, [finalized_function.lifespan_manager.lifespan_shutdown]
+                )
+            for task in event_loop.tasks:
+                task.cancel()
 
             try:
                 # Identify "exit" methods and run them.
