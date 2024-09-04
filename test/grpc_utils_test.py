@@ -6,7 +6,6 @@ from grpclib import GRPCError, Status
 
 from modal._utils.grpc_utils import create_channel, retry_transient_errors
 from modal_proto import api_grpc, api_pb2
-from modal_proto.modal_api_grpc import ModalClientModal
 
 from .supports.skip import skip_windows_unix_socket
 
@@ -41,7 +40,7 @@ async def test_unix_channel(servicer):
 @pytest.mark.asyncio
 async def test_retry_transient_errors(servicer):
     channel = create_channel(servicer.client_addr)
-    client_stub = ModalClientModal(api_grpc.ModalClientStub(channel))
+    client_stub = api_grpc.ModalClientStub(channel)
 
     # Use the BlobCreate request for retries
     req = api_pb2.BlobCreateRequest()
