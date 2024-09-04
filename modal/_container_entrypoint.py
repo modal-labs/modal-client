@@ -844,10 +844,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Execute the function.
         try:
             for finalized_function in finalized_functions.values():
-                event_loop.create_task(finalized_function.lifespan_manager.background_task())
-                call_lifecycle_functions(
-                    event_loop, container_io_manager, [finalized_function.lifespan_manager.lifespan_startup]
-                )
+                if finalized_function.lifespan_manager:
+                    event_loop.create_task(finalized_function.lifespan_manager.background_task())
+                    call_lifecycle_functions(
+                        event_loop, container_io_manager, [finalized_function.lifespan_manager.lifespan_startup]
+                    )
             call_function(
                 event_loop,
                 container_io_manager,
@@ -863,11 +864,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
 
             for finalized_function in finalized_functions.values():
-                call_lifecycle_functions(
-                    event_loop, container_io_manager, [finalized_function.lifespan_manager.lifespan_shutdown]
-                )
-            for task in event_loop.tasks:
-                task.cancel()
+                if finalized_function.lifespan_manager:
+                    call_lifecycle_functions(
+                        event_loop, container_io_manager, [finalized_function.lifespan_manager.lifespan_shutdown]
+                    )
 
             try:
                 # Identify "exit" methods and run them.

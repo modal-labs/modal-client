@@ -669,8 +669,9 @@ def test_asgi(servicer):
 
 
 @skip_github_non_linux
-def test_asgi_with_lifespan(servicer):
-    inputs = _get_web_inputs(path="/foo")
+def test_asgi_with_lifespan(servicer, capsys):
+    inputs = _get_web_inputs(path="/")
+
     _put_web_body(servicer, b"")
     ret = _run_container(
         servicer,
@@ -689,7 +690,35 @@ def test_asgi_with_lifespan(servicer):
     assert headers[b"content-type"] == b"application/json"
 
     # Check body
-    assert json.loads(second_message["body"]) == {"hello": "space"}
+    assert json.loads(second_message["body"]) == "foo"
+
+    captured = capsys.readouterr()
+    assert captured.out.strip().split("\n") == ["enter", "foo", "exit"]
+
+
+@skip_github_non_linux
+def test_cls_web_asgi_with_lifespan(servicer, capsys):
+    servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
+    servicer.app_functions["fu-2"] = api_pb2.Function()
+
+    inputs = _get_web_inputs(method_name="my_app1")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_class_multiple_asgi_apps_lifespans.*",
+        inputs=inputs,
+        is_class=True,
+    )
+
+    _, second_message = _unwrap_asgi(ret)
+    assert json.loads(second_message["body"]) == "foo1"
+    captured = capsys.readouterr()
+    output_lines: List[str] = captured.out.strip().split("\n")
+
+    assert len(output_lines) == 5
+    assert output_lines[2] == "foo1"
+    assert ["enter1", "enter2"] == sorted(output_lines[:2])
+    assert ["exit1", "exit2"] == sorted(output_lines[3:])
 
 
 @skip_github_non_linux

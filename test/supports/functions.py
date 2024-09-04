@@ -160,17 +160,59 @@ def fastapi_app_with_lifespan():
 
     @contextlib.asynccontextmanager
     async def lifespan(wapp: FastAPI):
-        print("enter!")
+        print("enter")
         yield
-        print("exit!")
+        print("exit")
 
     web_app = FastAPI(lifespan=lifespan)
 
-    @web_app.get("/foo")
-    async def foo(arg="world"):
-        return {"hello": arg}
+    @web_app.get("/")
+    async def foo():
+        print("foo")
+        return "foo"
 
     return web_app
+
+
+@app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
+class fastapi_class_multiple_asgi_apps_lifespans:
+    @asgi_app()
+    def my_app1(self):
+        from fastapi import FastAPI
+
+        @contextlib.asynccontextmanager
+        async def lifespan1(wapp):
+            print("enter1")
+            yield
+            print("exit1")
+
+        web_app1 = FastAPI(lifespan=lifespan1)
+
+        @web_app1.get("/")
+        async def foo1():
+            print("foo1")
+            return "foo1"
+
+        return web_app1
+
+    @asgi_app()
+    def my_app2(self):
+        from fastapi import FastAPI
+
+        @contextlib.asynccontextmanager
+        async def lifespan2(wapp):
+            print("enter2")
+            yield
+            print("exit2")
+
+        web_app2 = FastAPI(lifespan=lifespan2)
+
+        @web_app2.get("/")
+        async def foo2():
+            print("foo2")
+            return "foo2"
+
+        return web_app2
 
 
 @app.function()

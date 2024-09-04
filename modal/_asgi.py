@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, NoReturn, Optional, Tuple, cast
+from typing import Any, AsyncGenerator, Callable, Dict, NoReturn, Optional, Tuple, cast
 
 import aiohttp
 
@@ -59,9 +59,7 @@ class LifespanManager:
         await self.shutdown
 
 
-def asgi_app_wrapper(
-    asgi_app, function_io_manager
-) -> Tuple[Callable[..., AsyncGenerator], Callable[..., Awaitable[None]], Callable[..., Awaitable[None]]]:
+def asgi_app_wrapper(asgi_app, function_io_manager) -> Tuple[Callable[..., AsyncGenerator], LifespanManager]:
     state = {}  # used for lifespan state
 
     async def fn(scope):
