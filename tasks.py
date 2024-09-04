@@ -45,7 +45,6 @@ def protoc(ctx):
             f.write(src)
         grpc_plugin_path = Path(f.name)
 
-    print("plugin: {grpc_plugin_path}")
     ctx.run(
         f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_path}"
         + f" --modal-grpclib-python_out=. -I . {input_files}"
