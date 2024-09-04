@@ -9,11 +9,9 @@ import pkgutil
 import re
 import subprocess
 import sys
-from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
-from tempfile import NamedTemporaryFile
-from typing import Generator, List, Optional
+from typing import List, Optional
 
 import requests
 from invoke import task
@@ -25,43 +23,14 @@ copyright_header_start = "# Copyright Modal Labs"
 copyright_header_full = f"{copyright_header_start} {year}"
 
 
-@contextmanager
-def python_file_as_executable(path: Path) -> Generator[Path, None, None]:
-    if sys.platform == "win32":
-        # windows can't just run shebang:ed python files, so we create a .bat file that calls it
-        src = f"""@echo off
-{sys.executable} {path}
-"""
-        with NamedTemporaryFile(mode="w", suffix=".bat", encoding="ascii", delete=False) as f:
-            f.write(src)
-
-        try:
-            yield Path(f.name)
-        finally:
-            Path(f.name).unlink()
-    else:
-        yield path
-
-
 @task
 def protoc(ctx):
-    protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
-    input_files = "modal_proto/api.proto modal_proto/options.proto"
     py_protoc = (
-        protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
+        f"{sys.executable} -m grpc_tools.protoc"
+        + " --python_out=. --grpclib_python_out=. --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     )
     print(py_protoc)
-    # generate grpcio and grpclib proto files:
-    ctx.run(f"{py_protoc} -I . {input_files}")
-
-    # generate modal-specific wrapper around grpclib api stub using custom plugin:
-    grpc_plugin_pyfile = Path(__file__).parent / "protoc_plugin" / "plugin.py"
-
-    with python_file_as_executable(grpc_plugin_pyfile) as grpc_plugin_executable:
-        ctx.run(
-            f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_executable}"
-            + f" --modal-grpclib-python_out=. -I . {input_files}"
-        )
+    ctx.run(f"{py_protoc} -I . " "modal_proto/api.proto " "modal_proto/options.proto ")
 
 
 @task
@@ -168,7 +137,6 @@ def check_copyright(ctx, fix=False):
                 and not fn.endswith(".notebook.py")
                 # vendored code has a different copyright
                 and "_vendor" not in root
-                and "protoc_plugin" not in root
                 # third-party code (i.e., in a local venv) has a different copyright
                 and "/site-packages/" not in root
             )

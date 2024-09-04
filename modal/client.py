@@ -10,7 +10,7 @@ from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal_proto import api_grpc, api_pb2, modal_api_grpc
+from modal_proto import api_grpc, api_pb2
 from modal_version import __version__
 
 from ._utils import async_utils
@@ -99,11 +99,11 @@ class _Client:
         self.image_builder_version: Optional[str] = None
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel: Optional[grpclib.client.Channel] = None
-        self._stub: Optional[modal_api_grpc.ModalClientModal] = None
+        self._stub: Optional[api_grpc.ModalClientStub] = None
         self._snapshotted = False
 
     @property
-    def stub(self) -> modal_api_grpc.ModalClientModal:
+    def stub(self) -> api_grpc.ModalClientStub:
         """mdmd:hidden"""
         assert self._stub
         return self._stub
@@ -125,8 +125,7 @@ class _Client:
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
-        grpclib_stub = api_grpc.ModalClientStub(self._channel)
-        self._stub = modal_api_grpc.ModalClientModal(grpclib_stub)
+        self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
 
     async def _close(self, prep_for_restore: bool = False):
         if self._pre_stop is not None:
