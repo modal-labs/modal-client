@@ -523,7 +523,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         if info.raw_f:
             raw_f = info.raw_f
             assert callable(raw_f)
-            if schedule is not None and not info.is_nullary:
+            if schedule is not None and not info.is_nullary():
                 raise InvalidError(
                     f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
                 )
