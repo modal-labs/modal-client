@@ -107,7 +107,14 @@ class _Invocation:
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(function: "_Function", args, kwargs, *, client: _Client) -> "_Invocation":
+    async def create(
+        function: "_Function",
+        args,
+        kwargs,
+        *,
+        client: _Client,
+        function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
+    ) -> "_Invocation":
         assert client.stub
         function_id = function._invocation_function_id()
         item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
@@ -117,6 +124,7 @@ class _Invocation:
             parent_input_id=current_input_id() or "",
             function_call_type=api_pb2.FUNCTION_CALL_TYPE_UNARY,
             pipelined_inputs=[item],
+            function_call_invocation_type=function_call_invocation_type,
         )
         response = await retry_transient_errors(client.stub.FunctionMap, request)
         function_call_id = response.function_call_id
@@ -820,14 +828,17 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
-                    _experimental_resources=[
-                        convert_fn_config_to_resources_config(
-                            cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                    i6pn_enabled=config.get("i6pn_enabled"),
+                    _experimental_concurrent_cancellations=True,
+                    _experimental_task_templates=[
+                        api_pb2.TaskTemplate(
+                            rank=1,
+                            resources=convert_fn_config_to_resources_config(
+                                cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                            ),
                         )
                         for _experimental_gpu in _experimental_gpus
                     ],
-                    i6pn_enabled=config.get("i6pn_enabled"),
-                    _experimental_concurrent_cancellations=True,
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
@@ -1185,7 +1196,13 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             yield item
 
     async def _call_function(self, args, kwargs) -> R:
-        invocation = await _Invocation.create(self, args, kwargs, client=self._client)
+        invocation = await _Invocation.create(
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
+        )
         try:
             return await invocation.run_function()
         except asyncio.CancelledError:
@@ -1196,19 +1213,37 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             return  # type: ignore
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
-        return await _Invocation.create(self, args, kwargs, client=self._client)
+        return await _Invocation.create(
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
+        )
 
     @warn_if_generator_is_not_consumed()
     @live_method_gen
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(self, args, kwargs, client=self._client)
+        invocation = await _Invocation.create(
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
+        )
         async for res in invocation.run_generator():
             yield res
 
     @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
-        return await _Invocation.create(self, args, kwargs, client=self._client)
+        return await _Invocation.create(
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
+        )
 
     @synchronizer.no_io_translation
     @live_method

@@ -128,12 +128,6 @@ class _Sandbox(_Object, type_prefix="sb"):
                 volume_mounts=volume_mounts,
                 pty_info=pty_info,
                 scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
-                _experimental_resources=[
-                    convert_fn_config_to_resources_config(
-                        cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
-                    )
-                    for _experimental_gpu in _experimental_gpus
-                ],
                 worker_id=config.get("worker_id"),
             )
 
@@ -199,7 +193,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             _experimental_gpus=_experimental_gpus,
         )
         if client is None:
-            if app:
+            if app and app._client:
                 client = app._client
             else:
                 client = await _Client.from_env()

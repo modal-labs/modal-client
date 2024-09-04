@@ -73,10 +73,13 @@ async def _init_local_app_new(
         app_state=app_state,
     )
     app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
-    app_page_url = app_resp.app_logs_url
     logger.debug(f"Created new app with id {app_resp.app_id}")
     return RunningApp(
-        app_resp.app_id, app_page_url=app_page_url, environment_name=environment_name, interactive=interactive
+        app_resp.app_id,
+        app_page_url=app_resp.app_page_url,
+        app_logs_url=app_resp.app_logs_url,
+        environment_name=environment_name,
+        interactive=interactive,
     )
 
 
@@ -275,7 +278,9 @@ async def _run_app(
                 output_mgr.update_app_page_url(running_app.app_page_url)
 
             # Start logs loop
-            logs_loop = tc.create_task(get_app_logs_loop(client, output_mgr, running_app.app_id))
+            logs_loop = tc.create_task(
+                get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url)
+            )
 
         exc_info: Optional[BaseException] = None
         try:
@@ -389,6 +394,8 @@ class DeployResult:
     """Dataclass representing the result of deploying an app."""
 
     app_id: str
+    app_page_url: str
+    app_logs_url: str
 
 
 async def _deploy_app(
@@ -478,7 +485,9 @@ async def _deploy_app(
         t = time.time() - t0
         output_mgr.print(step_completed(f"App deployed in {t:.3f}s! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
-    return DeployResult(app_id=running_app.app_id)
+    return DeployResult(
+        app_id=running_app.app_id, app_page_url=running_app.app_page_url, app_logs_url=running_app.app_logs_url
+    )
 
 
 async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str = "", **kwargs: Any) -> None:
