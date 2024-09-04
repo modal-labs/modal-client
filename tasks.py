@@ -11,6 +11,7 @@ import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import List, Optional
 
 import requests
@@ -36,6 +37,16 @@ def protoc(ctx):
 
     # generate modal-specific wrapper around grpclib api stub using custom plugin:
     grpc_plugin_path = Path(__file__).parent / "protoc_plugin" / "plugin.py"
+    if sys.platform == "win32":
+        src = f"""@echo off
+{sys.executable} {grpc_plugin_path}
+PAUSE
+"""
+        with NamedTemporaryFile(mode="w", suffix=".bat", delete=False, encoding="ascii") as f:
+            f.write(src)
+        grpc_plugin_path = Path(f.name)
+
+    print("plugin: {grpc_plugin_path}")
     ctx.run(
         f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_path}"
         + f" --modal-grpclib-python_out=. -I . {input_files}"
