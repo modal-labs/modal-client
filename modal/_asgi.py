@@ -18,16 +18,18 @@ FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 class LifespanManager:
     def __init__(self, asgi_app, state):
         self.asgi_app = asgi_app
-        self.queue = None
-        self.startup_complete = None
+        self.queue: Optional[asyncio.Queue[Dict[str, Any]]] = None
+        self.startup_complete: Optional[asyncio.Future[None]] = None
         self.state = state
 
     async def background_task(self):
         self.queue = asyncio.Queue()
-        self.startup = asyncio.Future()
-        self.shutdown = asyncio.Future()
+        self.startup: asyncio.Future[None] = asyncio.Future()
+        self.shutdown: asyncio.Future[None] = asyncio.Future()
 
         async def receive():
+            if self.queue is None:
+                raise ValueError("queue is not initialized, call background_task first")
             return await self.queue.get()
 
         async def send(message):
@@ -60,7 +62,7 @@ class LifespanManager:
 
 
 def asgi_app_wrapper(asgi_app, function_io_manager) -> Tuple[Callable[..., AsyncGenerator], LifespanManager]:
-    state = {}  # used for lifespan state
+    state: Dict[str, Any] = {}  # used for lifespan state
 
     async def fn(scope):
         if "state" in scope:
@@ -69,7 +71,6 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Tuple[Callable[..., Async
         function_call_id = current_function_call_id()
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
 
-        # TODO: Add support for the ASGI lifecycle spec.
         messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
         messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
 

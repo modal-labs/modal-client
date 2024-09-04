@@ -71,7 +71,7 @@ class MockIOManager:
 async def test_success():
     mock_manager = MockIOManager()
     _set_current_context_ids(["in-123"], ["fc-123"])
-    wrapped_app = asgi_app_wrapper(app, mock_manager)
+    wrapped_app, lifespan_manager = asgi_app_wrapper(app, mock_manager)
     asgi_scope = _asgi_get_scope("/")
     outputs = [output async for output in wrapped_app(asgi_scope)]
     assert len(outputs) == 2
@@ -89,7 +89,7 @@ async def test_success():
 async def test_endpoint_exception(endpoint_url):
     mock_manager = MockIOManager()
     _set_current_context_ids(["in-123"], ["fc-123"])
-    wrapped_app = asgi_app_wrapper(app, mock_manager)
+    wrapped_app, lifespan_manager = asgi_app_wrapper(app, mock_manager)
     asgi_scope = _asgi_get_scope(endpoint_url)
     outputs = []
 
@@ -122,7 +122,7 @@ async def test_broken_io_unused(caplog):
     # and not raise an exception - but print a warning since it's unexpected
     mock_manager = BrokenIOManager()
     _set_current_context_ids(["in-123"], ["fc-123"])
-    wrapped_app = asgi_app_wrapper(app, mock_manager)
+    wrapped_app, lifespan_manager = asgi_app_wrapper(app, mock_manager)
     asgi_scope = _asgi_get_scope("/")
     outputs = []
 
@@ -141,7 +141,7 @@ async def test_broken_io_unused(caplog):
 async def test_broken_io_used():
     mock_manager = BrokenIOManager()
     _set_current_context_ids(["in-123"], ["fc-123"])
-    wrapped_app = asgi_app_wrapper(app, mock_manager)
+    wrapped_app, lifespan_manager = asgi_app_wrapper(app, mock_manager)
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
     outputs = []
     with pytest.raises(ClientDisconnect):
@@ -165,7 +165,7 @@ class SlowIOManager:
 async def test_first_message_timeout(monkeypatch):
     monkeypatch.setattr("modal._asgi.FIRST_MESSAGE_TIMEOUT_SECONDS", 0.1)  # simulate timeout
     _set_current_context_ids(["in-123"], ["fc-123"])
-    wrapped_app = asgi_app_wrapper(app, SlowIOManager())
+    wrapped_app, lifespan_manager = asgi_app_wrapper(app, SlowIOManager())
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
     outputs = []
     with pytest.raises(ClientDisconnect):
@@ -181,7 +181,7 @@ async def test_cancellation_cleanup(caplog):
     # this test mostly exists to get some coverage on the cancellation/error paths and
     # ensure nothing unexpected happens there
     _set_current_context_ids(["in-123"], ["fc-123"])
-    wrapped_app = asgi_app_wrapper(app, SlowIOManager())
+    wrapped_app, lifespan_manager = asgi_app_wrapper(app, SlowIOManager())
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
     outputs = []
 
@@ -200,7 +200,7 @@ async def test_cancellation_cleanup(caplog):
 @pytest.mark.asyncio
 async def test_streaming_response():
     _set_current_context_ids(["in-123"], ["fc-123"])
-    wrapped_app = asgi_app_wrapper(app, SlowIOManager())
+    wrapped_app, lifespan_manager = asgi_app_wrapper(app, SlowIOManager())
     asgi_scope = _asgi_get_scope("/streaming_response", "GET")
     outputs = []
     async for output in wrapped_app(asgi_scope):
@@ -227,7 +227,7 @@ class StreamingIOManager:
 async def test_streaming_body():
     _set_current_context_ids(["in-123"], ["fc-123"])
 
-    wrapped_app = asgi_app_wrapper(app, StreamingIOManager())
+    wrapped_app, lifespan_manager = asgi_app_wrapper(app, StreamingIOManager())
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
     outputs = []
     async for output in wrapped_app(asgi_scope):
