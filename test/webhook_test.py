@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from modal import App, asgi_app, web_endpoint, wsgi_app
 from modal._asgi import webhook_asgi_app
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function
 from modal.running_app import RunningApp
 from modal_proto import api_pb2
@@ -156,12 +156,28 @@ async def test_asgi_wsgi(servicer, client):
         async def my_invalid_wsgi(x):
             pass
 
+    with pytest.warns(DeprecationError, match="default argument"):
+
+        @app.function(serialized=True)
+        @asgi_app()
+        async def my_deprecated_default_params_asgi(x=1):
+            pass
+
+    with pytest.warns(DeprecationError, match="default arguments"):
+
+        @app.function(serialized=True)
+        @wsgi_app()
+        async def my_deprecated_default_params_wsgi(x=1):
+            pass
+
     async with app.run(client=client):
         pass
 
-    assert len(servicer.app_functions) == 2
+    assert len(servicer.app_functions) == 4
     assert servicer.app_functions["fu-1"].webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP
     assert servicer.app_functions["fu-2"].webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP
+    assert servicer.app_functions["fu-3"].webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP
+    assert servicer.app_functions["fu-4"].webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP
 
 
 def test_positional_method(servicer, client):

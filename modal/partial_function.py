@@ -18,7 +18,7 @@ import typing_extensions
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.function_utils import method_has_params
+from ._utils.function_utils import callable_has_non_self_non_default_params, callable_has_non_self_params
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
@@ -340,10 +340,17 @@ def _asgi_app(
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if method_has_params(raw_f):
-            raise InvalidError(
-                f"ASGI app function {raw_f.__name__} can't have arguments. See https://modal.com/docs/guide/webhooks#asgi."
-            )
+        if callable_has_non_self_params(raw_f):
+            if callable_has_non_self_non_default_params(raw_f):
+                raise InvalidError(
+                    f"ASGI app function {raw_f.__name__} can't have arguments. See https://modal.com/docs/guide/webhooks#asgi."
+                )
+            else:
+                deprecation_warning(
+                    (2024, 9, 4),
+                    f"ASGI app function {raw_f.__name__} has default arguments - Modal will drop support for this in a"
+                    f" future release.",
+                )
 
         if not wait_for_response:
             deprecation_warning(
@@ -405,10 +412,17 @@ def _wsgi_app(
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if method_has_params(raw_f):
-            raise InvalidError(
-                f"WSGI app function {raw_f.__name__} can't have arguments. See https://modal.com/docs/guide/webhooks#wsgi."
-            )
+        if callable_has_non_self_params(raw_f):
+            if callable_has_non_self_non_default_params(raw_f):
+                raise InvalidError(
+                    f"WSGI app function {raw_f.__name__} can't have arguments. See https://modal.com/docs/guide/webhooks#wsgi."
+                )
+            else:
+                deprecation_warning(
+                    (2024, 9, 4),
+                    f"WSGI app function {raw_f.__name__} has default arguments - Modal will drop support for this in a"
+                    f"future release.",
+                )
 
         if not wait_for_response:
             deprecation_warning(
@@ -578,7 +592,7 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "exit")
 
-        if method_has_params(f):
+        if callable_has_non_self_params(f):
             message = (
                 "Support for decorating parameterized methods with `@exit` has been deprecated."
                 " Please update your code by removing the parameters."

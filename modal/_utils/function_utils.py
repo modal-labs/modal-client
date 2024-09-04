@@ -320,12 +320,29 @@ class FunctionInfo:
         return True
 
 
-def method_has_params(f: Callable[..., Any]) -> bool:
-    """Return True if a method (bound or unbound) has parameters other than self.
+def callable_has_non_self_params(f: Callable[..., Any]) -> bool:
+    """Return True if a callable (function, bound method, or unbound method) has parameters other than self.
 
-    Used for deprecation of @exit() parameters and ensuring asgi / wsgi app functions don't have args.
+    Used for deprecation of @exit() parameters and ensuring @asgi_app / @wsgi_app functions don't have non-default
+    parameters.
     """
     return any(param.name != "self" for param in inspect.signature(f).parameters.values())
+
+
+def callable_has_non_self_non_default_params(f: Callable[..., Any]) -> bool:
+    """Return True if a callable (function, bound method, or unbound method) has non-default parameters other than self.
+
+    Used for deprecation of default parameters in asgi / wsgi app functions.
+    """
+    for param in inspect.signature(f).parameters.values():
+        if param.name == "self":
+            continue
+
+        if param.default != inspect.Parameter.empty:
+            continue
+
+        return True
+    return False
 
 
 async def _stream_function_call_data(

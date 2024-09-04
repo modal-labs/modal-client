@@ -6,7 +6,12 @@ from grpclib import Status
 from modal import method, web_endpoint
 from modal._serialization import serialize_data_format
 from modal._utils import async_utils
-from modal._utils.function_utils import FunctionInfo, _stream_function_call_data, method_has_params
+from modal._utils.function_utils import (
+    FunctionInfo,
+    _stream_function_call_data,
+    callable_has_non_self_non_default_params,
+    callable_has_non_self_params,
+)
 from modal_proto import api_pb2
 
 
@@ -34,31 +39,57 @@ def test_is_nullary():
 
 
 class Cls:
-    def foo(self):
+    def f1(self):
         pass
 
-    def bar(self, x):
+    def f2(self, x):
         pass
 
-    def buz(self, *args):
+    def f3(self, *args):
+        pass
+
+    def f4(self, x=1):
         pass
 
 
-def test_method_has_params():
-    def qux():
-        pass
+def f5():
+    pass
 
-    def foobar(baz):
-        pass
 
-    assert not method_has_params(Cls.foo)
-    assert not method_has_params(Cls().foo)
-    assert method_has_params(Cls.bar)
-    assert method_has_params(Cls().bar)
-    assert method_has_params(Cls.buz)
-    assert method_has_params(Cls().buz)
-    assert not method_has_params(qux)
-    assert method_has_params(foobar)
+def f6(x):
+    pass
+
+
+def f7(x=1):
+    pass
+
+
+def test_callable_has_non_self_params():
+    assert not callable_has_non_self_params(Cls.f1)
+    assert not callable_has_non_self_params(Cls().f1)
+    assert callable_has_non_self_params(Cls.f2)
+    assert callable_has_non_self_params(Cls().f2)
+    assert callable_has_non_self_params(Cls.f3)
+    assert callable_has_non_self_params(Cls().f3)
+    assert callable_has_non_self_params(Cls.f4)
+    assert callable_has_non_self_params(Cls().f4)
+    assert not callable_has_non_self_params(f5)
+    assert callable_has_non_self_params(f6)
+    assert callable_has_non_self_params(f7)
+
+
+def test_callable_has_non_self_non_default_params():
+    assert not callable_has_non_self_non_default_params(Cls.f1)
+    assert not callable_has_non_self_non_default_params(Cls().f1)
+    assert callable_has_non_self_non_default_params(Cls.f2)
+    assert callable_has_non_self_non_default_params(Cls().f2)
+    assert callable_has_non_self_non_default_params(Cls.f3)
+    assert callable_has_non_self_non_default_params(Cls().f3)
+    assert not callable_has_non_self_non_default_params(Cls.f4)
+    assert not callable_has_non_self_non_default_params(Cls().f4)
+    assert not callable_has_non_self_non_default_params(f5)
+    assert callable_has_non_self_non_default_params(f6)
+    assert not callable_has_non_self_non_default_params(f7)
 
 
 class Foo:
