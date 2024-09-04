@@ -292,7 +292,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         app_id = f"ap-{self.n_apps}"
         self.app_state_history[app_id].append(api_pb2.APP_STATE_INITIALIZING)
         await stream.send_message(
-            api_pb2.AppCreateResponse(app_id=app_id, app_logs_url="https://modaltest.com/apps/ap-123")
+            api_pb2.AppCreateResponse(app_id=app_id, app_page_url="https://modaltest.com/apps/ap-123")
         )
 
     async def AppClientDisconnect(self, stream):
