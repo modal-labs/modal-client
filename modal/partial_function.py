@@ -18,7 +18,7 @@ import typing_extensions
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.function_utils import is_nullary_function, method_has_params
+from ._utils.function_utils import method_has_params
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
@@ -340,7 +340,7 @@ def _asgi_app(
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if not is_nullary_function(raw_f):
+        if method_has_params(raw_f):
             raise InvalidError(
                 f"ASGI app function {raw_f.__name__} can't have arguments. See https://modal.com/docs/guide/webhooks#asgi."
             )
@@ -405,7 +405,7 @@ def _wsgi_app(
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if not is_nullary_function(raw_f):
+        if method_has_params(raw_f):
             raise InvalidError(
                 f"WSGI app function {raw_f.__name__} can't have arguments. See https://modal.com/docs/guide/webhooks#wsgi."
             )
