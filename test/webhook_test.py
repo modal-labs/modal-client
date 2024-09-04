@@ -134,13 +134,27 @@ async def test_asgi_wsgi(servicer, client):
 
     @app.function(serialized=True)
     @asgi_app()
-    async def my_asgi(x):
+    async def my_asgi():
         pass
 
     @app.function(serialized=True)
     @wsgi_app()
-    async def my_wsgi(x):
+    async def my_wsgi():
         pass
+
+    with pytest.raises(InvalidError, match="can't have arguments"):
+
+        @app.function(serialized=True)
+        @asgi_app()
+        async def my_invalid_asgi(x):
+            pass
+
+    with pytest.raises(InvalidError, match="can't have arguments"):
+
+        @app.function(serialized=True)
+        @wsgi_app()
+        async def my_invalid_wsgi(x):
+            pass
 
     async with app.run(client=client):
         pass

@@ -52,6 +52,7 @@ from ._utils.function_utils import (
     _process_result,
     _stream_function_call_data,
     is_async,
+    is_nullary_function,
 )
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
@@ -523,7 +524,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         if info.raw_f:
             raw_f = info.raw_f
             assert callable(raw_f)
-            if schedule is not None and not info.is_nullary():
+            if schedule is not None and not is_nullary_function(raw_f):
                 raise InvalidError(
                     f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
                 )

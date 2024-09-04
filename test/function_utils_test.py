@@ -6,7 +6,7 @@ from grpclib import Status
 from modal import method, web_endpoint
 from modal._serialization import serialize_data_format
 from modal._utils import async_utils
-from modal._utils.function_utils import FunctionInfo, _stream_function_call_data, method_has_params
+from modal._utils.function_utils import _stream_function_call_data, is_nullary_function, method_has_params
 from modal_proto import api_pb2
 
 
@@ -27,10 +27,10 @@ def wildcard_args(*wildcard_list, **wildcard_dict):
 
 
 def test_is_nullary():
-    assert not FunctionInfo(hasarg).is_nullary()
-    assert FunctionInfo(noarg).is_nullary()
-    assert FunctionInfo(defaultarg).is_nullary()
-    assert FunctionInfo(wildcard_args).is_nullary()
+    assert not is_nullary_function(hasarg)
+    assert is_nullary_function(noarg)
+    assert is_nullary_function(defaultarg)
+    assert is_nullary_function(wildcard_args)
 
 
 class Cls:

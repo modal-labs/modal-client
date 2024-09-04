@@ -84,6 +84,17 @@ def is_async(function):
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
 
+def is_nullary_function(f: Callable[..., Any]) -> bool:
+    signature = inspect.signature(f)
+    for param in signature.parameters.values():
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            # variadic parameters are nullary
+            continue
+        if param.default is param.empty:
+            return False
+    return True
+
+
 class FunctionInfo:
     """Class that helps us extract a bunch of information about a function."""
 
@@ -308,16 +319,6 @@ class FunctionInfo:
 
     def get_tag(self):
         return self.function_name
-
-    def is_nullary(self):
-        signature = inspect.signature(self.raw_f)
-        for param in signature.parameters.values():
-            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
-                # variadic parameters are nullary
-                continue
-            if param.default is param.empty:
-                return False
-        return True
 
 
 def method_has_params(f: Callable[..., Any]) -> bool:
