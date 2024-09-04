@@ -9,7 +9,6 @@ import pkgutil
 import re
 import subprocess
 import sys
-import time
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
@@ -33,10 +32,13 @@ def python_file_as_executable(path: Path) -> Generator[Path, None, None]:
         src = f"""@echo off
 {sys.executable} {path}
 """
-        with NamedTemporaryFile(mode="w", suffix=".bat", encoding="ascii") as f:
+        with NamedTemporaryFile(mode="w", suffix=".bat", encoding="ascii", delete=False) as f:
             f.write(src)
-            f.flush()
+
+        try:
             yield Path(f.name)
+        finally:
+            Path(f.name).unlink()
     else:
         yield path
 
@@ -56,8 +58,6 @@ def protoc(ctx):
     grpc_plugin_pyfile = Path(__file__).parent / "protoc_plugin" / "plugin.py"
 
     with python_file_as_executable(grpc_plugin_pyfile) as grpc_plugin_executable:
-        print(grpc_plugin_executable)
-        time.sleep(30)
         ctx.run(
             f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_executable}"
             + f" --modal-grpclib-python_out=. -I . {input_files}"
