@@ -191,7 +191,7 @@ def _method(
             ...
     ```
     """
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
 
     if keep_warm is not None:
@@ -264,7 +264,7 @@ def _web_endpoint(
     if isinstance(_warn_parentheses_missing, str):
         # Probably passing the method string as a positional argument.
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@web_endpoint(method="GET")`.')
-    elif _warn_parentheses_missing:
+    elif _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
         )
@@ -518,7 +518,7 @@ def _build(
             LlamaTokenizer.from_pretrained(base_model)
     ```
     """
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
 
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
@@ -541,7 +541,7 @@ def _enter(
     """Decorator for methods which should be executed when a new container is started.
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#enter) for more information."""
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
 
     if snap:
@@ -571,7 +571,7 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
     """Decorator for methods which should be executed when a container is about to exit.
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#exit) for more information."""
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
 
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
@@ -611,7 +611,7 @@ def _batched(
 
     See the [dynamic batching guide](https://modal.com/docs/guide/dynamic-batching) for more information.
     """
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batched()`."
         )
