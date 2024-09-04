@@ -340,14 +340,8 @@ def _asgi_app(
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        def raw_f_wrapper(*args, **kwargs):
-            if len(args) + len(kwargs) != 0:
-                raise InvalidError(
-                    f"ASGI app functions expect no arguments, but {raw_f.__name__} received "
-                    f"positional arguments: {args} and keyword arguments: {kwargs}."
-                )
-
-            return raw_f()  # If we made it here, we're good to call the function without args.
+        if not raw_f.is_nullary():
+            raise InvalidError(f"ASGI app function {raw_f.__name__} can't have arguments.")
 
         if not wait_for_response:
             deprecation_warning(
@@ -360,7 +354,7 @@ def _asgi_app(
             _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         return _PartialFunction(
-            raw_f_wrapper,
+            raw_f,
             _PartialFunctionFlags.FUNCTION,
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
