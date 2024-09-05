@@ -42,12 +42,9 @@ def list(json: Optional[bool] = False):
 
     # determine which environment is currently active, prioritizing the local default
     # over the server default
-    cfg_default = config.get("environment")
-    active_env = None
+    active_env = config.get("environment")
     for env in envs:
-        if env.name == cfg_default:
-            active_env = env.name
-        elif env.default is True and active_env is None:
+        if env.default is True and active_env is None:
             active_env = env.name
 
     table_data = []
