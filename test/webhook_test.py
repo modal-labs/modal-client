@@ -142,28 +142,28 @@ async def test_asgi_wsgi(servicer, client):
     async def my_wsgi():
         pass
 
-    with pytest.raises(InvalidError, match="can't have arguments"):
+    with pytest.raises(InvalidError, match="can't have parameters"):
 
         @app.function(serialized=True)
         @asgi_app()
         async def my_invalid_asgi(x):
             pass
 
-    with pytest.raises(InvalidError, match="can't have arguments"):
+    with pytest.raises(InvalidError, match="can't have parameters"):
 
         @app.function(serialized=True)
         @wsgi_app()
         async def my_invalid_wsgi(x):
             pass
 
-    with pytest.warns(DeprecationError, match="default argument"):
+    with pytest.warns(DeprecationError, match="default parameters"):
 
         @app.function(serialized=True)
         @asgi_app()
         async def my_deprecated_default_params_asgi(x=1):
             pass
 
-    with pytest.warns(DeprecationError, match="default arguments"):
+    with pytest.warns(DeprecationError, match="default parameters"):
 
         @app.function(serialized=True)
         @wsgi_app()
