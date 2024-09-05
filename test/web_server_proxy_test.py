@@ -4,7 +4,7 @@ import contextlib
 import pytest
 import socket
 from dataclasses import dataclass
-from typing import List
+from typing import Any, Dict, List
 
 import pytest_asyncio
 from aiohttp.web import Application
@@ -70,9 +70,9 @@ async def http_dummy_server():
 
 @contextlib.asynccontextmanager
 async def lifespan_ctx_manager(asgi_app):
-    state = {}
+    state: Dict[str, Any] = {}
 
-    q = asyncio.Queue()
+    q: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
     startup: asyncio.Future[None] = asyncio.Future()
     shutdown: asyncio.Future[None] = asyncio.Future()
 
