@@ -1777,6 +1777,8 @@ message Sandbox {
   oneof open_ports_oneof {
     PortSpecs open_ports = 20;
   }
+
+  bool i6pn_enabled = 21;
 }
 
 message SandboxCreateRequest {

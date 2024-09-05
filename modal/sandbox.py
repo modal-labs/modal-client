@@ -135,6 +135,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 pty_info=pty_info,
                 scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                 worker_id=config.get("worker_id"),
+                i6pn_enabled=config.get("i6pn_enabled"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
             )
 
