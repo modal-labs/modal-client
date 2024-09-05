@@ -343,13 +343,13 @@ def _asgi_app(
         if callable_has_non_self_params(raw_f):
             if callable_has_non_self_non_default_params(raw_f):
                 raise InvalidError(
-                    f"ASGI app function {raw_f.__name__} can't have arguments. See https://modal.com/docs/guide/webhooks#asgi."
+                    f"ASGI app function {raw_f.__name__} can't have parameters. See https://modal.com/docs/guide/webhooks#asgi."
                 )
             else:
                 deprecation_warning(
                     (2024, 9, 4),
-                    f"ASGI app function {raw_f.__name__} has default arguments - Modal will drop support for this in a"
-                    f" future release.",
+                    f"ASGI app function {raw_f.__name__} has default parameters, but shouldn't have any parameters - "
+                    f"Modal will drop support for default parameters in a future release.",
                 )
 
         if not wait_for_response:
@@ -415,13 +415,13 @@ def _wsgi_app(
         if callable_has_non_self_params(raw_f):
             if callable_has_non_self_non_default_params(raw_f):
                 raise InvalidError(
-                    f"WSGI app function {raw_f.__name__} can't have arguments. See https://modal.com/docs/guide/webhooks#wsgi."
+                    f"WSGI app function {raw_f.__name__} can't have parameters. See https://modal.com/docs/guide/webhooks#wsgi."
                 )
             else:
                 deprecation_warning(
                     (2024, 9, 4),
-                    f"WSGI app function {raw_f.__name__} has default arguments - Modal will drop support for this in a"
-                    f"future release.",
+                    f"WSGI app function {raw_f.__name__} has default parameters, but shouldn't have any parameters - "
+                    f"Modal will drop support for default parameters in a future release.",
                 )
 
         if not wait_for_response:
