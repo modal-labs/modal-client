@@ -366,47 +366,57 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
             await asyncio.wait([client_to_upstream_task, upstream_to_client_task], return_when=asyncio.FIRST_COMPLETED)
 
 
+async def _proxy_lifespan_request(base_url, scope, receive, send) -> None:
+    session: Optional[aiohttp.ClientSession] = None
+    while True:
+        # nonlocal session
+        message = await receive()
+        if message["type"] == "lifespan.startup":
+            if session is None:
+                session = aiohttp.ClientSession(
+                    base_url,
+                    cookie_jar=aiohttp.DummyCookieJar(),
+                    timeout=aiohttp.ClientTimeout(total=3600),
+                    auto_decompress=False,
+                    read_bufsize=1024 * 1024,  # 1 MiB
+                    **(
+                        # These options were introduced in aiohttp 3.9, and we can remove the
+                        # conditional after deprecating image builder version 2023.12.
+                        dict(  # type: ignore
+                            max_line_size=64 * 1024,  # 64 KiB
+                            max_field_size=64 * 1024,  # 64 KiB
+                        )
+                        if parse_major_minor_version(aiohttp.__version__) >= (3, 9)
+                        else {}
+                    ),
+                )
+                scope["state"]["session"] = session
+            await send({"type": "lifespan.startup.complete"})
+        elif message["type"] == "lifespan.shutdown":
+            if session is None:
+                raise ValueError("Session is not initialized")
+            await session.close()
+            await send({"type": "lifespan.shutdown.complete"})
+            break
+        else:
+            raise ExecutionError(f"Unexpected message type: {message['type']}")
+
+
 def web_server_proxy(host: str, port: int):
     """Return an ASGI app that proxies requests to a web server running on the same host."""
     if not 0 < port < 65536:
         raise InvalidError(f"Invalid port number: {port}")
 
     base_url = f"http://{host}:{port}"
-    session: Optional[aiohttp.ClientSession] = None
 
     async def web_server_proxy_app(scope, receive, send):
-        nonlocal session
-        if session is None:
-            # TODO: We currently create the ClientSession on container startup and never close it.
-            # This outputs an "Unclosed client session" warning during runner termination. We should
-            # properly close the session once we implement the ASGI lifespan protocol.
-            session = aiohttp.ClientSession(
-                base_url,
-                cookie_jar=aiohttp.DummyCookieJar(),
-                timeout=aiohttp.ClientTimeout(total=3600),
-                auto_decompress=False,
-                read_bufsize=1024 * 1024,  # 1 MiB
-                **(
-                    # These options were introduced in aiohttp 3.9, and we can remove the
-                    # conditional after deprecating image builder version 2023.12.
-                    dict(  # type: ignore
-                        max_line_size=64 * 1024,  # 64 KiB
-                        max_field_size=64 * 1024,  # 64 KiB
-                    )
-                    if parse_major_minor_version(aiohttp.__version__) >= (3, 9)
-                    else {}
-                ),
-            )
-
         try:
             if scope["type"] == "lifespan":
-                print("lifespan is not implemented")
-                raise NotImplementedError("lifespan is not implemented")
-                pass  # Do nothing for lifespan events.
+                await _proxy_lifespan_request(base_url, scope, receive, send)
             elif scope["type"] == "http":
-                await _proxy_http_request(session, scope, receive, send)
+                await _proxy_http_request(scope["state"]["session"], scope, receive, send)
             elif scope["type"] == "websocket":
-                await _proxy_websocket_request(session, scope, receive, send)
+                await _proxy_websocket_request(scope["state"]["session"], scope, receive, send)
             else:
                 raise NotImplementedError(f"Scope {scope} is not understood")
 
