@@ -88,8 +88,9 @@ jobs:
         run: |
           python -m venv venv
           source venv/bin/activate
-          pip install grpcio-tools==1.59.2
+          pip install grpcio-tools==1.59.2 grpclib==0.4.7
           python -m grpc_tools.protoc --python_out=. --grpclib_python_out=. --grpc_python_out=. -I . modal_proto/api.proto modal_proto/options.proto
+          python -m grpc_tools.protoc --plugin=protoc-gen-modal-grpclib-python=protoc_plugin/plugin.py --modal-grpclib-python_out=. -I . modal_proto/api.proto modal_proto/options.proto
           deactivate
 
       - name: Check entrypoint import

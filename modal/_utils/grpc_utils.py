@@ -9,14 +9,21 @@ import uuid
 from typing import (
     Any,
     AsyncIterator,
+    Collection,
     Dict,
+    Generic,
+    Mapping,
     Optional,
+    Tuple,
     TypeVar,
+    Union,
 )
 
 import grpclib.client
 import grpclib.config
 import grpclib.events
+import grpclib.protocol
+import grpclib.stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
@@ -111,11 +118,52 @@ def create_channel(
     return channel
 
 
+_Value = Union[str, bytes]
+_MetadataLike = Union[Mapping[str, _Value], Collection[Tuple[str, _Value]]]
+
+
+class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
+    wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]
+
+    def __init__(self, wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]):
+        self.wrapped_method = wrapped_method
+
+    @property
+    def name(self) -> str:
+        return self.wrapped_method.name
+
+    async def __call__(
+        self,
+        req: RequestType,
+        *,
+        timeout: Optional[float] = None,
+        metadata: Optional[_MetadataLike] = None,
+    ) -> ResponseType:
+        # TODO: implement Client tracking and retries
+        return await self.wrapped_method(req, timeout=timeout, metadata=metadata)
+
+
+class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
+    wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType]
+
+    def __init__(self, wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType]):
+        self.wrapped_method = wrapped_method
+
+    def open(
+        self,
+        *,
+        timeout: Optional[float] = None,
+        metadata: Optional[_MetadataLike] = None,
+    ) -> grpclib.client.Stream[RequestType, ResponseType]:
+        # TODO: implement Client tracking and unary_stream-wrapper
+        return self.wrapped_method.open(timeout=timeout, metadata=metadata)
+
+
 async def unary_stream(
-    method: grpclib.client.UnaryStreamMethod[_SendType, _RecvType],
-    request: _SendType,
+    method: UnaryStreamWrapper[RequestType, ResponseType],
+    request: RequestType,
     metadata: Optional[Any] = None,
-) -> AsyncIterator[_RecvType]:
+) -> AsyncIterator[ResponseType]:
     """Helper for making a unary-streaming gRPC request."""
     async with method.open(metadata=metadata) as stream:
         await stream.send_message(request, end=True)
@@ -124,7 +172,7 @@ async def unary_stream(
 
 
 async def retry_transient_errors(
-    fn: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
+    fn: UnaryUnaryWrapper[RequestType, ResponseType],
     *args,
     base_delay: float = 0.1,
     max_delay: float = 1,
