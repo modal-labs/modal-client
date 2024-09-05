@@ -141,6 +141,8 @@ class _App:
     _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
 
+    _container_app: ClassVar[Optional[RunningApp]] = None
+
     def __init__(
         self,
         name: Optional[str] = None,
@@ -211,6 +213,10 @@ class _App:
     def description(self) -> Optional[str]:
         """The App's `name`, if available, or a fallback descriptive identifier."""
         return self._description
+
+    @property
+    def client(self) -> Optional[_Client]:
+        return self._client
 
     def set_description(self, description: str):
         self._description = description
@@ -428,6 +434,8 @@ class _App:
         self._app_id = running_app.app_id
         self._running_app = running_app
         self._client = client
+
+        _App._container_app = running_app
 
         # Hydrate objects on app
         for tag, object_id in running_app.tag_to_object_id.items():

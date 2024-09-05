@@ -4,6 +4,8 @@ from typing import Dict, Optional
 
 from google.protobuf.message import Message
 
+from .client import _Client
+
 
 @dataclass
 class RunningApp:
@@ -14,3 +16,4 @@ class RunningApp:
     tag_to_object_id: Dict[str, str] = field(default_factory=dict)
     object_handle_metadata: Dict[str, Optional[Message]] = field(default_factory=dict)
     interactive: bool = False
+    client: Optional[_Client] = None

@@ -26,6 +26,7 @@ from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _Object
+from .running_app import RunningApp
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 
@@ -183,6 +184,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
+        from .app import _App
+
         if environment_name is None:
             environment_name = config.get("environment")
 
@@ -208,12 +211,15 @@ class _Sandbox(_Object, type_prefix="sb"):
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             _experimental_gpus=_experimental_gpus,
         )
+
+        inferred_app: Union[_App, RunningApp] = app or _App._container_app
+
         if client is None:
-            if app and app._client:
-                client = app._client
+            if inferred_app and inferred_app.client:
+                client = inferred_app.client
             else:
                 client = await _Client.from_env()
-        app_id: Optional[str] = app.app_id if app else None
+        app_id: Optional[str] = inferred_app.app_id if inferred_app else None
         resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
         await resolver.load(obj)
         return obj
