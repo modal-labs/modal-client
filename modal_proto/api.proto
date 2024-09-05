@@ -1828,6 +1828,7 @@ message SandboxInfo {
 message SandboxListRequest {
   string app_id = 1;
   double before_timestamp = 2;
+  string environment_name = 3;
 }
 
 message SandboxListResponse {
