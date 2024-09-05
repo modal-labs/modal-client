@@ -30,7 +30,8 @@ from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
 from modal._output import FunctionCreationStatus
-from modal_proto import api_grpc, api_pb2
+from modal_proto import api_pb2
+from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._location import parse_cloud_provider
 from ._output import OutputManager
@@ -99,15 +100,22 @@ if TYPE_CHECKING:
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
-    stub: api_grpc.ModalClientStub
+    stub: ModalClientModal
 
-    def __init__(self, stub: api_grpc.ModalClientStub, function_call_id: str, client: _Client):
+    def __init__(self, stub: ModalClientModal, function_call_id: str, client: _Client):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(function: "_Function", args, kwargs, *, client: _Client) -> "_Invocation":
+    async def create(
+        function: "_Function",
+        args,
+        kwargs,
+        *,
+        client: _Client,
+        function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
+    ) -> "_Invocation":
         assert client.stub
         function_id = function._invocation_function_id()
         item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
@@ -117,6 +125,7 @@ class _Invocation:
             parent_input_id=current_input_id() or "",
             function_call_type=api_pb2.FUNCTION_CALL_TYPE_UNARY,
             pipelined_inputs=[item],
+            function_call_invocation_type=function_call_invocation_type,
         )
         response = await retry_transient_errors(client.stub.FunctionMap, request)
         function_call_id = response.function_call_id
@@ -804,7 +813,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     runtime_debug=config.get("function_runtime_debug"),
                     app_name=app_name,
                     is_builder_function=is_builder_function,
-                    allow_concurrent_inputs=allow_concurrent_inputs or 0,
+                    target_concurrent_inputs=allow_concurrent_inputs or 0,
                     batch_max_size=batch_max_size or 0,
                     batch_linger_ms=batch_wait_ms or 0,
                     worker_id=config.get("worker_id"),
@@ -820,14 +829,17 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
-                    _experimental_resources=[
-                        convert_fn_config_to_resources_config(
-                            cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                    i6pn_enabled=config.get("i6pn_enabled"),
+                    _experimental_concurrent_cancellations=True,
+                    _experimental_task_templates=[
+                        api_pb2.TaskTemplate(
+                            rank=1,
+                            resources=convert_fn_config_to_resources_config(
+                                cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
+                            ),
                         )
                         for _experimental_gpu in _experimental_gpus
                     ],
-                    i6pn_enabled=config.get("i6pn_enabled"),
-                    _experimental_concurrent_cancellations=True,
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
@@ -1185,7 +1197,13 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             yield item
 
     async def _call_function(self, args, kwargs) -> R:
-        invocation = await _Invocation.create(self, args, kwargs, client=self._client)
+        invocation = await _Invocation.create(
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
+        )
         try:
             return await invocation.run_function()
         except asyncio.CancelledError:
@@ -1196,19 +1214,37 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             return  # type: ignore
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
-        return await _Invocation.create(self, args, kwargs, client=self._client)
+        return await _Invocation.create(
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
+        )
 
     @warn_if_generator_is_not_consumed()
     @live_method_gen
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(self, args, kwargs, client=self._client)
+        invocation = await _Invocation.create(
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
+        )
         async for res in invocation.run_generator():
             yield res
 
     @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
-        return await _Invocation.create(self, args, kwargs, client=self._client)
+        return await _Invocation.create(
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
+        )
 
     @synchronizer.no_io_translation
     @live_method
@@ -1320,7 +1356,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     @synchronizer.no_input_translation
     @live_method
-    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> Optional["_FunctionCall[R]"]:
+    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[R]":
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
@@ -1331,11 +1367,13 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         return a function handle for polling the result.
         """
         if self._is_generator:
-            await self._call_generator_nowait(args, kwargs)
-            return None
+            invocation = await self._call_generator_nowait(args, kwargs)
+        else:
+            invocation = await self._call_function_nowait(args, kwargs)
 
-        invocation = await self._call_function_nowait(args, kwargs)
-        return _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+        fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+        fc._is_generator = self._is_generator if self._is_generator else False
+        return fc
 
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
@@ -1375,6 +1413,8 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
     Conceptually similar to a Future/Promise/AsyncResult in other contexts and languages.
     """
 
+    _is_generator: bool = False
+
     def _invocation(self):
         assert self._client.stub
         return _Invocation(self._client.stub, self.object_id, self._client)
@@ -1388,7 +1428,21 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
 
         The returned coroutine is not cancellation-safe.
         """
+
+        if self._is_generator:
+            raise Exception("Cannot get the result of a generator function call. Use `get_gen` instead.")
+
         return await self._invocation().poll_function(timeout=timeout)
+
+    async def get_gen(self) -> AsyncGenerator[Any, None]:
+        """
+        Calls the generator remotely, executing it with the given arguments and returning the execution's result.
+        """
+        if not self._is_generator:
+            raise Exception("Cannot iterate over a non-generator function call. Use `get` instead.")
+
+        async for res in self._invocation().run_generator():
+            yield res
 
     async def get_call_graph(self) -> List[InputInfo]:
         """Returns a structure representing the call graph from a given root
@@ -1419,11 +1473,15 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 
     @staticmethod
-    async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall":
+    async def from_id(
+        function_call_id: str, client: Optional[_Client] = None, is_generator: bool = False
+    ) -> "_FunctionCall":
         if client is None:
             client = await _Client.from_env()
 
-        return _FunctionCall._new_hydrated(function_call_id, client, None)
+        fc = _FunctionCall._new_hydrated(function_call_id, client, None)
+        fc._is_generator = is_generator
+        return fc
 
 
 FunctionCall = synchronize_api(_FunctionCall)

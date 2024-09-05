@@ -20,11 +20,11 @@ def test_shutdown_deadlock(servicer):
     with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         with modal.Queue.ephemeral(client=client) as q:
             close_client_soon(client)  # simulate an early shutdown of the client
-            with pytest.raises(modal.client.ClientClosed):
+            with pytest.raises(modal.exception.ClientClosed):
                 # ensure that ongoing rcp calls are aborted
                 q.get()
 
-            with pytest.raises(modal.client.ClientClosed):
+            with pytest.raises(modal.exception.ClientClosed):
                 # ensure the client isn't doesn't allow for *new* connections
                 # after shutdown either
                 q.get()

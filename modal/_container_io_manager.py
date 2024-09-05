@@ -8,6 +8,7 @@ import signal
 import sys
 import time
 import traceback
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Tuple
@@ -17,6 +18,7 @@ from google.protobuf.message import Message
 from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal_proto.api_pb2
 from modal_proto import api_pb2
 
 from ._serialization import deserialize, serialize, serialize_data_format
@@ -25,11 +27,13 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
-from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, ClientClosed, _Client
+from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InputCancellation, InvalidError
+from .exception import ClientClosed, InputCancellation, InvalidError, SerializationError
 from .running_app import RunningApp
 
+DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
+DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
 MAX_OUTPUT_BATCH_SIZE: int = 49
 
 RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
@@ -85,7 +89,7 @@ class IOContext:
         is_batched: bool,
     ) -> "IOContext":
         assert len(inputs) >= 1 if is_batched else len(inputs) == 1
-        input_ids, function_call_ids, inputs = zip(*inputs)
+        input_ids, function_call_ids, function_inputs = zip(*inputs)
 
         async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput) -> api_pb2.FunctionInput:
             # If we got a pointer to a blob, download it from S3.
@@ -97,13 +101,13 @@ class IOContext:
 
             return input
 
-        inputs = await asyncio.gather(*[_populate_input_blobs(client, input) for input in inputs])
+        function_inputs = await asyncio.gather(*[_populate_input_blobs(client, input) for input in function_inputs])
         # check every input in batch executes the same function
-        method_name = inputs[0].method_name
-        assert all(method_name == input.method_name for input in inputs)
+        method_name = function_inputs[0].method_name
+        assert all(method_name == input.method_name for input in function_inputs)
         finalized_function = finalized_functions[method_name]
-        # TODO(cathy) Performance decrease if we deserialize inputs later
-        deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in inputs]
+        # TODO(cathy) Performance decrease if we deserialize function_inputs later
+        deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in function_inputs]
         return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
 
     def set_cancel_callback(self, cb: Callable[[], None]):
@@ -177,6 +181,51 @@ class IOContext:
         return data
 
 
+class InputSlots:
+    """A semaphore that allows dynamically adjusting the concurrency."""
+
+    active: int
+    value: int
+    waiter: Optional[asyncio.Future]
+    closed: bool
+
+    def __init__(self, value: int) -> None:
+        self.active = 0
+        self.value = value
+        self.waiter = None
+        self.closed = False
+
+    async def acquire(self) -> None:
+        if self.active < self.value:
+            self.active += 1
+        elif self.waiter is None:
+            self.waiter = asyncio.get_running_loop().create_future()
+            await self.waiter
+        else:
+            raise RuntimeError("Concurrent waiters are not supported.")
+
+    def _wake_waiter(self) -> None:
+        if self.active < self.value and self.waiter is not None:
+            self.waiter.set_result(None)
+            self.waiter = None
+            self.active += 1
+
+    def release(self) -> None:
+        self.active -= 1
+        self._wake_waiter()
+
+    def set_value(self, value: int) -> None:
+        if self.closed:
+            return
+        self.value = value
+        self._wake_waiter()
+
+    async def close(self) -> None:
+        self.closed = True
+        for _ in range(self.value):
+            await self.acquire()
+
+
 class _ContainerIOManager:
     """Synchronizes all RPC calls and network operations for a running container.
 
@@ -196,8 +245,11 @@ class _ContainerIOManager:
     current_inputs: Dict[str, IOContext]  # input_id -> IOContext
     current_input_started_at: Optional[float]
 
-    _input_concurrency: Optional[int]
-    _semaphore: Optional[asyncio.Semaphore]
+    _target_concurrency: int
+    _max_concurrency: int
+    _concurrency_loop: Optional[asyncio.Task]
+    _input_slots: InputSlots
+
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
     _heartbeat_condition: asyncio.Condition
@@ -224,9 +276,18 @@ class _ContainerIOManager:
         self.current_inputs = {}
         self.current_input_started_at = None
 
-        self._input_concurrency = None
+        if container_args.function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+            target_concurrency = 1
+            max_concurrency = 0
+        else:
+            target_concurrency = container_args.function_def.target_concurrent_inputs or 1
+            max_concurrency = container_args.function_def.max_concurrent_inputs or target_concurrency
 
-        self._semaphore = None
+        self._target_concurrency = target_concurrency
+        self._max_concurrency = max_concurrency
+        self._concurrency_loop = None
+        self._input_slots = InputSlots(target_concurrency)
+
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
         self._heartbeat_condition = asyncio.Condition()
@@ -300,7 +361,7 @@ class _ContainerIOManager:
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
-                if self._input_concurrency > 1:
+                if self._target_concurrency > 1:
                     for input_id in input_ids_to_cancel:
                         if input_id in self.current_inputs:
                             self.current_inputs[input_id].cancel()
@@ -333,6 +394,39 @@ class _ContainerIOManager:
         if self._heartbeat_loop:
             self._heartbeat_loop.cancel()
 
+    @asynccontextmanager
+    async def dynamic_concurrency_manager(self) -> AsyncGenerator[None, None]:
+        async with TaskContext() as tc:
+            self._concurrency_loop = t = tc.create_task(self._dynamic_concurrency_loop())
+            t.set_name("dynamic concurrency loop")
+            try:
+                yield
+            finally:
+                t.cancel()
+
+    async def _dynamic_concurrency_loop(self):
+        logger.debug(f"Starting dynamic concurrency loop for task {self.task_id}")
+        while 1:
+            try:
+                request = api_pb2.FunctionGetDynamicConcurrencyRequest(
+                    function_id=self.function_id,
+                    target_concurrency=self._target_concurrency,
+                    max_concurrency=self._max_concurrency,
+                )
+                resp = await retry_transient_errors(
+                    self._client.stub.FunctionGetDynamicConcurrency,
+                    request,
+                    attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS,
+                )
+                if resp.concurrency != self._input_slots.value:
+                    logger.debug(f"Dynamic concurrency set from {self._input_slots.value} to {resp.concurrency}")
+                self._input_slots.set_value(resp.concurrency)
+
+            except Exception as exc:
+                logger.debug(f"Failed to get dynamic concurrency for task {self.task_id}, {exc}")
+
+            await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
+
     async def get_app_objects(self) -> RunningApp:
         req = api_pb2.AppGetObjectsRequest(app_id=self.app_id, include_unindexed=True)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
@@ -353,7 +447,7 @@ class _ContainerIOManager:
             object_handle_metadata=object_handle_metadata,
         )
 
-    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable[..., Any]]:
+    async def get_serialized_function(self) -> Tuple[Optional[Any], Optional[Callable[..., Any]]]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)
@@ -473,12 +567,13 @@ class _ContainerIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
+            await self._input_slots.acquire()
+
             request.average_call_time = self.get_average_call_time()
             request.max_values = self.get_max_inputs_to_fetch()  # Deprecated; remove.
-            request.input_concurrency = self._input_concurrency
+            request.input_concurrency = self.get_input_concurrency()
             request.batch_max_size, request.batch_linger_ms = batch_max_size, batch_wait_ms
 
-            await self._semaphore.acquire()
             yielded = False
             try:
                 # If number of active inputs is at max queue size, this will block.
@@ -511,7 +606,7 @@ class _ContainerIOManager:
                             final_input_received = True
                             break
 
-                    # If yielded, allow semaphore to be released via exit_context
+                    # If yielded, allow input slots to be released via exit_context
                     yield inputs
                     yielded = True
 
@@ -520,39 +615,42 @@ class _ContainerIOManager:
                         return
             finally:
                 if not yielded:
-                    self._semaphore.release()
+                    self._input_slots.release()
 
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
         self,
         finalized_functions: Dict[str, FinalizedFunction],
-        input_concurrency: int = 1,
         batch_max_size: int = 0,
         batch_wait_ms: int = 0,
     ) -> AsyncIterator[IOContext]:
         # Ensure we do not fetch new inputs when container is too busy.
-        # Before trying to fetch an input, acquire the semaphore:
-        # - if no input is fetched, release the semaphore.
-        # - or, when the output for the fetched input is sent, release the semaphore.
-        self._input_concurrency = input_concurrency
-        self._semaphore = asyncio.Semaphore(input_concurrency)
+        # Before trying to fetch an input, acquire an input slot:
+        # - if no input is fetched, release the input slot.
+        # - or, when the output for the fetched input is sent, release the input slot.
+        dynamic_concurrency_manager = (
+            self.dynamic_concurrency_manager() if self._max_concurrency > self._target_concurrency else AsyncExitStack()
+        )
+        async with dynamic_concurrency_manager:
+            async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
+                io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
+                for input_id in io_context.input_ids:
+                    self.current_inputs[input_id] = io_context
 
-        async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
-            io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
-            for input_id in io_context.input_ids:
-                self.current_inputs[input_id] = io_context
+                self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
+                yield io_context
+                self.current_input_id, self.current_input_started_at = (None, None)
 
-            self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
-            yield io_context
-            self.current_input_id, self.current_input_started_at = (None, None)
-
-        # collect all active input slots, meaning all inputs have wrapped up.
-        for _ in range(input_concurrency):
-            await self._semaphore.acquire()
+            # collect all active input slots, meaning all inputs have wrapped up.
+            await self._input_slots.close()
 
     @synchronizer.no_io_translation
     async def _push_outputs(
-        self, io_context: IOContext, started_at: float, data_format: int, results: List[api_pb2.GenericResult]
+        self,
+        io_context: IOContext,
+        started_at: float,
+        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
+        results: List[api_pb2.GenericResult],
     ) -> None:
         output_created_at = time.time()
         outputs = [
@@ -572,13 +670,14 @@ class _ContainerIOManager:
             max_retries=None,  # Retry indefinitely, trying every 1s.
         )
 
-    def serialize_exception(self, exc: BaseException) -> Optional[bytes]:
+    def serialize_exception(self, exc: BaseException) -> bytes:
         try:
             return self.serialize(exc)
         except Exception as serialization_exc:
-            logger.info(f"Failed to serialize exception {exc}: {serialization_exc}")
             # We can't always serialize exceptions.
-            return None
+            err = f"Failed to serialize exception {exc} of type {type(exc)}: {serialization_exc}"
+            logger.info(err)
+            return self.serialize(SerializationError(err))
 
     def serialize_traceback(self, exc: BaseException) -> Tuple[Optional[bytes], Optional[bytes]]:
         serialized_tb, tb_line_cache = None, None
@@ -616,8 +715,8 @@ class _ContainerIOManager:
                 data=self.serialize_exception(exc),
                 exception=repr(exc),
                 traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
-                serialized_tb=serialized_tb,
-                tb_line_cache=tb_line_cache,
+                serialized_tb=serialized_tb or b"",
+                tb_line_cache=tb_line_cache or b"",
             )
 
             req = api_pb2.TaskResultRequest(result=result)
@@ -669,14 +768,16 @@ class _ContainerIOManager:
                 repr_exc = repr_exc[: MAX_OBJECT_SIZE_BYTES - 1000]
                 repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
 
+            data: bytes = self.serialize_exception(exc) or b""
+            data_result_part = await self.format_blob_data(data)
             results = [
                 api_pb2.GenericResult(
                     status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                     exception=repr_exc,
                     traceback=traceback.format_exc(),
-                    serialized_tb=serialized_tb,
-                    tb_line_cache=tb_line_cache,
-                    **await self.format_blob_data(self.serialize_exception(exc)),
+                    serialized_tb=serialized_tb or b"",
+                    tb_line_cache=tb_line_cache or b"",
+                    **data_result_part,
                 )
                 for _ in io_context.input_ids
             ]
@@ -695,10 +796,16 @@ class _ContainerIOManager:
         for input_id in input_ids:
             self.current_inputs.pop(input_id)
 
-        self._semaphore.release()
+        self._input_slots.release()
 
     @synchronizer.no_io_translation
-    async def push_outputs(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
+    async def push_outputs(
+        self,
+        io_context: IOContext,
+        started_at: float,
+        data: Any,
+        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
+    ) -> None:
         data = io_context.validate_output_data(data)
         formatted_data = await asyncio.gather(
             *[self.format_blob_data(self.serialize_data_format(d, data_format)) for d in data]
@@ -777,6 +884,8 @@ class _ContainerIOManager:
         """Message server indicating that function is ready to be checkpointed."""
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
+        else:
+            logger.debug("No checkpoint ID provided (Memory Snapshot ID)")
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self._heartbeat_condition:
@@ -786,10 +895,10 @@ class _ContainerIOManager:
             self._heartbeat_condition.notify_all()
 
             await self._client.stub.ContainerCheckpoint(
-                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id or "")
             )
 
-            await self._client._close(forget_credentials=True)
+            await self._client._close(prep_for_restore=True)
 
             logger.debug("Memory snapshot request sent. Connection closed.")
             await self.memory_restore()
@@ -842,6 +951,20 @@ class _ContainerIOManager:
         except Exception as e:
             print("Error: Failed to start PTY shell.")
             raise e
+
+    @property
+    def target_concurrency(self) -> int:
+        return self._target_concurrency
+
+    @property
+    def max_concurrency(self) -> int:
+        return self._max_concurrency
+
+    @classmethod
+    def get_input_concurrency(cls) -> int:
+        io_manager = cls._singleton
+        assert io_manager
+        return io_manager._input_slots.value
 
     @classmethod
     def stop_fetching_inputs(cls):

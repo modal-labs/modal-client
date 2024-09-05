@@ -261,6 +261,9 @@ def test_function_future(client, servicer):
 
         assert future.object_id not in servicer.cleared_function_calls
 
+        with pytest.raises(Exception, match="Cannot iterate"):
+            next(future.get_gen())
+
 
 @pytest.mark.asyncio
 async def test_function_future_async(client, servicer):
@@ -365,9 +368,16 @@ async def test_generator_async(client, servicer):
 async def test_generator_future(client, servicer):
     app = App()
 
-    later_gen_modal = app.function()(later_gen)
+    servicer.function_body(later_gen)
+    later_modal = app.function()(later_gen)
     with app.run(client=client):
-        assert later_gen_modal.spawn() is None  # until we have a nice interface for polling generator futures
+        future = later_modal.spawn()
+        assert isinstance(future, FunctionCall)
+
+        with pytest.raises(Exception, match="Cannot get"):
+            future.get()
+
+        assert next(future.get_gen()) == "foo"
 
 
 def gen_with_arg(i):
@@ -545,6 +555,28 @@ def test_from_id(client, servicer):
     # Used in a few examples to construct FunctionCall objects
     rehydrated_function_call = FunctionCall.from_id(function_call.object_id, client)
     assert rehydrated_function_call.object_id == function_call.object_id
+
+
+@pytest.mark.parametrize("is_generator", [False, True])
+def test_from_id_iter_gen(client, servicer, is_generator):
+    app = App()
+
+    f = later_gen if is_generator else later
+
+    servicer.function_body(f)
+    later_modal = app.function()(f)
+    with app.run(client=client):
+        future = later_modal.spawn()
+        assert isinstance(future, FunctionCall)
+
+    assert future.object_id
+    rehydrated_function_call = FunctionCall.from_id(future.object_id, client, is_generator=is_generator)
+    assert rehydrated_function_call.object_id == future.object_id
+
+    if is_generator:
+        assert next(rehydrated_function_call.get_gen()) == "foo"
+    else:
+        assert rehydrated_function_call.get() == "hello"
 
 
 lc_app = App()
