@@ -369,7 +369,6 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
 async def _proxy_lifespan_request(base_url, scope, receive, send) -> None:
     session: Optional[aiohttp.ClientSession] = None
     while True:
-        # nonlocal session
         message = await receive()
         if message["type"] == "lifespan.startup":
             if session is None:
