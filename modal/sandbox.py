@@ -132,7 +132,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
-            create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
+            create_req = api_pb2.SandboxCreateRequest(
+                app_id=resolver.app_id, definition=definition, environment_name=resolver.environment_name
+            )
             create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
 
             sandbox_id = create_resp.sandbox_id

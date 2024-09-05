@@ -1782,6 +1782,7 @@ message Sandbox {
 message SandboxCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   Sandbox definition = 2;
+  string environment_name = 3;
 }
 
 message SandboxCreateResponse {
