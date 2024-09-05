@@ -18,7 +18,7 @@ import typing_extensions
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.function_utils import method_has_params
+from ._utils.function_utils import callable_has_non_self_non_default_params, callable_has_non_self_params
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
@@ -191,7 +191,7 @@ def _method(
             ...
     ```
     """
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
 
     if keep_warm is not None:
@@ -264,7 +264,7 @@ def _web_endpoint(
     if isinstance(_warn_parentheses_missing, str):
         # Probably passing the method string as a positional argument.
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@web_endpoint(method="GET")`.')
-    elif _warn_parentheses_missing:
+    elif _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
         )
@@ -334,12 +334,24 @@ def _asgi_app(
     """
     if isinstance(_warn_parentheses_missing, str):
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@asgi_app(label="foo")`.')
-    elif _warn_parentheses_missing:
+    elif _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if callable_has_non_self_params(raw_f):
+            if callable_has_non_self_non_default_params(raw_f):
+                raise InvalidError(
+                    f"ASGI app function {raw_f.__name__} can't have parameters. See https://modal.com/docs/guide/webhooks#asgi."
+                )
+            else:
+                deprecation_warning(
+                    (2024, 9, 4),
+                    f"ASGI app function {raw_f.__name__} has default parameters, but shouldn't have any parameters - "
+                    f"Modal will drop support for default parameters in a future release.",
+                )
+
         if not wait_for_response:
             deprecation_warning(
                 (2024, 5, 13),
@@ -394,12 +406,24 @@ def _wsgi_app(
     """
     if isinstance(_warn_parentheses_missing, str):
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@wsgi_app(label="foo")`.')
-    elif _warn_parentheses_missing:
+    elif _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if callable_has_non_self_params(raw_f):
+            if callable_has_non_self_non_default_params(raw_f):
+                raise InvalidError(
+                    f"WSGI app function {raw_f.__name__} can't have parameters. See https://modal.com/docs/guide/webhooks#wsgi."
+                )
+            else:
+                deprecation_warning(
+                    (2024, 9, 4),
+                    f"WSGI app function {raw_f.__name__} has default parameters, but shouldn't have any parameters - "
+                    f"Modal will drop support for default parameters in a future release.",
+                )
+
         if not wait_for_response:
             deprecation_warning(
                 (2024, 5, 13),
@@ -508,7 +532,7 @@ def _build(
             LlamaTokenizer.from_pretrained(base_model)
     ```
     """
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
 
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
@@ -531,7 +555,7 @@ def _enter(
     """Decorator for methods which should be executed when a new container is started.
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#enter) for more information."""
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
 
     if snap:
@@ -561,14 +585,14 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
     """Decorator for methods which should be executed when a container is about to exit.
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#exit) for more information."""
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
 
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "exit")
 
-        if method_has_params(f):
+        if callable_has_non_self_params(f):
             message = (
                 "Support for decorating parameterized methods with `@exit` has been deprecated."
                 " Please update your code by removing the parameters."
@@ -601,7 +625,7 @@ def _batched(
 
     See the [dynamic batching guide](https://modal.com/docs/guide/dynamic-batching) for more information.
     """
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batched()`."
         )
