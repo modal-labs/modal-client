@@ -1,12 +1,8 @@
 # Copyright Modal Labs 2022
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import time
 from typing import List, Tuple
-
-import fastapi
 
 from modal import (
     App,
@@ -158,16 +154,18 @@ def fastapi_app():
 @app.function()
 @asgi_app()
 def fastapi_app_with_lifespan():
+    from fastapi import FastAPI, Request
+
     @contextlib.asynccontextmanager
-    async def lifespan(wapp: fastapi.FastAPI):
+    async def lifespan(wapp: FastAPI):
         print("enter")
         yield {"foo": "this was set from state"}
         print("exit")
 
-    web_app = fastapi.FastAPI(lifespan=lifespan)
+    web_app = FastAPI(lifespan=lifespan)
 
     @web_app.get("/")
-    async def foo(request: fastapi.Request):
+    async def foo(request: Request):
         print("foo")
         return request.state.foo
 
