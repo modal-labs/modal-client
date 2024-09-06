@@ -30,7 +30,8 @@ from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
 from modal._output import FunctionCreationStatus
-from modal_proto import api_grpc, api_pb2
+from modal_proto import api_pb2
+from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._location import parse_cloud_provider
 from ._output import OutputManager
@@ -99,9 +100,9 @@ if TYPE_CHECKING:
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
-    stub: api_grpc.ModalClientStub
+    stub: ModalClientModal
 
-    def __init__(self, stub: api_grpc.ModalClientStub, function_call_id: str, client: _Client):
+    def __init__(self, stub: ModalClientModal, function_call_id: str, client: _Client):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
