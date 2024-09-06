@@ -124,6 +124,7 @@ class _App:
     """
 
     _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
+    _container_app: ClassVar[Optional[RunningApp]] = None
 
     _name: Optional[str]
     _description: Optional[str]
@@ -140,8 +141,6 @@ class _App:
     _app_id: Optional[str]  # Kept after app finishes
     _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
-
-    _container_app: ClassVar[Optional[RunningApp]] = None
 
     def __init__(
         self,
