@@ -6,6 +6,8 @@ import contextlib
 import time
 from typing import List, Tuple
 
+import fastapi
+
 from modal import (
     App,
     Sandbox,
@@ -156,11 +158,31 @@ def fastapi_app():
 @app.function()
 @asgi_app()
 def fastapi_app_with_lifespan():
+    @contextlib.asynccontextmanager
+    async def lifespan(wapp: fastapi.FastAPI):
+        print("enter")
+        yield {"foo": "this was set from state"}
+        print("exit")
+
+    web_app = fastapi.FastAPI(lifespan=lifespan)
+
+    @web_app.get("/")
+    async def foo(request: fastapi.Request):
+        print("foo")
+        return request.state.foo
+
+    return web_app
+
+
+@app.function()
+@asgi_app()
+def fastapi_app_with_lifespan_failing_startup():
     from fastapi import FastAPI
 
     @contextlib.asynccontextmanager
     async def lifespan(wapp: FastAPI):
         print("enter")
+        raise Exception("Error while setting up asgi app")
         yield
         print("exit")
 
@@ -169,7 +191,29 @@ def fastapi_app_with_lifespan():
     @web_app.get("/")
     async def foo():
         print("foo")
-        return "foo"
+        return "bar"
+
+    return web_app
+
+
+@app.function()
+@asgi_app()
+def fastapi_app_with_lifespan_failing_shutdown():
+    from fastapi import FastAPI
+
+    @contextlib.asynccontextmanager
+    async def lifespan(wapp: FastAPI):
+        print("enter")
+        yield
+        raise Exception("Error while setting up asgi app")
+        print("exit")
+
+    web_app = FastAPI(lifespan=lifespan)
+
+    @web_app.get("/")
+    async def foo():
+        print("foo")
+        return "bar"
 
     return web_app
 

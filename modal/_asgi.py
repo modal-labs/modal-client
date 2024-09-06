@@ -16,47 +16,55 @@ FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
 
 class LifespanManager:
+    startup: asyncio.Future[None]
+    shutdown: asyncio.Future[None]
+    queue: asyncio.Queue[Dict[str, Any]]
+    has_run_init: bool = False
+
     def __init__(self, asgi_app, state):
         self.asgi_app = asgi_app
-        self.queue: Optional[asyncio.Queue[Dict[str, Any]]] = None
-        self.startup_complete: Optional[asyncio.Future[None]] = None
         self.state = state
 
+    async def ensure_init(self):
+        if not self.has_run_init:
+            self.queue = asyncio.Queue()
+            self.startup = asyncio.Future()
+            self.shutdown = asyncio.Future()
+            self.has_run_init = True
+
     async def background_task(self):
-        self.queue = asyncio.Queue()
-        self.startup: asyncio.Future[None] = asyncio.Future()
-        self.shutdown: asyncio.Future[None] = asyncio.Future()
+        await self.ensure_init()
 
         async def receive():
-            if self.queue is None:
-                raise ValueError("queue is not initialized, call background_task first")
             return await self.queue.get()
 
         async def send(message):
             if message["type"] == "lifespan.startup.complete":
                 self.startup.set_result(None)
             elif message["type"] == "lifespan.startup.failed":
-                self.startup.set_exception(Exception("Startup failed"))
+                self.startup.set_exception(Exception("ASGI lifespan startup failed"))
             elif message["type"] == "lifespan.shutdown.complete":
                 self.shutdown.set_result(None)
             elif message["type"] == "lifespan.shutdown.failed":
-                self.shutdown.set_exception(Exception("Shutdown failed"))
+                self.shutdown.set_exception(Exception("ASGI lifespan shutdown failed"))
             else:
-                raise ValueError(f"Unexpected message type: {message['type']}")
+                raise ExecutionError(f"Unexpected message type: {message['type']}")
 
-        await self.asgi_app({"type": "lifespan", "state": self.state}, receive, send)
+        try:
+            await self.asgi_app({"type": "lifespan", "state": self.state}, receive, send)
+        finally:
+            if not self.startup.done():
+                self.startup.set_exception(Exception("ASGI lifespan task exited startup"))
+            if not self.shutdown.done():
+                self.shutdown.set_exception(Exception("ASGI lifespan task exited shutdown"))
 
     async def lifespan_startup(self):
-        if self.queue is None or self.shutdown is None:
-            raise ValueError("queue or shutdown is not initialized, call background_task first")
-
+        await self.ensure_init()
         self.queue.put_nowait({"type": "lifespan.startup"})
         await self.startup
 
     async def lifespan_shutdown(self):
-        if self.queue is None or self.shutdown is None:
-            raise ValueError("queue or shutdown is not initialized, call background_task first")
-
+        await self.ensure_init()
         self.queue.put_nowait({"type": "lifespan.shutdown"})
         await self.shutdown
 
@@ -66,7 +74,9 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Tuple[Callable[..., Async
 
     async def fn(scope):
         if "state" in scope:
-            raise ValueError("Unpexected state in ASGI scope")
+            # we don't expect users to set state in ASGI scope
+            # this should be handled internally by the LifespanManager
+            raise ExecutionError("Unpexected state in ASGI scope")
         scope["state"] = state
         function_call_id = current_function_call_id()
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
@@ -393,7 +403,7 @@ async def _proxy_lifespan_request(base_url, scope, receive, send) -> None:
             await send({"type": "lifespan.startup.complete"})
         elif message["type"] == "lifespan.shutdown":
             if session is None:
-                raise ValueError("Session is not initialized")
+                raise ExecutionError("Session is not initialized")
             await session.close()
             await send({"type": "lifespan.shutdown.complete"})
             break

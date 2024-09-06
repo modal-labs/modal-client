@@ -72,35 +72,11 @@ async def http_dummy_server():
 async def lifespan_ctx_manager(asgi_app):
     state: Dict[str, Any] = {}
 
-    q: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
-    startup: asyncio.Future[None] = asyncio.Future()
-    shutdown: asyncio.Future[None] = asyncio.Future()
-
-    async def recv():
-        return await q.get()
-
-    async def send(msg):
-        if msg["type"] == "lifespan.startup.complete":
-            startup.set_result(None)
-        elif msg["type"] == "lifespan.startup.failed":
-            startup.set_exception(Exception("Startup failed"))
-        elif msg["type"] == "lifespan.shutdown.complete":
-            shutdown.set_result(None)
-        elif msg["type"] == "lifespan.shutdown.failed":
-            shutdown.set_exception(Exception("Shutdown failed"))
-        else:
-            raise ValueError(f"Unexpected msg type: {msg['type']}")
-
-    t = asyncio.create_task(asgi_app({"type": "lifespan", "state": state}, recv, send))
-
-    await q.put({"type": "lifespan.startup"})
-    await startup
-
-    print("yield state")
+    lm = modal._asgi.LifespanManager(asgi_app, state)
+    t = asyncio.create_task(lm.background_task())
+    await lm.lifespan_startup()
     yield state
-
-    await q.put({"type": "lifespan.shutdown"})
-    await shutdown
+    await lm.lifespan_shutdown()
 
     t.cancel()
 

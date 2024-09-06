@@ -669,7 +669,7 @@ def test_asgi(servicer):
 
 
 @skip_github_non_linux
-def test_asgi_with_lifespan(servicer, capsys):
+def test_asgi_lifespan(servicer, capsys):
     inputs = _get_web_inputs(path="/")
 
     _put_web_body(servicer, b"")
@@ -690,10 +690,42 @@ def test_asgi_with_lifespan(servicer, capsys):
     assert headers[b"content-type"] == b"application/json"
 
     # Check body
-    assert json.loads(second_message["body"]) == "foo"
+    assert json.loads(second_message["body"]) == "this was set from state"
 
     captured = capsys.readouterr()
     assert captured.out.strip().split("\n") == ["enter", "foo", "exit"]
+
+
+@skip_github_non_linux
+def test_asgi_lifespan_startup_failure(servicer):
+    inputs = _get_web_inputs(path="/")
+
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_app_with_lifespan_failing_startup",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+    assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "ASGI lifespan startup failed" in ret.task_result.exception
+
+
+@skip_github_non_linux
+def test_asgi_lifespan_shutdown_failure(servicer):
+    inputs = _get_web_inputs(path="/")
+
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_app_with_lifespan_failing_shutdown",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+    assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "ASGI lifespan shutdown failed" in ret.task_result.exception
 
 
 @skip_github_non_linux
