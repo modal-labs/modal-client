@@ -1490,7 +1490,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 FunctionCall = synchronize_api(_FunctionCall)
 
 
-async def _gather(*function_calls: _FunctionCall):
+async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence[ReturnType]:
     """Wait until all Modal function calls have results before returning
 
     Accepts a variable number of FunctionCall objects as returned by `Function.spawn()`.
