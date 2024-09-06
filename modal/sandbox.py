@@ -259,7 +259,12 @@ class _Sandbox(_Object, type_prefix="sb"):
                 break
 
     async def tunnels(self, timeout: int = 50) -> List[api_pb2.TunnelData]:
-        """Get tunnel metadata for the sandbox."""
+        """Get tunnel metadata for the sandbox.
+
+        Raises `SandboxTimeoutError` if the tunnels are not available after the timeout.
+
+        Returns a list of `TunnelData` objects, which contain the tunnel metadata.
+        """
 
         if self._tunnels:
             return self._tunnels
