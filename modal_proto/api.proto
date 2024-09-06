@@ -924,6 +924,7 @@ message EnvironmentListItem {
   string name = 1;
   string webhook_suffix = 2;
   double created_at = 3;
+  bool default = 4;
 }
 
 message EnvironmentListResponse {
@@ -1777,6 +1778,8 @@ message Sandbox {
   oneof open_ports_oneof {
     PortSpecs open_ports = 20;
   }
+
+  bool i6pn_enabled = 21;
 }
 
 message SandboxCreateRequest {
@@ -1828,6 +1831,7 @@ message SandboxInfo {
 message SandboxListRequest {
   string app_id = 1;
   double before_timestamp = 2;
+  string environment_name = 3;
 }
 
 message SandboxListResponse {

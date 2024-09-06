@@ -4,7 +4,7 @@ import dataclasses
 import os
 import time
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Coroutine, Dict, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -27,7 +27,7 @@ from .exception import (
     InvalidError,
     RemoteError,
     _CliUserExecutionError,
-    deprecation_warning,
+    deprecation_error,
 )
 from .execution_context import is_local
 from .object import _Object
@@ -533,20 +533,18 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
                 raise
 
 
-def _run_stub(*args: Any, **kwargs: Any) -> AsyncGenerator[_App, None]:
+def _run_stub(*args: Any, **kwargs: Any):
     """mdmd:hidden
     `run_stub` has been renamed to `run_app` and is deprecated. Please update your code.
     """
-    deprecation_warning(
+    deprecation_error(
         (2024, 5, 1), "`run_stub` has been renamed to `run_app` and is deprecated. Please update your code."
     )
-    return _run_app(*args, **kwargs)
 
 
-def _deploy_stub(*args: Any, **kwargs: Any) -> Coroutine[Any, Any, DeployResult]:
+def _deploy_stub(*args: Any, **kwargs: Any):
     """`deploy_stub` has been renamed to `deploy_app` and is deprecated. Please update your code."""
-    deprecation_warning((2024, 5, 1), str(_deploy_stub.__doc__))
-    return _deploy_app(*args, **kwargs)
+    deprecation_error((2024, 5, 1), str(_deploy_stub.__doc__))
 
 
 run_app = synchronize_api(_run_app)
