@@ -21,7 +21,7 @@ Sandboxes now support port tunneling. Ports can be exposed via the `open_ports` 
 - Fix a regression in `modal launch` behavior not showing progress output when starting the container.
 
 
-### v0.64.48 (2024-08-21)
+### 0.64.48 (2024-08-21)
 
 - Introduces new dataclass-style syntax for class parameterization
 ```py
@@ -53,6 +53,9 @@ MyCls(param_a="hello")  # synthesized constructor
     Accordingly, the explicit `--name` option has been deprecated. Providing a name that can be confused with an App ID will also now raise an error.
 
 
+### 0.64.32 (2024-08-16)
+
+- Updated type stubs using generics to allow static type inferrence for functions calls, e.g. `function.remote(...)`.
 
 ### 0.64.26 (2024-08-15)
 
