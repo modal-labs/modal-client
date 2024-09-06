@@ -118,6 +118,12 @@ enum FileDescriptor {
   FILE_DESCRIPTOR_INFO = 3;
 }
 
+enum FunctionCallInvocationType {
+  FUNCTION_CALL_INVOCATION_TYPE_UNSPECIFIED = 0;
+  FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY = 1;
+  FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY = 2;
+}
+
 enum FunctionCallType {
   FUNCTION_CALL_TYPE_UNSPECIFIED = 0;
   FUNCTION_CALL_TYPE_UNARY = 1;
@@ -224,7 +230,8 @@ message AppCreateRequest {
 
 message AppCreateResponse {
   string app_id = 1;
-  string app_logs_url = 2;
+  string app_page_url = 2;
+  string app_logs_url = 3;
 }
 
 message AppDeployRequest {
@@ -547,6 +554,7 @@ message CheckpointInfo {
   CheckpointStatus status = 2;
   string checkpoint_id = 3;
   string runtime_fingerprint = 4;
+  int64 size = 5;
 }
 
 message ClassCreateRequest {
@@ -731,6 +739,11 @@ message ContainerHeartbeatResponse {
   optional CancelInputEvent cancel_input_event = 1;
 }
 
+message ContainerLogRequest {
+  string message = 1;
+  string input_id = 2;
+}
+
 message ContainerStopRequest {
   string task_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -910,6 +923,8 @@ message EnvironmentDeleteRequest {
 message EnvironmentListItem {
   string name = 1;
   string webhook_suffix = 2;
+  double created_at = 3;
+  bool default = 4;
 }
 
 message EnvironmentListResponse {
@@ -935,7 +950,6 @@ message FileEntry {
   uint64 mtime = 3;
   uint64 size = 4;
 }
-
 
 message Function {
   string module_name = 1;
@@ -995,7 +1009,7 @@ message Function {
 
   repeated VolumeMount volume_mounts = 33;
 
-  uint32 allow_concurrent_inputs = 34;
+  uint32 target_concurrent_inputs = 34;
 
   repeated CustomDomainInfo custom_domain_info = 35;
 
@@ -1038,14 +1052,17 @@ message Function {
 
   ClassParameterInfo class_parameter_info = 56;
 
-  repeated Resources _experimental_resources = 57; // overrides `resources` field above
-
+  reserved 57; // _experimental_resources
   reserved 58;
   reserved 59;
   uint32 batch_max_size = 60; // Maximum number of inputs to fetch at once
   uint64 batch_linger_ms = 61; // Miliseconds to block before a response is needed
-
   bool i6pn_enabled = 62;
+  bool _experimental_concurrent_cancellations = 63;
+  uint32 max_concurrent_inputs = 64;
+
+  bool _experimental_task_templates_enabled = 65;  // forces going through the new gpu-fallbacks integration path, even if no fallback options are specified
+  repeated TaskTemplate _experimental_task_templates = 66;  // for fallback options, where the first/most-preferred "template" is derived from fields above
 }
 
 message FunctionBindParamsRequest {
@@ -1069,6 +1086,7 @@ message FunctionCallCallGraphInfo {
 
 message FunctionCallCancelRequest {
   string function_call_id = 1;
+  bool terminate_containers = 2;
 }
 
 message FunctionCallGetDataRequest {
@@ -1135,6 +1153,17 @@ message FunctionGetCallGraphResponse {
 message FunctionGetCurrentStatsRequest {
   string function_id = 1;
 }
+
+message FunctionGetDynamicConcurrencyRequest{
+  string function_id = 1;
+  uint32 target_concurrency = 2;
+  uint32 max_concurrency = 3;
+}
+
+message FunctionGetDynamicConcurrencyResponse {
+  uint32 concurrency = 1;
+}
+
 message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
@@ -1239,6 +1268,7 @@ message FunctionMapRequest {
   bool return_exceptions = 3;
   FunctionCallType function_call_type = 4;
   repeated FunctionPutInputsItem pipelined_inputs = 5;
+  FunctionCallInvocationType function_call_invocation_type = 6;
 }
 
 message FunctionMapResponse {
@@ -1256,7 +1286,7 @@ message FunctionOptions {
   optional uint32 task_idle_timeout_secs = 7;
   optional uint32 warm_pool_size = 8;
   repeated VolumeMount volume_mounts = 9;
-  optional uint32 allow_concurrent_inputs = 10;
+  optional uint32 target_concurrent_inputs = 10;
   bool replace_volume_mounts = 11;
   bool replace_secret_ids = 12;
 }
@@ -1549,6 +1579,15 @@ message PTYInfo {
   PTYType pty_type = 7;
 }
 
+message PortSpec {
+  uint32 port = 1;
+  bool unencrypted = 2;
+}
+
+message PortSpecs {
+  repeated PortSpec ports = 1;
+}
+
 message ProxyGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
@@ -1733,14 +1772,20 @@ message Sandbox {
   // to look at fine-grained placement constraints.
   reserved 16; // _experimental_scheduler
   optional SchedulerPlacement scheduler_placement = 17;
-  repeated Resources _experimental_resources = 18; // overrides `resources` field above
+  reserved 18;  // _experimental_resources
 
   string worker_id = 19; // for internal debugging use only
+  oneof open_ports_oneof {
+    PortSpecs open_ports = 20;
+  }
+
+  bool i6pn_enabled = 21;
 }
 
 message SandboxCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   Sandbox definition = 2;
+  string environment_name = 3;
 }
 
 message SandboxCreateResponse {
@@ -1762,6 +1807,16 @@ message SandboxGetTaskIdResponse {
   string task_id = 1;
 }
 
+message SandboxGetTunnelsRequest {
+  string sandbox_id = 1;
+  float timeout = 2;
+}
+
+message SandboxGetTunnelsResponse {
+  GenericResult result = 1;
+  repeated TunnelData tunnels = 2;
+}
+
 message SandboxHandleMetadata {
   GenericResult result = 1;
 }
@@ -1776,6 +1831,7 @@ message SandboxInfo {
 message SandboxListRequest {
   string app_id = 1;
   double before_timestamp = 2;
+  string environment_name = 3;
 }
 
 message SandboxListResponse {
@@ -1833,11 +1889,12 @@ message SchedulerPlacement {
   // - Fold in cloud, resource needs here too.
   // - Allow specifying list of zones, cloud, fallback and alternative
   //   GPU types.
-  optional string _region = 1 [deprecated=true];
 
   repeated string regions = 4;
   optional string _zone = 2;
   optional string _lifecycle = 3; // "on-demand" or "spot", else ignored
+
+  reserved 1;
 }
 
 message SecretCreateRequest {  // Not used by client anymore
@@ -2029,6 +2086,12 @@ message TaskStats {
   double started_at = 4;
 }
 
+message TaskTemplate {
+  uint32 rank = 1;
+  Resources resources = 2;
+  uint32 target_concurrent_inputs = 3;
+  uint32 max_concurrent_inputs = 4;
+}
 
 message TokenFlowCreateRequest {
   string utm_source = 3;
@@ -2054,6 +2117,14 @@ message TokenFlowWaitResponse {
   string token_secret = 2;
   bool timeout = 3;
   string workspace_username = 4;
+}
+
+message TunnelData {
+  string host = 1;
+  uint32 port = 2;
+  optional string unencrypted_host = 3;
+  optional uint32 unencrypted_port = 4;
+  uint32 container_port = 5;
 }
 
 message TunnelStartRequest {
@@ -2258,6 +2329,7 @@ service ModalClient {
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
   rpc ContainerExecWait(ContainerExecWaitRequest) returns (ContainerExecWaitResponse);
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
+  rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 
   // Dicts
@@ -2296,6 +2368,7 @@ service ModalClient {
   rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
+  rpc FunctionGetDynamicConcurrency(FunctionGetDynamicConcurrencyRequest) returns (FunctionGetDynamicConcurrencyResponse);
   rpc FunctionGetInputs(FunctionGetInputsRequest) returns (FunctionGetInputsResponse);  // For containers to request next call
   rpc FunctionGetOutputs(FunctionGetOutputsRequest) returns (FunctionGetOutputsResponse);  // Returns the next result(s) for an entire function call (FunctionMap)
   rpc FunctionGetSerialized(FunctionGetSerializedRequest) returns (FunctionGetSerializedResponse);
@@ -2334,6 +2407,7 @@ service ModalClient {
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
+  rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);

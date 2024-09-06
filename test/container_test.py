@@ -24,6 +24,12 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
+from modal._container_io_manager import (
+    ContainerIOManager,
+    FinalizedFunction,
+    InputSlots,
+    IOContext,
+)
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -167,6 +173,7 @@ def _container_args(
     app_name: str = "",
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
+    max_concurrent_inputs: Optional[int] = None,
     batch_max_size: Optional[int] = None,
     batch_wait_ms: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
@@ -198,7 +205,8 @@ def _container_args(
         app_name=app_name or "",
         is_builder_function=is_builder_function,
         is_auto_snapshot=is_auto_snapshot,
-        allow_concurrent_inputs=allow_concurrent_inputs,
+        target_concurrent_inputs=allow_concurrent_inputs,
+        max_concurrent_inputs=max_concurrent_inputs,
         batch_max_size=batch_max_size,
         batch_linger_ms=batch_wait_ms,
         is_checkpointing_function=is_checkpointing_function,
@@ -237,6 +245,7 @@ def _run_container(
     app_name: str = "",
     is_builder_function: bool = False,
     allow_concurrent_inputs: Optional[int] = None,
+    max_concurrent_inputs: Optional[int] = None,
     batch_max_size: int = 0,
     batch_wait_ms: int = 0,
     serialized_params: Optional[bytes] = None,
@@ -259,6 +268,7 @@ def _run_container(
         app_name,
         is_builder_function,
         allow_concurrent_inputs,
+        max_concurrent_inputs,
         batch_max_size,
         batch_wait_ms,
         serialized_params,
@@ -295,6 +305,7 @@ def _run_container(
 
             # Override server URL to reproduce restore behavior.
             env["MODAL_SERVER_URL"] = servicer.container_addr
+            env["MODAL_ENABLE_SNAP_RESTORE"] = "1"
 
         # reset _App tracking state between runs
         _App._all_apps.clear()
@@ -1465,6 +1476,7 @@ def _run_container_process(
     *,
     inputs: List[Tuple[str, Tuple, Dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
+    max_concurrent_inputs: Optional[int] = None,
     cls_params: Tuple[Tuple, Dict[str, Any]] = ((), {}),
     print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
@@ -1474,6 +1486,7 @@ def _run_container_process(
         module_name,
         function_name,
         allow_concurrent_inputs=allow_concurrent_inputs,
+        max_concurrent_inputs=max_concurrent_inputs,
         serialized_params=serialize(cls_params),
         is_class=is_class,
     )
@@ -1544,16 +1557,44 @@ def test_cancellation_aborts_current_input_on_match(
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-@pytest.mark.parametrize(
-    ["function_name"],
-    [("delay",), ("delay_async",)],
-)
-def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name):
+def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
             "test.supports.functions",
-            function_name,
+            "delay_async",
+            inputs=[("", (1,), {})] * 2,  # two inputs
+            allow_concurrent_inputs=2,
+        )
+        input_lock.wait()
+        input_lock.wait()
+
+    time.sleep(0.05)  # let the container get and start processing the input
+    servicer.container_heartbeat_return_now(
+        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-001"]))
+    )
+    # container should exit soon!
+    exit_code = container_process.wait(5)
+    assert (
+        len(servicer.container_outputs) == 1
+    )  # should not fail the outputs, as they would have been cancelled in backend already
+
+    outputs: List[api_pb2.FunctionPutOutputsRequest] = servicer.container_outputs
+    assert deserialize(outputs[0].outputs[0].result.data, None) == 1
+    container_stderr = container_process.stderr.read().decode("utf8")
+    print(container_stderr)
+    assert "Traceback" not in container_stderr
+    assert exit_code == 0  # container should exit gracefully
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_cancellation_stops_task_with_concurrent_inputs(servicer):
+    with servicer.input_lockstep() as input_lock:
+        container_process = _run_container_process(
+            servicer,
+            "test.supports.functions",
+            "delay",
             inputs=[("", (20,), {})] * 2,  # two inputs
             allow_concurrent_inputs=2,
         )
@@ -1562,14 +1603,16 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, function_name)
 
     time.sleep(0.05)  # let the container get and start processing the input
     servicer.container_heartbeat_return_now(
-        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-000", "in-001"]))
+        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=["in-001"]))
     )
-    # container should exit soon!
+    # container should exit immediately, stopping execution of both inputs
     exit_code = container_process.wait(5)
     assert (
         len(servicer.container_outputs) == 0
     )  # should not fail the outputs, as they would have been cancelled in backend already
-    assert "Traceback" not in container_process.stderr.read().decode("utf8")
+    container_stderr = container_process.stderr.read().decode("utf8")
+    print(container_stderr)
+    assert "Traceback" not in container_stderr
     assert exit_code == 0  # container should exit gracefully
 
 
@@ -1917,3 +1960,108 @@ def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env
         warning = str(recwarn.pop().message)
         assert "and will not have access to the mounted Volume or NetworkFileSystem data" not in warning
     assert len(recwarn) == 0
+
+
+@pytest.mark.parametrize("concurrency_limit", [1, 2])
+def test_container_io_manager_concurrency_tracking(client, servicer, concurrency_limit):
+    dummy_container_args = api_pb2.ContainerArguments(
+        function_id="fu-123", function_def=api_pb2.Function(target_concurrent_inputs=concurrency_limit)
+    )
+    from modal._utils.async_utils import synchronizer
+
+    io_manager = ContainerIOManager(dummy_container_args, client)
+    _io_manager = synchronizer._translate_in(io_manager)
+
+    async def _func(x):
+        await asyncio.sleep(x)
+
+    fin_func = FinalizedFunction(_func, is_async=True, is_generator=False, data_format=api_pb2.DATA_FORMAT_PICKLE)
+
+    total_inputs = 5
+    servicer.container_inputs = _get_inputs(((42,), {}), n=total_inputs)
+    active_inputs: List[IOContext] = []
+    active_input_ids = set()
+    processed_inputs = 0
+    triggered_assertions = []
+    peak_inputs = 0
+    for io_context in io_manager.run_inputs_outputs(
+        finalized_functions={"": fin_func},
+    ):
+        assert len(io_context.input_ids) == 1  # no batching in this test
+        assert _io_manager.current_input_id == io_context.input_ids[0]
+        active_inputs += [io_context]
+        peak_inputs = max(peak_inputs, len(active_inputs))
+        active_input_ids |= set(io_context.input_ids)
+        processed_inputs += len(io_context.input_ids)
+
+        while active_inputs and (len(active_inputs) == concurrency_limit or processed_inputs == total_inputs):
+            input_to_process = active_inputs.pop(0)
+            send_failure = processed_inputs % 2 == 1
+            # return values for inputs
+            with io_manager.handle_input_exception(input_to_process, time.time()):
+                try:
+                    # can't raise assertions in here, since they are caught and forwarded as input exceptions
+                    assert set(_io_manager.current_inputs.keys()) == set(active_input_ids)
+                except AssertionError as assertion:
+                    triggered_assertions.append(assertion)
+                    raise
+
+                active_input_ids -= set(input_to_process.input_ids)
+
+                if send_failure:
+                    # trigger some errors
+                    raise Exception("Blah")
+                else:
+                    # and some successes
+                    io_manager.push_outputs(input_to_process, 0, None, fin_func.data_format)
+    assert not triggered_assertions
+
+
+@pytest.mark.asyncio
+async def test_input_slots():
+    slots = InputSlots(10)
+
+    async def acquire_for(cm, secs):
+        await cm.acquire()
+        await asyncio.sleep(secs)
+        cm.release()
+
+    tasks1 = asyncio.gather(*[acquire_for(slots, 0.1) for _ in range(4)])
+    tasks2 = asyncio.gather(*[acquire_for(slots, 0.2) for _ in range(4)])
+    await asyncio.sleep(0.01)
+
+    slots.set_value(1)
+    assert slots.value == 1
+    assert slots.active == 8
+    await tasks1
+    assert slots.active == 4
+
+    slots.set_value(2)
+    assert slots.active == 4
+
+    slots.set_value(10)
+    await tasks2
+    assert slots.active == 0
+
+    await slots.close()
+    assert slots.active == 10
+    assert slots.value == 10
+
+
+@skip_github_non_linux
+def test_max_concurrency(servicer):
+    n_inputs = 5
+    target_concurrency = 2
+    max_concurrency = 10
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "get_input_concurrency",
+        inputs=_get_inputs(((1,), {}), n=n_inputs),
+        allow_concurrent_inputs=target_concurrency,
+        max_concurrent_inputs=max_concurrency,
+    )
+
+    outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
+    assert n_inputs in outputs

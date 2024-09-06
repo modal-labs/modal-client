@@ -338,6 +338,39 @@ class _App:
         to Modal functions should be made within the scope of this context
         manager, and they will correspond to the current app.
 
+        **Example**
+
+        ```python
+        with app.run():
+            some_modal_function.remote()
+        ```
+
+        To enable output printing, use `modal.enable_output()`:
+
+        ```python
+        with modal.enable_output():
+            with app.run():
+                some_modal_function.remote()
+        ```
+
+        Note that you cannot invoke this in global scope of a file where you have
+        Modal functions or Classes, since that would run the block when the function
+        or class is imported in your containers as well. If you want to run it as
+        your entrypoint, consider wrapping it:
+
+        ```python
+        if __name__ == "__main__":
+            with app.run():
+                some_modal_function.remote()
+        ```
+
+        You can then run your script with:
+
+        ```shell
+        python app_module.py
+        ```
+
+
         Note that this method used to return a separate "App" object. This is
         no longer useful since you can use the app itself for access to all
         objects. For backwards compatibility reasons, it returns the same app.
@@ -571,7 +604,6 @@ class _App:
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         # Parameters below here are experimental. Use with caution!
-        _allow_background_volume_commits: None = None,
         _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -703,7 +735,6 @@ class _App:
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
                 checkpointing_enabled=checkpointing_enabled,
-                allow_background_volume_commits=_allow_background_volume_commits,
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
@@ -750,7 +781,6 @@ class _App:
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
-        _allow_background_volume_commits: None = None,
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
@@ -836,7 +866,6 @@ class _App:
                 cloud=cloud,
                 enable_memory_snapshot=enable_memory_snapshot,
                 checkpointing_enabled=checkpointing_enabled,
-                allow_background_volume_commits=_allow_background_volume_commits,
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
@@ -894,7 +923,6 @@ class _App:
         volumes: Dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
-        _allow_background_volume_commits: None = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -917,21 +945,6 @@ class _App:
         if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
-        if _allow_background_volume_commits is False:
-            deprecation_error(
-                (2024, 5, 13),
-                "Disabling volume background commits is now deprecated. "
-                "Remove _allow_background_volume_commits=False to enable the functionality.",
-            )
-        elif _allow_background_volume_commits is True:
-            deprecation_warning(
-                (2024, 7, 18),
-                "Setting volume background commits is deprecated. "
-                "The functionality is now unconditionally enabled (set to True).",
-            )
-        elif _allow_background_volume_commits is None:
-            _allow_background_volume_commits = True
-
         return await _Sandbox.create(
             *entrypoint_args,
             app=self,
@@ -950,7 +963,6 @@ class _App:
             block_network=block_network,
             volumes=volumes,
             pty_info=pty_info,
-            _allow_background_volume_commits=_allow_background_volume_commits,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             client=self._client,
         )

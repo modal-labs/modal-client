@@ -338,7 +338,7 @@ def test_stub():
 def test_deploy_stub(servicer, client):
     app = App("xyz")
     deploy_app(app, client=client)
-    with pytest.warns(match="deploy_app"):
+    with pytest.raises(DeprecationError, match="deploy_app"):
         deploy_stub(app, client=client)
 
 

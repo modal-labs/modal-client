@@ -17,6 +17,12 @@ def parse_cloud_provider(value: str) -> "modal_proto.api_pb2.CloudProvider.V":
     try:
         cloud_provider = CloudProvider[value.upper()]
     except KeyError:
+        # provider's int identifier may be directly specified
+        try:
+            return int(value)  # type: ignore
+        except ValueError:
+            pass
+
         raise InvalidError(
             f"Invalid cloud provider: {value}. "
             f"Value must be one of {[x.name.lower() for x in CloudProvider]} (case-insensitive)."

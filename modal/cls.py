@@ -439,7 +439,6 @@ class _Cls(_Object, type_prefix="cs"):
         concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
-        allow_background_volume_commits: Optional[bool] = None,
     ) -> "_Cls":
         """
         Beta: Allows for the runtime modification of a modal.Cls's configuration.
@@ -465,7 +464,7 @@ class _Cls(_Object, type_prefix="cs"):
             api_pb2.VolumeMount(
                 mount_path=path,
                 volume_id=volume.object_id,
-                allow_background_commits=allow_background_volume_commits,
+                allow_background_commits=True,
             )
             for path, volume in validate_volumes(volumes)
         ]
@@ -482,7 +481,7 @@ class _Cls(_Object, type_prefix="cs"):
             task_idle_timeout_secs=container_idle_timeout,
             replace_volume_mounts=replace_volume_mounts,
             volume_mounts=volume_mounts,
-            allow_concurrent_inputs=allow_concurrent_inputs,
+            target_concurrent_inputs=allow_concurrent_inputs,
         )
 
         return cls

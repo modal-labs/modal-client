@@ -37,6 +37,14 @@ def test_sandbox(client, servicer):
 
 
 @skip_non_linux
+def test_app_attached_from_env(set_env_client):
+    sb = Sandbox.create("echo", "hi", app=app)
+    sb.wait()
+
+    assert sb.stdout.read() == "hi\n"
+
+
+@skip_non_linux
 def test_sandbox_mount(client, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 

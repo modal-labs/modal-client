@@ -1,9 +1,10 @@
 # Copyright Modal Labs 2023
-from typing import Optional
+from typing import Optional, Union
 
 import typer
 from click import UsageError
 from grpclib import GRPCError, Status
+from rich.text import Text
 from typing_extensions import Annotated
 
 from modal import environments
@@ -27,7 +28,7 @@ while still being able to deploy changes to a live environment.
 environment_cli = typer.Typer(name="environment", help=ENVIRONMENT_HELP_TEXT, no_args_is_help=True)
 
 
-class RenderableBool:
+class RenderableBool(Text):
     def __init__(self, value: bool):
         self.value = value
 
@@ -38,10 +39,19 @@ class RenderableBool:
 @environment_cli.command(name="list", help="List all environments in the current workspace")
 def list(json: Optional[bool] = False):
     envs = environments.list_environments()
+
+    # determine which environment is currently active, prioritizing the local default
+    # over the server default
+    active_env = config.get("environment")
+    for env in envs:
+        if env.default is True and active_env is None:
+            active_env = env.name
+
     table_data = []
     for item in envs:
-        is_active = item.name == config.get("environment")
-        row = [item.name, item.webhook_suffix, is_active if json else RenderableBool(is_active)]
+        is_active = item.name == active_env
+        is_active_display: Union[Text, str] = str(is_active) if json else RenderableBool(is_active)
+        row = [item.name, item.webhook_suffix, is_active_display]
         table_data.append(row)
     display_table(["name", "web suffix", "active"], table_data, json=json)
 

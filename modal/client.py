@@ -10,7 +10,7 @@ from google.protobuf import empty_pb2
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal_proto import api_grpc, api_pb2
+from modal_proto import api_grpc, api_pb2, modal_api_grpc
 from modal_version import __version__
 
 from ._utils import async_utils
@@ -99,10 +99,11 @@ class _Client:
         self.image_builder_version: Optional[str] = None
         self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
         self._channel: Optional[grpclib.client.Channel] = None
-        self._stub: Optional[api_grpc.ModalClientStub] = None
+        self._stub: Optional[modal_api_grpc.ModalClientModal] = None
+        self._snapshotted = False
 
     @property
-    def stub(self) -> api_grpc.ModalClientStub:
+    def stub(self) -> modal_api_grpc.ModalClientModal:
         """mdmd:hidden"""
         assert self._stub
         return self._stub
@@ -124,9 +125,10 @@ class _Client:
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
-        self._stub = api_grpc.ModalClientStub(self._channel)  # type: ignore
+        grpclib_stub = api_grpc.ModalClientStub(self._channel)
+        self._stub = modal_api_grpc.ModalClientModal(grpclib_stub)
 
-    async def _close(self, forget_credentials: bool = False):
+    async def _close(self, prep_for_restore: bool = False):
         if self._pre_stop is not None:
             logger.debug("Client: running pre-stop coroutine before shutting down")
             await self._pre_stop()  # type: ignore
@@ -134,8 +136,9 @@ class _Client:
         if self._channel is not None:
             self._channel.close()
 
-        if forget_credentials:
+        if prep_for_restore:
             self._credentials = None
+            self._snapshotted = True
 
         # Remove cached client.
         self.set_env_client(None)

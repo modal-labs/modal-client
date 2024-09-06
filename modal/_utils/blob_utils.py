@@ -14,7 +14,7 @@ from aiohttp import BytesIOPayload
 from aiohttp.abc import AbstractStreamWriter
 
 from modal_proto import api_pb2
-from modal_proto.api_grpc import ModalClientStub
+from modal_proto.modal_api_grpc import ModalClientModal
 
 from ..exception import ExecutionError
 from .async_utils import TaskContext, retry
@@ -287,7 +287,7 @@ async def _blob_upload(
     return blob_id
 
 
-async def blob_upload(payload: bytes, stub: ModalClientStub) -> str:
+async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
     if isinstance(payload, str):
         logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
@@ -296,7 +296,7 @@ async def blob_upload(payload: bytes, stub: ModalClientStub) -> str:
 
 
 async def blob_upload_file(
-    file_obj: BinaryIO, stub: ModalClientStub, progress_report_cb: Optional[Callable] = None
+    file_obj: BinaryIO, stub: ModalClientModal, progress_report_cb: Optional[Callable] = None
 ) -> str:
     upload_hashes = get_upload_hashes(file_obj)
     return await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
@@ -316,7 +316,7 @@ async def _download_from_url(download_url: str) -> bytes:
         return await s3_resp.read()
 
 
-async def blob_download(blob_id: str, stub: ModalClientStub) -> bytes:
+async def blob_download(blob_id: str, stub: ModalClientModal) -> bytes:
     # convenience function reading all of the downloaded file into memory
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await retry_transient_errors(stub.BlobGet, req)
@@ -324,7 +324,7 @@ async def blob_download(blob_id: str, stub: ModalClientStub) -> bytes:
     return await _download_from_url(resp.download_url)
 
 
-async def blob_iter(blob_id: str, stub: ModalClientStub) -> AsyncIterator[bytes]:
+async def blob_iter(blob_id: str, stub: ModalClientModal) -> AsyncIterator[bytes]:
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await retry_transient_errors(stub.BlobGet, req)
     download_url = resp.download_url
