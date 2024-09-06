@@ -213,10 +213,6 @@ class _App:
         """The App's `name`, if available, or a fallback descriptive identifier."""
         return self._description
 
-    @property
-    def client(self) -> Optional[_Client]:
-        return self._client
-
     def set_description(self, description: str):
         self._description = description
 
