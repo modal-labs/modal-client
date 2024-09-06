@@ -517,7 +517,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
         _experimental_gpus: Sequence[GPU_T] = [],
-    ) -> None:
+    ) -> "_Function":
         """mdmd:hidden"""
         tag = info.get_tag()
 
