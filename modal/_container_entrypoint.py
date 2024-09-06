@@ -42,9 +42,9 @@ from ._serialization import deserialize, deserialize_proto_params
 from ._utils.async_utils import TaskContext, synchronizer
 from ._utils.function_utils import (
     LocalFunctionError,
+    callable_has_non_self_params,
     is_async as get_is_async,
     is_global_object,
-    method_has_params,
 )
 from .app import App, _App
 from .client import Client, _Client
@@ -696,7 +696,7 @@ def call_lifecycle_functions(
         for func in funcs:
             # We are deprecating parameterized exit methods but want to gracefully handle old code.
             # We can remove this once the deprecation in the actual @exit decorator is enforced.
-            args = (None, None, None) if method_has_params(func) else ()
+            args = (None, None, None) if callable_has_non_self_params(func) else ()
             # in case func is non-async, it's executed here and sigint will by default
             # interrupt it using a KeyboardInterrupt exception
             res = func(*args)

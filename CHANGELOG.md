@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.87 (2024-09-05)
+
+Sandboxes now support port tunneling. Ports can be exposed via the `open_ports` argument, and a list of active tunnels can be retrieved via the `.tunnels()` method.
+
+
+
 ### 0.64.67 (2024-08-30)
 
 - Fix a regression in `modal launch` behavior not showing progress output when starting the container.
