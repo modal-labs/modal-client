@@ -101,19 +101,26 @@ CLS_T = typing.TypeVar("CLS_T", bound=typing.Type[Any])
 
 
 P = typing_extensions.ParamSpec("P")
-R = typing.TypeVar("R")
+ReturnType = typing.TypeVar("ReturnType")
+OriginalReturnType = typing.TypeVar("OriginalReturnType")
 
 
 class _FunctionDecoratorType:
     @overload
     def __call__(
-        self, func: Union[Callable[P, Coroutine[Any, Any, R]], PartialFunction[P, Coroutine[Any, Any, R]]]
-    ) -> Function[P, R]:
-        ...
+        self, func: PartialFunction[P, ReturnType, OriginalReturnType]
+    ) -> Function[P, ReturnType, OriginalReturnType]:
+        ...  # already wrapped by a modal decorator, e.g. web_endpoint
 
     @overload
-    def __call__(self, func: Union[Callable[P, R], PartialFunction[P, R]]) -> Function[P, R]:
-        ...
+    def __call__(
+        self, func: Callable[P, Coroutine[Any, Any, ReturnType]]
+    ) -> Function[P, ReturnType, Coroutine[Any, Any, ReturnType]]:
+        ...  # decorated async function
+
+    @overload
+    def __call__(self, func: Callable[P, ReturnType]) -> Function[P, ReturnType, ReturnType]:
+        ...  # decorated non-async function
 
     def __call__(self, func):
         ...

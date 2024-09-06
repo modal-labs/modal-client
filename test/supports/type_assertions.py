@@ -29,3 +29,5 @@ assert_type(should_be_str, str)
 async def async_block() -> None:
     should_be_str_2 = await async_typed_func.remote.aio(True)
     assert_type(should_be_str_2, str)
+    should_also_be_str = await async_typed_func.local(False)  # local should be the original return type (!)
+    assert_type(should_also_be_str, str)
