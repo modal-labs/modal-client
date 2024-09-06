@@ -183,6 +183,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
+        from .app import _App
+
         if environment_name is None:
             environment_name = config.get("environment")
 
@@ -208,12 +210,19 @@ class _Sandbox(_Object, type_prefix="sb"):
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             _experimental_gpus=_experimental_gpus,
         )
-        if client is None:
-            if app and app._client:
-                client = app._client
-            else:
-                client = await _Client.from_env()
-        app_id: Optional[str] = app.app_id if app else None
+
+        app_id: Optional[str] = None
+        app_client: Optional[_Client] = None
+
+        if app is not None:
+            app_id = app.app_id
+            app_client = app._client
+        elif _App._container_app is not None:
+            app_id = _App._container_app.app_id
+            app_client = _App._container_app.client
+
+        client = client or app_client or await _Client.from_env()
+
         resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
         await resolver.load(obj)
         return obj
