@@ -16,8 +16,8 @@ FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
 
 class LifespanManager:
-    startup: asyncio.Future[None]
-    shutdown: asyncio.Future[None]
+    startup: asyncio.Future
+    shutdown: asyncio.Future
     queue: asyncio.Queue[Dict[str, Any]]
     has_run_init: bool = False
 
