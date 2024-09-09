@@ -5,6 +5,7 @@ import typing
 from typing import (
     Any,
     Callable,
+    Coroutine,
     Dict,
     Iterable,
     List,
@@ -41,13 +42,14 @@ class _PartialFunctionFlags(enum.IntFlag):
 
 
 P = typing_extensions.ParamSpec("P")
-R = typing_extensions.TypeVar("R", covariant=True)
+ReturnType = typing_extensions.TypeVar("ReturnType", covariant=True)
+OriginalReturnType = typing_extensions.TypeVar("OriginalReturnType", covariant=True)
 
 
-class _PartialFunction(typing.Generic[P, R]):
+class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     """Intermediate function, produced by @enter, @build, @method, @web_endpoint, or @batched"""
 
-    raw_f: Callable[P, R]
+    raw_f: Callable[P, ReturnType]
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
     is_generator: Optional[bool]
@@ -59,7 +61,7 @@ class _PartialFunction(typing.Generic[P, R]):
 
     def __init__(
         self,
-        raw_f: Callable[P, R],
+        raw_f: Callable[P, ReturnType],
         flags: _PartialFunctionFlags,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
@@ -80,7 +82,7 @@ class _PartialFunction(typing.Generic[P, R]):
         self.force_build = force_build
         self.build_timeout = build_timeout
 
-    def __get__(self, obj, objtype=None) -> _Function[P, R]:
+    def __get__(self, obj, objtype=None) -> _Function[P, ReturnType, OriginalReturnType]:
         k = self.raw_f.__name__
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
@@ -170,6 +172,29 @@ def _find_callables_for_obj(user_obj: Any, flags: int) -> Dict[str, Callable[...
     return {k: pf.raw_f.__get__(user_obj) for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items()}
 
 
+class _MethodDecoratorType:
+    @typing.overload
+    def __call__(
+        self, func: PartialFunction[typing_extensions.Concatenate[Any, P], ReturnType, OriginalReturnType]
+    ) -> PartialFunction[P, ReturnType, OriginalReturnType]:
+        ...
+
+    @typing.overload
+    def __call__(
+        self, func: Callable[typing_extensions.Concatenate[Any, P], Coroutine[Any, Any, ReturnType]]
+    ) -> PartialFunction[P, ReturnType, Coroutine[Any, Any, ReturnType]]:
+        ...
+
+    @typing.overload
+    def __call__(
+        self, func: Callable[typing_extensions.Concatenate[Any, P], ReturnType]
+    ) -> PartialFunction[P, ReturnType, ReturnType]:
+        ...
+
+    def __call__(self, func):
+        ...
+
+
 def _method(
     _warn_parentheses_missing=None,
     *,
@@ -177,7 +202,8 @@ def _method(
     # a [sync/async] generator object
     is_generator: Optional[bool] = None,
     keep_warm: Optional[int] = None,  # Deprecated: Use keep_warm on @app.cls() instead
-) -> Callable[[Callable[typing_extensions.Concatenate[Any, P], R]], _PartialFunction[P, R]]:
+) -> _MethodDecoratorType:
+    # TODO(elias): fix support for coroutine type unwrapping for methods (static typing)
     """Decorator for methods that should be transformed into a Modal Function registered against this class's app.
 
     **Usage:**
@@ -246,7 +272,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
-) -> Callable[[Callable[P, R]], _PartialFunction[P, R]]:
+) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
     """Register a basic web endpoint with this application.
 
     This is the simple way to create a web endpoint on Modal. The function
