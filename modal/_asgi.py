@@ -26,6 +26,10 @@ class LifespanManager:
         self.state = state
 
     async def ensure_init(self):
+        # making this async even though
+        # no async code since it has to run inside
+        # the event loop to tie the
+        # objects to the correct loop in python 3.9
         if not self.has_run_init:
             self.queue = asyncio.Queue()
             self.startup = asyncio.Future()
@@ -402,9 +406,8 @@ async def _proxy_lifespan_request(base_url, scope, receive, send) -> None:
                 scope["state"]["session"] = session
             await send({"type": "lifespan.startup.complete"})
         elif message["type"] == "lifespan.shutdown":
-            if session is None:
-                raise ExecutionError("Session is not initialized")
-            await session.close()
+            if session is not None:
+                await session.close()
             await send({"type": "lifespan.shutdown.complete"})
             break
         else:
