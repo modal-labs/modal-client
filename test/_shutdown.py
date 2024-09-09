@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 import threading
 
 from modal.client import ClientClosed

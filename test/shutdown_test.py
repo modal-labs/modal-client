@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 import pytest
 import threading
 import time
