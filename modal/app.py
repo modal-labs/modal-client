@@ -5,7 +5,20 @@ import typing
 import warnings
 from pathlib import PurePosixPath
 from textwrap import dedent
-from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    ClassVar,
+    Coroutine,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    overload,
+)
 
 import typing_extensions
 from google.protobuf.message import Message
@@ -24,13 +37,14 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, _get_class_constructor_signature, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function
+from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _Object
 from .partial_function import (
+    PartialFunction,
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
@@ -87,7 +101,29 @@ CLS_T = typing.TypeVar("CLS_T", bound=typing.Type[Any])
 
 
 P = typing_extensions.ParamSpec("P")
-R = typing.TypeVar("R")
+ReturnType = typing.TypeVar("ReturnType")
+OriginalReturnType = typing.TypeVar("OriginalReturnType")
+
+
+class _FunctionDecoratorType:
+    @overload
+    def __call__(
+        self, func: PartialFunction[P, ReturnType, OriginalReturnType]
+    ) -> Function[P, ReturnType, OriginalReturnType]:
+        ...  # already wrapped by a modal decorator, e.g. web_endpoint
+
+    @overload
+    def __call__(
+        self, func: Callable[P, Coroutine[Any, Any, ReturnType]]
+    ) -> Function[P, ReturnType, Coroutine[Any, Any, ReturnType]]:
+        ...  # decorated async function
+
+    @overload
+    def __call__(self, func: Callable[P, ReturnType]) -> Function[P, ReturnType, ReturnType]:
+        ...  # decorated non-async function
+
+    def __call__(self, func):
+        ...
 
 
 class _App:
@@ -583,7 +619,7 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
-    ) -> Callable[[Union[Callable[P, R], _PartialFunction[P, R]]], _Function[P, R]]:
+    ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg
