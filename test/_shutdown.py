@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
 import threading
 
-from modal.client import ClientClosed
+from modal.exception import ClientClosed
 from modal.queue import Queue
 
 event = threading.Event()

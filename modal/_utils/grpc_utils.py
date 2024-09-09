@@ -163,7 +163,9 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
     wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType]
 
     def __init__(
-        self, wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType], client: "modal.client._Client"
+        self,
+        wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType],
+        client: "modal.client._Client",
     ):
         self.wrapped_method = wrapped_method
         self.client = client
