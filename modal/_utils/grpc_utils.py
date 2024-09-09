@@ -33,6 +33,7 @@ from grpclib.protocol import H2Protocol
 from modal.exception import ClientClosed
 from modal_version import __version__
 
+from .async_utils import synchronizer
 from .logger import logger
 
 RequestType = TypeVar("RequestType", bound=Message)
@@ -144,10 +145,12 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         timeout: Optional[float] = None,
         metadata: Optional[_MetadataLike] = None,
     ) -> ResponseType:
+        # it's important that this is run from the same event loop as the rpc context is "bound" to,
+        # i.e. the synchronicity event loop
+        assert synchronizer._is_inside_loop()
         # TODO: incorporate retry_transient_errors here
         if self.client.is_closed():
             raise ClientClosed()
-
         try:
             return await self.client._rpc_context.create_task(
                 self.wrapped_method(req, timeout=timeout, metadata=metadata)

@@ -902,7 +902,6 @@ class _ContainerIOManager:
 
             logger.debug("Memory snapshot request sent. Connection closed.")
             await self.memory_restore()
-
             # Turn heartbeats back on. This is safe since the snapshot RPC
             # and the restore phase has finished.
             self._waiting_for_memory_snapshot = False
