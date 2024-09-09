@@ -7,7 +7,7 @@ grpcio-tools==1.59.2;python_version>='3.11'
 grpclib==0.4.7
 httpx~=0.23.0
 invoke~=2.2
-mypy~=1.8.0
+mypy~=1.11.2
 mypy-protobuf~=3.3.0  # TODO: can't use mypy-protobuf>=3.4 because of protobuf==3.19 support
 pre-commit>=2.21,<4
 pytest~=8.0.0
