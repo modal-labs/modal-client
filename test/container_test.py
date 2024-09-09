@@ -2150,3 +2150,9 @@ def test_max_concurrency(servicer):
 
     outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
     assert n_inputs in outputs
+
+
+@skip_github_non_linux
+def test_sandbox_infers_app(servicer, event_loop):
+    _run_container(servicer, "test.supports.sandbox", "spawn_sandbox")
+    assert servicer.sandbox_app_id == "ap-1"

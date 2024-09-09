@@ -192,6 +192,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
 
         self.sandbox_defs = []
+        self.sandbox_app_id = None
         self.sandbox: asyncio.subprocess.Process = None
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
@@ -1181,6 +1182,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             stdin=asyncio.subprocess.PIPE,
         )
 
+        self.sandbox_app_id = request.app_id
         self.sandbox_defs.append(request.definition)
 
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))

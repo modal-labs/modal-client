@@ -446,6 +446,7 @@ class _ContainerIOManager:
             environment_name=self._environment_name,
             tag_to_object_id=tag_to_object_id,
             object_handle_metadata=object_handle_metadata,
+            client=self._client,
         )
 
     async def get_serialized_function(self) -> Tuple[Optional[Any], Optional[Callable[..., Any]]]:

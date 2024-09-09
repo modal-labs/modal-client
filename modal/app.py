@@ -124,6 +124,7 @@ class _App:
     """
 
     _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
+    _container_app: ClassVar[Optional[RunningApp]] = None
 
     _name: Optional[str]
     _description: Optional[str]
@@ -428,6 +429,8 @@ class _App:
         self._app_id = running_app.app_id
         self._running_app = running_app
         self._client = client
+
+        _App._container_app = running_app
 
         # Hydrate objects on app
         for tag, object_id in running_app.tag_to_object_id.items():

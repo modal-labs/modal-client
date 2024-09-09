@@ -90,7 +90,9 @@ class _Client:
         credentials: Optional[Tuple[str, str]],
         version: str = __version__,
     ):
-        """The Modal client object is not intended to be instantiated directly by users."""
+        """mdmd:hidden
+        The Modal client object is not intended to be instantiated directly by users.
+        """
         self.server_url = server_url
         self.client_type = client_type
         self._credentials = credentials
@@ -265,8 +267,16 @@ class _Client:
 
     @classmethod
     async def from_credentials(cls, token_id: str, token_secret: str) -> "_Client":
-        """mdmd:hidden
+        """
         Constructor based on token credentials; useful for managing Modal on behalf of third-party users.
+
+        **Usage:**
+
+        ```python notest
+        client = modal.Client.from_credentials("my_token_id", "my_token_secret")
+
+        modal.Sandbox.create("echo", "hi", client=client)
+        ```
         """
         server_url = config["server_url"]
         client_type = api_pb2.CLIENT_TYPE_CLIENT
