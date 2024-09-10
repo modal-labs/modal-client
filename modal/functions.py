@@ -1371,7 +1371,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
         if self._web_url:
             raise InvalidError(
-                "A web endpoint function cannot be directly invoked for remote execution. "
+                "A web endpoint function cannot be invoked for remote execution with `.spawn`."
                 f"Invoke this function via its web url '{self._web_url}'"
             )
         if self._is_generator:

@@ -555,7 +555,7 @@ def test_from_id(client, servicer):
     assert rehydrated_function_call.object_id == function_call.object_id
 
 
-def test_spawn_on_web_endpoint(client, servicer):
+def test_spawn_remote_on_web_endpoint(client, servicer):
     app = App()
 
     @app.function(serialized=True)
@@ -571,7 +571,11 @@ def test_spawn_on_web_endpoint(client, servicer):
 
     with pytest.raises(InvalidError) as excinfo:
         foo.spawn()
-    assert "web endpoint" in str(excinfo.value)
+    assert "web endpoint" in str(excinfo.value) and "spawn" in str(excinfo.value)
+
+    with pytest.raises(InvalidError) as excinfo:
+        foo.remote()
+    assert "web endpoint" in str(excinfo.value) and "remote" in str(excinfo.value)
 
 
 @pytest.mark.parametrize("is_generator", [False, True])
