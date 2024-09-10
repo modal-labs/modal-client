@@ -862,14 +862,15 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             int_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
             usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
 
-            for finalized_function in finalized_functions.values():
-                if finalized_function.lifespan_manager:
-                    with container_io_manager.handle_user_exception():
-                        event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
-
             try:
+                for finalized_function in finalized_functions.values():
+                    if finalized_function.lifespan_manager:
+                        with container_io_manager.handle_user_exception():
+                            event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
+
                 # Identify "exit" methods and run them.
                 if service.user_cls_instance is not None and not is_auto_snapshot:
+                    # want to make sure this is called even if the lifespan manager fails
                     exit_methods = _find_callables_for_obj(service.user_cls_instance, _PartialFunctionFlags.EXIT)
                     call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
 

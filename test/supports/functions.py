@@ -151,22 +151,27 @@ def fastapi_app():
     return web_app
 
 
+lifespan_global_asgi_app_func = []
+
+
 @app.function()
 @asgi_app()
 def fastapi_app_with_lifespan():
     from fastapi import FastAPI, Request
 
+    assert len(lifespan_global_asgi_app_func) == 0
+
     @contextlib.asynccontextmanager
     async def lifespan(wapp: FastAPI):
-        print("enter")
+        lifespan_global_asgi_app_func.append("enter")
         yield {"foo": "this was set from state"}
-        print("exit")
+        lifespan_global_asgi_app_func.append("exit")
 
     web_app = FastAPI(lifespan=lifespan)
 
     @web_app.get("/")
     async def foo(request: Request):
-        print("foo")
+        lifespan_global_asgi_app_func.append("foo")
         return request.state.foo
 
     return web_app
@@ -216,23 +221,29 @@ def fastapi_app_with_lifespan_failing_shutdown():
     return web_app
 
 
+lifespan_global_asgi_app_cls = []
+
+
 @app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
 class fastapi_class_multiple_asgi_apps_lifespans:
+    def __init__(self):
+        assert len(lifespan_global_asgi_app_cls) == 0
+
     @asgi_app()
     def my_app1(self):
         from fastapi import FastAPI
 
         @contextlib.asynccontextmanager
         async def lifespan1(wapp):
-            print("enter1")
+            lifespan_global_asgi_app_cls.append("enter1")
             yield
-            print("exit1")
+            lifespan_global_asgi_app_cls.append("exit1")
 
         web_app1 = FastAPI(lifespan=lifespan1)
 
         @web_app1.get("/")
         async def foo1():
-            print("foo1")
+            lifespan_global_asgi_app_cls.append("foo1")
             return "foo1"
 
         return web_app1
@@ -243,18 +254,22 @@ class fastapi_class_multiple_asgi_apps_lifespans:
 
         @contextlib.asynccontextmanager
         async def lifespan2(wapp):
-            print("enter2")
+            lifespan_global_asgi_app_cls.append("enter2")
             yield
-            print("exit2")
+            lifespan_global_asgi_app_cls.append("exit2")
 
         web_app2 = FastAPI(lifespan=lifespan2)
 
         @web_app2.get("/")
         async def foo2():
-            print("foo2")
+            lifespan_global_asgi_app_cls.append("foo2")
             return "foo2"
 
         return web_app2
+
+    @exit()
+    def exit(self):
+        lifespan_global_asgi_app_cls.append("exit")
 
 
 @app.function()
