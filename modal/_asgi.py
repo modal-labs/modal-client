@@ -56,11 +56,17 @@ class LifespanManager:
 
         try:
             await self.asgi_app({"type": "lifespan", "state": self.state}, receive, send)
-        finally:
+        except Exception as e:
+            logger.error(f"Error in ASGI lifespan task: {e}")
             if not self.startup.done():
                 self.startup.set_exception(Exception("ASGI lifespan task exited startup"))
             if not self.shutdown.done():
                 self.shutdown.set_exception(Exception("ASGI lifespan task exited shutdown"))
+        else:
+            if not self.startup.done():
+                self.startup.set_result("ASGI Lifespan protocol is probably not supported by this library")
+            if not self.shutdown.done():
+                self.shutdown.set_result("ASGI Lifespan protocol is probably not supported by this library")
 
     async def lifespan_startup(self):
         await self.ensure_init()

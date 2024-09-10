@@ -784,6 +784,32 @@ def test_cls_web_asgi_with_lifespan_failure(servicer):
 
 
 @skip_github_non_linux
+def test_non_lifespan_asgi(servicer):
+    inputs = _get_web_inputs(path="/")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "non_lifespan_asgi",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+
+    # There should be one message for the header, and one for the body
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    print("\n#########################")
+    print(f"second_message: {second_message['body']}")
+    print("#########################\n")
+    assert json.loads(second_message["body"]) == "foo"
+
+
+@skip_github_non_linux
 def test_wsgi(servicer):
     inputs = _get_web_inputs(path="/")
     _put_web_body(servicer, b"my wsgi body")

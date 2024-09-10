@@ -306,6 +306,33 @@ class fastapi_class_lifespan_shutdown_failure:
 
 @app.function()
 @asgi_app()
+def non_lifespan_asgi():
+    async def app(scope, receive, send):
+        if not scope["type"] == "http":
+            return
+
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                ],
+            }
+        )
+
+        await send(
+            {
+                "type": "http.response.body",
+                "body": b'"foo"',
+            }
+        )
+
+    return app
+
+
+@app.function()
+@asgi_app()
 def error_in_asgi_setup():
     raise Exception("Error while setting up asgi app")
 
