@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import App, Image, Mount, NetworkFileSystem, Proxy, batched, web_endpoint
+from modal import App, Image, Mount, NetworkFileSystem, Proxy, asgi_app, batched, web_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import ExecutionError, InvalidError
@@ -555,7 +555,54 @@ def test_from_id(client, servicer):
     assert rehydrated_function_call.object_id == function_call.object_id
 
 
-def test_spawn_remote_on_web_endpoint(client, servicer):
+def test_local_execution_on_web_endpoint(client, servicer):
+    app = App()
+
+    @app.function(serialized=True)
+    @web_endpoint()
+    def foo(x: str):
+        return f"{x}!"
+
+    deploy_app(app, "dummy", client=client)
+
+    function_id = foo.object_id
+    assert function_id
+    assert foo.web_url
+
+    res = foo.local("hello")
+    assert res == "hello!"
+
+
+def test_local_execution_on_asgi_app(client, servicer):
+    from fastapi import FastAPI
+
+    app = App()
+
+    @app.function(serialized=True)
+    @asgi_app()
+    def foo():
+        from fastapi import FastAPI
+
+        web_app = FastAPI()
+
+        @web_app.get("/bar")
+        def bar(arg="world"):
+            return {"hello": arg}
+
+        return web_app
+
+    deploy_app(app, "dummy", client=client)
+
+    function_id = foo.object_id
+    assert function_id
+    assert foo.web_url
+
+    res = foo.local()
+    assert type(res) == FastAPI
+
+
+@pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn", "shell"])
+def test_invalid_remote_executor_on_web_endpoint(client, servicer, remote_executor):
     app = App()
 
     @app.function(serialized=True)
@@ -570,12 +617,44 @@ def test_spawn_remote_on_web_endpoint(client, servicer):
     assert foo.web_url
 
     with pytest.raises(InvalidError) as excinfo:
-        foo.spawn()
-    assert "web endpoint" in str(excinfo.value) and "spawn" in str(excinfo.value)
+        f = getattr(foo, remote_executor)
+        res = f()
+        if inspect.isgenerator(res):
+            next(res)
+
+    assert "webhook" in str(excinfo.value) and remote_executor in str(excinfo.value)
+
+
+@pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn", "shell"])
+def test_invalid_remote_executor_on_asgi_app(client, servicer, remote_executor):
+    app = App()
+
+    @app.function(serialized=True)
+    @asgi_app()
+    def foo():
+        from fastapi import FastAPI
+
+        web_app = FastAPI()
+
+        @web_app.get("/foo")
+        def foo(arg="world"):
+            return {"hello": arg}
+
+        return web_app
+
+    deploy_app(app, "dummy", client=client)
+
+    function_id = foo.object_id
+    assert function_id
+    assert foo.web_url
 
     with pytest.raises(InvalidError) as excinfo:
-        foo.remote()
-    assert "web endpoint" in str(excinfo.value) and "remote" in str(excinfo.value)
+        f = getattr(foo, remote_executor)
+        res = f()
+        if inspect.isgenerator(res):
+            next(res)
+
+    assert "webhook" in str(excinfo.value) and remote_executor in str(excinfo.value)
 
 
 @pytest.mark.parametrize("is_generator", [False, True])

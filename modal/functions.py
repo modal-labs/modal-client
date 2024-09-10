@@ -1146,6 +1146,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def _set_mute_cancellation(self, value: bool = True):
         self._mute_cancellation = value
 
+    def _check_no_web_url(self, fn_name: str):
+        if self._web_url:
+            raise InvalidError(
+                f"A webhook function cannot be invoked for remote execution with `.{fn_name}`. "
+                f"Invoke this function via its web url '{self._web_url}' "
+                + f"or call it locally: {self._function_name}.local()"
+            )
+
     @property
     def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
@@ -1175,11 +1183,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _SynchronizedQueue is used instead of asyncio.Queue so that the main thread can put
         items in the queue safely.
         """
-        if self._web_url:
-            raise InvalidError(
-                "A web endpoint function cannot be directly invoked for parallel remote execution. "
-                f"Invoke this function via its web url '{self._web_url}'"
-            )
+        self._check_no_web_url("map")
         if self._is_generator:
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
@@ -1256,11 +1260,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
         # TODO: Generics/TypeVars
-        if self._web_url:
-            raise InvalidError(
-                "A web endpoint function cannot be invoked for remote execution with `.remote`. "
-                f"Invoke this function via its web url '{self._web_url}'"
-            )
+        self._check_no_web_url("remote")
         if self._is_generator:
             raise InvalidError(
                 "A generator function cannot be called with `.remote(...)`. Use `.remote_gen(...)` instead."
@@ -1275,11 +1275,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Calls the generator remotely, executing it with the given arguments and returning the execution's result.
         """
         # TODO: Generics/TypeVars
-        if self._web_url:
-            raise InvalidError(
-                "A web endpoint function cannot be invoked for remote execution with `.remote`. "
-                f"Invoke this function via its web url '{self._web_url}'"
-            )
+        self._check_no_web_url("remote_gen")
 
         if not self._is_generator:
             raise InvalidError(
@@ -1291,6 +1287,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @synchronizer.no_io_translation
     @live_method
     async def shell(self, *args, **kwargs) -> None:
+        self._check_no_web_url("shell")
         if self._is_generator:
             async for item in self._call_generator(args, kwargs):
                 pass
@@ -1369,11 +1366,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
         return a function handle for polling the result.
         """
-        if self._web_url:
-            raise InvalidError(
-                "A web endpoint function cannot be invoked for remote execution with `.spawn`."
-                f"Invoke this function via its web url '{self._web_url}'"
-            )
+        self._check_no_web_url("spawn")
         if self._is_generator:
             invocation = await self._call_generator_nowait(args, kwargs)
         else:
