@@ -151,7 +151,7 @@ def fastapi_app():
     return web_app
 
 
-lifespan_global_asgi_app_func = []
+lifespan_global_asgi_app_func: List[str] = []
 
 
 @app.function()
@@ -221,7 +221,7 @@ def fastapi_app_with_lifespan_failing_shutdown():
     return web_app
 
 
-lifespan_global_asgi_app_cls = []
+lifespan_global_asgi_app_cls: List[str] = []
 
 
 @app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
@@ -270,6 +270,38 @@ class fastapi_class_multiple_asgi_apps_lifespans:
     @exit()
     def exit(self):
         lifespan_global_asgi_app_cls.append("exit")
+
+
+lifespan_global_asgi_app_cls_fail: List[str] = []
+
+
+@app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
+class fastapi_class_lifespan_shutdown_failure:
+    def __init__(self):
+        assert len(lifespan_global_asgi_app_cls_fail) == 0
+
+    @asgi_app()
+    def my_app1(self):
+        from fastapi import FastAPI
+
+        @contextlib.asynccontextmanager
+        async def lifespan1(wapp):
+            lifespan_global_asgi_app_cls_fail.append("enter")
+            yield
+            raise
+
+        web_app1 = FastAPI(lifespan=lifespan1)
+
+        @web_app1.get("/")
+        async def foo():
+            lifespan_global_asgi_app_cls_fail.append("foo")
+            return "foo"
+
+        return web_app1
+
+    @exit()
+    def exit(self):
+        lifespan_global_asgi_app_cls_fail.append("lifecycle exit")
 
 
 @app.function()
