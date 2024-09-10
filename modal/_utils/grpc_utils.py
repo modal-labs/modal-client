@@ -152,6 +152,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         if self.client.is_closed():
             raise ClientClosed()
         try:
+            print("Creating task in ", id(asyncio.get_running_loop()))
             return await self.client._rpc_context.create_task(
                 self.wrapped_method(req, timeout=timeout, metadata=metadata)
             )

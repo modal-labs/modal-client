@@ -161,6 +161,7 @@ class TaskContext:
             task = coro_or_task
         elif asyncio.iscoroutine(coro_or_task):
             loop = asyncio.get_event_loop()
+            print("tc.creating task on", id(loop), coro_or_task)
             task = loop.create_task(coro_or_task)
         else:
             raise Exception(f"Object of type {type(coro_or_task)} is not a coroutine or Task")
