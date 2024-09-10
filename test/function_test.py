@@ -601,7 +601,7 @@ def test_local_execution_on_asgi_app(client, servicer):
     assert type(res) == FastAPI
 
 
-@pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn", "shell"])
+@pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn"])
 def test_invalid_remote_executor_on_web_endpoint(client, servicer, remote_executor):
     app = App()
 
@@ -625,7 +625,7 @@ def test_invalid_remote_executor_on_web_endpoint(client, servicer, remote_execut
     assert "webhook" in str(excinfo.value) and remote_executor in str(excinfo.value)
 
 
-@pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn", "shell"])
+@pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn"])
 def test_invalid_remote_executor_on_asgi_app(client, servicer, remote_executor):
     app = App()
 

@@ -1284,16 +1284,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
 
-    @synchronizer.no_io_translation
-    @live_method
-    async def shell(self, *args, **kwargs) -> None:
-        self._check_no_web_url("shell")
-        if self._is_generator:
-            async for item in self._call_generator(args, kwargs):
-                pass
-        else:
-            await self._call_function(args, kwargs)
-
     def _get_info(self) -> FunctionInfo:
         if not self._info:
             raise ExecutionError("Can't get info for a function that isn't locally defined")
