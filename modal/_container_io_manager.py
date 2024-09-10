@@ -8,6 +8,7 @@ import signal
 import sys
 import time
 import traceback
+from collections import defaultdict
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +54,31 @@ class FinalizedFunction:
     is_async: bool
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
+
+
+class LabeledLogAccumulator:
+    """Accumulates logs across inputs, sending them in a single RPC call. Flushed by external caller."""
+
+    data_by_key: Dict[tuple[str, str], str]
+    ready: asyncio.Event
+
+    def __init__(self):
+        self.data_by_key = defaultdict(str)
+        self.ready = asyncio.Event()
+
+    def add(self, input_id: str, function_call_id: str, fd: api_pb2.FileDescriptor, data: str) -> None:
+        key = (input_id, function_call_id, fd)
+        self.data_by_key[key] += data
+        self.ready.set()
+
+    async def flush(self, client: _Client) -> None:
+        logs = [
+            api_pb2.TaskLogs(input_id=input_id, function_call_id=function_call_id, data=data, file_descriptor=fd)
+            for (input_id, function_call_id, fd), data in self.data_by_key.items()
+        ]
+        self.data_by_key.clear()
+        self.ready.clear()
+        await retry_transient_errors(client.stub.ContainerLog, api_pb2.ContainerLogRequest(logs=logs))
 
 
 class IOContext:
@@ -245,6 +271,8 @@ class _ContainerIOManager:
     current_inputs: Dict[str, IOContext]  # input_id -> IOContext
     current_input_started_at: Optional[float]
 
+    log_accumulator: LabeledLogAccumulator
+
     _target_concurrency: int
     _max_concurrency: int
     _concurrency_loop: Optional[asyncio.Task]
@@ -253,6 +281,7 @@ class _ContainerIOManager:
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
     _heartbeat_condition: asyncio.Condition
+    _log_rpc_condition: asyncio.Condition
     _waiting_for_memory_snapshot: bool
 
     _is_interactivity_enabled: bool
@@ -276,6 +305,8 @@ class _ContainerIOManager:
         self.current_inputs = {}
         self.current_input_started_at = None
 
+        self.log_accumulator = LabeledLogAccumulator()
+
         if container_args.function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
             target_concurrency = 1
             max_concurrency = 0
@@ -291,6 +322,7 @@ class _ContainerIOManager:
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
         self._heartbeat_condition = asyncio.Condition()
+        self._log_rpc_condition = asyncio.Condition()
         self._waiting_for_memory_snapshot = False
 
         self._is_interactivity_enabled = False
@@ -376,20 +408,33 @@ class _ContainerIOManager:
             return True
         return False
 
+    async def _run_structured_log_loop(self) -> None:
+        while 1:
+            # Prevent RPCs from going out before snapshot restore complete.
+            async with self._log_rpc_condition:
+                while self._waiting_for_memory_snapshot:
+                    await self._log_rpc_condition.wait()
+
+            await self.log_accumulator.ready.wait()
+            await self.log_accumulator.flush(self._client)
+            await asyncio.sleep(0.01)
+
     @asynccontextmanager
-    async def heartbeats(self, wait_for_mem_snap: bool) -> AsyncGenerator[None, None]:
+    async def heartbeats_and_logs(self, wait_for_mem_snap: bool) -> AsyncGenerator[None, None]:
         async with TaskContext() as tc:
-            self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
-            t.set_name("heartbeat loop")
+            self._heartbeat_loop = tc.create_task(self._run_heartbeat_loop())
+            self._structured_log_task = tc.create_task(self._run_structured_log_loop())
+            self._heartbeat_loop.set_name("heartbeat loop")
+            self._structured_log_task.set_name("structured logs loop")
             self._waiting_for_memory_snapshot = wait_for_mem_snap
             try:
                 yield
             finally:
-                t.cancel()
+                self._structured_log_task.cancel()
+                self._heartbeat_loop.cancel()
 
-    def stop_heartbeat(self):
-        if self._heartbeat_loop:
-            self._heartbeat_loop.cancel()
+                # Flush any remaining logs
+                await self.log_accumulator.flush(self._client)
 
     @asynccontextmanager
     async def dynamic_concurrency_manager(self) -> AsyncGenerator[None, None]:
@@ -890,6 +935,7 @@ class _ContainerIOManager:
             # Notify the heartbeat loop that the snapshot phase has begun in order to
             # prevent it from sending heartbeat RPCs
             self._waiting_for_memory_snapshot = True
+            self._log_rpc_condition.notify_all()
             self._heartbeat_condition.notify_all()
 
             await self._client.stub.ContainerCheckpoint(
@@ -904,6 +950,7 @@ class _ContainerIOManager:
             # Turn heartbeats back on. This is safe since the snapshot RPC
             # and the restore phase has finished.
             self._waiting_for_memory_snapshot = False
+            self._log_rpc_condition.notify_all()
             self._heartbeat_condition.notify_all()
 
     async def volume_commit(self, volume_ids: List[str]) -> None:
