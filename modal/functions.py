@@ -1178,7 +1178,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if self._web_url:
             raise InvalidError(
                 "A web endpoint function cannot be directly invoked for parallel remote execution. "
-                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
+                f"Invoke this function via its web url '{self._web_url}'"
             )
         if self._is_generator:
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
@@ -1259,7 +1259,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if self._web_url:
             raise InvalidError(
                 "A web endpoint function cannot be invoked for remote execution with `.remote`. "
-                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
+                f"Invoke this function via its web url '{self._web_url}'"
             )
         if self._is_generator:
             raise InvalidError(
@@ -1278,7 +1278,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if self._web_url:
             raise InvalidError(
                 "A web endpoint function cannot be invoked for remote execution with `.remote`. "
-                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
+                f"Invoke this function via its web url '{self._web_url}'"
             )
 
         if not self._is_generator:
@@ -1369,6 +1369,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
         return a function handle for polling the result.
         """
+        if self._web_url:
+            raise InvalidError(
+                "A web endpoint function cannot be directly invoked for remote execution. "
+                f"Invoke this function via its web url '{self._web_url}'"
+            )
         if self._is_generator:
             invocation = await self._call_generator_nowait(args, kwargs)
         else:

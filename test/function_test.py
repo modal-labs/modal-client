@@ -540,6 +540,25 @@ def test_from_id(client, servicer):
     app = App()
 
     @app.function(serialized=True)
+    def foo():
+        pass
+
+    deploy_app(app, "dummy", client=client)
+
+    function_id = foo.object_id
+    assert function_id
+
+    function_call = foo.spawn()
+    assert function_call.object_id
+    # Used in a few examples to construct FunctionCall objects
+    rehydrated_function_call = FunctionCall.from_id(function_call.object_id, client)
+    assert rehydrated_function_call.object_id == function_call.object_id
+
+
+def test_spawn_on_web_endpoint(client, servicer):
+    app = App()
+
+    @app.function(serialized=True)
     @web_endpoint()
     def foo():
         pass
@@ -550,11 +569,9 @@ def test_from_id(client, servicer):
     assert function_id
     assert foo.web_url
 
-    function_call = foo.spawn()
-    assert function_call.object_id
-    # Used in a few examples to construct FunctionCall objects
-    rehydrated_function_call = FunctionCall.from_id(function_call.object_id, client)
-    assert rehydrated_function_call.object_id == function_call.object_id
+    with pytest.raises(InvalidError) as excinfo:
+        foo.spawn()
+    assert "web endpoint" in str(excinfo.value)
 
 
 @pytest.mark.parametrize("is_generator", [False, True])
