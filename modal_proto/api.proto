@@ -740,8 +740,7 @@ message ContainerHeartbeatResponse {
 }
 
 message ContainerLogRequest {
-  string message = 1;
-  string input_id = 2;
+  repeated TaskLogs logs = 1;
 }
 
 message ContainerStopRequest {
