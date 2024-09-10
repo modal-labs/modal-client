@@ -46,11 +46,11 @@ class LifespanManager:
             if message["type"] == "lifespan.startup.complete":
                 self.startup.set_result(None)
             elif message["type"] == "lifespan.startup.failed":
-                self.startup.set_exception(Exception("ASGI lifespan startup failed"))
+                self.startup.set_exception(ExecutionError("ASGI lifespan startup failed"))
             elif message["type"] == "lifespan.shutdown.complete":
                 self.shutdown.set_result(None)
             elif message["type"] == "lifespan.shutdown.failed":
-                self.shutdown.set_exception(Exception("ASGI lifespan shutdown failed"))
+                self.shutdown.set_exception(ExecutionError("ASGI lifespan shutdown failed"))
             else:
                 raise ExecutionError(f"Unexpected message type: {message['type']}")
 
@@ -59,9 +59,9 @@ class LifespanManager:
         except Exception as e:
             logger.error(f"Error in ASGI lifespan task: {e}")
             if not self.startup.done():
-                self.startup.set_exception(Exception("ASGI lifespan task exited startup"))
+                self.startup.set_exception(ExecutionError("ASGI lifespan task exited startup"))
             if not self.shutdown.done():
-                self.shutdown.set_exception(Exception("ASGI lifespan task exited shutdown"))
+                self.shutdown.set_exception(ExecutionError("ASGI lifespan task exited shutdown"))
         else:
             if not self.startup.done():
                 self.startup.set_result("ASGI Lifespan protocol is probably not supported by this library")
