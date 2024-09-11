@@ -517,7 +517,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         enable_memory_snapshot: bool = False,
         checkpointing_enabled: Optional[bool] = None,
         block_network: bool = False,
-        container_networking: bool = False,
+        container_networking: bool = False,  # START Experimental: Container Networking
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
         _experimental_gpus: Sequence[GPU_T] = [],
@@ -833,7 +833,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
-                    i6pn_enabled=container_networking,
+                    i6pn_enabled=container_networking,  # Experimental: Container Networking
                     _experimental_concurrent_cancellations=True,
                     _experimental_task_templates=[
                         api_pb2.TaskTemplate(
@@ -1406,6 +1406,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 Function = synchronize_api(_Function)
 
 
+# START Experimental: Container Networking
 class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="gf"):
     def __init__(self, f: _Function, size: int):
         self.f = synchronize_api(f)
@@ -1430,6 +1431,9 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
 
     def spawn(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         raise NotImplementedError("Grouped function cannot be spawned")
+
+
+# END Experimental: Container Networking
 
 
 class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):

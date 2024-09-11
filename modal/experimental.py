@@ -23,6 +23,7 @@ def get_local_input_concurrency():
     return _ContainerIOManager.get_input_concurrency()
 
 
+# START Experimental: Container Networking
 def grouped(size=1):
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
@@ -31,13 +32,13 @@ def grouped(size=1):
                 f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
                 "@app.function()\n@modal.grouped()\ndef grouped_function():\n    ..."
             )
-        raw_f = networked(raw_f)
+        raw_f = _networked(raw_f)
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.GROUPED, group_size=size)
 
     return wrapper
 
 
-def networked(func):
+def _networked(func):
     def wrapper(*args, **kwargs):
         import os
 
@@ -67,3 +68,6 @@ def networked(func):
         return func(*args, **kwargs)
 
     return wrapper
+
+
+# END Experimental: Container Networking

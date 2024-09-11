@@ -656,10 +656,13 @@ class _App:
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
                 f.wrapped = True
+
+                # START Experimental: Container Networking
                 group_size = f.group_size
                 container_networking = f.flags & _PartialFunctionFlags.GROUPED
                 if container_networking:
                     info = FunctionInfo(f.raw_f, serialized=True, name_override=name)
+                # END Experimental: Container Networking
                 else:
                     info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
@@ -706,8 +709,11 @@ class _App:
                 batch_max_size = None
                 batch_wait_ms = None
                 raw_f = f
+
+                # START Experimental: Container Networking
                 group_size = None
                 container_networking = False
+                # END Experimental: Container Networking
 
             if info.function_name.endswith(".app"):
                 warnings.warn(
@@ -724,11 +730,15 @@ class _App:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
 
+            # START Experimental: Container Networking
+
             if container_networking and not _experimental_scheduler_placement:
                 scheduler_placement = SchedulerPlacement(zone="us-east-1f")
 
             if container_networking:
                 cloud = "aws"
+
+            # END Experimental: Container Networking
 
             function = _Function.from_args(
                 info,
@@ -763,15 +773,16 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
                 _experimental_gpus=_experimental_gpus,
-                container_networking=container_networking,
+                container_networking=container_networking,  # Experimental: Container Networking
             )
 
             self._add_function(function, webhook_config is not None)
 
+            # START Experimental: Container Networking
             if container_networking:
                 function = _GroupedFunction(function, group_size)
-                # grouped_f.hydrate(function, group_size)
-                # function = grouped_f
+            # END Experimental: Container Networking
+
             return function
 
         return wrapped
