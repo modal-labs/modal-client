@@ -82,7 +82,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
         self.batch_max_size = batch_max_size
         self.batch_wait_ms = batch_wait_ms
-        self.group_size = group_size
+        self.group_size = group_size  # Experimental: Container Networking
         self.force_build = force_build
         self.build_timeout = build_timeout
 
