@@ -30,7 +30,7 @@ from ._ipython import is_notebook
 from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
-from ._utils.grpc_utils import unary_stream
+from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
@@ -248,6 +248,35 @@ class _App:
     def description(self) -> Optional[str]:
         """The App's `name`, if available, or a fallback descriptive identifier."""
         return self._description
+
+    @staticmethod
+    async def lookup(
+        label: str,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        create_if_missing: bool = False,
+    ) -> "_App":
+        if client is None:
+            client = await _Client.from_env()
+
+        request = api_pb2.AppGetOrCreateRequest(
+            app_name=label,
+            environment_name=environment_name,
+            object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+        )
+
+        response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
+
+        app = _App(label)
+        app._app_id = response.app_id
+        app._client = client
+        app._running_app = RunningApp(
+            response.app_id,
+            client=client,
+            environment_name=environment_name,
+            interactive=False,
+        )
+        return app
 
     def set_description(self, description: str):
         self._description = description
