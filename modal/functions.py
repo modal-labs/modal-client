@@ -517,6 +517,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         enable_memory_snapshot: bool = False,
         checkpointing_enabled: Optional[bool] = None,
         block_network: bool = False,
+        container_networking: bool = False,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
         _experimental_gpus: Sequence[GPU_T] = [],
@@ -832,7 +833,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
-                    i6pn_enabled=config.get("i6pn_enabled"),
+                    i6pn_enabled=container_networking,
                     _experimental_concurrent_cancellations=True,
                     _experimental_task_templates=[
                         api_pb2.TaskTemplate(
@@ -1403,6 +1404,32 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
 
 Function = synchronize_api(_Function)
+
+
+class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="gf"):
+    def __init__(self, f: _Function, size: int):
+        self.f = synchronize_api(f)
+        self.size = size
+
+    def remote(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        """
+        Calls the function remotely, executing it with the given arguments and returning the execution's result.
+        """
+        worker_handles: list[modal.FunctionCall] = []
+        with modal.Queue.ephemeral() as q:
+            for i in range(self.size):
+                handle = self.f.spawn(*args, **{**kwargs, "rank": i, "size": self.size, "q": q})
+                worker_handles.append(handle)
+        output = []
+        for i, handle in enumerate(worker_handles):
+            output.append(handle.get())
+        return output
+
+    def local(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function cannot be run locally")
+
+    def spawn(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function cannot be spawned")
 
 
 class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):

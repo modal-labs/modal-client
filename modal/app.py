@@ -37,7 +37,7 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, _get_class_constructor_signature, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import Function, _Function
+from .functions import Function, _Function, _GroupedFunction
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -656,7 +656,12 @@ class _App:
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
                 f.wrapped = True
-                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
+                group_size = f.group_size
+                container_networking = bool(group_size)
+                if container_networking:
+                    info = FunctionInfo(f.raw_f, serialized=True, name_override=name)
+                else:
+                    info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
                 is_generator = f.is_generator
@@ -701,6 +706,8 @@ class _App:
                 batch_max_size = None
                 batch_wait_ms = None
                 raw_f = f
+                group_size = None
+                container_networking = False
 
             if info.function_name.endswith(".app"):
                 warnings.warn(
@@ -716,6 +723,12 @@ class _App:
                 if scheduler_placement:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
+
+            if container_networking and not _experimental_scheduler_placement:
+                scheduler_placement = SchedulerPlacement(zone="us-east-1f")
+
+            if container_networking:
+                cloud = "aws"
 
             function = _Function.from_args(
                 info,
@@ -750,9 +763,15 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
                 _experimental_gpus=_experimental_gpus,
+                container_networking=container_networking,
             )
 
             self._add_function(function, webhook_config is not None)
+
+            if container_networking:
+                function = _GroupedFunction(function, group_size)
+                # grouped_f.hydrate(function, group_size)
+                # function = grouped_f
             return function
 
         return wrapped
