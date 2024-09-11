@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
-from __future__ import annotations
-
 import asyncio
+import contextlib
 import time
 from typing import List, Tuple
 
@@ -150,6 +149,186 @@ def fastapi_app():
         return {"hello": arg}
 
     return web_app
+
+
+lifespan_global_asgi_app_func: List[str] = []
+
+
+@app.function()
+@asgi_app()
+def fastapi_app_with_lifespan():
+    from fastapi import FastAPI, Request
+
+    assert len(lifespan_global_asgi_app_func) == 0
+
+    @contextlib.asynccontextmanager
+    async def lifespan(wapp: FastAPI):
+        lifespan_global_asgi_app_func.append("enter")
+        yield {"foo": "this was set from state"}
+        lifespan_global_asgi_app_func.append("exit")
+
+    web_app = FastAPI(lifespan=lifespan)
+
+    @web_app.get("/")
+    async def foo(request: Request):
+        lifespan_global_asgi_app_func.append("foo")
+        return request.state.foo
+
+    return web_app
+
+
+@app.function()
+@asgi_app()
+def fastapi_app_with_lifespan_failing_startup():
+    from fastapi import FastAPI
+
+    @contextlib.asynccontextmanager
+    async def lifespan(wapp: FastAPI):
+        print("enter")
+        raise Exception("Error while setting up asgi app")
+        yield
+        print("exit")
+
+    web_app = FastAPI(lifespan=lifespan)
+
+    @web_app.get("/")
+    async def foo():
+        print("foo")
+        return "bar"
+
+    return web_app
+
+
+@app.function()
+@asgi_app()
+def fastapi_app_with_lifespan_failing_shutdown():
+    from fastapi import FastAPI
+
+    @contextlib.asynccontextmanager
+    async def lifespan(wapp: FastAPI):
+        print("enter")
+        yield
+        raise Exception("Error while setting up asgi app")
+        print("exit")
+
+    web_app = FastAPI(lifespan=lifespan)
+
+    @web_app.get("/")
+    async def foo():
+        print("foo")
+        return "bar"
+
+    return web_app
+
+
+lifespan_global_asgi_app_cls: List[str] = []
+
+
+@app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
+class fastapi_class_multiple_asgi_apps_lifespans:
+    def __init__(self):
+        assert len(lifespan_global_asgi_app_cls) == 0
+
+    @asgi_app()
+    def my_app1(self):
+        from fastapi import FastAPI
+
+        @contextlib.asynccontextmanager
+        async def lifespan1(wapp):
+            lifespan_global_asgi_app_cls.append("enter1")
+            yield
+            lifespan_global_asgi_app_cls.append("exit1")
+
+        web_app1 = FastAPI(lifespan=lifespan1)
+
+        @web_app1.get("/")
+        async def foo1():
+            lifespan_global_asgi_app_cls.append("foo1")
+            return "foo1"
+
+        return web_app1
+
+    @asgi_app()
+    def my_app2(self):
+        from fastapi import FastAPI
+
+        @contextlib.asynccontextmanager
+        async def lifespan2(wapp):
+            lifespan_global_asgi_app_cls.append("enter2")
+            yield
+            lifespan_global_asgi_app_cls.append("exit2")
+
+        web_app2 = FastAPI(lifespan=lifespan2)
+
+        @web_app2.get("/")
+        async def foo2():
+            lifespan_global_asgi_app_cls.append("foo2")
+            return "foo2"
+
+        return web_app2
+
+    @exit()
+    def exit(self):
+        lifespan_global_asgi_app_cls.append("exit")
+
+
+lifespan_global_asgi_app_cls_fail: List[str] = []
+
+
+@app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
+class fastapi_class_lifespan_shutdown_failure:
+    def __init__(self):
+        assert len(lifespan_global_asgi_app_cls_fail) == 0
+
+    @asgi_app()
+    def my_app1(self):
+        from fastapi import FastAPI
+
+        @contextlib.asynccontextmanager
+        async def lifespan1(wapp):
+            lifespan_global_asgi_app_cls_fail.append("enter")
+            yield
+            raise
+
+        web_app1 = FastAPI(lifespan=lifespan1)
+
+        @web_app1.get("/")
+        async def foo():
+            lifespan_global_asgi_app_cls_fail.append("foo")
+            return "foo"
+
+        return web_app1
+
+    @exit()
+    def exit(self):
+        lifespan_global_asgi_app_cls_fail.append("lifecycle exit")
+
+
+@app.function()
+@asgi_app()
+def non_lifespan_asgi():
+    async def app(scope, receive, send):
+        if not scope["type"] == "http":
+            return
+
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                ],
+            }
+        )
+
+        await send(
+            {
+                "type": "http.response.body",
+                "body": b'"foo"',
+            }
+        )
+
+    return app
 
 
 @app.function()
