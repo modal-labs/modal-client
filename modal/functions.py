@@ -517,7 +517,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         enable_memory_snapshot: bool = False,
         checkpointing_enabled: Optional[bool] = None,
         block_network: bool = False,
-        container_networking: bool = False,  # START Experimental: Container Networking
+        container_networking: bool = False,  # Experimental: Container Networking
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
         _experimental_gpus: Sequence[GPU_T] = [],
