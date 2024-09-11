@@ -1497,11 +1497,11 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
         self.f = synchronize_api(f)
         self.size = size
 
-    def remote(self, *args: P.args, **kwargs: P.kwargs) -> list[ReturnType]:
+    def remote(self, *args: P.args, **kwargs: P.kwargs) -> List[ReturnType]:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
-        worker_handles: list[FunctionCall] = []
+        worker_handles: List[FunctionCall] = []
         with modal.Queue.ephemeral() as q:
             for i in range(self.size):
                 handle = self.f.spawn(*args, **{**kwargs, "rank": i, "size": self.size, "q": q})
