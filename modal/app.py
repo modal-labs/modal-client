@@ -657,7 +657,7 @@ class _App:
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
                 f.wrapped = True
                 group_size = f.group_size
-                container_networking = bool(group_size)
+                container_networking = f.flags & _PartialFunctionFlags.GROUPED
                 if container_networking:
                     info = FunctionInfo(f.raw_f, serialized=True, name_override=name)
                 else:
