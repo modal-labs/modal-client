@@ -1353,7 +1353,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def TaskResult(self, stream):
         request: api_pb2.TaskResultRequest = await stream.recv_message()
-        self.task_result = request.result
+        if self.task_result is None:
+            self.task_result = request.result
         await stream.send_message(Empty())
 
     ### Token flow

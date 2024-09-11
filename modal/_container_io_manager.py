@@ -11,7 +11,7 @@ import traceback
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Tuple
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -31,6 +31,9 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import InputCancellation, InvalidError, SerializationError
 from .running_app import RunningApp
+
+if TYPE_CHECKING:
+    import modal._asgi
 
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
 DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
@@ -53,6 +56,7 @@ class FinalizedFunction:
     is_async: bool
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
+    lifespan_manager: Optional["modal._asgi.LifespanManager"] = None
 
 
 class IOContext:
