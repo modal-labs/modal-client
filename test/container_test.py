@@ -669,6 +669,147 @@ def test_asgi(servicer):
 
 
 @skip_github_non_linux
+def test_asgi_lifespan(servicer):
+    inputs = _get_web_inputs(path="/")
+
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_app_with_lifespan",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+
+    # There should be one message for the header, and one for the body
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    assert json.loads(second_message["body"]) == "this was set from state"
+
+    from test.supports import functions
+
+    assert ["enter", "foo", "exit"] == functions.lifespan_global_asgi_app_func
+
+
+@skip_github_non_linux
+def test_asgi_lifespan_startup_failure(servicer):
+    inputs = _get_web_inputs(path="/")
+
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_app_with_lifespan_failing_startup",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+    assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "ASGI lifespan startup failed" in ret.task_result.exception
+
+
+@skip_github_non_linux
+def test_asgi_lifespan_shutdown_failure(servicer):
+    inputs = _get_web_inputs(path="/")
+
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_app_with_lifespan_failing_shutdown",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+    assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "ASGI lifespan shutdown failed" in ret.task_result.exception
+
+
+@skip_github_non_linux
+def test_cls_web_asgi_with_lifespan(servicer):
+    inputs = _get_web_inputs(method_name="my_app1")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_class_multiple_asgi_apps_lifespans.*",
+        inputs=inputs,
+        is_class=True,
+    )
+
+    # There should be one message for the header, and one for the body
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    assert json.loads(second_message["body"]) == "foo1"
+
+    from test.supports import functions
+
+    assert ["enter1", "enter2", "foo1", "exit1", "exit2", "exit"] == functions.lifespan_global_asgi_app_cls
+
+
+@skip_github_non_linux
+def test_cls_web_asgi_with_lifespan_failure(servicer):
+    inputs = _get_web_inputs(method_name="my_app1")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_class_lifespan_shutdown_failure.*",
+        inputs=inputs,
+        is_class=True,
+    )
+
+    # There should be one message for the header, and one for the body
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    assert json.loads(second_message["body"]) == "foo"
+
+    from test.supports import functions
+
+    assert ["enter", "foo", "lifecycle exit"] == functions.lifespan_global_asgi_app_cls_fail
+
+
+@skip_github_non_linux
+def test_non_lifespan_asgi(servicer):
+    inputs = _get_web_inputs(path="/")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "non_lifespan_asgi",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+
+    # There should be one message for the header, and one for the body
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    print("\n#########################")
+    print(f"second_message: {second_message['body']}")
+    print("#########################\n")
+    assert json.loads(second_message["body"]) == "foo"
+
+
+@skip_github_non_linux
 def test_wsgi(servicer):
     inputs = _get_web_inputs(path="/")
     _put_web_body(servicer, b"my wsgi body")
