@@ -141,17 +141,23 @@ class TaskContext:
                 except asyncio.CancelledError:
                     pass
 
+            cancelled_tasks = []
             for task in self._tasks:
                 if task.done() and not task.cancelled():
                     # Raise any exceptions if they happened.
                     # Only tasks without a done_callback will still be present in self._tasks
                     task.result()
 
-                if task.done() or task in self._loops:  # Note: Legacy code, we can probably cancel loops.
-                    continue
-
                 # Cancel any remaining unfinished tasks.
                 task.cancel()
+                cancelled_tasks.append(task)
+
+            # make sure to actually listen to the task's cancellations
+            for task in cancelled_tasks:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
     async def __aexit__(self, exc_type, value, tb):
         await self.stop()
