@@ -37,7 +37,8 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, _get_class_constructor_signature, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import Function, _Function, _GroupedFunction
+from .experimental import _GroupedFunction
+from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount

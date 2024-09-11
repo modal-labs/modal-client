@@ -1491,36 +1491,6 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 FunctionCall = synchronize_api(_FunctionCall)
 
 
-# START Experimental: Container Networking
-class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="gf"):
-    def __init__(self, f: _Function, size: int):
-        self.f = synchronize_api(f)
-        self.size = size
-
-    def remote(self, *args: P.args, **kwargs: P.kwargs) -> List[ReturnType]:
-        """
-        Calls the function remotely, executing it with the given arguments and returning the execution's result.
-        """
-        worker_handles: List[FunctionCall] = []
-        with modal.Queue.ephemeral() as q:
-            for i in range(self.size):
-                handle = self.f.spawn(*args, **{**kwargs, "rank": i, "size": self.size, "q": q})
-                worker_handles.append(handle)
-        output: list[ReturnType] = []
-        for i, handle in enumerate(worker_handles):
-            output.append(handle.get())
-        return output
-
-    def local(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function cannot be run locally")
-
-    def spawn(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function cannot be spawned")
-
-
-# END Experimental: Container Networking
-
-
 async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence[ReturnType]:
     """Wait until all Modal function calls have results before returning
 
