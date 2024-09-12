@@ -229,9 +229,32 @@ def test_sandbox_exec_wait(client, servicer):
 
 
 @skip_non_linux
+
 def test_sandbox_on_app_lookup(client, servicer):
     app = App.lookup("my-app", create_if_missing=True, client=client)
     sb = Sandbox.create("echo", "hi", app=app)
     sb.wait()
     assert sb.stdout.read() == "hi\n"
     assert servicer.sandbox_app_id == app.app_id
+
+
+def test_sandbox_list_env(client, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", client=client)
+    assert len(list(Sandbox.list(client=client))) == 1
+    sb.terminate()
+    assert len(list(Sandbox.list(client=client))) == 0
+
+
+@skip_non_linux
+def test_sandbox_list_app(client, servicer):
+    image = Image.debian_slim().pip_install("xyz")
+    secret = Secret.from_dict({"FOO": "bar"})
+    mount = Mount.from_local_file(__file__, "/xyz")
+
+    with app.run(client):
+        # Create sandbox
+        with pytest.warns(DeprecationError):
+            sb = app.spawn_sandbox("bash", "-c", "sleep 10000", image=image, secrets=[secret], mounts=[mount])
+            assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 1
+            sb.terminate()
+            assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 0

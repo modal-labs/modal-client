@@ -390,11 +390,15 @@ class _Sandbox(_Object, type_prefix="sb"):
             return self._result.exitcode
 
     @staticmethod
-    async def list(app_id: Optional[str] = None) -> AsyncGenerator["_Sandbox", None]:
+    async def list(
+        *, app_id: Optional[str] = None, client: Optional[_Client] = None
+    ) -> AsyncGenerator["_Sandbox", None]:
         """List all sandboxes for the current environment or app ID (if specified). Returns an iterator over `Sandbox` objects."""
         before_timestamp = time.time()
         env = config.get("environment")
-        client = await _Client.from_env()
+        if client is None:
+            client = await _Client.from_env()
+
         while True:
             req = api_pb2.SandboxListRequest(
                 app_id=app_id,
