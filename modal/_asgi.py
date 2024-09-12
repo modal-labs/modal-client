@@ -79,7 +79,7 @@ class LifespanManager:
         await self.shutdown
 
 
-def asgi_app_wrapper(asgi_app, function_io_manager) -> Tuple[Callable[..., AsyncGenerator], LifespanManager]:
+def asgi_app_wrapper(asgi_app, container_io_manager) -> Tuple[Callable[..., AsyncGenerator], LifespanManager]:
     state: Dict[str, Any] = {}  # used for lifespan state
 
     async def fn(scope):
@@ -125,10 +125,21 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Tuple[Callable[..., Async
             # This initial message, "http.request" or "websocket.connect", should be sent
             # immediately after starting the ASGI app's function call. If it is not received, that
             # indicates a request cancellation or other abnormal circumstance.
-            message_gen = function_io_manager.get_data_in.aio(function_call_id)
+            message_gen = container_io_manager.get_data_in.aio(function_call_id)
 
             try:
-                first_message = await asyncio.wait_for(message_gen.__anext__(), FIRST_MESSAGE_TIMEOUT_SECONDS)
+                first_message_task = asyncio.create_task(message_gen.__anext__())
+                # we are intentionally shielding + manually cancelling first_message_task, since cancellations
+                # can otherwise get ignored in case the cancellation and an awaited future resolve gets
+                # triggered in the same sequence before handing back control to the event loop.
+                first_message = await asyncio.shield(
+                    asyncio.wait_for(first_message_task, FIRST_MESSAGE_TIMEOUT_SECONDS)
+                )
+            except asyncio.CancelledError:
+                if not first_message_task.done():
+                    # see comment above about manual cancellation
+                    first_message_task.cancel()
+                raise
             except (asyncio.TimeoutError, StopAsyncIteration):
                 # About `StopAsyncIteration` above: The generator shouldn't typically exit,
                 # but if it does, we handle it like a timeout in that case.
@@ -201,11 +212,11 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Tuple[Callable[..., Async
     return fn, LifespanManager(asgi_app, state)
 
 
-def wsgi_app_wrapper(wsgi_app, function_io_manager):
+def wsgi_app_wrapper(wsgi_app, container_io_manager):
     from ._vendor.a2wsgi_wsgi import WSGIMiddleware
 
     asgi_app = WSGIMiddleware(wsgi_app, workers=10000, send_queue_size=1)  # unlimited workers
-    return asgi_app_wrapper(asgi_app, function_io_manager)
+    return asgi_app_wrapper(asgi_app, container_io_manager)
 
 
 def webhook_asgi_app(fn: Callable[..., Any], method: str, docs: bool):
