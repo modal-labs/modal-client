@@ -166,7 +166,7 @@ def _networked(func):
         q = kwargs.pop("modal_q", None)
 
         if rank is None or size is None or q is None:
-            raise ValueError("This must be called using grouped decorator")
+            raise ValueError("Missing required arguments; `_networked` must be called using `grouped` decorator")
 
         if not rank:
             import socket
