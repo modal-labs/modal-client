@@ -45,7 +45,7 @@ We appreciate your patience while we speedily work towards a stable release of t
         return web_app
     ```
 
-    and enabling support for `gradio>=v4` amongst other libraries using lifespans
+    which enables support for `gradio>=v4` amongst other libraries using lifespans
 
 ### 0.64.87 (2024-09-05)
 
