@@ -37,7 +37,7 @@ def get_local_input_concurrency():
 # START Experimental: Container Networking
 
 
-class _GroupedFunctionCall:
+class _GroupedFunctionCall(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="gc"):
     """Wrapper around _FunctionCall that allows for grouped functions to be spawned."""
 
     def __init__(self, handles: List[FunctionCall]):
@@ -59,7 +59,7 @@ class _GroupedFunctionCall:
     def cancel(
         self,
         terminate_containers: bool = False,
-    ):
+    ) -> None:
         for handle in self.handles:
             handle.cancel(terminate_containers)
 
