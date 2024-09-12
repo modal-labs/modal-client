@@ -37,7 +37,36 @@ def get_local_input_concurrency():
 # START Experimental: Container Networking
 
 
+class _GroupedFunctionCall:
+    """Wrapper around _FunctionCall that allows for grouped functions to be spawned."""
+
+    def __init__(self, handles: List[FunctionCall]):
+        self.handles: List[FunctionCall] = handles
+
+    def get(self) -> ReturnType:
+        """Get the result of a grouped function call."""
+        output: list[ReturnType] = []
+        for handle in self.handles:
+            output.append(handle.get())
+        return output
+
+    def get_gen(self) -> ReturnType:
+        raise NotImplementedError("Grouped functions cannot be generators")
+
+    def get_call_graph(self) -> ReturnType:
+        raise NotImplementedError("Grouped functions do not show call graph")
+
+    def cancel(
+        self,
+        terminate_containers: bool = False,
+    ):
+        for handle in self.handles:
+            handle.cancel(terminate_containers)
+
+
 class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="gf"):
+    """Experimental wrapper around _Function that allows for containers to be spun up concurrently."""
+
     def __init__(self, f: _Function, size: int):
         self.raw_f = f
         self.f = synchronize_api(f)
@@ -47,21 +76,20 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
-        worker_handles: List[FunctionCall] = []
-        with modal.Queue.ephemeral() as q:
-            for i in range(self.size):
-                handle = self.f.spawn(*args, **kwargs, modal_rank=i, modal_size=self.size, modal_q=q)
-                worker_handles.append(handle)
-        output: list[ReturnType] = []
-        for handle in worker_handles:
-            output.append(handle.get())
-        return output
+        handler = self.spawn(*args, **kwargs)
+        return handler.get()
 
     def local(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         raise NotImplementedError("Grouped function cannot be run locally")
 
     def spawn(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function cannot be spawned")
+        worker_handles: List[FunctionCall] = []
+        with modal.Queue.ephemeral() as q:
+            for i in range(self.size):
+                handle = self.f.spawn(*args, **kwargs, modal_rank=i, modal_size=self.size, modal_q=q)
+                worker_handles.append(handle)
+        handler = _GroupedFunctionCall(worker_handles)
+        return handler
 
     def keep_warm(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         raise NotImplementedError("Grouped function cannot be kept warm")
@@ -94,10 +122,18 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
         raise NotImplementedError("Grouped function does not work with star map")
 
     def for_each(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function does not work with star map")
+        raise NotImplementedError("Grouped function does not work with for each")
 
 
 def grouped(size: int):
+    """This wrapper defines the underlying raw function as a grouped function.
+
+    The underlying function is wrapper with _network to ensure that container
+    i6pn addresses are synchronized across all machines.
+    When wrapped with app.function(), a _GroupedFunction will be produced instead of
+    a Function. The call logic for a _GroupedFunction is defined above.
+    """
+
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
             raw_f = raw_f.get_raw_f()
