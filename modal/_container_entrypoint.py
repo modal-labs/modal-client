@@ -269,7 +269,6 @@ class UserCodeEventLoop:
 
     def __enter__(self):
         self.loop = asyncio.new_event_loop()
-        print("User code event loop", id(self.loop))
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):

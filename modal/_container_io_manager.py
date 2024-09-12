@@ -290,7 +290,6 @@ class _ContainerIOManager:
 
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
-        print("Creating heartbeat condition in", id(asyncio.get_running_loop()))
         self._heartbeat_condition = asyncio.Condition()
         self._waiting_for_memory_snapshot = False
 
@@ -336,7 +335,6 @@ class _ContainerIOManager:
             await asyncio.sleep(time_until_next_hearbeat)
 
     async def _heartbeat_handle_cancellations(self) -> bool:
-        print("heartbeat handle cancellation", id(asyncio.get_running_loop()))
         # Return True if a cancellation event was received, in that case
         # we shouldn't wait too long for another heartbeat
 
@@ -383,7 +381,6 @@ class _ContainerIOManager:
 
     @asynccontextmanager
     async def heartbeats(self, wait_for_mem_snap: bool) -> AsyncGenerator[None, None]:
-        print("HEARTBEAT EVENT LOOP", id(asyncio.get_running_loop()), id(synchronizer._get_loop()))
         async with TaskContext() as tc:
             self._heartbeat_loop = t = tc.create_task(self._run_heartbeat_loop())
             t.set_name("heartbeat loop")

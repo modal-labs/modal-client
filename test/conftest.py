@@ -1593,7 +1593,6 @@ def blob_server():
 
     def run_server_other_thread():
         loop = asyncio.new_event_loop()
-        print("server event loop", id(loop))
 
         async def async_main():
             nonlocal host
