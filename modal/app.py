@@ -256,6 +256,15 @@ class _App:
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_App":
+        """Lookup an app with a given name. When `create_if_missing` is true,
+        the app will be created if it doesn't exist.
+
+        ```python
+        app = modal.App.lookup("my-app", create_if_missing=True)
+
+        modal.Sandbox.create("echo", "hi", app=app)
+        ```
+        """
         if client is None:
             client = await _Client.from_env()
 
