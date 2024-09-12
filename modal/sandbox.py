@@ -2,7 +2,7 @@
 import asyncio
 import os
 import time
-from typing import TYPE_CHECKING, Dict, Generator, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
 
@@ -390,7 +390,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             return self._result.exitcode
 
     @staticmethod
-    async def list(app_id: Optional[str] = None) -> Generator[str, None, None]:
+    async def list(app_id: Optional[str] = None) -> AsyncGenerator["_Sandbox", None]:
         """List all sandbox IDs."""
         before_timestamp = time.time()
         env = config.get("environment")
@@ -400,12 +400,15 @@ class _Sandbox(_Object, type_prefix="sb"):
                 app_id=app_id,
                 before_timestamp=before_timestamp,
                 environment_name=env,
+                include_finished=False,
             )
 
             # Fetches 100 sandbox IDs at a time.
             resp = await client.stub.SandboxList(req)
             for sandbox_info in resp.sandboxes:
-                yield sandbox_info.id
+                obj = _Sandbox._new_hydrated(sandbox_info.id, client, None)
+                obj._result = sandbox_info.task_info.result
+                yield obj
 
             # If we got less than 100 sandboxes, we've fetched them all.
             if len(resp.sandboxes) < 100:
