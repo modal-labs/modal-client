@@ -1223,12 +1223,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             return  # type: ignore
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
+        if kwargs.get("use_extended_input_queue", False):
+            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+        else:
+            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
         return await _Invocation.create(
-            self,
-            args,
-            kwargs,
-            client=self._client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
+            self, args, kwargs, client=self._client, function_call_invocation_type=function_call_invocation_type
         )
 
     @warn_if_generator_is_not_consumed()
