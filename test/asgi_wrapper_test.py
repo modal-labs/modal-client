@@ -242,7 +242,7 @@ async def test_cancellation_while_waiting_for_first_input():
     # fetch_data_in task, causing either warnings on shutdown or even infinite stalling on
     # shutdown.
     _set_current_context_ids(["in-123"], ["fc-123"])
-    fut = asyncio.Future()
+    fut: asyncio.Future[None] = asyncio.Future()
 
     class StreamingIOManager:
         class get_data_in:
@@ -254,7 +254,7 @@ async def test_cancellation_while_waiting_for_first_input():
     wrapped_app, _ = asgi_app_wrapper(app, StreamingIOManager())
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
 
-    first_app_output = asyncio.create_task(wrapped_app(asgi_scope).__anext__())
+    first_app_output = asyncio.create_task(wrapped_app(asgi_scope).__anext__())  # type: ignore
     await asyncio.sleep(0.1)  # ensure we are in wait_for(first_message_task)
     first_app_output.cancel()
     await asyncio.sleep(0.1)  # resume event loop to resolve tasks if possible
@@ -269,7 +269,7 @@ async def test_cancellation_when_first_input_arrives():
     # fetch_data_in task, causing either warnings on shutdown or even infinite stalling on
     # shutdown.
     _set_current_context_ids(["in-123"], ["fc-123"])
-    fut = asyncio.Future()
+    fut: asyncio.Future[None] = asyncio.Future()
 
     class StreamingIOManager:
         class get_data_in:
@@ -283,7 +283,7 @@ async def test_cancellation_when_first_input_arrives():
     wrapped_app, _ = asgi_app_wrapper(app, StreamingIOManager())
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
 
-    first_app_output = asyncio.create_task(wrapped_app(asgi_scope).__anext__())
+    first_app_output = asyncio.create_task(wrapped_app(asgi_scope).__anext__())  # type: ignore
     await asyncio.sleep(0.1)  # ensure we are in wait_for(first_message_task)
     # now lets unblock get_data_in, supplying a request to the waiting asgi app
     # fut.set_result(None)
