@@ -296,6 +296,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
             api_pb2.AppCreateResponse(app_id=app_id, app_page_url="https://modaltest.com/apps/ap-123")
         )
 
+    async def AppGetOrCreate(self, stream):
+        request: api_pb2.AppGetOrCreateRequest = await stream.recv_message()
+        self.requests.append(request)
+
+        await stream.send_message(api_pb2.AppGetOrCreateResponse(app_id="ap-123"))
+
     async def AppClientDisconnect(self, stream):
         request: api_pb2.AppClientDisconnectRequest = await stream.recv_message()
         self.requests.append(request)
