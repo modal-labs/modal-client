@@ -733,10 +733,13 @@ class _App:
             # START Experimental: Container Networking
 
             if container_networking and not _experimental_scheduler_placement:
-                scheduler_placement = SchedulerPlacement(zone="us-east-1f")
+                zone = "us-east-1f"
+                scheduler_placement = SchedulerPlacement(zone=zone)
+                logger.warning(f"Experimental Container Networking: Defaulting to zone {zone}")
 
             if container_networking and not cloud:
                 cloud = "aws"
+                logger.warning(f"Experimental Container Networking: Defaulting to cloud {cloud}")
 
             # END Experimental: Container Networking
 
