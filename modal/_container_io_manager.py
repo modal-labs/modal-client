@@ -13,7 +13,19 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    AsyncIterator,
+    Callable,
+    ClassVar,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+)
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -997,7 +1009,7 @@ class _ContainerIOManager:
 ContainerIOManager = synchronize_api(_ContainerIOManager)
 
 
-def print_exception(exc: Optional[type[BaseException]], value: Optional[BaseException], tb: Optional[TracebackType]):
+def print_exception(exc: Optional[Type[BaseException]], value: Optional[BaseException], tb: Optional[TracebackType]):
     """Add backwards compatibility for printing exceptions with "notes" for Python<3.11."""
     traceback.print_exception(exc, value, tb)
     if sys.version_info < (3, 11) and value is not None:
