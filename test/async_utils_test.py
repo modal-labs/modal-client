@@ -194,7 +194,6 @@ async def test_queue_batch_iterator():
         assert len(drained_items) == 3
 
 
-@pytest.mark.flaky(max_runs=3)
 @pytest.mark.asyncio
 async def test_warn_if_generator_is_not_consumed(caplog):
     @warn_if_generator_is_not_consumed()

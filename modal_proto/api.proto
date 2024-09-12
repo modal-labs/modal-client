@@ -311,6 +311,16 @@ message AppGetObjectsResponse {
   repeated AppGetObjectsItem items = 2;
 }
 
+message AppGetOrCreateRequest {
+  string app_name = 1;
+  string environment_name = 2;
+  ObjectCreationType object_creation_type = 3;
+}
+
+message AppGetOrCreateResponse {
+  string app_id = 1;
+}
+
 message AppHeartbeatRequest {
   string app_id = 1;
 }
@@ -740,8 +750,7 @@ message ContainerHeartbeatResponse {
 }
 
 message ContainerLogRequest {
-  string message = 1;
-  string input_id = 2;
+  repeated TaskLogs logs = 3;
 }
 
 message ContainerStopRequest {
@@ -2300,6 +2309,7 @@ service ModalClient {
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
+  rpc AppGetOrCreate(AppGetOrCreateRequest) returns (AppGetOrCreateResponse);
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);

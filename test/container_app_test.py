@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
-import asyncio
 import json
 import os
 import pytest
+import time
 from typing import Dict
 from unittest import mock
 
@@ -118,25 +118,24 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     assert f.object_id == "fu-2"
 
 
-@pytest.mark.asyncio
-async def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_client):
+def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_client):
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = temp_restore_path(tmpdir)
 
     # Ensure that heartbeats only run after the snapshot
     heartbeat_interval_secs = 0.01
-    async with io_manager.heartbeats.aio(True):
+    with io_manager.heartbeats(True):
         with mock.patch.dict(
             os.environ,
             {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
         ):
             with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
-                await asyncio.sleep(heartbeat_interval_secs * 2)
+                time.sleep(heartbeat_interval_secs * 2)
                 assert not list(
                     filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
                 )
-                await io_manager.memory_snapshot.aio()
-                await asyncio.sleep(heartbeat_interval_secs * 2)
+                io_manager.memory_snapshot()
+                time.sleep(heartbeat_interval_secs * 2)
                 assert list(filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests))
 
 

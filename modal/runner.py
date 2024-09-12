@@ -57,7 +57,7 @@ async def _init_local_app_existing(client: _Client, existing_app_id: str) -> Run
     obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
     app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
     object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
-    return RunningApp(existing_app_id, app_page_url=app_page_url, tag_to_object_id=object_ids)
+    return RunningApp(existing_app_id, app_page_url=app_page_url, tag_to_object_id=object_ids, client=client)
 
 
 async def _init_local_app_new(
@@ -76,6 +76,7 @@ async def _init_local_app_new(
     logger.debug(f"Created new app with id {app_resp.app_id}")
     return RunningApp(
         app_resp.app_id,
+        client=client,
         app_page_url=app_resp.app_page_url,
         app_logs_url=app_resp.app_logs_url,
         environment_name=environment_name,

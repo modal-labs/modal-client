@@ -11,7 +11,7 @@ import traceback
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Tuple
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -31,6 +31,9 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import ClientClosed, InputCancellation, InvalidError, SerializationError
 from .running_app import RunningApp
+
+if TYPE_CHECKING:
+    import modal._asgi
 
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
 DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
@@ -53,6 +56,7 @@ class FinalizedFunction:
     is_async: bool
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
+    lifespan_manager: Optional["modal._asgi.LifespanManager"] = None
 
 
 class IOContext:
@@ -252,7 +256,7 @@ class _ContainerIOManager:
 
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
-    _heartbeat_condition: asyncio.Condition
+    _heartbeat_condition: Optional[asyncio.Condition]
     _waiting_for_memory_snapshot: bool
 
     _is_interactivity_enabled: bool
@@ -290,7 +294,7 @@ class _ContainerIOManager:
 
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
-        self._heartbeat_condition = asyncio.Condition()
+        self._heartbeat_condition = None
         self._waiting_for_memory_snapshot = False
 
         self._is_interactivity_enabled = False
@@ -298,6 +302,14 @@ class _ContainerIOManager:
 
         self._client = client
         assert isinstance(self._client, _Client)
+
+    @property
+    def heartbeat_condition(self) -> asyncio.Condition:
+        # ensures that heartbeat condition isn't assigned to an event loop until it's used for the first time
+        # (On Python 3.9 and below it would be assigned to the current thread's event loop on creation)
+        if self._heartbeat_condition is None:
+            self._heartbeat_condition = asyncio.Condition()
+        return self._heartbeat_condition
 
     def __new__(cls, container_args: api_pb2.ContainerArguments, client: _Client) -> "_ContainerIOManager":
         cls._singleton = super().__new__(cls)
@@ -344,13 +356,13 @@ class _ContainerIOManager:
         if self.current_input_started_at is not None:
             request.current_input_started_at = self.current_input_started_at
 
-        async with self._heartbeat_condition:
+        async with self.heartbeat_condition:
             # Continuously wait until `waiting_for_memory_snapshot` is false.
             # TODO(matt): Verify that a `while` is necessary over an `if`. Spurious
             # wakeups could allow execution to continue despite `_waiting_for_memory_snapshot`
             # being true.
             while self._waiting_for_memory_snapshot:
-                await self._heartbeat_condition.wait()
+                await self.heartbeat_condition.wait()
 
             # TODO(erikbern): capture exceptions?
             response = await retry_transient_errors(
@@ -445,6 +457,7 @@ class _ContainerIOManager:
             environment_name=self._environment_name,
             tag_to_object_id=tag_to_object_id,
             object_handle_metadata=object_handle_metadata,
+            client=self._client,
         )
 
     async def get_serialized_function(self) -> Tuple[Optional[Any], Optional[Callable[..., Any]]]:
@@ -888,11 +901,11 @@ class _ContainerIOManager:
             logger.debug("No checkpoint ID provided (Memory Snapshot ID)")
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
-        async with self._heartbeat_condition:
+        async with self.heartbeat_condition:
             # Notify the heartbeat loop that the snapshot phase has begun in order to
             # prevent it from sending heartbeat RPCs
             self._waiting_for_memory_snapshot = True
-            self._heartbeat_condition.notify_all()
+            self.heartbeat_condition.notify_all()
 
             await self._client.stub.ContainerCheckpoint(
                 api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id or "")
@@ -905,7 +918,7 @@ class _ContainerIOManager:
             # Turn heartbeats back on. This is safe since the snapshot RPC
             # and the restore phase has finished.
             self._waiting_for_memory_snapshot = False
-            self._heartbeat_condition.notify_all()
+            self.heartbeat_condition.notify_all()
 
     async def volume_commit(self, volume_ids: List[str]) -> None:
         """

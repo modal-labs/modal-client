@@ -287,10 +287,13 @@ class _FunctionSpec:
 
 
 P = typing_extensions.ParamSpec("P")
-R = typing.TypeVar("R", covariant=True)
+ReturnType = typing.TypeVar("ReturnType", covariant=True)
+OriginalReturnType = typing.TypeVar(
+    "OriginalReturnType", covariant=True
+)  # differs from return type if ReturnType is coroutine
 
 
-class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
+class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -1196,7 +1199,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         ):
             yield item
 
-    async def _call_function(self, args, kwargs) -> R:
+    async def _call_function(self, args, kwargs) -> ReturnType:
         invocation = await _Invocation.create(
             self,
             args,
@@ -1248,7 +1251,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     @synchronizer.no_io_translation
     @live_method
-    async def remote(self, *args: P.args, **kwargs: P.kwargs) -> R:
+    async def remote(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
@@ -1308,7 +1311,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             return self._obj
 
     @synchronizer.nowrap
-    def local(self, *args: P.args, **kwargs: P.kwargs) -> R:
+    def local(self, *args: P.args, **kwargs: P.kwargs) -> OriginalReturnType:
         """
         Calls the function locally, executing it with the given arguments and returning the execution's result.
 
@@ -1356,7 +1359,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     @synchronizer.no_input_translation
     @live_method
-    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[R]":
+    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
@@ -1402,7 +1405,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 Function = synchronize_api(_Function)
 
 
-class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
+class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     """A reference to an executed function call.
 
     Constructed using `.spawn(...)` on a Modal function with the same
@@ -1419,7 +1422,7 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
         assert self._client.stub
         return _Invocation(self._client.stub, self.object_id, self._client)
 
-    async def get(self, timeout: Optional[float] = None) -> R:
+    async def get(self, timeout: Optional[float] = None) -> ReturnType:
         """Get the result of the function call.
 
         This function waits indefinitely by default. It takes an optional
@@ -1487,7 +1490,7 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
 FunctionCall = synchronize_api(_FunctionCall)
 
 
-async def _gather(*function_calls: _FunctionCall):
+async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence[ReturnType]:
     """Wait until all Modal function calls have results before returning
 
     Accepts a variable number of FunctionCall objects as returned by `Function.spawn()`.
