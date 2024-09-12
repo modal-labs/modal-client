@@ -1223,6 +1223,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             return  # type: ignore
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
+        # This feature flag can be set on the spawn method
         if kwargs.get("use_extended_input_queue", False):
             function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
         else:

@@ -990,6 +990,7 @@ def test_extended_input_queue_feature_flag(client, servicer, feature_flag_enable
         with app.run(client=client):
             dummy_modal.spawn(1, 2, **kwargs)
 
+    # Verify the correct invocation type is set based on the feature flag
     function_map = ctx.pop_request("FunctionMap")
     if feature_flag_enabled:
         expected_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
