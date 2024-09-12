@@ -87,7 +87,7 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
             for i in range(self.size):
                 handle = self.f.spawn(*args, **kwargs, modal_rank=i, modal_size=self.size, modal_q=q)
                 worker_handles.append(handle)
-        handler = _GroupedFunctionCall(worker_handles)
+        handler: _GroupedFunctionCall = _GroupedFunctionCall(worker_handles)
         return handler
 
     def keep_warm(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
