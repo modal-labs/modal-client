@@ -68,7 +68,7 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
     """Experimental wrapper around _Function that allows for containers to be spun up concurrently."""
 
     def __init__(self, f: _Function, size: int):
-        self.raw_f = f
+        self.raw_f = f.raw_f
         self.f = synchronize_api(f)
         self.size = size
 
@@ -82,7 +82,7 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
     def local(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         raise NotImplementedError("Grouped function cannot be run locally")
 
-    def spawn(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+    def spawn(self, *args: P.args, **kwargs: P.kwargs) -> _GroupedFunctionCall:
         worker_handles: List[FunctionCall] = []
         with modal.Queue.ephemeral() as q:
             for i in range(self.size):
