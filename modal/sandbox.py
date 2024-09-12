@@ -1,7 +1,8 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
+import time
+from typing import TYPE_CHECKING, Dict, Generator, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
 
@@ -387,6 +388,31 @@ class _Sandbox(_Object, type_prefix="sb"):
             return 137
         else:
             return self._result.exitcode
+
+    @staticmethod
+    async def list(app_id: Optional[str] = None) -> Generator[str, None, None]:
+        """List all sandbox IDs."""
+        before_timestamp = time.time()
+        env = config.get("environment")
+        client = await _Client.from_env()
+        while True:
+            req = api_pb2.SandboxListRequest(
+                app_id=app_id,
+                before_timestamp=before_timestamp,
+                environment_name=env,
+            )
+
+            # Fetches 100 sandbox IDs at a time.
+            resp = await client.stub.SandboxList(req)
+            for sandbox_info in resp.sandboxes:
+                yield sandbox_info.id
+
+            # If we got less than 100 sandboxes, we've fetched them all.
+            if len(resp.sandboxes) < 100:
+                return
+
+            # Otherwise, fetch the next batch.
+            before_timestamp = resp.sandboxes[-1].created_at
 
 
 Sandbox = synchronize_api(_Sandbox)
