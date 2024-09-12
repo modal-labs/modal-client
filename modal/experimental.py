@@ -110,7 +110,7 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
         raise NotImplementedError("Grouped function does not work with shell")
 
     def get_raw_f(self) -> Callable[..., Any]:
-        return self.raw_f
+        return self.get_raw_f()
 
     def get_current_stats(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         raise NotImplementedError("Grouped function does not track queue and runner counts")
