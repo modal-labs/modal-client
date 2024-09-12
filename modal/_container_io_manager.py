@@ -12,7 +12,6 @@ import traceback
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -24,7 +23,6 @@ from typing import (
     List,
     Optional,
     Tuple,
-    Type,
 )
 
 from google.protobuf.empty_pb2 import Empty
@@ -36,7 +34,7 @@ import modal_proto.api_pb2
 from modal_proto import api_pb2
 
 from ._serialization import deserialize, serialize, serialize_data_format
-from ._traceback import extract_traceback
+from ._traceback import extract_traceback, print_exception
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
@@ -1007,14 +1005,6 @@ class _ContainerIOManager:
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
-
-
-def print_exception(exc: Optional[Type[BaseException]], value: Optional[BaseException], tb: Optional[TracebackType]):
-    """Add backwards compatibility for printing exceptions with "notes" for Python<3.11."""
-    traceback.print_exception(exc, value, tb)
-    if sys.version_info < (3, 11) and value is not None:
-        notes = getattr(value, "__notes__", [])
-        print(*notes, sep="\n", file=sys.stderr)
 
 
 def check_fastapi_pydantic_compatibility(exc: ImportError) -> None:

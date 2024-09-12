@@ -1,10 +1,11 @@
 # Copyright Modal Labs 2022
 import functools
 import re
+import sys
 import traceback
 import warnings
 from types import TracebackType
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Type
 
 from rich.console import Console, RenderResult, group
 from rich.panel import Panel
@@ -279,3 +280,11 @@ def highlight_modal_deprecation_warnings() -> None:
             base_showwarning(warning, category, filename, lineno, file=None, line=None)
 
     warnings.showwarning = showwarning
+
+
+def print_exception(exc: Optional[Type[BaseException]], value: Optional[BaseException], tb: Optional[TracebackType]):
+    """Add backwards compatibility for printing exceptions with "notes" for Python<3.11."""
+    traceback.print_exception(exc, value, tb)
+    if sys.version_info < (3, 11) and value is not None:
+        notes = getattr(value, "__notes__", [])
+        print(*notes, sep="\n", file=sys.stderr)
