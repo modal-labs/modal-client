@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import typing
+from functools import wraps
 from typing import (
     Any,
     Callable,
@@ -38,6 +39,7 @@ def get_local_input_concurrency():
 
 class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="gf"):
     def __init__(self, f: _Function, size: int):
+        self.raw_f = f
         self.f = synchronize_api(f)
         self.size = size
 
@@ -48,10 +50,10 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
         worker_handles: List[FunctionCall] = []
         with modal.Queue.ephemeral() as q:
             for i in range(self.size):
-                handle = self.f.spawn(*args, **{**kwargs, "rank": i, "size": self.size, "q": q})
+                handle = self.f.spawn(*args, **kwargs, modal_rank=i, modal_size=self.size, modal_q=q)
                 worker_handles.append(handle)
         output: list[ReturnType] = []
-        for i, handle in enumerate(worker_handles):
+        for handle in worker_handles:
             output.append(handle.get())
         return output
 
@@ -61,8 +63,41 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
     def spawn(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         raise NotImplementedError("Grouped function cannot be spawned")
 
+    def keep_warm(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function cannot be kept warm")
 
-def grouped(size=1):
+    def from_name(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function cannot be retrieved from name")
+
+    def lookup(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function cannot be looked up")
+
+    def web_url(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function does not have a web url")
+
+    def remote_gen(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function does not work with generators")
+
+    def shell(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function does not work with shell")
+
+    def get_raw_f(self) -> Callable[..., Any]:
+        return self.raw_f
+
+    def get_current_stats(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function does not track queue and runner counts")
+
+    def map(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function does not work with map")
+
+    def starmap(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function does not work with star map")
+
+    def for_each(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        raise NotImplementedError("Grouped function does not work with star map")
+
+
+def grouped(size: int):
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
             raw_f = raw_f.get_raw_f()
@@ -77,12 +112,23 @@ def grouped(size=1):
 
 
 def _networked(func):
+    """This function handles i6pn address sharing between the main container and its peers.
+
+    It pops modal_rank, modal_size, and modal_queue from the kwargs of the function.
+    The container with a modal_rank of 0 is the main container and is responsible for sharing its i6pn address
+    through a modal queue.
+    All containers will block until they are able to acquire the i6pn address from the ephemeral modal queue.
+    This behavior ensures that on entry to the wrapped function, appropriate environment variables will have
+    been set for communication between containers.
+    """
+
+    @wraps(func)
     def wrapper(*args, **kwargs):
         import os
 
-        rank = kwargs.pop("rank", None)
-        size = kwargs.pop("size", None)
-        q = kwargs.pop("q", None)
+        rank = kwargs.pop("modal_rank", None)
+        size = kwargs.pop("modal_size", None)
+        q = kwargs.pop("modal_q", None)
 
         if rank is None or size is None or q is None:
             raise ValueError("This must be called using grouped decorator")

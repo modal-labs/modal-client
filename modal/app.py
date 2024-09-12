@@ -646,7 +646,7 @@ class _App:
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
         ) -> _Function:
-            nonlocal keep_warm, is_generator, cloud
+            nonlocal keep_warm, is_generator, cloud, serialized
 
             # Check if the decorated object is a class
             if inspect.isclass(f):
@@ -662,10 +662,9 @@ class _App:
                 group_size = f.group_size
                 container_networking = f.flags & _PartialFunctionFlags.GROUPED
                 if container_networking:
-                    info = FunctionInfo(f.raw_f, serialized=True, name_override=name)
-                else:
-                    # END Experimental: Container Networking
-                    info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
+                    serialized = True
+                # END Experimental: Container Networking
+                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
                 is_generator = f.is_generator
