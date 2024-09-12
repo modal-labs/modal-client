@@ -126,9 +126,9 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> Tuple[Callable[..., Asyn
             # immediately after starting the ASGI app's function call. If it is not received, that
             # indicates a request cancellation or other abnormal circumstance.
             message_gen = container_io_manager.get_data_in.aio(function_call_id)
+            first_message_task = asyncio.create_task(message_gen.__anext__())
 
             try:
-                first_message_task = asyncio.create_task(message_gen.__anext__())
                 # we are intentionally shielding + manually cancelling first_message_task, since cancellations
                 # can otherwise get ignored in case the cancellation and an awaited future resolve gets
                 # triggered in the same sequence before handing back control to the event loop.
