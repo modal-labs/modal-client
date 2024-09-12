@@ -59,6 +59,13 @@ def is_global_object(object_qual_name: str):
     return "<locals>" not in object_qual_name.split(".")
 
 
+def is_method_fn(object_qual_name: str):
+    if "<locals>" in object_qual_name:
+        rest = object_qual_name.split("<locals>.")[1]
+        return len(rest.split(".")) > 1
+    return len(object_qual_name.split(".")) > 1
+
+
 def is_top_level_function(f: Callable) -> bool:
     """Returns True if this function is defined in global scope.
 
