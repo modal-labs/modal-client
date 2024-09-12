@@ -43,9 +43,9 @@ class _GroupedFunctionCall:
     def __init__(self, handles: List[FunctionCall]):
         self.handles: List[FunctionCall] = handles
 
-    def get(self) -> ReturnType:
+    def get(self) -> List[ReturnType]:
         """Get the result of a grouped function call."""
-        output: list[ReturnType] = []
+        output: List[ReturnType] = []
         for handle in self.handles:
             output.append(handle.get())
         return output
