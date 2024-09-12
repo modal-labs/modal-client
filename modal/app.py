@@ -37,6 +37,7 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, _get_class_constructor_signature, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
+from .experimental import _GroupedFunction
 from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
@@ -645,7 +646,7 @@ class _App:
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
         ) -> _Function:
-            nonlocal keep_warm, is_generator
+            nonlocal keep_warm, is_generator, cloud, serialized
 
             # Check if the decorated object is a class
             if inspect.isclass(f):
@@ -656,6 +657,13 @@ class _App:
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
                 f.wrapped = True
+
+                # START Experimental: Container Networking
+                group_size = f.group_size
+                container_networking = f.flags & _PartialFunctionFlags.GROUPED
+                if container_networking:
+                    serialized = True
+                # END Experimental: Container Networking
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
@@ -702,6 +710,11 @@ class _App:
                 batch_wait_ms = None
                 raw_f = f
 
+                # START Experimental: Container Networking
+                group_size = None
+                container_networking = False
+                # END Experimental: Container Networking
+
             if info.function_name.endswith(".app"):
                 warnings.warn(
                     "Beware: the function name is `app`. Modal will soon rename `Stub` to `App`, "
@@ -716,6 +729,16 @@ class _App:
                 if scheduler_placement:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
+
+            # START Experimental: Container Networking
+
+            if container_networking and not _experimental_scheduler_placement:
+                scheduler_placement = SchedulerPlacement(zone="us-east-1f")
+
+            if container_networking:
+                cloud = "aws"
+
+            # END Experimental: Container Networking
 
             function = _Function.from_args(
                 info,
@@ -750,9 +773,16 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
                 _experimental_gpus=_experimental_gpus,
+                container_networking=container_networking,  # Experimental: Container Networking
             )
 
             self._add_function(function, webhook_config is not None)
+
+            # START Experimental: Container Networking
+            if container_networking:
+                function = _GroupedFunction(function, group_size)
+            # END Experimental: Container Networking
+
             return function
 
         return wrapped
