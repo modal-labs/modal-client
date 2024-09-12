@@ -43,17 +43,17 @@ class _GroupedFunctionCall:
     def __init__(self, handles: List[FunctionCall]):
         self.handles: List[FunctionCall] = handles
 
-    def get(self) -> List[ReturnType]:
+    def get(self, *args: P.args, **kwargs: P.kwargs) -> List[ReturnType]:
         """Get the result of a grouped function call."""
         output: List[ReturnType] = []
         for handle in self.handles:
             output.append(handle.get())
         return output
 
-    def get_gen(self) -> ReturnType:
+    def get_gen(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         raise NotImplementedError("Grouped functions cannot be generators")
 
-    def get_call_graph(self) -> ReturnType:
+    def get_call_graph(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         raise NotImplementedError("Grouped functions do not show call graph")
 
     def cancel(
@@ -68,7 +68,6 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
     """Experimental wrapper around _Function that allows for containers to be spun up concurrently."""
 
     def __init__(self, f: _Function, size: int):
-        self.raw_f = f.raw_f
         self.f = synchronize_api(f)
         self.size = size
 
