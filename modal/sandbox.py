@@ -391,7 +391,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def list(app_id: Optional[str] = None) -> AsyncGenerator["_Sandbox", None]:
-        """List all sandbox IDs."""
+        """List all sandboxes for the current environment or app ID (if specified). Returns an iterator over `Sandbox` objects."""
         before_timestamp = time.time()
         env = config.get("environment")
         client = await _Client.from_env()
