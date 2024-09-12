@@ -7,7 +7,6 @@ from typing import Any, AsyncGenerator, AsyncIterator, List, Optional, Type
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal._utils import logger
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -245,9 +244,8 @@ class _Queue(_Object, type_prefix="qu"):
                 n_values=n_values,
             )
 
-            logger.logger.debug("QueueGet")
             response = await retry_transient_errors(self._client.stub.QueueGet, request)
-            logger.logger.debug("Resp %s %s", type(response), repr(response))
+
             if response.values:
                 return [deserialize(value, self._client) for value in response.values]
 

@@ -1138,8 +1138,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             values = [q.pop(0)]
         else:
             values = []
-            await asyncio.sleep(request.timeout)
-
         await stream.send_message(api_pb2.QueueGetResponse(values=values))
 
     async def QueueLen(self, stream):
