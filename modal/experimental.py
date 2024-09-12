@@ -50,11 +50,11 @@ class _GroupedFunctionCall(typing.Generic[P, ReturnType, OriginalReturnType], _O
             output.append(handle.get())
         return output
 
-    def get_gen(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped functions cannot be generators")
+    def __getattr__(self, name):
+        def unsupported_method(*args, **kwargs):
+            raise NotImplementedError(f"Grouped function does not support the '{name}' method")
 
-    def get_call_graph(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped functions do not show call graph")
+        return unsupported_method
 
     def cancel(
         self,
@@ -78,9 +78,6 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
         handler = self.spawn(*args, **kwargs)
         return handler.get()
 
-    def local(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function cannot be run locally")
-
     def spawn(self, *args: P.args, **kwargs: P.kwargs) -> _GroupedFunctionCall:
         worker_handles: List[FunctionCall] = []
         with modal.Queue.ephemeral() as q:
@@ -90,38 +87,14 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
         handler: _GroupedFunctionCall = _GroupedFunctionCall(worker_handles)
         return handler
 
-    def keep_warm(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function cannot be kept warm")
-
-    def from_name(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function cannot be retrieved from name")
-
-    def lookup(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function cannot be looked up")
-
-    def web_url(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function does not have a web url")
-
-    def remote_gen(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function does not work with generators")
-
-    def shell(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function does not work with shell")
-
     def get_raw_f(self) -> Callable[..., Any]:
         return self.get_raw_f()
 
-    def get_current_stats(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function does not track queue and runner counts")
+    def __getattr__(self, name):
+        def unsupported_method(*args, **kwargs):
+            raise NotImplementedError(f"Grouped function does not support the '{name}' method")
 
-    def map(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function does not work with map")
-
-    def starmap(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function does not work with star map")
-
-    def for_each(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        raise NotImplementedError("Grouped function does not work with for each")
+        return unsupported_method
 
 
 def grouped(size: int):
@@ -167,8 +140,7 @@ def _networked(func):
 
         if rank is None or size is None or q is None:
             raise ValueError("Missing required arguments; `_networked` must be called using `grouped` decorator")
-
-        if not rank:
+        elif rank == 0:
             import socket
 
             addr_info = socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)
