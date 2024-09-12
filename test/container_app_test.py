@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
-import asyncio
 import json
 import os
 import pytest
+import time
 from typing import Dict
 from unittest import mock
 
@@ -10,9 +10,8 @@ from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 
 from modal import App, interact
-from modal._container_io_manager import ContainerIOManager, _ContainerIOManager
+from modal._container_io_manager import ContainerIOManager
 from modal._utils.grpc_utils import create_channel, retry_transient_errors
-from modal.client import _Client
 from modal.exception import InvalidError
 from modal.running_app import RunningApp
 from modal_proto import api_grpc, api_pb2, modal_api_grpc
@@ -117,30 +116,25 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     channel.close()
 
 
-@pytest.mark.asyncio
-async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
-    client = _Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret"))
-    async with client as async_client:
-        io_manager = _ContainerIOManager(api_pb2.ContainerArguments(), async_client)
-        restore_path = temp_restore_path(tmpdir)
+def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_client):
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    restore_path = temp_restore_path(tmpdir)
 
-        # Ensure that heartbeats only run after the snapshot
-        heartbeat_interval_secs = 0.01
-        async with io_manager.heartbeats(True):
-            with mock.patch.dict(
-                os.environ,
-                {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
-            ):
-                with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
-                    await asyncio.sleep(heartbeat_interval_secs * 2)
-                    assert not list(
-                        filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
-                    )
-                    await io_manager.memory_snapshot()
-                    await asyncio.sleep(heartbeat_interval_secs * 2)
-                    assert list(
-                        filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
-                    )
+    # Ensure that heartbeats only run after the snapshot
+    heartbeat_interval_secs = 0.01
+    with io_manager.heartbeats(True):
+        with mock.patch.dict(
+            os.environ,
+            {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
+        ):
+            with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
+                time.sleep(heartbeat_interval_secs * 2)
+                assert not list(
+                    filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
+                )
+                io_manager.memory_snapshot()
+                time.sleep(heartbeat_interval_secs * 2)
+                assert list(filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests))
 
 
 @pytest.mark.asyncio
