@@ -735,7 +735,7 @@ class _App:
             if container_networking and not _experimental_scheduler_placement:
                 scheduler_placement = SchedulerPlacement(zone="us-east-1f")
 
-            if container_networking:
+            if container_networking and not cloud:
                 cloud = "aws"
 
             # END Experimental: Container Networking
