@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2024
 import asyncio
+import importlib.metadata
 import inspect
 import json
 import math
@@ -11,7 +12,18 @@ import traceback
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    AsyncIterator,
+    Callable,
+    ClassVar,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+)
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -22,11 +34,12 @@ import modal_proto.api_pb2
 from modal_proto import api_pb2
 
 from ._serialization import deserialize, serialize, serialize_data_format
-from ._traceback import extract_traceback
+from ._traceback import extract_traceback, print_exception
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
+from ._utils.package_utils import parse_major_minor_version
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
 from .exception import ClientClosed, InputCancellation, InvalidError, SerializationError
@@ -718,8 +731,12 @@ class _ContainerIOManager:
             # The status of the input should have been handled externally already in that case
             raise
         except BaseException as exc:
+            if isinstance(exc, ImportError):
+                # Catches errors raised by global scope imports
+                check_fastapi_pydantic_compatibility(exc)
+
             # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
-            traceback.print_exception(type(exc), exc, exc.__traceback__)
+            print_exception(type(exc), exc, exc.__traceback__)
 
             serialized_tb, tb_line_cache = self.serialize_traceback(exc)
 
@@ -762,8 +779,13 @@ class _ContainerIOManager:
             await self.exit_context(started_at, io_context.input_ids)
             return
         except BaseException as exc:
+            if isinstance(exc, ImportError):
+                # Catches errors raised by imports from within function body
+                check_fastapi_pydantic_compatibility(exc)
+
             # print exception so it's logged
-            traceback.print_exc()
+            print_exception(*sys.exc_info())
+
             serialized_tb, tb_line_cache = self.serialize_traceback(exc)
 
             # Note: we're not serializing the traceback since it contains
@@ -985,3 +1007,30 @@ class _ContainerIOManager:
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
+
+
+def check_fastapi_pydantic_compatibility(exc: ImportError) -> None:
+    """Add a helpful note to an exception that is likely caused by a pydantic<>fastapi version incompatibility.
+
+    We need this becasue the legacy set of container requirements (image_builder_version=2023.12) contains a
+    version of fastapi that is not forwards-compatible with pydantic 2.0+, and users commonly run into issues
+    building an image that specifies a more recent version only for pydantic.
+    """
+    note = (
+        "Please ensure that your Image contains compatible versions of fastapi and pydantic."
+        " If using pydantic>=2.0, you must also install fastapi>=0.100."
+    )
+    name = exc.name or ""
+    if name.startswith("pydantic"):
+        try:
+            fastapi_version = parse_major_minor_version(importlib.metadata.version("fastapi"))
+            pydantic_version = parse_major_minor_version(importlib.metadata.version("pydantic"))
+            if pydantic_version >= (2, 0) and fastapi_version < (0, 100):
+                if sys.version_info < (3, 11):
+                    # https://peps.python.org/pep-0678/
+                    exc.__notes__ = [note]
+                else:
+                    exc.add_note(note)
+        except Exception:
+            # Since we're just trying to add a helpful message, don't fail here
+            pass
