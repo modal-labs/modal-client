@@ -10,6 +10,17 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.109 (2024-09-13)
+
+App handles can now be looked up by name with `modal.App.lookup(name)`. This can be useful for associating sandboxes with apps:
+
+```python
+app = modal.App.lookup("my-app", create_if_missing=True)
+modal.Sandbox.create("echo", "hi", app=app)
+```
+
+
+
 ### 0.64.100 (2024-09-11)
 
 * Default timeout for `modal.Image.run_function` is now 1 hour. Previously it was 24 hours.
