@@ -156,11 +156,13 @@ class H100(_GPUConfig):
 
 class L40(_GPUConfig):
     """
-    [NVIDIA L40 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
+    [NVIDIA L40 Tensor Core](https://www.nvidia.com/en-us/data-center/l40/) GPU class.
 
     Ada Lovelace architecture GPU with large memory capacity (48 GB), ideal for
     inference workflows of large models. Offers support for a full range of precisions,
     including FP8.
+
+    Scheduling workloads with `L40()` include `L40S()` GPU as well.
     """
 
     def __init__(
@@ -174,6 +176,26 @@ class L40(_GPUConfig):
 
     def __repr__(self):
         return f"GPU(L40, count={self.count})"
+
+
+class L40S(_GPUConfig):
+    """
+    [NVIDIA L40S Tensor Core](https://www.nvidia.com/en-us/data-center/l40s/) GPU class.
+
+    L40S are variants of L40 GPUs with improved TFLOPS performance.
+    """
+
+    def __init__(
+        self,
+        *,
+        # Number of GPUs per container. Defaults to 1.
+        # Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,
+    ):
+        super().__init__(api_pb2.GPU_TYPE_L40S, count)
+
+    def __repr__(self):
+        return f"GPU(L40S, count={self.count})"
 
 
 class Any(_GPUConfig):
@@ -193,6 +215,7 @@ STRING_TO_GPU_CONFIG = {
     "h100": H100,
     "a10g": A10G,
     "l40": L40,
+    "l40s": L40S,
     "any": Any,
 }
 display_string_to_config = "\n".join(
