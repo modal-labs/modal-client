@@ -142,6 +142,7 @@ enum GPUType {
   GPU_TYPE_A100_80GB = 8;
   GPU_TYPE_L4 = 9;
   GPU_TYPE_H100 = 10;
+  GPU_TYPE_L40 = 11;
 }
 
 enum ObjectCreationType {
