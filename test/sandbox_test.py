@@ -229,7 +229,6 @@ def test_sandbox_exec_wait(client, servicer):
 
 
 @skip_non_linux
-
 def test_sandbox_on_app_lookup(client, servicer):
     app = App.lookup("my-app", create_if_missing=True, client=client)
     sb = Sandbox.create("echo", "hi", app=app)
@@ -238,6 +237,7 @@ def test_sandbox_on_app_lookup(client, servicer):
     assert servicer.sandbox_app_id == app.app_id
 
 
+@skip_non_linux
 def test_sandbox_list_env(client, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", client=client)
     assert len(list(Sandbox.list(client=client))) == 1
