@@ -154,6 +154,27 @@ class H100(_GPUConfig):
         return f"GPU(H100, count={self.count})"
 
 
+class L40(_GPUConfig):
+    """
+    [NVIDIA L40 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
+
+    Ada Lovelace architecture GPU with large memory (48 GB), ideal for inference workflows
+    of large models.
+    """
+
+    def __init__(
+        self,
+        *,
+        # Number of GPUs per container. Defaults to 1.
+        # Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,
+    ):
+        super().__init__(api_pb2.GPU_TYPE_L40, count)
+
+    def __repr__(self):
+        return f"GPU(L40, count={self.count})"
+
+
 class Any(_GPUConfig):
     """Selects any one of the GPU classes available within Modal, according to availability."""
 
@@ -170,6 +191,7 @@ STRING_TO_GPU_CONFIG = {
     "a100": A100,
     "h100": H100,
     "a10g": A10G,
+    "l40": L40,
     "any": Any,
 }
 display_string_to_config = "\n".join(
