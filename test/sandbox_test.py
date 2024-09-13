@@ -242,7 +242,7 @@ def test_sandbox_list_env(client, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", client=client)
     assert len(list(Sandbox.list(client=client))) == 1
     sb.terminate()
-    assert len(list(Sandbox.list(client=client))) == 0
+    assert not list(Sandbox.list(client=client))
 
 
 @skip_non_linux
@@ -257,4 +257,4 @@ def test_sandbox_list_app(client, servicer):
             sb = app.spawn_sandbox("bash", "-c", "sleep 10000", image=image, secrets=[secret], mounts=[mount])
             assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 1
             sb.terminate()
-            assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 0
+            assert not list(Sandbox.list(app_id=app.app_id, client=client))
