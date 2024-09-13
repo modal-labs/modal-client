@@ -158,8 +158,9 @@ class L40(_GPUConfig):
     """
     [NVIDIA L40 Tensor Core](https://www.nvidia.com/en-us/data-center/h100/) GPU class.
 
-    Ada Lovelace architecture GPU with large memory (48 GB), ideal for inference workflows
-    of large models.
+    Ada Lovelace architecture GPU with large memory capacity (48 GB), ideal for
+    inference workflows of large models. Offers support for a full range of precisions,
+    including FP8.
     """
 
     def __init__(
