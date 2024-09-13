@@ -695,8 +695,8 @@ class _App:
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
                 f.wrapped = True
-                # but we don't support @app.function wrapping a method.
 
+                # but we don't support @app.function wrapping a method.
                 if is_method_fn(f.raw_f.__qualname__):
                     raise InvalidError(
                         "The `@app.function` decorator cannot be used on class methods. "

@@ -61,7 +61,7 @@ def is_global_object(object_qual_name: str):
 
 def is_method_fn(object_qual_name: str):
     if "<locals>" in object_qual_name:
-        rest = object_qual_name.split("<locals>.")[1]
+        rest = object_qual_name.split("<locals>.")[-1]
         return len(rest.split(".")) > 1
     return len(object_qual_name.split(".")) > 1
 
