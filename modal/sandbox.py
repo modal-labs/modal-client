@@ -26,7 +26,7 @@ from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import _Object
+from .object import _get_environment_name, _Object
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 
@@ -186,8 +186,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> "_Sandbox":
         from .app import _App
 
-        if environment_name is None:
-            environment_name = config.get("environment")
+        environment_name = _get_environment_name(environment_name)
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -393,9 +392,10 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def list(
         *, app_id: Optional[str] = None, client: Optional[_Client] = None
     ) -> AsyncGenerator["_Sandbox", None]:
-        """List all sandboxes for the current environment or app ID (if specified). Returns an iterator over `Sandbox` objects."""
+        """List all sandboxes for the current environment or app ID (if specified). Returns an iterator over `Sandbox`
+        objects."""
         before_timestamp = time.time()
-        env = config.get("environment")
+        environment_name = _get_environment_name()
         if client is None:
             client = await _Client.from_env()
 
@@ -403,22 +403,21 @@ class _Sandbox(_Object, type_prefix="sb"):
             req = api_pb2.SandboxListRequest(
                 app_id=app_id,
                 before_timestamp=before_timestamp,
-                environment_name=env,
+                environment_name=environment_name,
                 include_finished=False,
             )
 
-            # Fetches 100 sandbox IDs at a time.
+            # Fetches a batch of sandboxes.
             resp = await client.stub.SandboxList(req)
+            if not resp.sandboxes:
+                return
+
             for sandbox_info in resp.sandboxes:
                 obj = _Sandbox._new_hydrated(sandbox_info.id, client, None)
                 obj._result = sandbox_info.task_info.result
                 yield obj
 
-            # If we got less than 100 sandboxes, we've fetched them all.
-            if len(resp.sandboxes) < 100:
-                return
-
-            # Otherwise, fetch the next batch.
+            # Fetch the next batch starting from the end of the current one.
             before_timestamp = resp.sandboxes[-1].created_at
 
 
