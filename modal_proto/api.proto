@@ -143,6 +143,7 @@ enum GPUType {
   GPU_TYPE_L4 = 9;
   GPU_TYPE_H100 = 10;
   GPU_TYPE_L40 = 11;
+  GPU_TYPE_L40S = 12;  // L40 variant; more performant
 }
 
 enum ObjectCreationType {
