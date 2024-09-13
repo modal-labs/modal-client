@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
 import inspect
-import os
 import textwrap
 import time
 import typing
@@ -1225,8 +1224,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
         # This feature flag allows users to put a large number of inputs
-        modal_spawn_extended = os.environ.get("MODAL_SPAWN_EXTENDED")
-        if modal_spawn_extended and modal_spawn_extended.lower() in ["true", "1"]:
+        if config.get("spawn_extended"):
             function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
         else:
             function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
