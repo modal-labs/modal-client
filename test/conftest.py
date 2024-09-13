@@ -1233,7 +1233,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxList(self, stream):
         request: api_pb2.SandboxListRequest = await stream.recv_message()
-        if self.sandbox.returncode:
+        if self.sandbox.returncode or request.before_timestamp == 1:
             await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
             return
 
