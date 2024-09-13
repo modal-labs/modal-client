@@ -226,3 +226,12 @@ def test_sandbox_exec_wait(client, servicer):
     assert time.time() - t0 > 0.2
 
     assert cp.poll() == 42
+
+
+@skip_non_linux
+def test_sandbox_on_app_lookup(client, servicer):
+    app = App.lookup("my-app", create_if_missing=True, client=client)
+    sb = Sandbox.create("echo", "hi", app=app)
+    sb.wait()
+    assert sb.stdout.read() == "hi\n"
+    assert servicer.sandbox_app_id == app.app_id
