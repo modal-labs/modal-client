@@ -1550,6 +1550,17 @@ message MultiPartUpload {
   string completion_url = 3;
 }
 
+message NetworkAccess {
+  enum NetworkAccessType {
+    UNSPECIFIED = 0;
+    OPEN = 1;
+    BLOCKED = 2;
+    ALLOWLIST = 3;
+  }
+  NetworkAccessType network_access_type = 1;
+  repeated string allowed_cidrs = 2;
+}
+
 message Object {
   string object_id = 1;
   oneof handle_metadata_oneof {
@@ -1780,6 +1791,9 @@ message Sandbox {
   }
 
   bool i6pn_enabled = 21;
+
+  // Network access configuration beyond simple allow/block.
+  NetworkAccess network_access = 22;
 }
 
 message SandboxCreateRequest {
