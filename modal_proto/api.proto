@@ -1832,10 +1832,9 @@ message SandboxHandleMetadata {
 
 message SandboxInfo {
   string id = 1;
+  modal.client.Sandbox definition = 2;
   double created_at = 3;
   TaskInfo task_info = 4;
-
-  reserved 2; // modal.client.Sandbox definition
 }
 
 message SandboxListRequest {
