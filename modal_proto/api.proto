@@ -142,8 +142,7 @@ enum GPUType {
   GPU_TYPE_A100_80GB = 8;
   GPU_TYPE_L4 = 9;
   GPU_TYPE_H100 = 10;
-  GPU_TYPE_L40 = 11;
-  GPU_TYPE_L40S = 12;  // L40 variant; more performant
+  GPU_TYPE_L40S = 11;
 }
 
 enum ObjectCreationType {
@@ -1935,6 +1934,7 @@ message SandboxListRequest {
   double before_timestamp = 2;
   string environment_name = 3;
   bool include_finished = 4;
+  repeated SandboxTag tags = 5;
 }
 
 message SandboxListResponse {
@@ -1949,6 +1949,17 @@ message SandboxStdinWriteRequest {
 }
 
 message SandboxStdinWriteResponse {
+}
+
+message SandboxTag {
+  string tag_name = 1;
+  string tag_value = 2;
+}
+
+message SandboxTagsSetRequest {
+  string environment_name = 1;
+  string sandbox_id = 2;
+  repeated SandboxTag tags = 3;
 }
 
 message SandboxTerminateRequest {
