@@ -256,10 +256,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         if client is None:
             client = await _Client.from_env()
 
+        tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()]
+
         req = api_pb2.SandboxTagsSetRequest(
             environment_name=environment_name,
             sandbox_id=self.object_id,
-            tags=[api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()],
+            tags=tags_list,
         )
         await retry_transient_errors(client.stub.SandboxTagsSet, req)
 
@@ -403,7 +405,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def list(
-        *, app_id: Optional[str] = None, client: Optional[_Client] = None
+        *, app_id: Optional[str] = None, tags: Optional[Dict[str, str]] = None, client: Optional[_Client] = None
     ) -> AsyncGenerator["_Sandbox", None]:
         """List all sandboxes for the current environment or app ID (if specified). Returns an iterator over `Sandbox`
         objects."""
@@ -412,12 +414,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         if client is None:
             client = await _Client.from_env()
 
+        tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()] if tags else []
+
         while True:
             req = api_pb2.SandboxListRequest(
                 app_id=app_id,
                 before_timestamp=before_timestamp,
                 environment_name=environment_name,
                 include_finished=False,
+                tags=tags_list,
             )
 
             # Fetches a batch of sandboxes.
