@@ -250,7 +250,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     async def set_tags(self, tags: Dict[str, str], *, client: Optional[_Client] = None):
-        """Set tags (key-value pairs) on the sandbox to help with filtering."""
+        """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
         environment_name = _get_environment_name()
         if client is None:
             client = await _Client.from_env()
