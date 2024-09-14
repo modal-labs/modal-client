@@ -1231,6 +1231,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_result = result
         await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
 
+    async def SandboxList(self, stream):
+        request: api_pb2.SandboxListRequest = await stream.recv_message()
+        if self.sandbox.returncode or request.before_timestamp == 1:
+            await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
+            return
+
+        if request.app_id and request.app_id != self.sandbox_app_id:
+            await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
+            return
+
+        await stream.send_message(
+            api_pb2.SandboxListResponse(
+                sandboxes=[
+                    api_pb2.SandboxInfo(
+                        id="sb-123", created_at=1, task_info=api_pb2.TaskInfo(result=self.sandbox_result)
+                    )
+                ]
+            )
+        )
+
     async def SandboxTerminate(self, stream):
         self.sandbox.terminate()
         await stream.send_message(api_pb2.SandboxTerminateResponse())

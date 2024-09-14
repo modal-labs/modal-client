@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
 
@@ -25,7 +25,7 @@ from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import _Object
+from .object import _get_environment_name, _Object
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 
@@ -185,8 +185,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> "_Sandbox":
         from .app import _App
 
-        if environment_name is None:
-            environment_name = config.get("environment")
+        environment_name = _get_environment_name(environment_name)
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -387,6 +386,38 @@ class _Sandbox(_Object, type_prefix="sb"):
             return 137
         else:
             return self._result.exitcode
+
+    @staticmethod
+    async def list(
+        *, app_id: Optional[str] = None, client: Optional[_Client] = None
+    ) -> AsyncGenerator["_Sandbox", None]:
+        """List all sandboxes for the current environment or app ID (if specified). Returns an iterator over `Sandbox`
+        objects."""
+        before_timestamp = None
+        environment_name = _get_environment_name()
+        if client is None:
+            client = await _Client.from_env()
+
+        while True:
+            req = api_pb2.SandboxListRequest(
+                app_id=app_id,
+                before_timestamp=before_timestamp,
+                environment_name=environment_name,
+                include_finished=False,
+            )
+
+            # Fetches a batch of sandboxes.
+            resp = await client.stub.SandboxList(req)
+            if not resp.sandboxes:
+                return
+
+            for sandbox_info in resp.sandboxes:
+                obj = _Sandbox._new_hydrated(sandbox_info.id, client, None)
+                obj._result = sandbox_info.task_info.result
+                yield obj
+
+            # Fetch the next batch starting from the end of the current one.
+            before_timestamp = resp.sandboxes[-1].created_at
 
 
 Sandbox = synchronize_api(_Sandbox)
