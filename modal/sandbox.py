@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-import time
 from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
@@ -394,7 +393,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> AsyncGenerator["_Sandbox", None]:
         """List all sandboxes for the current environment or app ID (if specified). Returns an iterator over `Sandbox`
         objects."""
-        before_timestamp = time.time()
+        before_timestamp = None
         environment_name = _get_environment_name()
         if client is None:
             client = await _Client.from_env()
