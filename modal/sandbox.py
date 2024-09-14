@@ -251,6 +251,12 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def set_tags(self, tags: Dict[str, str], *, client: Optional[_Client] = None):
         """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
+        if len(tags) > 10:
+            raise InvalidError("Sandboxes have a limit of 10 tags.")
+
+        if sum([len(tag_name) + len(tag_value) for tag_name, tag_value in tags.items()]) > 16_000:
+            raise InvalidError("Sandboxes have a limit of 16KB for tags.")
+
         environment_name = _get_environment_name()
         if client is None:
             client = await _Client.from_env()
@@ -406,8 +412,14 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def list(
         *, app_id: Optional[str] = None, tags: Optional[Dict[str, str]] = None, client: Optional[_Client] = None
     ) -> AsyncGenerator["_Sandbox", None]:
-        """List all sandboxes for the current environment or app ID (if specified). Returns an iterator over `Sandbox`
-        objects."""
+        """List all sandboxes for the current environment or app ID (if specified). If tags are specified, only
+        sandboxes that have at least those tags are returned. Returns an iterator over `Sandbox` objects."""
+        if tags and len(tags) > 10:
+            raise InvalidError("Cannot filter sandboxes by more than the per-sandbox limit of 10 tags.")
+
+        if tags and sum([len(tag_name) + len(tag_value) for tag_name, tag_value in tags.items()]) > 16_000:
+            raise InvalidError("Cannot filter sandboxes by more than the per-sandbox tags size limit of 16KB.")
+
         before_timestamp = None
         environment_name = _get_environment_name()
         if client is None:
@@ -425,7 +437,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
             # Fetches a batch of sandboxes.
-            resp = await client.stub.SandboxList(req)
+            resp = await retry_transient_errors(client.stub.SandboxList, req)
             if not resp.sandboxes:
                 return
 
