@@ -275,7 +275,7 @@ class _Client:
         ```python notest
         client = modal.Client.from_credentials("my_token_id", "my_token_secret")
 
-        modal.Sandbox.create("echo", "hi", client=client)
+        modal.Sandbox.create("echo", "hi", client=client, app=app)
         ```
         """
         server_url = config["server_url"]
