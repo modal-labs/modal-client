@@ -10,6 +10,17 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.112 (2024-09-15)
+
+- Creating sandboxes without an associated `App` is deprecated. If you are spawning a `Sandbox` outside a Modal container, you can lookup an `App` by name to attach to the `Sandbox`:
+
+```python
+app = modal.App.lookup('my-app', create_if_missing=True)
+modal.Sandbox.create('echo', 'hi', app=app)
+```
+
+
+
 ### 0.64.109 (2024-09-13)
 
 App handles can now be looked up by name with `modal.App.lookup(name)`. This can be useful for associating sandboxes with apps:
