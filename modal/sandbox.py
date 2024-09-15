@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Sequence
 from google.protobuf.message import Message
 
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
-from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from modal.volume import _Volume
 from modal_proto import api_pb2
 
@@ -19,7 +18,7 @@ from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
-from .exception import deprecation_warning
+from .exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError, deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -219,6 +218,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         elif _App._container_app is not None:
             app_id = _App._container_app.app_id
             app_client = _App._container_app.client
+        else:
+            deprecation_warning(
+                (2024, 9, 14),
+                "Creating a `Sandbox` without an `App` is deprecated.\n"
+                "You may pass in an `App` object, or reference one by name with `App.lookup`:\n"
+                "```\n"
+                "app = modal.App.lookup('my-app', create_if_missing=True)\n"
+                "modal.Sandbox.create('echo', 'hi', app=app)\n"
+                "```",
+            )
 
         client = client or app_client or await _Client.from_env()
 
