@@ -700,12 +700,13 @@ class _App:
                 if is_method_fn(f.raw_f.__qualname__):
                     raise InvalidError(
                         "The `@app.function` decorator cannot be used on class methods. "
-                        "Please use `@app.cls` with `@modal.method` or `@modal.web_endpoint` instead. Example: "
+                        "Swap with `@modal.method` or `@modal.web_endpoint`, or drop the `@app.function` decorator. "
+                        "Example: "
                         "\n\n"
                         "```python\n"
                         "@app.cls()\n"
                         "class MyClass:\n"
-                        "    @modal.method()\n"
+                        "    @modal.web_endpoint()\n"
                         "    def f(self, x):\n"
                         "        ...\n"
                         "```\n"
