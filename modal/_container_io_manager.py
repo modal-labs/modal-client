@@ -265,6 +265,7 @@ class _ContainerIOManager:
     _target_concurrency: int
     _max_concurrency: int
     _concurrency_loop: Optional[asyncio.Task]
+    _allow_dynamic_concurrency: bool
     _input_slots: InputSlots
 
     _environment_name: str
@@ -302,7 +303,11 @@ class _ContainerIOManager:
 
         self._target_concurrency = target_concurrency
         self._max_concurrency = max_concurrency
+        # By default, the container automatically adjusts local concurrency within [target, max],
+        # preferring lower values when there is no backlog of inputs on the function. If a user uses
+        # set_local_input_concurrency, this background adjustment is disabled.
         self._concurrency_loop = None
+        self._allow_dynamic_concurrency = True
         self._input_slots = InputSlots(target_concurrency)
 
         self._environment_name = container_args.environment_name
@@ -383,7 +388,7 @@ class _ContainerIOManager:
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
-                if self._target_concurrency > 1:
+                if self._max_concurrency > 1:
                     for input_id in input_ids_to_cancel:
                         if input_id in self.current_inputs:
                             self.current_inputs[input_id].cancel()
@@ -440,6 +445,11 @@ class _ContainerIOManager:
                     request,
                     attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS,
                 )
+                if not self._allow_dynamic_concurrency:
+                    # Since the user manually set a value for local concurrency, we exit
+                    # the dynamic concurrency loop.
+                    logger.debug("Dynamic concurrency disabled, exiting loop.")
+                    break
                 if resp.concurrency != self._input_slots.value:
                     logger.debug(f"Dynamic concurrency set from {self._input_slots.value} to {resp.concurrency}")
                 self._input_slots.set_value(resp.concurrency)
@@ -985,18 +995,35 @@ class _ContainerIOManager:
             raise e
 
     @property
-    def target_concurrency(self) -> int:
-        return self._target_concurrency
-
-    @property
     def max_concurrency(self) -> int:
         return self._max_concurrency
 
     @classmethod
     def get_input_concurrency(cls) -> int:
+        """
+        Return the number of inputs slots.
+
+        If active slots exceeds the number of allowed slots (this could happen when the number
+        of slots is reduced), return the larger value.
+        """
         io_manager = cls._singleton
         assert io_manager
-        return io_manager._input_slots.value
+        return max(io_manager._input_slots.active, io_manager._input_slots.value)
+
+    @classmethod
+    def set_input_concurrency(cls, concurrency: int) -> int:
+        """
+        Edit the number of input slots. Clamps within [1, max_concurrency].
+
+        This disables the background loop which automatically adjusts concurrency
+        within [target_concurrency, max_concurrency].
+        """
+        io_manager = cls._singleton
+        assert io_manager
+        io_manager._allow_dynamic_concurrency = False
+        concurrency = min(concurrency, io_manager._max_concurrency)
+        concurrency = max(concurrency, 1)
+        return io_manager._input_slots.set_value(concurrency)
 
     @classmethod
     def stop_fetching_inputs(cls):

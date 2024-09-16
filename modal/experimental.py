@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+
 import typing
 from functools import wraps
 from typing import (
@@ -8,11 +9,12 @@ from typing import (
 )
 
 import modal
+from modal._utils.async_utils import synchronize_api
+from modal._utils.grpc_utils import retry_transient_errors
+from modal.functions import FunctionStats
+from modal_proto import api_pb2
 
 from ._container_io_manager import _ContainerIOManager
-from ._utils.async_utils import (
-    synchronize_api,
-)
 from .exception import (
     InvalidError,
 )
@@ -29,9 +31,36 @@ def stop_fetching_inputs():
 
 
 def get_local_input_concurrency():
-    """Get the container's local input concurrency. Return 0 if the container is not running."""
+    """Get the container's local input concurrency.
+
+    If recently reduced to particular value, it can return a larger number than
+    set due to in-progress inputs."""
 
     return _ContainerIOManager.get_input_concurrency()
+
+
+def set_local_input_concurrency(concurrency: int):
+    """Set the container's local input concurrency. Dynamic concurrency will be disabled.
+
+    When setting to a smaller value, this method will not interrupt in-progress inputs.
+    """
+
+    _ContainerIOManager.set_input_concurrency(concurrency)
+
+
+async def _get_current_function_stats() -> FunctionStats:
+    """Return a `FunctionStats` object describing the current function's queue and runner counts."""
+    container_io_manager = _ContainerIOManager._singleton
+
+    resp = await retry_transient_errors(
+        container_io_manager._client.stub.FunctionGetCurrentStats,
+        api_pb2.FunctionGetCurrentStatsRequest(function_id=container_io_manager.function_id),
+        total_timeout=10.0,
+    )
+    return FunctionStats(backlog=resp.backlog, num_total_runners=resp.num_total_tasks)
+
+
+get_current_function_stats = synchronize_api(_get_current_function_stats)
 
 
 # START Experimental: Container Networking
@@ -159,6 +188,3 @@ def _networked(func):
         return func(*args, **kwargs)
 
     return wrapper
-
-
-# END Experimental: Container Networking
