@@ -29,7 +29,7 @@ from modal_proto import api_pb2
 from ._ipython import is_notebook
 from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
-from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
+from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
@@ -696,6 +696,21 @@ class _App:
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
                 f.wrapped = True
 
+                # but we don't support @app.function wrapping a method.
+                if is_method_fn(f.raw_f.__qualname__):
+                    raise InvalidError(
+                        "The `@app.function` decorator cannot be used on class methods. "
+                        "Swap with `@modal.method` or `@modal.web_endpoint`, or drop the `@app.function` decorator. "
+                        "Example: "
+                        "\n\n"
+                        "```python\n"
+                        "@app.cls()\n"
+                        "class MyClass:\n"
+                        "    @modal.web_endpoint()\n"
+                        "    def f(self, x):\n"
+                        "        ...\n"
+                        "```\n"
+                    )
                 # START Experimental: Container Networking
                 group_size = f.group_size
                 container_networking = f.flags & _PartialFunctionFlags.GROUPED
@@ -724,7 +739,7 @@ class _App:
                         )
                     )
 
-                if not is_top_level_function(f) and is_global_object(f.__qualname__):
+                if is_method_fn(f.__qualname__):
                     raise InvalidError(
                         dedent(
                             """
