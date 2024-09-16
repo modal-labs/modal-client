@@ -4,6 +4,7 @@ import os
 from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
+from grpclib import GRPCError, Status
 
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.volume import _Volume
@@ -258,6 +259,24 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return obj
 
+    async def set_tags(self, tags: Dict[str, str], *, client: Optional[_Client] = None):
+        """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
+        environment_name = _get_environment_name()
+        if client is None:
+            client = await _Client.from_env()
+
+        tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()]
+
+        req = api_pb2.SandboxTagsSetRequest(
+            environment_name=environment_name,
+            sandbox_id=self.object_id,
+            tags=tags_list,
+        )
+        try:
+            await retry_transient_errors(client.stub.SandboxTagsSet, req)
+        except GRPCError as exc:
+            raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+
     # Live handle methods
 
     async def wait(self, raise_on_termination: bool = True):
@@ -400,14 +419,16 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def list(
-        *, app_id: Optional[str] = None, client: Optional[_Client] = None
+        *, app_id: Optional[str] = None, tags: Optional[Dict[str, str]] = None, client: Optional[_Client] = None
     ) -> AsyncGenerator["_Sandbox", None]:
-        """List all sandboxes for the current environment or app ID (if specified). Returns an iterator over `Sandbox`
-        objects."""
+        """List all sandboxes for the current environment or app ID (if specified). If tags are specified, only
+        sandboxes that have at least those tags are returned. Returns an iterator over `Sandbox` objects."""
         before_timestamp = None
         environment_name = _get_environment_name()
         if client is None:
             client = await _Client.from_env()
+
+        tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()] if tags else []
 
         while True:
             req = api_pb2.SandboxListRequest(
@@ -415,10 +436,15 @@ class _Sandbox(_Object, type_prefix="sb"):
                 before_timestamp=before_timestamp,
                 environment_name=environment_name,
                 include_finished=False,
+                tags=tags_list,
             )
 
             # Fetches a batch of sandboxes.
-            resp = await client.stub.SandboxList(req)
+            try:
+                resp = await retry_transient_errors(client.stub.SandboxList, req)
+            except GRPCError as exc:
+                raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+
             if not resp.sandboxes:
                 return
 
