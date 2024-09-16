@@ -186,7 +186,7 @@ def _parse_gpu_config(value: GPU_T) -> Optional[_GPUConfig]:
                 raise InvalidError(f"Invalid GPU count: {count_str}. Value must be an integer.")
 
         if value.lower() == "a100-20g":
-            return A100(memory=20, count=count)  # Triggers unsupported error underneath.
+            return A100(size="20GB", count=count)  # Triggers unsupported error underneath.
         elif value.lower() == "a100-40gb":
             return A100(size="40GB", count=count)
         elif value.lower() == "a100-80gb":
