@@ -2328,7 +2328,7 @@ service ModalClient {
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
   rpc ContainerExecWait(ContainerExecWaitRequest) returns (ContainerExecWaitResponse);
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
-  rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
+  rpc ContainerLog(stream ContainerLogRequest) returns (google.protobuf.Empty);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 
   // Dicts
