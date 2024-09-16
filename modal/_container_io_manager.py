@@ -265,6 +265,7 @@ class _ContainerIOManager:
     _target_concurrency: int
     _max_concurrency: int
     _concurrency_loop: Optional[asyncio.Task]
+    _allow_dynamic_concurrency: bool
     _input_slots: InputSlots
 
     _environment_name: str
@@ -303,6 +304,7 @@ class _ContainerIOManager:
         self._target_concurrency = target_concurrency
         self._max_concurrency = max_concurrency
         self._concurrency_loop = None
+        self._allow_dynamic_concurrency = True
         self._input_slots = InputSlots(target_concurrency)
 
         self._environment_name = container_args.environment_name
@@ -383,7 +385,7 @@ class _ContainerIOManager:
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
-                if self._target_concurrency > 1:
+                if self._max_concurrency > 1:
                     for input_id in input_ids_to_cancel:
                         if input_id in self.current_inputs:
                             self.current_inputs[input_id].cancel()
@@ -428,7 +430,7 @@ class _ContainerIOManager:
 
     async def _dynamic_concurrency_loop(self):
         logger.debug(f"Starting dynamic concurrency loop for task {self.task_id}")
-        while 1:
+        while self._allow_dynamic_concurrency:
             try:
                 request = api_pb2.FunctionGetDynamicConcurrencyRequest(
                     function_id=self.function_id,
@@ -985,10 +987,6 @@ class _ContainerIOManager:
             raise e
 
     @property
-    def target_concurrency(self) -> int:
-        return self._target_concurrency
-
-    @property
     def max_concurrency(self) -> int:
         return self._max_concurrency
 
@@ -997,6 +995,19 @@ class _ContainerIOManager:
         io_manager = cls._singleton
         assert io_manager
         return io_manager._input_slots.value
+
+    @classmethod
+    def set_input_concurrency(cls, concurrency) -> int:
+        io_manager = cls._singleton
+        assert io_manager
+        if io_manager._max_concurrency <= 1:
+            raise InvalidError(
+                "allow_concurrent_inputs or target_concurrent_inputs must be "
+                "greater than 1 to enable local input concurrency control."
+            )
+
+        io_manager._allow_dynamic_concurrency = False
+        return io_manager._input_slots.set_value(concurrency)
 
     @classmethod
     def stop_fetching_inputs(cls):

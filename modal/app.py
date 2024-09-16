@@ -632,7 +632,10 @@ class _App:
         concurrency_limit: Optional[
             int
         ] = None,  # An optional maximum number of concurrent containers running the function (keep_warm sets minimum).
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
+        allow_concurrent_inputs: Optional[int] = None,  # Maximum number of inputs the container may fetch concurrently.
+        target_concurrent_inputs: Optional[
+            int
+        ] = None,  # Desired input concurrency for autoscaling. Must be <= allow_concurrent_inputs.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Optional[
@@ -680,6 +683,14 @@ class _App:
             image = self._get_default_image()
 
         secrets = [*self._secrets, *secrets]
+
+        # TODO: temporarily, allow_concurrent_inputs is an alias for target_concurrent_inputs if
+        # target_concurrent_inputs is not set, and it is an alias for max_concurrent_inputs if
+        # target_concurrent_inputs is set. This will be removed in the future.
+        target_concurrent_inputs = target_concurrent_inputs or allow_concurrent_inputs
+        max_concurrent_inputs = allow_concurrent_inputs if target_concurrent_inputs else None
+        if max_concurrent_inputs and max_concurrent_inputs < target_concurrent_inputs:
+            raise InvalidError("allow_concurrent_inputs must be greater than or equal to target_concurrent_inputs.")
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
@@ -799,7 +810,8 @@ class _App:
                 proxy=proxy,
                 retries=retries,
                 concurrency_limit=concurrency_limit,
-                allow_concurrent_inputs=allow_concurrent_inputs,
+                target_concurrent_inputs=target_concurrent_inputs,
+                max_concurrent_inputs=max_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 container_idle_timeout=container_idle_timeout,
@@ -852,8 +864,11 @@ class _App:
         ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
+        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function..
+        allow_concurrent_inputs: Optional[int] = None,  # Maximum number of inputs the container may fetch concurrently.
+        target_concurrent_inputs: Optional[
+            int
+        ] = None,  # Desired input concurrency for autoscaling. Must be <= allow_concurrent_inputs.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
@@ -891,6 +906,12 @@ class _App:
             image = self._get_default_image()
 
         secrets = [*self._secrets, *secrets]
+
+        # TODO: Temporary alias of allow_concurrent_inputs to target_concurrent_inputs
+        target_concurrent_inputs = target_concurrent_inputs or allow_concurrent_inputs
+        max_concurrent_inputs = allow_concurrent_inputs if target_concurrent_inputs else None
+        if max_concurrent_inputs and max_concurrent_inputs < target_concurrent_inputs:
+            raise InvalidError("allow_concurrent_inputs must be greater than or equal to target_concurrent_inputs.")
 
         def wrapper(user_cls: CLS_T) -> CLS_T:
             nonlocal keep_warm
@@ -937,7 +958,8 @@ class _App:
                 proxy=proxy,
                 retries=retries,
                 concurrency_limit=concurrency_limit,
-                allow_concurrent_inputs=allow_concurrent_inputs,
+                target_concurrent_inputs=target_concurrent_inputs,
+                max_concurrent_inputs=max_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 container_idle_timeout=container_idle_timeout,
