@@ -31,13 +31,19 @@ def stop_fetching_inputs():
 
 
 def get_local_input_concurrency():
-    """Get the container's local input concurrency. Return 0 if the container is not running."""
+    """Get the container's local input concurrency.
+
+    If recently reduced to particular value, it can return a larger number than
+    set due to in-progress inputs."""
 
     return _ContainerIOManager.get_input_concurrency()
 
 
 def set_local_input_concurrency(concurrency: int):
-    """Set the container's local input concurrency. Dynamic concurrency will be disabled."""
+    """Set the container's local input concurrency. Dynamic concurrency will be disabled.
+
+    When setting to a smaller value, this method will not interrupt in-progress inputs.
+    """
 
     _ContainerIOManager.set_input_concurrency(concurrency)
 

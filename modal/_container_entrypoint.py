@@ -447,7 +447,7 @@ def call_function(
                 if not did_sigint:
                     did_sigint = True
                     logger.warning(
-                        "User cancelling input of non-async functions with target_concurrent_inputs > 1.\n"
+                        "User cancelling input of non-async functions with allow_concurrent_inputs > 1.\n"
                         "This shuts down the container, causing concurrently running inputs to be "
                         "rescheduled in other containers."
                     )

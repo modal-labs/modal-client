@@ -303,6 +303,9 @@ class _ContainerIOManager:
 
         self._target_concurrency = target_concurrency
         self._max_concurrency = max_concurrency
+        # By default, the container automatically adjusts local concurrency within [target, max],
+        # preferring lower values when there is no backlog of inputs on the function. If a user uses
+        # set_local_input_concurrency, this background adjustment is disabled.
         self._concurrency_loop = None
         self._allow_dynamic_concurrency = True
         self._input_slots = InputSlots(target_concurrency)
@@ -430,7 +433,7 @@ class _ContainerIOManager:
 
     async def _dynamic_concurrency_loop(self):
         logger.debug(f"Starting dynamic concurrency loop for task {self.task_id}")
-        while self._allow_dynamic_concurrency:
+        while 1:
             try:
                 request = api_pb2.FunctionGetDynamicConcurrencyRequest(
                     function_id=self.function_id,
@@ -442,6 +445,11 @@ class _ContainerIOManager:
                     request,
                     attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS,
                 )
+                if not self._allow_dynamic_concurrency:
+                    # Since the user manually set a value for local concurrency, we exit
+                    # the dynamic concurrency loop.
+                    logger.debug("Dynamic concurrency disabled, exiting loop.")
+                    break
                 if resp.concurrency != self._input_slots.value:
                     logger.debug(f"Dynamic concurrency set from {self._input_slots.value} to {resp.concurrency}")
                 self._input_slots.set_value(resp.concurrency)
@@ -992,21 +1000,29 @@ class _ContainerIOManager:
 
     @classmethod
     def get_input_concurrency(cls) -> int:
+        """
+        Return the number of inputs slots.
+
+        If active slots exceeds the number of allowed slots (this could happen when the number
+        of slots is reduced), return the larger value.
+        """
         io_manager = cls._singleton
         assert io_manager
-        return io_manager._input_slots.value
+        return max(io_manager._input_slots.active, io_manager._input_slots.value)
 
     @classmethod
-    def set_input_concurrency(cls, concurrency) -> int:
+    def set_input_concurrency(cls, concurrency: int) -> int:
+        """
+        Edit the number of input slots. Clamps within [1, max_concurrency].
+
+        This disables the background loop which automatically adjusts concurrency
+        within [target_concurrency, max_concurrency].
+        """
         io_manager = cls._singleton
         assert io_manager
-        if io_manager._max_concurrency <= 1:
-            raise InvalidError(
-                "allow_concurrent_inputs or target_concurrent_inputs must be "
-                "greater than 1 to enable local input concurrency control."
-            )
-
         io_manager._allow_dynamic_concurrency = False
+        concurrency = min(concurrency, io_manager._max_concurrency)
+        concurrency = max(concurrency, 1)
         return io_manager._input_slots.set_value(concurrency)
 
     @classmethod

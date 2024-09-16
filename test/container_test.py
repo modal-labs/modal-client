@@ -2209,7 +2209,7 @@ def test_max_concurrency(servicer):
 
 
 @skip_github_non_linux
-def test_set_local_concurrent_inputs(servicer):
+def test_set_local_input_concurrency(servicer):
     n_inputs = 5
     target_concurrency = 2
     max_concurrency = 10
