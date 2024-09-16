@@ -1241,6 +1241,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
             return
 
+        for tag in request.tags:
+            if self.sandbox_tags.get(tag.tag_name) != tag.tag_value:
+                await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
+                return
+
         await stream.send_message(
             api_pb2.SandboxListResponse(
                 sandboxes=[
@@ -1250,6 +1255,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 ]
             )
         )
+
+    async def SandboxTagsSet(self, stream):
+        request: api_pb2.SandboxTagsSetRequest = await stream.recv_message()
+        self.sandbox_tags = {tag.tag_name: tag.tag_value for tag in request.tags}
+        await stream.send_message(Empty())
 
     async def SandboxTerminate(self, stream):
         self.sandbox.terminate()
