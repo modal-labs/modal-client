@@ -8,6 +8,7 @@ from pathlib import Path
 
 from modal import App, Image, Mount, NetworkFileSystem, Sandbox, Secret
 from modal.exception import DeprecationError, InvalidError
+from modal_proto import api_pb2
 
 app = App()
 
@@ -268,3 +269,32 @@ def test_sandbox_list_tags(client, servicer):
     assert not list(Sandbox.list(tags={"foo": "notbar"}, client=client))
     sb.terminate()
     assert not list(Sandbox.list(tags={"baz": "qux"}, client=client))
+
+
+@skip_non_linux
+def test_sandbox_network_access(client, servicer):
+    with pytest.raises(InvalidError):
+        Sandbox.create("echo", "test", block_network=True, cidr_allowlist=["10.0.0.0/8"], client=client, app=app)
+
+    # Test that blocking works
+    sb = Sandbox.create("echo", "test", block_network=True, client=client, app=app)
+    assert (
+        servicer.sandbox_defs[0].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.BLOCKED
+    )
+    assert len(servicer.sandbox_defs[0].network_access.allowed_cidrs) == 0
+    sb.terminate()
+
+    # Test that allowlisting works
+    sb = Sandbox.create("echo", "test", block_network=False, cidr_allowlist=["10.0.0.0/8"], client=client, app=app)
+    assert (
+        servicer.sandbox_defs[1].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    )
+    assert len(servicer.sandbox_defs[1].network_access.allowed_cidrs) == 1
+    assert servicer.sandbox_defs[1].network_access.allowed_cidrs[0] == "10.0.0.0/8"
+    sb.terminate()
+
+    # Test that no rules means allow all
+    sb = Sandbox.create("echo", "test", block_network=False, client=client, app=app)
+    assert servicer.sandbox_defs[2].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
+    assert len(servicer.sandbox_defs[2].network_access.allowed_cidrs) == 0
+    sb.terminate()
