@@ -979,7 +979,7 @@ def test_spawn_extended_feature_flag(client, servicer, monkeypatch, feature_flag
     app = App()
     dummy_modal = app.function()(dummy)
 
-    if feature_flag:
+    if feature_flag is not None:
         monkeypatch.setenv("MODAL_SPAWN_EXTENDED", str(feature_flag))
 
     with servicer.intercept() as ctx:
