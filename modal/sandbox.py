@@ -1,12 +1,12 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
+from grpclib import GRPCError, Status
 
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
-from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from modal.volume import _Volume
 from modal_proto import api_pb2
 
@@ -19,13 +19,13 @@ from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
-from .exception import deprecation_warning
+from .exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError, deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import _Object
+from .object import _get_environment_name, _Object
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 
@@ -185,8 +185,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> "_Sandbox":
         from .app import _App
 
-        if environment_name is None:
-            environment_name = config.get("environment")
+        environment_name = _get_environment_name(environment_name)
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -220,6 +219,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         elif _App._container_app is not None:
             app_id = _App._container_app.app_id
             app_client = _App._container_app.client
+        else:
+            deprecation_warning(
+                (2024, 9, 14),
+                "Creating a `Sandbox` without an `App` is deprecated.\n"
+                "You may pass in an `App` object, or reference one by name with `App.lookup`:\n"
+                "```\n"
+                "app = modal.App.lookup('my-app', create_if_missing=True)\n"
+                "modal.Sandbox.create('echo', 'hi', app=app)\n"
+                "```",
+            )
 
         client = client or app_client or await _Client.from_env()
 
@@ -249,6 +258,24 @@ class _Sandbox(_Object, type_prefix="sb"):
         obj._result = resp.result
 
         return obj
+
+    async def set_tags(self, tags: Dict[str, str], *, client: Optional[_Client] = None):
+        """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
+        environment_name = _get_environment_name()
+        if client is None:
+            client = await _Client.from_env()
+
+        tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()]
+
+        req = api_pb2.SandboxTagsSetRequest(
+            environment_name=environment_name,
+            sandbox_id=self.object_id,
+            tags=tags_list,
+        )
+        try:
+            await retry_transient_errors(client.stub.SandboxTagsSet, req)
+        except GRPCError as exc:
+            raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
     # Live handle methods
 
@@ -328,7 +355,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         **Usage**
 
         ```python
-        sandbox = modal.Sandbox.create("sleep", "infinity")
+        app = modal.App.lookup("my-app", create_if_missing=True)
+
+        sandbox = modal.Sandbox.create("sleep", "infinity", app=app)
 
         process = sandbox.exec("bash", "-c", "for i in $(seq 1 10); do echo foo $i; sleep 0.5; done")
 
@@ -387,6 +416,45 @@ class _Sandbox(_Object, type_prefix="sb"):
             return 137
         else:
             return self._result.exitcode
+
+    @staticmethod
+    async def list(
+        *, app_id: Optional[str] = None, tags: Optional[Dict[str, str]] = None, client: Optional[_Client] = None
+    ) -> AsyncGenerator["_Sandbox", None]:
+        """List all sandboxes for the current environment or app ID (if specified). If tags are specified, only
+        sandboxes that have at least those tags are returned. Returns an iterator over `Sandbox` objects."""
+        before_timestamp = None
+        environment_name = _get_environment_name()
+        if client is None:
+            client = await _Client.from_env()
+
+        tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()] if tags else []
+
+        while True:
+            req = api_pb2.SandboxListRequest(
+                app_id=app_id,
+                before_timestamp=before_timestamp,
+                environment_name=environment_name,
+                include_finished=False,
+                tags=tags_list,
+            )
+
+            # Fetches a batch of sandboxes.
+            try:
+                resp = await retry_transient_errors(client.stub.SandboxList, req)
+            except GRPCError as exc:
+                raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+
+            if not resp.sandboxes:
+                return
+
+            for sandbox_info in resp.sandboxes:
+                obj = _Sandbox._new_hydrated(sandbox_info.id, client, None)
+                obj._result = sandbox_info.task_info.result
+                yield obj
+
+            # Fetch the next batch starting from the end of the current one.
+            before_timestamp = resp.sandboxes[-1].created_at
 
 
 Sandbox = synchronize_api(_Sandbox)

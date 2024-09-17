@@ -65,7 +65,8 @@ class _StreamReader:
     sandbox = Sandbox.create(
         "bash",
         "-c",
-        "for i in $(seq 1 10); do echo foo; sleep 0.1; done"
+        "for i in $(seq 1 10); do echo foo; sleep 0.1; done",
+        app=app,
     )
     for message in sandbox.stdout:
         print(f"Message: {message}")
@@ -104,7 +105,7 @@ class _StreamReader:
         ```python
         from modal import Sandbox
 
-        sandbox = Sandbox.create("echo", "hello")
+        sandbox = Sandbox.create("echo", "hello", app=app)
         sandbox.wait()
 
         print(sandbox.stdout.read())
@@ -214,6 +215,7 @@ class _StreamWriter:
             "bash",
             "-c",
             "while read line; do echo $line; done",
+            app=app,
         )
         sandbox.stdin.write(b"foo\\n")
         sandbox.stdin.write(b"bar\\n")
