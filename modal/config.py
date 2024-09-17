@@ -221,6 +221,7 @@ _SETTINGS = {
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
     "i6pn_enabled": _Setting(False, transform=_to_boolean),  # For internal/experimental use
+    "spawn_extended": _Setting(False, transform=_to_boolean),
 }
 
 
