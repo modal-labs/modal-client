@@ -2210,19 +2210,22 @@ def test_max_concurrency(servicer):
 
 @skip_github_non_linux
 def test_set_local_input_concurrency(servicer):
-    n_inputs = 5
-    target_concurrency = 2
+    n_inputs = 6
+    target_concurrency = 3
+    max_concurrency = 6
 
+    now = time.time()
     ret = _run_container(
         servicer,
         "test.supports.functions",
         "set_input_concurrency",
-        inputs=_get_inputs(((1,), {}), n=n_inputs),
+        inputs=_get_inputs(((now,), {}), n=n_inputs),
         allow_concurrent_inputs=target_concurrency,
+        max_concurrent_inputs=max_concurrency,
     )
 
-    outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
-    assert outputs == [20] * 5
+    outputs = [int(deserialize(item.result.data, ret.client)) for item in ret.items]
+    assert outputs == [1] * 3 + [2] * 3
 
 
 @skip_github_non_linux
