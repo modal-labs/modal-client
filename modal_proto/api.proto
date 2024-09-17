@@ -142,6 +142,7 @@ enum GPUType {
   GPU_TYPE_A100_80GB = 8;
   GPU_TYPE_L4 = 9;
   GPU_TYPE_H100 = 10;
+  GPU_TYPE_L40S = 11;
 }
 
 enum ObjectCreationType {
@@ -1140,6 +1141,7 @@ message FunctionCreateRequest {
   // be done in AppPublish. Provides a smoother migration onto atomic deployments with 0.64,
   // and can be deprecated once we no longer support ealier versions.
   bool defer_updates = 8;
+  FunctionData function_data = 9;  // supersedes 'function' field above
 }
 
 message FunctionCreateResponse {
@@ -1148,6 +1150,58 @@ message FunctionCreateResponse {
   Function function = 4;
   FunctionHandleMetadata handle_metadata = 5;
 }
+
+message FunctionData {
+  // Note: FunctionData pulls "up" a subset of fields from Function message that
+  // will get deprecated there and made authoritative here, at the top-level.
+  // All remaining fields will stay within the Function message itself and a
+  // single FunctionData will contain a list of such (ranked) Functions. The
+  // top-level fields capture data not specific to any particular underlying
+  // task (like warm-pool-size, applicable across all tasks), while fields
+  // specific to the task (like the resource request) will exist at the bottom
+  // level.
+
+  string module_name = 1;
+  string function_name = 2;
+
+  Function.FunctionType function_type = 3;
+
+  // Scheduling related fields.
+  uint32 warm_pool_size = 4;
+  uint32 concurrency_limit = 5;
+  uint32 task_idle_timeout_secs = 6;
+  string worker_id = 7; // for internal debugging use only
+
+  uint32 timeout_secs = 8;
+
+  string web_url = 9;
+  WebUrlInfo web_url_info = 10;
+  WebhookConfig webhook_config = 11;
+  repeated CustomDomainInfo custom_domain_info = 12;
+
+  bool is_class = 13;  // if "Function" is actually a class grouping multiple methods - applies across all underlying tasks
+  ClassParameterInfo class_parameter_info = 14;
+
+  bool is_method = 15;
+  string use_function_id = 16; // used for methods
+  string use_method_name = 17; // used for methods
+
+  message RankedFunction {
+    uint32 rank = 1;
+    Function function = 2;
+  }
+  repeated RankedFunction ranked_functions = 18;
+}
+
+message FunctionExtended {
+  // FunctionExtended is a union type that exists while we migrate between
+  // storage of FunctionData vs. Functions, internally.
+  oneof function_extended {
+      Function function_singleton = 1;
+      FunctionData function_data = 2;
+  }
+}
+
 
 message FunctionGetCallGraphRequest {
   // TODO: use input_id once we switch client submit API to return those.
@@ -1283,6 +1337,44 @@ message FunctionMapRequest {
 message FunctionMapResponse {
   string function_call_id = 1;
   repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
+}
+
+message FunctionMeta {
+  // Subset of fields from Function message above that will get deprecated there
+  // and made authoritative here. Represents metadata about the function itself,
+  // stored inline with the function object, capturing data not specific to any
+  // particular underlying task. Something specific would be the kind of GPU
+  // used, for instance.
+
+  string module_name = 1;
+  string function_name = 2;
+
+  Function.FunctionType function_type = 3;
+
+  // Scheduling related fields.
+  uint32 warm_pool_size = 4;
+  uint32 concurrency_limit = 5;
+  uint32 task_idle_timeout_secs = 6;
+  string worker_id = 7; // for internal debugging use only
+  // TODO(irfansharif): Field to control whether [warm-pool-size,
+  // concurrency-limit] is in input-slot-units?
+
+  // Input timeout, applies across all underlying tasks.
+  uint32 timeout_secs = 8;
+
+  string web_url = 9;
+  repeated CustomDomainInfo custom_domain_info = 10;
+  WebhookConfig webhook_config = 11;
+
+  bool is_class = 12;  // if "Function" is actually a class grouping multiple methods - applies across all underlying tasks
+  ClassParameterInfo class_parameter_info = 13;
+
+  bool is_method = 14;
+  string use_function_id = 15; // used for methods
+  string use_method_name = 16; // used for methods
+
+  // TODO(irfansharif): Should we just expand FunctionHandleMetadata + persist
+  // instead?
 }
 
 message FunctionOptions {
@@ -1559,6 +1651,17 @@ message MultiPartUpload {
   string completion_url = 3;
 }
 
+message NetworkAccess {
+  enum NetworkAccessType {
+    UNSPECIFIED = 0;
+    OPEN = 1;
+    BLOCKED = 2;
+    ALLOWLIST = 3;
+  }
+  NetworkAccessType network_access_type = 1;
+  repeated string allowed_cidrs = 2;
+}
+
 message Object {
   string object_id = 1;
   oneof handle_metadata_oneof {
@@ -1789,6 +1892,9 @@ message Sandbox {
   }
 
   bool i6pn_enabled = 21;
+
+  // Network access configuration beyond simple allow/block.
+  NetworkAccess network_access = 22;
 }
 
 message SandboxCreateRequest {
@@ -1842,6 +1948,7 @@ message SandboxListRequest {
   double before_timestamp = 2;
   string environment_name = 3;
   bool include_finished = 4;
+  repeated SandboxTag tags = 5;
 }
 
 message SandboxListResponse {
@@ -1856,6 +1963,17 @@ message SandboxStdinWriteRequest {
 }
 
 message SandboxStdinWriteResponse {
+}
+
+message SandboxTag {
+  string tag_name = 1;
+  string tag_value = 2;
+}
+
+message SandboxTagsSetRequest {
+  string environment_name = 1;
+  string sandbox_id = 2;
+  repeated SandboxTag tags = 3;
 }
 
 message SandboxTerminateRequest {
@@ -2421,6 +2539,7 @@ service ModalClient {
   rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
+  rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
 

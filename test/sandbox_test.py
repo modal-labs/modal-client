@@ -235,3 +235,36 @@ def test_sandbox_on_app_lookup(client, servicer):
     sb.wait()
     assert sb.stdout.read() == "hi\n"
     assert servicer.sandbox_app_id == app.app_id
+
+
+@skip_non_linux
+def test_sandbox_list_env(client, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", client=client)
+    assert len(list(Sandbox.list(client=client))) == 1
+    sb.terminate()
+    assert not list(Sandbox.list(client=client))
+
+
+@skip_non_linux
+def test_sandbox_list_app(client, servicer):
+    image = Image.debian_slim().pip_install("xyz")
+    secret = Secret.from_dict({"FOO": "bar"})
+    mount = Mount.from_local_file(__file__, "/xyz")
+
+    with app.run(client):
+        # Create sandbox
+        with pytest.warns(DeprecationError):
+            sb = app.spawn_sandbox("bash", "-c", "sleep 10000", image=image, secrets=[secret], mounts=[mount])
+            assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 1
+            sb.terminate()
+            assert not list(Sandbox.list(app_id=app.app_id, client=client))
+
+
+@skip_non_linux
+def test_sandbox_list_tags(client, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", client=client)
+    sb.set_tags({"foo": "bar", "baz": "qux"}, client=client)
+    assert len(list(Sandbox.list(tags={"foo": "bar"}, client=client))) == 1
+    assert not list(Sandbox.list(tags={"foo": "notbar"}, client=client))
+    sb.terminate()
+    assert not list(Sandbox.list(tags={"baz": "qux"}, client=client))

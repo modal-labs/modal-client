@@ -129,9 +129,6 @@ def test_gpu_unsupported_config():
     with pytest.raises(ValueError, match="size='20GB' is invalid"):
         app.function(gpu=modal.gpu.A100(size="20GB"))(dummy)
 
-    with pytest.warns(match="size='80GB'"):
-        app.function(gpu=modal.gpu.A100(memory=80))(dummy)
-
 
 @pytest.mark.parametrize("count", [1, 2, 3, 4])
 def test_gpu_type_selection_from_count(client, servicer, count):

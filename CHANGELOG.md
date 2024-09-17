@@ -10,6 +10,17 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.112 (2024-09-15)
+
+- Creating sandboxes without an associated `App` is deprecated. If you are spawning a `Sandbox` outside a Modal container, you can lookup an `App` by name to attach to the `Sandbox`:
+
+```python
+app = modal.App.lookup('my-app', create_if_missing=True)
+modal.Sandbox.create('echo', 'hi', app=app)
+```
+
+
+
 ### 0.64.109 (2024-09-13)
 
 App handles can now be looked up by name with `modal.App.lookup(name)`. This can be useful for associating sandboxes with apps:
@@ -32,7 +43,31 @@ modal.Sandbox.create("echo", "hi", app=app)
 * Fixes an issue that could cause containers using `enable_memory_snapshot=True` on Python 3.9 and below to shut down prematurely
 
 
+### 0.64.97 (2024-09-11)
 
+* Adds support for [ASGI lifespan protocol](https://asgi.readthedocs.io/en/latest/specs/lifespan.html): 
+
+    ```python
+    @app.function()
+    @modal.asgi_app()
+    def func():
+        from fastapi import FastAPI, Request
+
+        def lifespan(wapp: FastAPI):
+            print("Starting")
+            yield {"foo": "bar"}
+            print("Shutting down")
+
+        web_app = FastAPI(lifespan=lifespan)
+
+        @web_app.get("/")
+        def get_state(request: Request):
+            return {"message": f"This is the state: {request.state.foo}"}
+
+        return web_app
+    ```
+
+    which enables support for `gradio>=v4` amongst other libraries using lifespans
 
 ### 0.64.87 (2024-09-05)
 
