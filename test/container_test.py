@@ -2209,6 +2209,26 @@ def test_max_concurrency(servicer):
 
 
 @skip_github_non_linux
+def test_set_local_input_concurrency(servicer):
+    n_inputs = 6
+    target_concurrency = 3
+    max_concurrency = 6
+
+    now = time.time()
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "set_input_concurrency",
+        inputs=_get_inputs(((now,), {}), n=n_inputs),
+        allow_concurrent_inputs=target_concurrency,
+        max_concurrent_inputs=max_concurrency,
+    )
+
+    outputs = [int(deserialize(item.result.data, ret.client)) for item in ret.items]
+    assert outputs == [1] * 3 + [2] * 3
+
+
+@skip_github_non_linux
 def test_sandbox_infers_app(servicer, event_loop):
     _run_container(servicer, "test.supports.sandbox", "spawn_sandbox")
     assert servicer.sandbox_app_id == "ap-1"
