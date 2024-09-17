@@ -994,9 +994,29 @@ class _ContainerIOManager:
 
     @classmethod
     def get_input_concurrency(cls) -> int:
+        """
+        Returns the number of usable input slots.
+
+        If concurrency is reduced, active slots can exceed allotted slots. Returns the larger value
+        in this case.
+        """
+
         io_manager = cls._singleton
         assert io_manager
-        return io_manager._input_slots.value
+        return max(io_manager._input_slots.active, io_manager._input_slots.value)
+
+    @classmethod
+    def set_input_concurrency(cls, concurrency: int):
+        """
+        Edit the number of input slots.
+
+        This disables the background loop which automatically adjusts concurrency
+        within [target_concurrency, max_concurrency].
+        """
+        io_manager = cls._singleton
+        assert io_manager
+        concurrency = min(concurrency, io_manager._max_concurrency)
+        io_manager._input_slots.set_value(concurrency)
 
     @classmethod
     def stop_fetching_inputs(cls):
