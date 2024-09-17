@@ -283,7 +283,6 @@ class _FunctionSpec:
     memory: Optional[Union[int, Tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
-    _experimental_gpus: Sequence[GPU_T]
 
 
 P = typing_extensions.ParamSpec("P")
@@ -520,7 +519,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         container_networking: bool = False,  # Experimental: Container Networking
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
-        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -595,7 +593,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             memory=memory,
             ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
-            _experimental_gpus=_experimental_gpus,
         )
 
         if info.user_cls and not is_auto_snapshot:
@@ -622,7 +619,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
-                    _experimental_gpus=_experimental_gpus,
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
@@ -836,15 +832,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     i6pn_enabled=config.get("i6pn_enabled")
                     or container_networking,  # Experimental: Container Networking
                     _experimental_concurrent_cancellations=True,
-                    _experimental_task_templates=[
-                        api_pb2.TaskTemplate(
-                            rank=1,
-                            resources=convert_fn_config_to_resources_config(
-                                cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
-                            ),
-                        )
-                        for _experimental_gpu in _experimental_gpus
-                    ],
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
@@ -892,10 +879,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             mounts=repr(mounts),
             network_file_systems=repr(network_file_systems),
         )
-        if _experimental_gpus:
-            obj._build_args["experimental_gpus"] = repr(
-                [parse_gpu_config(_experimental_gpu) for _experimental_gpu in _experimental_gpus]
-            )
 
         return obj
 
