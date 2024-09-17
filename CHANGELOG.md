@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.118 (2024-09-17)
+
+Introduce an experimental API to allow users to set the input concurrency for a container locally.
+
+
+
 ### 0.64.112 (2024-09-15)
 
 - Creating sandboxes without an associated `App` is deprecated. If you are spawning a `Sandbox` outside a Modal container, you can lookup an `App` by name to attach to the `Sandbox`:
