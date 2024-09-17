@@ -156,7 +156,9 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
                 self.wrapped_method(req, timeout=timeout, metadata=metadata)
             )
         except asyncio.CancelledError:
-            raise ClientClosed()
+            if self.client.is_closed():
+                raise ClientClosed() from None
+            raise  # if the task is cancelled as part of synchronizer shutdown or similar, don't raise ClientClosed
 
 
 class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
