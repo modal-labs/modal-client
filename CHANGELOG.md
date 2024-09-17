@@ -43,7 +43,31 @@ modal.Sandbox.create("echo", "hi", app=app)
 * Fixes an issue that could cause containers using `enable_memory_snapshot=True` on Python 3.9 and below to shut down prematurely
 
 
+### 0.64.97 (2024-09-11)
 
+* Adds support for [ASGI lifespan protocol](https://asgi.readthedocs.io/en/latest/specs/lifespan.html): 
+
+    ```python
+    @app.function()
+    @modal.asgi_app()
+    def func():
+        from fastapi import FastAPI, Request
+
+        def lifespan(wapp: FastAPI):
+            print("Starting")
+            yield {"foo": "bar"}
+            print("Shutting down")
+
+        web_app = FastAPI(lifespan=lifespan)
+
+        @web_app.get("/")
+        def get_state(request: Request):
+            return {"message": f"This is the state: {request.state.foo}"}
+
+        return web_app
+    ```
+
+    which enables support for `gradio>=v4` amongst other libraries using lifespans
 
 ### 0.64.87 (2024-09-05)
 
