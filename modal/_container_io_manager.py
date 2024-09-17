@@ -295,7 +295,7 @@ class _ContainerIOManager:
 
         if container_args.function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
             target_concurrency = 1
-            max_concurrency = 0
+            max_concurrency = 1
         else:
             target_concurrency = container_args.function_def.target_concurrent_inputs or 1
             max_concurrency = container_args.function_def.max_concurrent_inputs or target_concurrency
@@ -303,6 +303,7 @@ class _ContainerIOManager:
         self._target_concurrency = target_concurrency
         self._max_concurrency = max_concurrency
         self._concurrency_loop = None
+        self._stop_concurrency_loop = False
         self._input_slots = InputSlots(target_concurrency)
 
         self._environment_name = container_args.environment_name
@@ -428,7 +429,7 @@ class _ContainerIOManager:
 
     async def _dynamic_concurrency_loop(self):
         logger.debug(f"Starting dynamic concurrency loop for task {self.task_id}")
-        while 1:
+        while not self._stop_concurrency_loop:
             try:
                 request = api_pb2.FunctionGetDynamicConcurrencyRequest(
                     function_id=self.function_id,
@@ -440,9 +441,9 @@ class _ContainerIOManager:
                     request,
                     attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS,
                 )
-                if resp.concurrency != self._input_slots.value:
+                if resp.concurrency != self._input_slots.value and not self._stop_concurrency_loop:
                     logger.debug(f"Dynamic concurrency set from {self._input_slots.value} to {resp.concurrency}")
-                self._input_slots.set_value(resp.concurrency)
+                    self._input_slots.set_value(resp.concurrency)
 
             except Exception as exc:
                 logger.debug(f"Failed to get dynamic concurrency for task {self.task_id}, {exc}")
@@ -1015,6 +1016,7 @@ class _ContainerIOManager:
         """
         io_manager = cls._singleton
         assert io_manager
+        io_manager._stop_concurrency_loop = True
         concurrency = min(concurrency, io_manager._max_concurrency)
         io_manager._input_slots.set_value(concurrency)
 
