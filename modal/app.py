@@ -29,14 +29,15 @@ from modal_proto import api_pb2
 from ._ipython import is_notebook
 from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
-from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
-from ._utils.grpc_utils import unary_stream
+from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
+from ._utils.grpc_utils import retry_transient_errors, unary_stream
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, _get_class_constructor_signature, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
+from .experimental import _GroupedFunction
 from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
@@ -248,6 +249,44 @@ class _App:
     def description(self) -> Optional[str]:
         """The App's `name`, if available, or a fallback descriptive identifier."""
         return self._description
+
+    @staticmethod
+    async def lookup(
+        label: str,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        create_if_missing: bool = False,
+    ) -> "_App":
+        """Lookup an app with a given name. When `create_if_missing` is true,
+        the app will be created if it doesn't exist.
+
+        ```python
+        app = modal.App.lookup("my-app", create_if_missing=True)
+
+        modal.Sandbox.create("echo", "hi", app=app)
+        ```
+        """
+        if client is None:
+            client = await _Client.from_env()
+
+        request = api_pb2.AppGetOrCreateRequest(
+            app_name=label,
+            environment_name=environment_name,
+            object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+        )
+
+        response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
+
+        app = _App(label)
+        app._app_id = response.app_id
+        app._client = client
+        app._running_app = RunningApp(
+            response.app_id,
+            client=client,
+            environment_name=environment_name,
+            interactive=False,
+        )
+        return app
 
     def set_description(self, description: str):
         self._description = description
@@ -645,7 +684,7 @@ class _App:
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
         ) -> _Function:
-            nonlocal keep_warm, is_generator
+            nonlocal keep_warm, is_generator, cloud, serialized
 
             # Check if the decorated object is a class
             if inspect.isclass(f):
@@ -656,6 +695,28 @@ class _App:
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
                 f.wrapped = True
+
+                # but we don't support @app.function wrapping a method.
+                if is_method_fn(f.raw_f.__qualname__):
+                    raise InvalidError(
+                        "The `@app.function` decorator cannot be used on class methods. "
+                        "Swap with `@modal.method` or `@modal.web_endpoint`, or drop the `@app.function` decorator. "
+                        "Example: "
+                        "\n\n"
+                        "```python\n"
+                        "@app.cls()\n"
+                        "class MyClass:\n"
+                        "    @modal.web_endpoint()\n"
+                        "    def f(self, x):\n"
+                        "        ...\n"
+                        "```\n"
+                    )
+                # START Experimental: Container Networking
+                group_size = f.group_size
+                container_networking = f.flags & _PartialFunctionFlags.GROUPED
+                if container_networking:
+                    serialized = True
+                # END Experimental: Container Networking
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
@@ -678,7 +739,7 @@ class _App:
                         )
                     )
 
-                if not is_top_level_function(f) and is_global_object(f.__qualname__):
+                if is_method_fn(f.__qualname__):
                     raise InvalidError(
                         dedent(
                             """
@@ -702,6 +763,11 @@ class _App:
                 batch_wait_ms = None
                 raw_f = f
 
+                # START Experimental: Container Networking
+                group_size = None
+                container_networking = False
+                # END Experimental: Container Networking
+
             if info.function_name.endswith(".app"):
                 warnings.warn(
                     "Beware: the function name is `app`. Modal will soon rename `Stub` to `App`, "
@@ -716,6 +782,19 @@ class _App:
                 if scheduler_placement:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
+
+            # START Experimental: Container Networking
+
+            if container_networking and not _experimental_scheduler_placement:
+                zone = "us-east-1f"
+                scheduler_placement = SchedulerPlacement(zone=zone)
+                logger.warning(f"Experimental Container Networking: Defaulting to zone {zone}")
+
+            if container_networking and not cloud:
+                cloud = "aws"
+                logger.warning(f"Experimental Container Networking: Defaulting to cloud {cloud}")
+
+            # END Experimental: Container Networking
 
             function = _Function.from_args(
                 info,
@@ -750,9 +829,16 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
                 _experimental_gpus=_experimental_gpus,
+                container_networking=container_networking,  # Experimental: Container Networking
             )
 
             self._add_function(function, webhook_config is not None)
+
+            # START Experimental: Container Networking
+            if container_networking:
+                function = _GroupedFunction(function, group_size)
+            # END Experimental: Container Networking
+
             return function
 
         return wrapped

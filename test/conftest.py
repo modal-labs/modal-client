@@ -296,6 +296,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
             api_pb2.AppCreateResponse(app_id=app_id, app_page_url="https://modaltest.com/apps/ap-123")
         )
 
+    async def AppGetOrCreate(self, stream):
+        request: api_pb2.AppGetOrCreateRequest = await stream.recv_message()
+        self.requests.append(request)
+
+        await stream.send_message(api_pb2.AppGetOrCreateResponse(app_id="ap-123"))
+
     async def AppClientDisconnect(self, stream):
         request: api_pb2.AppClientDisconnectRequest = await stream.recv_message()
         self.requests.append(request)
@@ -1224,6 +1230,36 @@ class MockClientServicer(api_grpc.ModalClientBase):
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
         self.sandbox_result = result
         await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
+
+    async def SandboxList(self, stream):
+        request: api_pb2.SandboxListRequest = await stream.recv_message()
+        if self.sandbox.returncode or request.before_timestamp == 1:
+            await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
+            return
+
+        if request.app_id and request.app_id != self.sandbox_app_id:
+            await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
+            return
+
+        for tag in request.tags:
+            if self.sandbox_tags.get(tag.tag_name) != tag.tag_value:
+                await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
+                return
+
+        await stream.send_message(
+            api_pb2.SandboxListResponse(
+                sandboxes=[
+                    api_pb2.SandboxInfo(
+                        id="sb-123", created_at=1, task_info=api_pb2.TaskInfo(result=self.sandbox_result)
+                    )
+                ]
+            )
+        )
+
+    async def SandboxTagsSet(self, stream):
+        request: api_pb2.SandboxTagsSetRequest = await stream.recv_message()
+        self.sandbox_tags = {tag.tag_name: tag.tag_value for tag in request.tags}
+        await stream.send_message(Empty())
 
     async def SandboxTerminate(self, stream):
         self.sandbox.terminate()
