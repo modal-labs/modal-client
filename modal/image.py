@@ -523,13 +523,23 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
+    def copy_local_dir(
+        self,
+        local_path: Union[str, Path],
+        remote_path: Union[str, Path] = ".",
+        condition: Optional[Callable[[str], bool]] = None,
+    ) -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
+
+        A `condition` function can be used to filter the files that get copied. It should accept a filename
+        and return a boolean value. Note that the return value is treated as an _inclusion_ criterion.
+        Remember to negate the test if you want to express an exclusion (analagous to an "ignore file").
+
         """
-        mount = _Mount.from_local_dir(local_path, remote_path="/")
+        mount = _Mount.from_local_dir(local_path, remote_path="/", condition=condition)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"], context_files={})

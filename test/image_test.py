@@ -621,6 +621,7 @@ def test_poetry(builder_version, servicer, client):
 @pytest.fixture
 def tmp_path_with_content(tmp_path):
     (tmp_path / "data.txt").write_text("hello")
+    (tmp_path / "data.png").write_bytes(b"")
     (tmp_path / "data").mkdir()
     (tmp_path / "data" / "sub").write_text("world")
     return tmp_path
@@ -628,7 +629,9 @@ def tmp_path_with_content(tmp_path):
 
 def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    app.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy")
+    app.image = Image.debian_slim().copy_local_dir(
+        tmp_path_with_content, remote_path="/dummy", condition=lambda f: not f.endswith(".png")
+    )
     app.function()(dummy)
 
     with app.run(client=client):
