@@ -71,7 +71,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         encrypted_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
-        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -202,7 +201,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
-        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
         from .app import _App
 
@@ -229,7 +227,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             encrypted_ports=encrypted_ports,
             unencrypted_ports=unencrypted_ports,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
-            _experimental_gpus=_experimental_gpus,
         )
 
         app_id: Optional[str] = None
