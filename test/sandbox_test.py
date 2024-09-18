@@ -298,3 +298,15 @@ def test_sandbox_network_access(client, servicer):
     assert servicer.sandbox_defs[2].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
     assert len(servicer.sandbox_defs[2].network_access.allowed_cidrs) == 0
     sb.terminate()
+
+
+@skip_non_linux
+def test_sandbox_no_entrypoint(client, servicer):
+    sb = Sandbox.create(client=client, app=app)
+
+    p = sb.exec("echo", "hi")
+    p.wait()
+    assert p.returncode == 0
+    assert p.stdout.read() == "hi\n"
+
+    sb.terminate()

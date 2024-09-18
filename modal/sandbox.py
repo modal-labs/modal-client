@@ -206,6 +206,12 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         environment_name = _get_environment_name(environment_name)
 
+        # If there are no entrypoint args, we'll sleep forever so that the sandbox will stay
+        # alive long enough for the user to interact with it.
+        if len(entrypoint_args) == 0:
+            max_sleep_time = 60 * 60 * 24 * 2  # 2 days is plenty since workers roll every 24h
+            entrypoint_args = ("sleep", str(max_sleep_time))
+
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
             entrypoint_args,
