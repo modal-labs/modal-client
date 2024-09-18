@@ -1268,7 +1268,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
     async def SandboxTerminate(self, stream):
-        self.sandbox.terminate()
+        try:
+            self.sandbox.terminate()
+        except ProcessLookupError:
+            pass
         await stream.send_message(api_pb2.SandboxTerminateResponse())
 
     async def SandboxGetTaskId(self, stream):

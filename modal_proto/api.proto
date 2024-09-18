@@ -122,6 +122,7 @@ enum FunctionCallInvocationType {
   FUNCTION_CALL_INVOCATION_TYPE_UNSPECIFIED = 0;
   FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY = 1;
   FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY = 2;
+  FUNCTION_CALL_INVOCATION_TYPE_ASYNC = 3;
 }
 
 enum FunctionCallType {
@@ -1071,6 +1072,7 @@ message Function {
   bool _experimental_concurrent_cancellations = 63;
   uint32 max_concurrent_inputs = 64;
 
+  // TODO(irfansharif): Remove, once https://github.com/modal-labs/modal/pull/15645 lands.
   bool _experimental_task_templates_enabled = 65;  // forces going through the new gpu-fallbacks integration path, even if no fallback options are specified
   repeated TaskTemplate _experimental_task_templates = 66;  // for fallback options, where the first/most-preferred "template" is derived from fields above
 }
@@ -1337,44 +1339,6 @@ message FunctionMapRequest {
 message FunctionMapResponse {
   string function_call_id = 1;
   repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
-}
-
-message FunctionMeta {
-  // Subset of fields from Function message above that will get deprecated there
-  // and made authoritative here. Represents metadata about the function itself,
-  // stored inline with the function object, capturing data not specific to any
-  // particular underlying task. Something specific would be the kind of GPU
-  // used, for instance.
-
-  string module_name = 1;
-  string function_name = 2;
-
-  Function.FunctionType function_type = 3;
-
-  // Scheduling related fields.
-  uint32 warm_pool_size = 4;
-  uint32 concurrency_limit = 5;
-  uint32 task_idle_timeout_secs = 6;
-  string worker_id = 7; // for internal debugging use only
-  // TODO(irfansharif): Field to control whether [warm-pool-size,
-  // concurrency-limit] is in input-slot-units?
-
-  // Input timeout, applies across all underlying tasks.
-  uint32 timeout_secs = 8;
-
-  string web_url = 9;
-  repeated CustomDomainInfo custom_domain_info = 10;
-  WebhookConfig webhook_config = 11;
-
-  bool is_class = 12;  // if "Function" is actually a class grouping multiple methods - applies across all underlying tasks
-  ClassParameterInfo class_parameter_info = 13;
-
-  bool is_method = 14;
-  string use_function_id = 15; // used for methods
-  string use_method_name = 16; // used for methods
-
-  // TODO(irfansharif): Should we just expand FunctionHandleMetadata + persist
-  // instead?
 }
 
 message FunctionOptions {
@@ -1938,9 +1902,10 @@ message SandboxHandleMetadata {
 
 message SandboxInfo {
   string id = 1;
-  modal.client.Sandbox definition = 2;
   double created_at = 3;
   TaskInfo task_info = 4;
+
+  reserved 2; // modal.client.Sandbox definition
 }
 
 message SandboxListRequest {
@@ -2219,6 +2184,10 @@ message TaskTemplate {
   Resources resources = 2;
   uint32 target_concurrent_inputs = 3;
   uint32 max_concurrent_inputs = 4;
+
+  // TODO(irfansharif): Just move this into a column in the task table instead?
+  // Deprecate all above fields and get rid of this message altogether
+  uint32 index = 5;  // pointer into FunctionData, if using that as the underlying definition type
 }
 
 message TokenFlowCreateRequest {

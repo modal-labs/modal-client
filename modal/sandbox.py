@@ -65,12 +65,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         memory: Optional[Union[int, Tuple[int, int]]] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
+        cidr_allowlist: Optional[Sequence[str]] = None,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty_info: Optional[api_pb2.PTYInfo] = None,
         encrypted_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
-        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -115,6 +115,24 @@ class _Sandbox(_Object, type_prefix="sb"):
             open_ports = [api_pb2.PortSpec(port=port, unencrypted=False) for port in encrypted_ports]
             open_ports.extend([api_pb2.PortSpec(port=port, unencrypted=True) for port in unencrypted_ports])
 
+            if block_network:
+                # If the network is blocked, cidr_allowlist is invalid as we don't allow any network access.
+                if cidr_allowlist is not None:
+                    raise InvalidError("`cidr_allowlist` cannot be used when `block_network` is enabled")
+                network_access = api_pb2.NetworkAccess(
+                    network_access_type=api_pb2.NetworkAccess.NetworkAccessType.BLOCKED,
+                )
+            elif cidr_allowlist is None:
+                # If the allowlist is empty, we allow all network access.
+                network_access = api_pb2.NetworkAccess(
+                    network_access_type=api_pb2.NetworkAccess.NetworkAccessType.OPEN,
+                )
+            else:
+                network_access = api_pb2.NetworkAccess(
+                    network_access_type=api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST,
+                    allowed_cidrs=cidr_allowlist,
+                )
+
             ephemeral_disk = None  # Ephemeral disk requests not supported on Sandboxes.
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
@@ -129,7 +147,6 @@ class _Sandbox(_Object, type_prefix="sb"):
                 cloud_provider=parse_cloud_provider(cloud) if cloud else None,
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
-                block_network=block_network,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
                 pty_info=pty_info,
@@ -137,6 +154,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 worker_id=config.get("worker_id"),
                 i6pn_enabled=config.get("i6pn_enabled"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
+                network_access=network_access,
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
@@ -169,6 +187,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, Tuple[int, int]]] = None,
         block_network: bool = False,  # Whether to block network access
+        # List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
+        cidr_allowlist: Optional[Sequence[str]] = None,
         volumes: Dict[
             Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
@@ -181,7 +201,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
-        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
         from .app import _App
 
@@ -202,12 +221,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             memory=memory,
             network_file_systems=network_file_systems,
             block_network=block_network,
+            cidr_allowlist=cidr_allowlist,
             volumes=volumes,
             pty_info=pty_info,
             encrypted_ports=encrypted_ports,
             unencrypted_ports=unencrypted_ports,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
-            _experimental_gpus=_experimental_gpus,
         )
 
         app_id: Optional[str] = None
