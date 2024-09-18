@@ -196,7 +196,9 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
                 async for item in stream:
                     yield item
         except asyncio.CancelledError:
-            raise ClientClosed()
+            if self.client.is_closed():
+                raise ClientClosed() from None
+            raise
 
 
 async def unary_stream(
