@@ -40,7 +40,7 @@ def test_client_shutdown_raises_client_closed(servicer):
 
 @pytest.mark.timeout(5)
 @pytest.mark.asyncio
-async def test_client_shutdown_raises_client_closed_streaming(servicer):
+async def test_client_shutdown_raises_client_closed_streaming(servicer, caplog):
     # Queue.get() loops rpc calls until it gets a response - make sure it shuts down
     # if the client is closed and doesn't stay in an indefinite retry loop
 
@@ -62,6 +62,16 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer):
 
     with pytest.raises(ClientClosed):
         await t
+
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+        t = asyncio.create_task(_mocked_logs_loop(client, "ap-1"))
+        await asyncio.sleep(0.1)  # in loop
+
+    with pytest.raises(grpclib.exceptions.StreamTerminatedError):
+        await t
+    assert len(caplog.records) == 3  # open, send and recv called outside of task context
+    for rec in caplog.records:
+        assert "made outside of task context" in rec.message
 
 
 @pytest.mark.timeout(5)

@@ -323,20 +323,11 @@ class _Client:
         # Just used from tests.
         cls._client_from_env = client
 
-    @synchronizer.nowrap
-    async def _call_unary(
-        self,
-        grpclib_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
-        request: RequestType,
-        *,
-        timeout: Optional[float] = None,
-        metadata: Optional[_MetadataLike] = None,
-    ) -> ReturnType:
-        # rpc call within the client context, respecting cancellations due to the client closing
+    async def _call_in_rpc_context(self, coro, readable_method: str):
         if self.is_closed():
+            coro.close()  # prevent "was never awaited"
             raise ClientClosed()
 
-        coro = grpclib_method(request, timeout=timeout, metadata=metadata)
         current_event_loop = asyncio.get_running_loop()
         if current_event_loop == self._rpc_context_event_loop:
             # make request cancellable if we are in the same event loop as the rpc context
@@ -349,10 +340,23 @@ class _Client:
                 raise  # if the task is cancelled as part of synchronizer shutdown or similar, don't raise ClientClosed
         else:
             # this should be rare - mostly used in tests where rpc requests sometimes are triggered
-            # outside of the synchronicity loop
-            logger.warning(f"RPC request to {grpclib_method.name} made outside of task context")
+            # outside of a client context/synchronicity loop
+            logger.warning(f"RPC request to {readable_method} made outside of task context")
             return await coro
 
+    @synchronizer.nowrap
+    async def _call_unary(
+        self,
+        grpclib_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
+        request: RequestType,
+        *,
+        timeout: Optional[float] = None,
+        metadata: Optional[_MetadataLike] = None,
+    ) -> ReturnType:
+        coro = grpclib_method(request, timeout=timeout, metadata=metadata)
+        return await self._call_in_rpc_context(coro, grpclib_method.name)
+
+    @synchronizer.nowrap
     async def _call_stream(
         self,
         grpclib_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType],
@@ -360,21 +364,23 @@ class _Client:
         *,
         metadata: Optional[_MetadataLike],
     ):
-        # TODO: would be nice to put the Client.close tracking in `.open()` instead
-        if self.is_closed():
-            raise ClientClosed()
+        stream_context = grpclib_method.open(metadata=metadata)
+        stream = await self._call_in_rpc_context(stream_context.__aenter__(), f"{grpclib_method.name}.open")
         try:
-            async with grpclib_method.open(metadata=metadata) as stream:
-                await self._rpc_context.create_task(stream.send_message(request, end=True))
-                while 1:
-                    try:
-                        yield await self._rpc_context.create_task(stream.__anext__())
-                    except StopAsyncIteration:
-                        break
-        except asyncio.CancelledError:
-            if self.is_closed():
-                raise ClientClosed() from None
-            raise
+            await self._call_in_rpc_context(
+                stream.send_message(request, end=True), f"{grpclib_method.name}.send_message"
+            )
+            while 1:
+                try:
+                    yield await self._call_in_rpc_context(stream.__anext__(), f"{grpclib_method.name}.recv")
+                except StopAsyncIteration:
+                    break
+        except BaseException as exc:
+            did_handle_exception = await stream_context.__aexit__(type(exc), exc, exc.__traceback__)
+            if not did_handle_exception:
+                raise
+        else:
+            await stream_context.__aexit__(None, None, None)
 
 
 Client = synchronize_api(_Client)
