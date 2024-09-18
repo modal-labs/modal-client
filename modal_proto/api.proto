@@ -1072,7 +1072,9 @@ message Function {
   bool _experimental_concurrent_cancellations = 63;
   uint32 max_concurrent_inputs = 64;
 
-  reserved 65, 66;  // _experimental_task_templates*
+  // TODO(irfansharif): Remove, once https://github.com/modal-labs/modal/pull/15645 lands.
+  bool _experimental_task_templates_enabled = 65;  // forces going through the new gpu-fallbacks integration path, even if no fallback options are specified
+  repeated TaskTemplate _experimental_task_templates = 66;  // for fallback options, where the first/most-preferred "template" is derived from fields above
 }
 
 message FunctionBindParamsRequest {
