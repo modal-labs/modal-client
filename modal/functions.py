@@ -517,6 +517,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         checkpointing_enabled: Optional[bool] = None,
         block_network: bool = False,
         container_networking: bool = False,  # Experimental: Container Networking
+        group_size: Optional[int] = None,  # Experimental: Container Networking
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
     ) -> None:
@@ -831,6 +832,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_parameter_info=info.class_parameter_info(),
                     i6pn_enabled=config.get("i6pn_enabled")
                     or container_networking,  # Experimental: Container Networking
+                    _experimental_group_size=group_size or 0,  # Experimental: Container Networking
                     _experimental_concurrent_cancellations=True,
                 )
                 assert resolver.app_id
