@@ -49,7 +49,7 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer):
             app_id=app_id,
             task_id="",
             timeout=55,
-            last_entry_id=b"",
+            last_entry_id="",
         )
         async for _ in client.stub.AppGetLogs.unary_stream(request):
             pass
