@@ -426,7 +426,6 @@ def shell(
             memory=function_spec.memory,
             volumes=function_spec.volumes,
             region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
-            _experimental_gpus=function_spec._experimental_gpus,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
