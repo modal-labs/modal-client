@@ -152,6 +152,7 @@ class TaskContext:
 
                 # Cancel any remaining unfinished tasks.
                 task.cancel()
+            await asyncio.sleep(0)  # wake up coroutines waiting for cancellations
 
     async def __aexit__(self, exc_type, value, tb):
         await self.stop()

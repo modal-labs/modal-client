@@ -10,14 +10,9 @@ import uuid
 from typing import (
     Any,
     AsyncIterator,
-    Collection,
     Dict,
-    Generic,
-    Mapping,
     Optional,
-    Tuple,
     TypeVar,
-    Union,
 )
 
 import grpclib.client
@@ -30,10 +25,8 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
-from modal.exception import ClientClosed
 from modal_version import __version__
 
-from .async_utils import synchronizer
 from .logger import logger
 
 RequestType = TypeVar("RequestType", bound=Message)
@@ -120,89 +113,12 @@ def create_channel(
     return channel
 
 
-_Value = Union[str, bytes]
-_MetadataLike = Union[Mapping[str, _Value], Collection[Tuple[str, _Value]]]
-
-
-class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
-    wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]
-    client: "modal.client._Client"
-
-    def __init__(
-        self, wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType], client: "modal.client._Client"
-    ):
-        self.wrapped_method = wrapped_method
-        self.client = client
-
-    @property
-    def name(self) -> str:
-        return self.wrapped_method.name
-
-    async def __call__(
-        self,
-        req: RequestType,
-        *,
-        timeout: Optional[float] = None,
-        metadata: Optional[_MetadataLike] = None,
-    ) -> ResponseType:
-        # it's important that this is run from the same event loop as the rpc context is "bound" to,
-        # i.e. the synchronicity event loop
-        assert synchronizer._is_inside_loop()
-        # TODO: incorporate retry_transient_errors here
-        if self.client.is_closed():
-            raise ClientClosed()
-        try:
-            return await self.client._rpc_context.create_task(
-                self.wrapped_method(req, timeout=timeout, metadata=metadata)
-            )
-        except asyncio.CancelledError:
-            if self.client.is_closed():
-                raise ClientClosed() from None
-            raise  # if the task is cancelled as part of synchronizer shutdown or similar, don't raise ClientClosed
-
-
-class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
-    wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType]
-
-    def __init__(
-        self,
-        wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType],
-        client: "modal.client._Client",
-    ):
-        self.wrapped_method = wrapped_method
-        self.client = client
-
-    def open(
-        self,
-        *,
-        timeout: Optional[float] = None,
-        metadata: Optional[_MetadataLike] = None,
-    ) -> grpclib.client.Stream[RequestType, ResponseType]:
-        return self.wrapped_method.open(timeout=timeout, metadata=metadata)
-
-    async def unary_stream(
-        self,
-        request,
-        metadata: Optional[Any] = None,
-    ):
-        """Helper for making a unary-streaming gRPC request."""
-        # TODO: would be nice to put the Client.close tracking in `.open()` instead
-        # TODO: unit test that close triggers ClientClosed for streams
-        if self.client.is_closed():
-            raise ClientClosed()
-        try:
-            async with self.open(metadata=metadata) as stream:
-                await stream.send_message(request, end=True)
-                async for item in stream:
-                    yield item
-        except asyncio.CancelledError:
-            if self.client.is_closed():
-                raise ClientClosed() from None
-            raise
+if typing.TYPE_CHECKING:
+    import modal.client
 
 
 async def unary_stream(
-    method: UnaryStreamWrapper[RequestType, ResponseType],
+    method: "modal.client.UnaryStreamWrapper[RequestType, ResponseType]",
     request: RequestType,
     metadata: Optional[Any] = None,
 ) -> AsyncIterator[ResponseType]:
@@ -212,7 +128,7 @@ async def unary_stream(
 
 
 async def retry_transient_errors(
-    fn: UnaryUnaryWrapper[RequestType, ResponseType],
+    fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]",
     *args,
     base_delay: float = 0.1,
     max_delay: float = 1,

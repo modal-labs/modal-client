@@ -94,9 +94,9 @@ def render(
                     name, cardinality, request_type, reply_type = method
                     wrapper_cls: str
                     if cardinality is const.Cardinality.UNARY_UNARY:
-                        wrapper_cls = "modal._utils.grpc_utils.UnaryUnaryWrapper"
+                        wrapper_cls = "modal.client.UnaryUnaryWrapper"
                     elif cardinality is const.Cardinality.UNARY_STREAM:
-                        wrapper_cls = "modal._utils.grpc_utils.UnaryStreamWrapper"
+                        wrapper_cls = "modal.client.UnaryStreamWrapper"
                     # elif cardinality is const.Cardinality.STREAM_UNARY:
                     #     wrapper_cls = StreamUnaryWrapper
                     # elif cardinality is const.Cardinality.STREAM_STREAM:
