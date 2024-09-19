@@ -517,6 +517,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         checkpointing_enabled: Optional[bool] = None,
         block_network: bool = False,
         container_networking: bool = False,  # Experimental: Container Networking
+        group_size: Optional[int] = None,  # Experimental: Container Networking
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
     ) -> None:
@@ -661,6 +662,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if container_idle_timeout is not None and container_idle_timeout <= 0:
             raise InvalidError("`container_idle_timeout` must be > 0")
+
+        if max_inputs is not None:
+            if not isinstance(max_inputs, int):
+                raise InvalidError(f"`max_inputs` must be an int, not {type(max_inputs).__name__}")
+            if max_inputs <= 0:
+                raise InvalidError("`max_inputs` must be positive")
+            if max_inputs > 1:
+                raise InvalidError("Only `max_inputs=1` is currently supported")
 
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
@@ -831,6 +840,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_parameter_info=info.class_parameter_info(),
                     i6pn_enabled=config.get("i6pn_enabled")
                     or container_networking,  # Experimental: Container Networking
+                    _experimental_group_size=group_size or 0,  # Experimental: Container Networking
                     _experimental_concurrent_cancellations=True,
                 )
                 assert resolver.app_id

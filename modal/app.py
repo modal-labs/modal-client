@@ -828,6 +828,7 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
                 container_networking=container_networking,  # Experimental: Container Networking
+                group_size=group_size,  # Experimental: Container Networking
             )
 
             self._add_function(function, webhook_config is not None)
