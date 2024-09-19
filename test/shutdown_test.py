@@ -76,7 +76,7 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer, caplog):
 
 @pytest.mark.timeout(5)
 @pytest.mark.asyncio
-async def test_client_close_rpc_context_only_used_in_task_context_event_loop(servicer, caplog):
+async def test_client_close_cancellation_context_only_used_in_correct_event_loop(servicer, caplog):
     with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
         with modal.Queue.ephemeral(client=client) as q:
             request = api_pb2.QueueGetRequest(

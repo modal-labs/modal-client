@@ -103,8 +103,8 @@ ResponseType = TypeVar("ResponseType", bound=Message)
 class _Client:
     _client_from_env: ClassVar[Optional["_Client"]] = None
     _client_from_env_lock: ClassVar[Optional[asyncio.Lock]] = None
-    _rpc_context: TaskContext
-    _rpc_context_event_loop: asyncio.AbstractEventLoop = None
+    _cancellation_context: TaskContext
+    _cancellation_context_event_loop: asyncio.AbstractEventLoop = None
     _stub: Optional[api_grpc.ModalClientStub]
 
     def __init__(
@@ -154,15 +154,15 @@ class _Client:
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
-        self._rpc_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
-        self._rpc_context_event_loop = asyncio.get_running_loop()
-        await self._rpc_context.__aenter__()
+        self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
+        self._cancellation_context_event_loop = asyncio.get_running_loop()
+        await self._cancellation_context.__aenter__()
         grpclib_stub = api_grpc.ModalClientStub(self._channel)
         self._stub = modal_api_grpc.ModalClientModal(grpclib_stub, client=self)
 
     async def _close(self, prep_for_restore: bool = False):
         self._closed = True
-        await self._rpc_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
+        await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
         if self._channel is not None:
             self._channel.close()
 
@@ -323,17 +323,24 @@ class _Client:
         # Just used from tests.
         cls._client_from_env = client
 
-    async def _call_in_rpc_context(self, coro, readable_method: str):
+    async def _call_safely(self, coro, readable_method: str):
+        """Runs coroutine wrapped in a task that's part of the client's task context
+
+        * Raises ClientClosed in case the client is closed while the coroutine is executed
+        * Logs warning if call is made outside of the event loop that the client is running in,
+          and execute without the cancellation context in that case
+        """
+
         if self.is_closed():
             coro.close()  # prevent "was never awaited"
             raise ClientClosed()
 
         current_event_loop = asyncio.get_running_loop()
-        if current_event_loop == self._rpc_context_event_loop:
+        if current_event_loop == self._cancellation_context_event_loop:
             # make request cancellable if we are in the same event loop as the rpc context
             # this should usually be the case!
             try:
-                return await self._rpc_context.create_task(coro)
+                return await self._cancellation_context.create_task(coro)
             except asyncio.CancelledError:
                 if self.is_closed():
                     raise ClientClosed() from None
@@ -354,7 +361,7 @@ class _Client:
         metadata: Optional[_MetadataLike] = None,
     ) -> ReturnType:
         coro = grpclib_method(request, timeout=timeout, metadata=metadata)
-        return await self._call_in_rpc_context(coro, grpclib_method.name)
+        return await self._call_safely(coro, grpclib_method.name)
 
     @synchronizer.nowrap
     async def _call_stream(
@@ -365,14 +372,12 @@ class _Client:
         metadata: Optional[_MetadataLike],
     ):
         stream_context = grpclib_method.open(metadata=metadata)
-        stream = await self._call_in_rpc_context(stream_context.__aenter__(), f"{grpclib_method.name}.open")
+        stream = await self._call_safely(stream_context.__aenter__(), f"{grpclib_method.name}.open")
         try:
-            await self._call_in_rpc_context(
-                stream.send_message(request, end=True), f"{grpclib_method.name}.send_message"
-            )
+            await self._call_safely(stream.send_message(request, end=True), f"{grpclib_method.name}.send_message")
             while 1:
                 try:
-                    yield await self._call_in_rpc_context(stream.__anext__(), f"{grpclib_method.name}.recv")
+                    yield await self._call_safely(stream.__anext__(), f"{grpclib_method.name}.recv")
                 except StopAsyncIteration:
                     break
         except BaseException as exc:
