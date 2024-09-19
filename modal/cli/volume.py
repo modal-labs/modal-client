@@ -160,7 +160,7 @@ async def ls(
                 filetype = "file"
             rows.append(
                 (
-                    entry.path,
+                    entry.path.encode("unicode_escape").decode("utf-8"),
                     filetype,
                     timestamp_to_local(entry.mtime, False),
                     humanize_filesize(entry.size),
