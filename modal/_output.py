@@ -33,7 +33,7 @@ from rich.text import Text
 
 from modal_proto import api_pb2
 
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors, unary_stream
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from ._utils.shell_utils import stream_from_stdin
 from .client import _Client
 from .config import logger
@@ -580,7 +580,7 @@ async def get_app_logs_loop(
             last_entry_id=last_log_batch_entry_id,
         )
         log_batch: api_pb2.TaskLogsBatch
-        async for log_batch in unary_stream(client.stub.AppGetLogs, request):
+        async for log_batch in client.stub.AppGetLogs.unary_stream(request):
             if log_batch.entry_id:
                 # log_batch entry_id is empty for fd="server" messages from AppGetLogs
                 last_log_batch_entry_id = log_batch.entry_id

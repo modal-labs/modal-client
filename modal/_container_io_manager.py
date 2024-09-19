@@ -42,7 +42,7 @@ from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
 from ._utils.package_utils import parse_major_minor_version
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InputCancellation, InvalidError, SerializationError
+from .exception import ClientClosed, InputCancellation, InvalidError, SerializationError
 from .running_app import RunningApp
 
 if TYPE_CHECKING:
@@ -347,6 +347,9 @@ class _ContainerIOManager:
                     # two subsequent cancellations on the same task at the moment
                     await asyncio.sleep(1.0)
                     continue
+            except ClientClosed:
+                logger.info("Stopping heartbeat loop due to client shutdown")
+                break
             except Exception as exc:
                 # don't stop heartbeat loop if there are transient exceptions!
                 time_elapsed = time.monotonic() - t0
@@ -935,7 +938,6 @@ class _ContainerIOManager:
 
             logger.debug("Memory snapshot request sent. Connection closed.")
             await self.memory_restore()
-
             # Turn heartbeats back on. This is safe since the snapshot RPC
             # and the restore phase has finished.
             self._waiting_for_memory_snapshot = False

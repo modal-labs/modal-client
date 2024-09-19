@@ -320,11 +320,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
             last_entry_id = "1"
         else:
             last_entry_id = str(int(request.last_entry_id) + 1)
-        await asyncio.sleep(0.5)
-        log = api_pb2.TaskLogs(data=f"hello, world ({last_entry_id})\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
-        await stream.send_message(api_pb2.TaskLogsBatch(entry_id=last_entry_id, items=[log]))
-        if self.done:
-            await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+        for _ in range(50):
+            await asyncio.sleep(0.5)
+            log = api_pb2.TaskLogs(
+                data=f"hello, world ({last_entry_id})\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT
+            )
+            await stream.send_message(api_pb2.TaskLogsBatch(entry_id=last_entry_id, items=[log]))
+            last_entry_id = str(int(last_entry_id) + 1)
+            if self.done:
+                await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+                return
 
     async def AppGetObjects(self, stream):
         request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
@@ -1144,6 +1149,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             values = [q.pop(0)]
         else:
             values = []
+            await asyncio.sleep(request.timeout)
         await stream.send_message(api_pb2.QueueGetResponse(values=values))
 
     async def QueueLen(self, stream):

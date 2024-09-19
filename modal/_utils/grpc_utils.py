@@ -4,19 +4,15 @@ import contextlib
 import platform
 import socket
 import time
+import typing
 import urllib.parse
 import uuid
 from typing import (
     Any,
     AsyncIterator,
-    Collection,
     Dict,
-    Generic,
-    Mapping,
     Optional,
-    Tuple,
     TypeVar,
-    Union,
 )
 
 import grpclib.client
@@ -36,6 +32,8 @@ from .logger import logger
 RequestType = TypeVar("RequestType", bound=Message)
 ResponseType = TypeVar("ResponseType", bound=Message)
 
+if typing.TYPE_CHECKING:
+    import modal.client
 
 # Monkey patches grpclib to have a Modal User Agent header.
 grpclib.client.USER_AGENT = "modal-client/{version} ({sys}; {py}/{py_ver})'".format(
@@ -62,9 +60,6 @@ class Subchannel:
             return not self.protocol.handler.connection_lost  # type: ignore
         return True
 
-
-_SendType = TypeVar("_SendType")
-_RecvType = TypeVar("_RecvType")
 
 RETRYABLE_GRPC_STATUS_CODES = [
     Status.DEADLINE_EXCEEDED,
@@ -118,61 +113,22 @@ def create_channel(
     return channel
 
 
-_Value = Union[str, bytes]
-_MetadataLike = Union[Mapping[str, _Value], Collection[Tuple[str, _Value]]]
-
-
-class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
-    wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]
-
-    def __init__(self, wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]):
-        self.wrapped_method = wrapped_method
-
-    @property
-    def name(self) -> str:
-        return self.wrapped_method.name
-
-    async def __call__(
-        self,
-        req: RequestType,
-        *,
-        timeout: Optional[float] = None,
-        metadata: Optional[_MetadataLike] = None,
-    ) -> ResponseType:
-        # TODO: implement Client tracking and retries
-        return await self.wrapped_method(req, timeout=timeout, metadata=metadata)
-
-
-class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
-    wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType]
-
-    def __init__(self, wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType]):
-        self.wrapped_method = wrapped_method
-
-    def open(
-        self,
-        *,
-        timeout: Optional[float] = None,
-        metadata: Optional[_MetadataLike] = None,
-    ) -> grpclib.client.Stream[RequestType, ResponseType]:
-        # TODO: implement Client tracking and unary_stream-wrapper
-        return self.wrapped_method.open(timeout=timeout, metadata=metadata)
+if typing.TYPE_CHECKING:
+    import modal.client
 
 
 async def unary_stream(
-    method: UnaryStreamWrapper[RequestType, ResponseType],
+    method: "modal.client.UnaryStreamWrapper[RequestType, ResponseType]",
     request: RequestType,
     metadata: Optional[Any] = None,
 ) -> AsyncIterator[ResponseType]:
-    """Helper for making a unary-streaming gRPC request."""
-    async with method.open(metadata=metadata) as stream:
-        await stream.send_message(request, end=True)
-        async for item in stream:
-            yield item
+    # TODO: remove this, since we have a method now
+    async for item in method.unary_stream(request, metadata):
+        yield item
 
 
 async def retry_transient_errors(
-    fn: UnaryUnaryWrapper[RequestType, ResponseType],
+    fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]",
     *args,
     base_delay: float = 0.1,
     max_delay: float = 1,

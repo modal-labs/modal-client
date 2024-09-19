@@ -30,7 +30,7 @@ from ._ipython import is_notebook
 from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
-from ._utils.grpc_utils import retry_transient_errors, unary_stream
+from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
@@ -1111,7 +1111,7 @@ class _App:
                 timeout=55,
                 last_entry_id=last_log_batch_entry_id,
             )
-            async for log_batch in unary_stream(client.stub.AppGetLogs, request):
+            async for log_batch in client.stub.AppGetLogs.unary_stream(request):
                 if log_batch.entry_id:
                     # log_batch entry_id is empty for fd="server" messages from AppGetLogs
                     last_log_batch_entry_id = log_batch.entry_id

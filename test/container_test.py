@@ -996,10 +996,10 @@ def test_serialized_cls(servicer):
         def method(self, x):
             return x**self.power
 
+    app = modal.App()
+    app.cls(serialized=True)(Cls)  # prevents warnings about not turning methods into functions
     servicer.class_serialized = serialize(Cls)
-    servicer.function_serialized = serialize(
-        {"method": Cls.__dict__["method"]}
-    )  # can't use Cls.method because of descriptor protocol that returns Function instead of PartialFunction
+    servicer.function_serialized = None
     ret = _run_container(
         servicer,
         "module.doesnt.matter",

@@ -210,3 +210,7 @@ class InputCancellation(BaseException):
 
 class ModuleNotMountable(Exception):
     pass
+
+
+class ClientClosed(Error):
+    pass
