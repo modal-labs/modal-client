@@ -118,7 +118,7 @@ class _ContainerProcess:
 
             try:
                 # time out if we can't connect to the server fast enough
-                await asyncio.wait_for(on_connect.wait(), timeout=15)
+                await asyncio.wait_for(on_connect.wait(), timeout=60)
 
                 async with stream_from_stdin(_handle_input, use_raw_terminal=pty):
                     await stdout_task

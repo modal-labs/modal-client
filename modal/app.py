@@ -657,7 +657,6 @@ class _App:
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-        _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -828,8 +827,8 @@ class _App:
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 _experimental_boost=_experimental_boost,
-                _experimental_gpus=_experimental_gpus,
                 container_networking=container_networking,  # Experimental: Container Networking
+                group_size=group_size,  # Experimental: Container Networking
             )
 
             self._add_function(function, webhook_config is not None)
@@ -887,7 +886,6 @@ class _App:
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-        _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
     ) -> Callable[[CLS_T], CLS_T]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
@@ -970,7 +968,6 @@ class _App:
                 # the callable itself are invalid and set to defaults:
                 webhook_config=None,
                 is_generator=False,
-                _experimental_gpus=_experimental_gpus,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
