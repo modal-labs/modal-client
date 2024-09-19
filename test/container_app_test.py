@@ -11,10 +11,11 @@ from google.protobuf.message import Message
 
 from modal import App, interact
 from modal._container_io_manager import ContainerIOManager
-from modal._utils.grpc_utils import create_channel, retry_transient_errors
+from modal._utils.async_utils import synchronize_api
+from modal._utils.grpc_utils import retry_transient_errors
 from modal.exception import InvalidError
 from modal.running_app import RunningApp
-from modal_proto import api_grpc, api_pb2, modal_api_grpc
+from modal_proto import api_pb2
 
 
 def my_f_1(x):
@@ -77,23 +78,25 @@ def square(x):
     pass
 
 
+@synchronize_api
+async def stop_app(client, app_id):
+    # helper to ensur we run the rpc from the synchronicity loop - otherwise we can run into weird deadlocks
+    return await retry_transient_errors(client.stub.AppStop, api_pb2.AppStopRequest(app_id=app_id))
+
+
 @pytest.mark.asyncio
-async def test_container_snapshot_reference_capture(container_client, tmpdir, servicer):
+async def test_container_snapshot_reference_capture(container_client, tmpdir, servicer, client):
     app = App()
     from modal import Function
     from modal.runner import deploy_app
 
-    channel = create_channel(servicer.client_addr)
-    client_stub = modal_api_grpc.ModalClientModal(api_grpc.ModalClientStub(channel))
     app.function()(square)
     app_name = "my-app"
     app_id = deploy_app(app, app_name, client=container_client).app_id
-
     f = Function.lookup(app_name, "square", client=container_client)
     assert f.object_id == "fu-1"
     await f.remote.aio()
     assert f.object_id == "fu-1"
-
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = temp_restore_path(tmpdir)
     with mock.patch.dict(
@@ -102,10 +105,10 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
         io_manager.memory_snapshot()
 
     # Stop the App, invalidating the fu- ID stored in `f`.
-    assert await retry_transient_errors(client_stub.AppStop, api_pb2.AppStopRequest(app_id=app_id))
+    stop_app(client, app_id)
     # After snapshot-restore the previously looked-up Function should get refreshed and have the
     # new fu- ID. ie. the ID should not be stale and invalid.
-    new_app_id = deploy_app(app, app_name, client=container_client).app_id
+    new_app_id = deploy_app(app, app_name, client=client).app_id
     assert new_app_id != app_id
     await f.remote.aio()
     assert f.object_id == "fu-2"
@@ -113,7 +116,6 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     del servicer.app_objects[new_app_id]
     await f.remote.aio()  # remote call succeeds because it didn't re-hydrate Function
     assert f.object_id == "fu-2"
-    channel.close()
 
 
 def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_client):

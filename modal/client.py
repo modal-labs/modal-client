@@ -2,23 +2,38 @@
 import asyncio
 import platform
 import warnings
-from typing import AsyncIterator, Awaitable, Callable, ClassVar, Dict, Optional, Tuple
+from typing import (
+    Any,
+    AsyncGenerator,
+    AsyncIterator,
+    ClassVar,
+    Collection,
+    Dict,
+    Generic,
+    Mapping,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import grpclib.client
 from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
+from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
+from modal._utils.async_utils import synchronizer
 from modal_proto import api_grpc, api_pb2, modal_api_grpc
 from modal_version import __version__
 
 from ._utils import async_utils
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
 from .config import _check_config, config, logger
-from .exception import AuthError, ConnectionError, DeprecationError, VersionError
+from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -79,9 +94,19 @@ async def _grpc_exc_string(exc: GRPCError, method_name: str, server_url: str, ti
     return f"{method_name}: {exc.message} [gRPC status: {exc.status.name}, {http_status}]"
 
 
+ReturnType = TypeVar("ReturnType")
+_Value = Union[str, bytes]
+_MetadataLike = Union[Mapping[str, _Value], Collection[Tuple[str, _Value]]]
+RequestType = TypeVar("RequestType", bound=Message)
+ResponseType = TypeVar("ResponseType", bound=Message)
+
+
 class _Client:
     _client_from_env: ClassVar[Optional["_Client"]] = None
     _client_from_env_lock: ClassVar[Optional[asyncio.Lock]] = None
+    _cancellation_context: TaskContext
+    _cancellation_context_event_loop: asyncio.AbstractEventLoop = None
+    _stub: Optional[api_grpc.ModalClientStub]
 
     def __init__(
         self,
@@ -99,10 +124,13 @@ class _Client:
         self.version = version
         self._authenticated = False
         self.image_builder_version: Optional[str] = None
-        self._pre_stop: Optional[Callable[[], Awaitable[None]]] = None
+        self._closed = False
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[modal_api_grpc.ModalClientModal] = None
         self._snapshotted = False
+
+    def is_closed(self) -> bool:
+        return self._closed
 
     @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
@@ -127,14 +155,15 @@ class _Client:
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
+        self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
+        self._cancellation_context_event_loop = asyncio.get_running_loop()
+        await self._cancellation_context.__aenter__()
         grpclib_stub = api_grpc.ModalClientStub(self._channel)
-        self._stub = modal_api_grpc.ModalClientModal(grpclib_stub)
+        self._stub = modal_api_grpc.ModalClientModal(grpclib_stub, client=self)
 
     async def _close(self, prep_for_restore: bool = False):
-        if self._pre_stop is not None:
-            logger.debug("Client: running pre-stop coroutine before shutting down")
-            await self._pre_stop()  # type: ignore
-
+        self._closed = True
+        await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
         if self._channel is not None:
             self._channel.close()
 
@@ -144,16 +173,6 @@ class _Client:
 
         # Remove cached client.
         self.set_env_client(None)
-
-    def set_pre_stop(self, pre_stop: Callable[[], Awaitable[None]]):
-        """mdmd:hidden"""
-        # hack: stub.serve() gets into a losing race with the `on_shutdown` client
-        # teardown when an interrupt signal is received (eg. KeyboardInterrupt).
-        # By registering a pre-stop fn stub.serve() can have its teardown
-        # performed before the client is disconnected.
-        #
-        # ref: github.com/modal-labs/modal-client/pull/108
-        self._pre_stop = pre_stop
 
     async def _init(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
@@ -305,5 +324,110 @@ class _Client:
         # Just used from tests.
         cls._client_from_env = client
 
+    async def _call_safely(self, coro, readable_method: str):
+        """Runs coroutine wrapped in a task that's part of the client's task context
+
+        * Raises ClientClosed in case the client is closed while the coroutine is executed
+        * Logs warning if call is made outside of the event loop that the client is running in,
+          and execute without the cancellation context in that case
+        """
+
+        if self.is_closed():
+            coro.close()  # prevent "was never awaited"
+            raise ClientClosed()
+
+        current_event_loop = asyncio.get_running_loop()
+        if current_event_loop == self._cancellation_context_event_loop:
+            # make request cancellable if we are in the same event loop as the rpc context
+            # this should usually be the case!
+            try:
+                return await self._cancellation_context.create_task(coro)
+            except asyncio.CancelledError:
+                if self.is_closed():
+                    raise ClientClosed() from None
+                raise  # if the task is cancelled as part of synchronizer shutdown or similar, don't raise ClientClosed
+        else:
+            # this should be rare - mostly used in tests where rpc requests sometimes are triggered
+            # outside of a client context/synchronicity loop
+            logger.warning(f"RPC request to {readable_method} made outside of task context")
+            return await coro
+
+    @synchronizer.nowrap
+    async def _call_unary(
+        self,
+        grpclib_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
+        request: RequestType,
+        *,
+        timeout: Optional[float] = None,
+        metadata: Optional[_MetadataLike] = None,
+    ) -> ReturnType:
+        coro = grpclib_method(request, timeout=timeout, metadata=metadata)
+        return await self._call_safely(coro, grpclib_method.name)
+
+    @synchronizer.nowrap
+    async def _call_stream(
+        self,
+        grpclib_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType],
+        request: RequestType,
+        *,
+        metadata: Optional[_MetadataLike],
+    ) -> AsyncGenerator[ReturnType, None]:
+        stream_context = grpclib_method.open(metadata=metadata)
+        stream = await self._call_safely(stream_context.__aenter__(), f"{grpclib_method.name}.open")
+        try:
+            await self._call_safely(stream.send_message(request, end=True), f"{grpclib_method.name}.send_message")
+            while 1:
+                try:
+                    yield await self._call_safely(stream.__anext__(), f"{grpclib_method.name}.recv")
+                except StopAsyncIteration:
+                    break
+        except BaseException as exc:
+            did_handle_exception = await stream_context.__aexit__(type(exc), exc, exc.__traceback__)
+            if not did_handle_exception:
+                raise
+        else:
+            await stream_context.__aexit__(None, None, None)
+
 
 Client = synchronize_api(_Client)
+
+
+class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
+    # Calls a grpclib.UnaryUnaryMethod using a specific Client instance, respecting
+    # if that client is closed etc. and possibly introducing Modal-specific retry logic
+    wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]
+    client: _Client
+
+    def __init__(self, wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType], client: _Client):
+        self.wrapped_method = wrapped_method
+        self.client = client
+
+    @property
+    def name(self) -> str:
+        return self.wrapped_method.name
+
+    async def __call__(
+        self,
+        req: RequestType,
+        *,
+        timeout: Optional[float] = None,
+        metadata: Optional[_MetadataLike] = None,
+    ) -> ResponseType:
+        # TODO: incorporate retry_transient_errors here
+        return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
+
+
+class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
+    wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType]
+
+    def __init__(self, wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType], client: _Client):
+        self.wrapped_method = wrapped_method
+        self.client = client
+
+    async def unary_stream(
+        self,
+        request,
+        metadata: Optional[Any] = None,
+    ):
+        async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
+            yield response

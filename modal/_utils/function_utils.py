@@ -19,7 +19,7 @@ from ..config import config, logger
 from ..exception import ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
+from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 
 
 class FunctionInfoType(Enum):
@@ -373,7 +373,7 @@ async def _stream_function_call_data(
     while True:
         req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
         try:
-            async for chunk in unary_stream(stub_fn, req):
+            async for chunk in stub_fn.unary_stream(req):
                 if chunk.index <= last_index:
                     continue
                 if chunk.data_blob_id:

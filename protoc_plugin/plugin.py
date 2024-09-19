@@ -70,6 +70,12 @@ def render(
     buf.add("")
     for mod in imports:
         buf.add("import {}", mod)
+
+    buf.add("import typing")
+    buf.add("if typing.TYPE_CHECKING:")
+    with buf.indent():
+        buf.add("import modal.client")
+
     for service in services:
         buf.add("")
         buf.add("")
@@ -77,7 +83,10 @@ def render(
         buf.add("class {}Modal:", service.name)
         with buf.indent():
             buf.add("")
-            buf.add("def __init__(self, grpclib_stub: {}.{}) -> None:".format(grpclib_module, grpclib_stub_name))
+            buf.add(
+                f"def __init__(self, grpclib_stub: {grpclib_module}.{grpclib_stub_name}, "
+                + """client: "modal.client._Client") -> None:"""
+            )
             with buf.indent():
                 if len(service.methods) == 0:
                     buf.add("pass")
@@ -85,9 +94,9 @@ def render(
                     name, cardinality, request_type, reply_type = method
                     wrapper_cls: str
                     if cardinality is const.Cardinality.UNARY_UNARY:
-                        wrapper_cls = "modal._utils.grpc_utils.UnaryUnaryWrapper"
+                        wrapper_cls = "modal.client.UnaryUnaryWrapper"
                     elif cardinality is const.Cardinality.UNARY_STREAM:
-                        wrapper_cls = "modal._utils.grpc_utils.UnaryStreamWrapper"
+                        wrapper_cls = "modal.client.UnaryStreamWrapper"
                     # elif cardinality is const.Cardinality.STREAM_UNARY:
                     #     wrapper_cls = StreamUnaryWrapper
                     # elif cardinality is const.Cardinality.STREAM_STREAM:
@@ -96,7 +105,7 @@ def render(
                         raise TypeError(cardinality)
 
                     original_method = f"grpclib_stub.{name}"
-                    buf.add(f"self.{name} = {wrapper_cls}({original_method})")
+                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client)")
 
     return buf.content()
 

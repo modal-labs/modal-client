@@ -9,7 +9,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.grpc_utils import retry_transient_errors, unary_stream
+from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
@@ -302,7 +302,7 @@ class _Dict(_Object, type_prefix="di"):
         and results are unordered.
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True)
-        async for resp in unary_stream(self._client.stub.DictContents, req):
+        async for resp in self._client.stub.DictContents.unary_stream(req):
             yield deserialize(resp.key, self._client)
 
     @live_method_gen
@@ -313,7 +313,7 @@ class _Dict(_Object, type_prefix="di"):
         and results are unordered.
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, values=True)
-        async for resp in unary_stream(self._client.stub.DictContents, req):
+        async for resp in self._client.stub.DictContents.unary_stream(req):
             yield deserialize(resp.value, self._client)
 
     @live_method_gen
@@ -324,7 +324,7 @@ class _Dict(_Object, type_prefix="di"):
         and results are unordered.
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True, values=True)
-        async for resp in unary_stream(self._client.stub.DictContents, req):
+        async for resp in self._client.stub.DictContents.unary_stream(req):
             yield (deserialize(resp.key, self._client), deserialize(resp.value, self._client))
 
 
