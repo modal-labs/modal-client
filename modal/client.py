@@ -4,6 +4,7 @@ import platform
 import warnings
 from typing import (
     Any,
+    AsyncGenerator,
     AsyncIterator,
     ClassVar,
     Collection,
@@ -370,7 +371,7 @@ class _Client:
         request: RequestType,
         *,
         metadata: Optional[_MetadataLike],
-    ):
+    ) -> AsyncGenerator[ReturnType, None]:
         stream_context = grpclib_method.open(metadata=metadata)
         stream = await self._call_safely(stream_context.__aenter__(), f"{grpclib_method.name}.open")
         try:
