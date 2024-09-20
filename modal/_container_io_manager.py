@@ -389,7 +389,7 @@ class _ContainerIOManager:
             if response.cancel_input_event.terminate_containers:
                 # This should typically never happen since the task should have been killed
                 logger.warning("Force-terminating container due to input cancellation")
-                signal.raise_signal(signal.SIGINT)
+                os.kill(os.getpid(), signal.SIGINT)
 
             if input_ids_to_cancel:
                 if self._max_concurrency > 1:
@@ -406,7 +406,7 @@ class _ContainerIOManager:
                     # SIGUSR1 signal should interrupt the main thread where user code is running,
                     # raising an InputCancellation() exception. On async functions, the signal should
                     # reach a handler in SignalHandlingEventLoop, which cancels the task.
-                    signal.raise_signal(signal.SIGUSR1)
+                    os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
 

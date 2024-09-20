@@ -451,7 +451,7 @@ def call_function(
                         "This shuts down the container, causing concurrently running inputs to be "
                         "rescheduled in other containers."
                     )
-                    signal.raise_signal(signal.SIGINT)  # raises KeyboardInterrupt in main thread
+                    os.kill(os.getpid(), signal.SIGINT)
 
             async def run_concurrent_inputs():
                 # all run_input coroutines will have completed by the time we leave the execution context
