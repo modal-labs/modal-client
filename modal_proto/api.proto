@@ -1204,11 +1204,14 @@ message FunctionData {
 }
 
 message FunctionExtended {
+  uint32 type_identifier = 1;
   // FunctionExtended is a union type that exists while we migrate between
-  // storage of FunctionData vs. Functions, internally.
+  // storage of FunctionData vs. Functions, internally. Once migrated at the
+  // storage level, we can get rid of this union type and replace with access
+  // that expects FunctionData only.
   oneof function_extended {
-      Function function_singleton = 1;
-      FunctionData function_data = 2;
+      Function function_singleton = 2;
+      FunctionData function_data = 3;
   }
 }
 
