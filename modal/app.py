@@ -378,6 +378,7 @@ class _App:
         client: Optional[_Client] = None,
         show_progress: Optional[bool] = None,
         detach: bool = False,
+        interactive: bool = False,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
@@ -461,10 +462,10 @@ class _App:
 
         if auto_enable_output:
             with OutputManager.enable_output():
-                async with _run_app(self, client=client, detach=detach):
+                async with _run_app(self, client=client, detach=detach, interactive=interactive):
                     yield self
         else:
-            async with _run_app(self, client=client, detach=detach):
+            async with _run_app(self, client=client, detach=detach, interactive=interactive):
                 yield self
 
     def _get_default_image(self):
