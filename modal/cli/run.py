@@ -136,8 +136,9 @@ def _get_clean_app_description(func_ref: str) -> str:
 
 def _get_click_command_for_function(app: App, function_tag):
     function = app.indexed_objects[function_tag]
-    assert isinstance(function, Function)
+    # assert isinstance(function, Function)
     function = typing.cast(Function, function)
+    breakpoint()
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 

@@ -20,6 +20,7 @@ from rich.markdown import Markdown
 
 from modal.app import App, LocalEntrypoint
 from modal.exception import InvalidError, _CliUserExecutionError, deprecation_warning
+from modal.experimental import _GroupedFunction
 from modal.functions import Function
 
 
@@ -269,7 +270,7 @@ def import_function(
         app = app_or_function
         function_handle = _infer_function_or_help(app, module, accept_local_entrypoint, accept_webhook)
         return function_handle
-    elif isinstance(app_or_function, Function):
+    elif isinstance(app_or_function, (Function, _GroupedFunction)):
         return app_or_function
     elif isinstance(app_or_function, LocalEntrypoint):
         if not accept_local_entrypoint:

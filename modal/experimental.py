@@ -79,6 +79,8 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
 
     def __init__(self, f: _Function, size: int):
         self.f = synchronize_api(f)
+        self._rep = f._rep
+        self.app = f.app
         self.size = size
 
     def remote(self, *args: P.args, **kwargs: P.kwargs) -> List[ReturnType]:
@@ -101,10 +103,31 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
         return self.get_raw_f()
 
     def __getattr__(self, name):
-        def unsupported_method(*args, **kwargs):
-            raise NotImplementedError(f"Grouped function does not support the '{name}' method")
+        unsupported_methods = {
+            "get_gen",
+            "get_call_graph",
+            "local",
+            "keep_warm",
+            "from_name",
+            "web_url",
+            "remote_gen",
+            "shell",
+            "get_current_stats",
+            "map",
+            "starmap",
+            "for_each",
+        }
+        if name in unsupported_methods:
 
-        return unsupported_method
+            def unsupported_method(*args, **kwargs):
+                raise NotImplementedError(f"Grouped function does not support the '{name}' method")
+
+            return unsupported_method
+        else:
+            try:
+                return getattr(self.f, name)
+            except AttributeError:
+                return object.__getattribute__(self, name)
 
 
 def grouped(size: int):
