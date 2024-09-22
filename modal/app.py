@@ -43,7 +43,7 @@ from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
-from .object import _Object
+from .object import _get_environment_name, _Object
 from .partial_function import (
     PartialFunction,
     _find_partial_methods_for_user_cls,
@@ -268,6 +268,8 @@ class _App:
         """
         if client is None:
             client = await _Client.from_env()
+
+        environment_name = _get_environment_name(environment_name)
 
         request = api_pb2.AppGetOrCreateRequest(
             app_name=label,
