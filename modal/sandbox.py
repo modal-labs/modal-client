@@ -244,6 +244,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     "App has not been initialized yet. To create an App lazily, use `App.lookup`: \n"
                     "app = modal.App.lookup('my-app', create_if_missing=True)\n"
                     "modal.Sandbox.create('echo', 'hi', app=app)\n"
+                    "In order to initialize an existing `App` object, refer to our docs: https://modal.com/docs/guide/apps"
                 )
 
             app_id = app.app_id
