@@ -239,6 +239,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         app_client: Optional[_Client] = None
 
         if app is not None:
+            if app.app_id is None:
+                raise ValueError(
+                    "App has not been initialized yet. To create an App lazily, use `App.lookup`: \n"
+                    "app = modal.App.lookup('my-app', create_if_missing=True)\n"
+                    "modal.Sandbox.create('echo', 'hi', app=app)\n"
+                    "In order to initialize an existing `App` object, refer to our docs: https://modal.com/docs/guide/apps"
+                )
+
             app_id = app.app_id
             app_client = app._client
         elif _App._container_app is not None:
