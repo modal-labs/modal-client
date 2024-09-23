@@ -1,10 +1,23 @@
 syntax = "proto3";
 
-package modal.client;
-
-import "modal_proto/options.proto";
+import "google/protobuf/descriptor.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/wrappers.proto";
+
+package modal.client;
+
+// Defines custom options used internally at Modal.
+// Custom options must be in the range 50000-99999.
+// Reference: https://protobuf.dev/programming-guides/proto2/#customoptions
+extend google.protobuf.FieldOptions {
+  optional bool audit_target_attr = 50000;
+}
+
+extend google.protobuf.MethodOptions {
+  optional string audit_event_name = 50000;
+  optional string audit_event_description = 50001;
+}
+
 
 enum AppDeployVisibility {
   APP_DEPLOY_VISIBILITY_UNSPECIFIED = 0;
@@ -224,7 +237,7 @@ message AppClientDisconnectRequest {
 }
 
 message AppCreateRequest {
-  string client_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string client_id = 1 [ (audit_target_attr) = true ];
   string description = 2;    // Human readable label for the app
   string environment_name = 5;
   AppState app_state = 6;
@@ -237,7 +250,7 @@ message AppCreateResponse {
 }
 
 message AppDeployRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1 [ (audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string name = 3;
   string object_entity = 4;
@@ -368,7 +381,7 @@ message AppLookupResponse {
 }
 
 message AppPublishRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1 [ (audit_target_attr) = true ];
   string name = 2;
   string deployment_tag = 3;  // Additional metadata to identify a deployment
   AppState app_state = 4;  // Published app will be in this state
@@ -398,7 +411,7 @@ message AppSetObjectsRequest {
 }
 
 message AppStopRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1 [ (audit_target_attr) = true ];
   AppStopSource source = 2;
 }
 
@@ -570,7 +583,7 @@ message CheckpointInfo {
 }
 
 message ClassCreateRequest {
-  string app_id = 1  [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1  [ (audit_target_attr) = true ];
   string existing_class_id = 2;
   repeated ClassMethod methods = 3;
   reserved 4; // removed class_function_id
@@ -650,7 +663,7 @@ message ClassParameterValue {
 }
 
 message ClientCreateRequest {
-  ClientType client_type = 1  [ (modal.options.audit_target_attr) = true ];
+  ClientType client_type = 1  [ (audit_target_attr) = true ];
   string version = 2;
 }
 
@@ -756,7 +769,7 @@ message ContainerLogRequest {
 }
 
 message ContainerStopRequest {
-  string task_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string task_id = 1 [ (audit_target_attr) = true ];
 }
 
 message ContainerStopResponse {
@@ -809,7 +822,7 @@ message DictContentsRequest {
 
 message DictCreateRequest {  // Will be superseded by DictGetOrCreateRequest
   repeated DictEntry data = 1;
-  string app_id = 2  [ (modal.options.audit_target_attr) = true ];
+  string app_id = 2  [ (audit_target_attr) = true ];
   string existing_dict_id = 3;
 }
 
@@ -827,7 +840,7 @@ message DictEntry {
 }
 
 message DictGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1 [ (audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -884,7 +897,7 @@ message DictPopResponse {
 }
 
 message DictUpdateRequest {
-  string dict_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string dict_id = 1 [ (audit_target_attr) = true ];
   repeated DictEntry updates = 2;
 }
 
@@ -908,7 +921,7 @@ message DomainCertificateVerifyResponse {
 }
 
 message DomainCreateRequest {
-  string domain_name = 1  [ (modal.options.audit_target_attr) = true ];
+  string domain_name = 1  [ (audit_target_attr) = true ];
 }
 
 message DomainCreateResponse {
@@ -924,11 +937,11 @@ message DomainListResponse {
 }
 
 message EnvironmentCreateRequest {
-  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 1 [ (audit_target_attr) = true ];
 }
 
 message EnvironmentDeleteRequest {
-  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 1 [ (audit_target_attr) = true ];
 }
 
 message EnvironmentListItem {
@@ -943,7 +956,7 @@ message EnvironmentListResponse {
 }
 
 message EnvironmentUpdateRequest {
-  string current_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string current_name = 1 [ (audit_target_attr) = true ];
   google.protobuf.StringValue name = 2;
   google.protobuf.StringValue web_suffix = 3;
 }
@@ -1140,7 +1153,7 @@ message FunctionCallPutDataRequest {
 
 message FunctionCreateRequest {
   Function function = 1;
-  string app_id = 2  [ (modal.options.audit_target_attr) = true ];
+  string app_id = 2  [ (audit_target_attr) = true ];
   Schedule schedule = 6;
   string existing_function_id = 7;
   // This flag tells the server to avoid doing updates in FunctionCreate that should now
@@ -1366,7 +1379,7 @@ message FunctionOptions {
 
 message FunctionPrecreateRequest {
   string app_id = 1;
-  string function_name = 2  [ (modal.options.audit_target_attr) = true ];
+  string function_name = 2  [ (audit_target_attr) = true ];
   string existing_function_id = 3;
   Function.FunctionType function_type = 4;
   WebhookConfig webhook_config = 5;
@@ -1512,7 +1525,7 @@ message ImageContextFile {
 
 message ImageGetOrCreateRequest {
   Image image = 2;
-  string app_id = 4 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 4 [ (audit_target_attr) = true ];
   string existing_image_id = 5;  // ignored
   string build_function_id = 6;
   bool force_build = 7;
@@ -1569,7 +1582,7 @@ message InputInfo {
 }
 
 message MountBuildRequest {
-  string app_id = 2 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 2 [ (audit_target_attr) = true ];
   string existing_mount_id = 3;
   repeated MountFile files = 4;
 }
@@ -1673,7 +1686,7 @@ message PortSpecs {
 }
 
 message ProxyGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1 [ (audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
@@ -1697,7 +1710,7 @@ message QueueClearRequest {
 }
 
 message QueueCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1 [ (audit_target_attr) = true ];
   string existing_queue_id = 2;
 }
 
@@ -1706,7 +1719,7 @@ message QueueCreateResponse {
 }
 
 message QueueDeleteRequest {
-  string queue_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string queue_id = 1 [ (audit_target_attr) = true ];
 }
 
 message QueueGetOrCreateRequest {
@@ -1870,7 +1883,7 @@ message Sandbox {
 }
 
 message SandboxCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1 [ (audit_target_attr) = true ];
   Sandbox definition = 2;
   string environment_name = 3;
 }
@@ -2000,7 +2013,7 @@ message SchedulerPlacement {
 
 message SecretCreateRequest {  // Not used by client anymore
   map<string, string> env_dict = 1;
-  string app_id = 2 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 2 [ (audit_target_attr) = true ];
   string template_type = 3;  // todo: not used?
   string existing_secret_id = 4;
 }
@@ -2010,7 +2023,7 @@ message SecretCreateResponse {  // Not used by client anymore
 }
 
 message SecretGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1 [ (audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // Not used atm
@@ -2040,7 +2053,7 @@ message SecretListResponse {
 }
 
 message SharedVolumeCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1 [ (audit_target_attr) = true ];
   CloudProvider cloud_provider = 2;
 }
 
@@ -2061,7 +2074,7 @@ message SharedVolumeGetFileResponse {
 }
 
 message SharedVolumeGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1 [ (audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -2109,7 +2122,7 @@ message SharedVolumeMount {
 }
 
 message SharedVolumePutFileRequest {
-  string shared_volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string shared_volume_id = 1 [ (audit_target_attr) = true ];
   string path = 2;
   string sha256_hex = 3;
   oneof data_oneof {
@@ -2124,7 +2137,7 @@ message SharedVolumePutFileResponse {
 }
 
 message SharedVolumeRemoveFileRequest {
-  string shared_volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string shared_volume_id = 1 [ (audit_target_attr) = true ];
   string path = 2;
   bool recursive = 3;
 }
@@ -2255,7 +2268,7 @@ message TunnelStopResponse {
 message VolumeCommitRequest {
   // NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
   // a volume mount.
-  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string volume_id = 1 [ (audit_target_attr) = true ];
 }
 
 message VolumeCommitResponse {
@@ -2270,7 +2283,7 @@ message VolumeCopyFilesRequest {
 }
 
 message VolumeCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1 [ (audit_target_attr) = true ];
   VolumeFsVersion version = 2;
 }
 
@@ -2302,7 +2315,7 @@ message VolumeGetFileResponse {
 }
 
 message VolumeGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1 [ (audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -2367,7 +2380,7 @@ message VolumeReloadRequest {
 }
 
 message VolumeRemoveFileRequest {
-  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string volume_id = 1 [ (audit_target_attr) = true ];
   string path = 2;
   bool recursive = 3;
 }

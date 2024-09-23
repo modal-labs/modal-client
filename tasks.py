@@ -45,22 +45,34 @@ def python_file_as_executable(path: Path) -> Generator[Path, None, None]:
 
 @task
 def protoc(ctx):
-    protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
-    input_files = "modal_proto/api.proto modal_proto/options.proto"
-    py_protoc = (
-        protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
-    )
-    print(py_protoc)
-    # generate grpcio and grpclib proto files:
-    ctx.run(f"{py_protoc} -I . {input_files}")
+    import google.protobuf
 
-    # generate modal-specific wrapper around grpclib api stub using custom plugin:
+    pb_version = int(google.protobuf.__version__[0])
+
+    # Compile main proto and API gencode
+    protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
+    input_files = "modal_proto/api.proto"
+    ctx.run(
+        f"{protoc_cmd}"
+        f" --python_out=modal_proto/pb{pb_version}"
+        f" --mypy_out=modal_proto/pb{pb_version}"
+        " --grpclib_python_out=."
+        " --grpc_python_out=."
+        " --mypy_grpc_out=."
+        f" -I . {input_files}",
+        echo=True,
+    )
+
+    # Generate modal-specific wrapper around grpclib api stub using custom plugin:
     grpc_plugin_pyfile = Path(__file__).parent / "protoc_plugin" / "plugin.py"
 
     with python_file_as_executable(grpc_plugin_pyfile) as grpc_plugin_executable:
         ctx.run(
-            f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_executable}"
-            + f" --modal-grpclib-python_out=. -I . {input_files}"
+            f"{protoc_cmd}"
+            f" --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_executable}"
+            f" --modal-grpclib-python_out=."
+            f" -I . {input_files}",
+            echo=True,
         )
 
 
