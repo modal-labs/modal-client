@@ -95,9 +95,6 @@ jobs:
         with:
           path: modal_proto/
 
-      - name: Debug
-        run: tree modal_proto
-
       - name: Build client package (installs all dependencies)
         run: pip install -e .
 
