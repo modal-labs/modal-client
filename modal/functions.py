@@ -519,6 +519,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         group_size: Optional[int] = None,  # Experimental: Grouped functions
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
+        untrusted: bool = False,
         _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
     ) -> None:
@@ -840,6 +841,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_parameter_info=info.class_parameter_info(),
                     i6pn_enabled=i6pn_enabled,
                     _experimental_group_size=group_size or 0,  # Experimental: Grouped functions
+                    untrusted=untrusted,
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
                     _experimental_proxy_ip=_experimental_proxy_ip,
