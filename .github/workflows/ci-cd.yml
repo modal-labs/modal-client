@@ -58,6 +58,7 @@ jobs:
   client-test:
     name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (protobuf=${{ matrix.proto-version }})
     timeout-minutes: 20
+    needs: [compile-protos]
 
     strategy:
       matrix:
