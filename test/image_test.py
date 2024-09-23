@@ -12,6 +12,7 @@ from unittest import mock
 
 from modal import App, Image, Mount, Secret, build, gpu, method
 from modal._serialization import serialize
+from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, VersionError
 from modal.image import (
@@ -1154,3 +1155,24 @@ async def test_logs(servicer, client):
 
     logs = [data async for data in image._logs.aio()]
     assert logs == ["build starting\n", "build finished\n"]
+
+
+def test_add_local_python_packages():
+    image = Image.debian_slim().add_local_python_packages("pkg_a")
+
+    _image = synchronizer._translate_in(image)
+    mount_layer = _image._mounts
+    pkg_mount: Mount = mount_layer[0]
+    from modal.mount import _MountedPythonModule
+
+    assert len(pkg_mount.entries) == 1
+    mount_entry = pkg_mount.entries[0]
+    assert isinstance(mount_entry, _MountedPythonModule)
+    assert mount_entry.remote_dir == "/root"
+    assert mount_entry.module_name == "pkg_a"
+
+    image_additional_mount = image.add_local_python_packages("pkg_b")
+    assert len(synchronizer._translate_in(image_additional_mount)._mounts) == 2
+
+    image_non_mount = image.run_commands("echo 'hello'")
+    assert synchronizer._translate_in(image_non_mount)._mounts == ()  # mounts don't transfer for non-mount operations

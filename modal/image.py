@@ -463,6 +463,7 @@ class _Image(_Object, type_prefix="im"):
         rep = "Image()"
         obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
+        obj._mounts = _mounts
         return obj
 
     def extend(self, **kwargs) -> "_Image":
@@ -526,21 +527,13 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    def copy_local_file2(
-        self, local_path: Union[str, Path], remote_path: Optional[Union[str, Path]] = None
-    ) -> "_Image":
-        """Copy a file into the image as a part of building it.
+    def add_local_python_packages(self, *packages: Union[str, Path]) -> "_Image":
+        """Adds local Python packages to the image
 
-        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
-        works in a `Dockerfile`.
+        Packages are added to the /root directory which is on the PYTHONPATH of any
+        executed Modal functions.
         """
-        if remote_path is None:
-            # TODO: track workdir (!) to put file in workdir/basename, OR let mounts support relative paths
-            basename = str(Path(local_path).name)
-            remote_path = Path("/root") / basename
-
-        mount = _Mount.from_local_file(local_path, remote_path=remote_path)
-
+        mount = _Mount.from_local_python_packages(*packages)
         return _Image._from_args(base_images={"base": self}, _mounts=self._mounts + (mount,))
 
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
