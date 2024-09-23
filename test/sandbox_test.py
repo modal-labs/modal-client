@@ -38,14 +38,6 @@ def test_sandbox(client, servicer):
 
 
 @skip_non_linux
-def test_app_attached_from_env(set_env_client):
-    sb = Sandbox.create("echo", "hi", app=app)
-    sb.wait()
-
-    assert sb.stdout.read() == "hi\n"
-
-
-@skip_non_linux
 def test_sandbox_mount(client, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
@@ -196,8 +188,13 @@ def test_app_sandbox(client, servicer):
             sb = app.spawn_sandbox(
                 "bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount]
             )
-            assert sb.stdout.read() == "hi\n"
-            assert sb.stderr.read() == "bye\n"
+
+        sb = Sandbox.create(
+            "bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount], app=app
+        )
+        sb.wait()
+        assert sb.stderr.read() == "bye\n"
+        assert sb.stdout.read() == "hi\n"
 
 
 @skip_non_linux
@@ -254,11 +251,10 @@ def test_sandbox_list_app(client, servicer):
 
     with app.run(client):
         # Create sandbox
-        with pytest.warns(DeprecationError):
-            sb = app.spawn_sandbox("bash", "-c", "sleep 10000", image=image, secrets=[secret], mounts=[mount])
-            assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 1
-            sb.terminate()
-            assert not list(Sandbox.list(app_id=app.app_id, client=client))
+        sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], mounts=[mount], app=app)
+        assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 1
+        sb.terminate()
+        assert not list(Sandbox.list(app_id=app.app_id, client=client))
 
 
 @skip_non_linux
