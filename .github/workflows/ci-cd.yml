@@ -19,18 +19,30 @@ env:
 jobs:
 
   compile-protos:
-    name: Compile protos for protobuf runtime ${{ matrix.protobuf-runtime }}
+    name: Compile protos for protobuf runtime ${{ matrix.protobuf-major-version }}
     runs-on: "ubuntu-20.04"
     strategy:
       matrix:
-        protobuf-runtime: ["3", "4", "5"]
+        protobuf-major-version: [3, 4, 5]
 
     steps:
       - uses: actions/checkout@v3
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: "3.11"
+          python-version: '3.11' 
+
+      # TODO explain what this is about
+      - name: Install protobuf
+        run: |
+          if [[ ${{ matrix.protobuf-major-version }} == 3 ]]; then
+            pip install protobuf~=3.19.0 grpcio_tools~=1.48.0 mypy-protobuf~=3.3.0
+          elif [[ ${{ matrix.protobuf-major-version }} == 4 ]]; then
+            pip install protobuf~=4.21.0 grpcio_tools~=1.62.0 mypy-protobuf~=3.4.0
+          elif [[ ${{ matrix.protobuf-major-version }} == 5 ]]; then
+            pip install protobuf~=5.26.0 grpcio_tools~=1.66.0 mypy-protobuf~=3.5.0
+          fi
+          python -c 'import google.protobuf; print(f"{google.protobuf.__version__=}")'
 
       - name: Compile protos
         run: inv protoc
