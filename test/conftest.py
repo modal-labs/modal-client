@@ -1782,16 +1782,6 @@ def mock_dir_factory():
 
 
 @pytest.fixture(autouse=True)
-def reset_sys_modules():
-    # Needed since some tests will import dynamic modules
-    backup = sys.modules.copy()
-    try:
-        yield
-    finally:
-        sys.modules = backup
-
-
-@pytest.fixture(autouse=True)
 def reset_container_app():
     try:
         yield

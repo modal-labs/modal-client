@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import importlib
 import json
 import os
 import pytest
@@ -199,6 +200,8 @@ async def test_container_snapshot_patching(fake_torch_module, container_client, 
     # bring fake torch into scope and call the utility fn
     import torch
 
+    importlib.reload(torch)  # make sure we get our fake torch
+
     assert torch.cuda.device_count() == 0
 
     # Write out a restore file so that snapshot+restore will complete
@@ -207,8 +210,6 @@ async def test_container_snapshot_patching(fake_torch_module, container_client, 
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
     ):
         io_manager.memory_snapshot()
-        import torch
-
         assert torch.cuda.device_count() == 2
 
 
@@ -218,9 +219,11 @@ async def test_container_snapshot_patching_err(weird_torch_module, container_cli
     restore_path = temp_restore_path(tmpdir)
 
     # bring weird torch into scope and call the utility fn
-    import torch as trch
+    import torch
 
-    assert trch.IM_WEIRD == 42
+    importlib.reload(torch)
+
+    assert torch.IM_WEIRD == 42
 
     with mock.patch.dict(
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
