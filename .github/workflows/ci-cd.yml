@@ -46,6 +46,13 @@ jobs:
 
       - name: Compile protos
         run: inv protoc
+
+      - name: Upload protos
+        uses: actions/upload-artifact@v4
+        with:
+          name: protos-${{ matrix.protobuf-major-version }}
+          path: modal_proto/
+          retention-days: 1
     
 
   client-test:
@@ -83,8 +90,12 @@ jobs:
         name: Install protobuf
         run: pip install protobuf==${{ matrix.proto-version }}
 
-      - name: Build protobuf
-        run: inv protoc
+      - name: Download protos
+        uses: actions/download-artifact@v4
+        with:
+          name: protos-*
+          path: modal_proto/
+          merge-multiple: true
 
       - name: Build client package (installs all dependencies)
         run: pip install -e .
