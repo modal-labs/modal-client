@@ -50,8 +50,8 @@ jobs:
       - name: Upload protos
         uses: actions/upload-artifact@v4
         with:
-          name: protos-${{ matrix.protobuf-major-version }}
-          path: modal_proto/
+          name: pb${{ matrix.protobuf-major-version }}
+          path: modal_proto/pb${{ matrix.protobuf-major-version }}
           retention-days: 1
     
 
@@ -93,7 +93,7 @@ jobs:
       - name: Download protos
         uses: actions/download-artifact@v4
         with:
-          name: protos-*
+          name: pb*
           path: modal_proto/
           merge-multiple: true
 

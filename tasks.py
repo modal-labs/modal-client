@@ -48,17 +48,18 @@ def protoc(ctx):
     import google.protobuf
 
     pb_version = int(google.protobuf.__version__[0])
+    target_dir = f"modal_proto/pb{pb_version}"
 
     # Compile main proto and API gencode
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
     input_files = "modal_proto/api.proto"
     ctx.run(
         f"{protoc_cmd}"
-        f" --python_out=modal_proto/pb{pb_version}"
-        f" --mypy_out=modal_proto/pb{pb_version}"
-        " --grpclib_python_out=."
-        " --grpc_python_out=."
-        " --mypy_grpc_out=."
+        f" --python_out={target_dir}"
+        f" --mypy_out={target_dir}"
+        f" --grpclib_python_out={target_dir}"
+        f" --grpc_python_out={target_dir}"
+        f" --mypy_grpc_out={target_dir}"
         f" -I . {input_files}",
         echo=True,
     )
@@ -70,7 +71,7 @@ def protoc(ctx):
         ctx.run(
             f"{protoc_cmd}"
             f" --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_executable}"
-            f" --modal-grpclib-python_out=."
+            f" --modal-grpclib-python_out={target_dir}"
             f" -I . {input_files}",
             echo=True,
         )
