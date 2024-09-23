@@ -17,6 +17,25 @@ env:
   PYTHONIOENCODING: utf-8
 
 jobs:
+
+  compile-protos:
+    name: Compile protos for protobuf runtime ${{ matrix.protobuf-runtime }}
+    runs-on: "ubuntu-20.04"
+    strategy:
+      matrix:
+        protobuf-runtime: ["3", "4", "5"]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: ./.github/actions/setup-cached-python
+        with:
+          version: "3.11"
+
+      - name: Compile protos
+        run: inv protoc
+    
+
   client-test:
     name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (protobuf=${{ matrix.proto-version }})
     timeout-minutes: 20
