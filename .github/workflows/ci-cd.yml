@@ -91,12 +91,9 @@ jobs:
         name: Install protobuf
         run: pip install protobuf==${{ matrix.proto-version }}
 
-      - name: Download protos
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: pb*
           path: modal_proto/
-          merge-multiple: true
 
       - name: Build client package (installs all dependencies)
         run: pip install -e .
