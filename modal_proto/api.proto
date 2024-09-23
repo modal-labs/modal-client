@@ -1073,13 +1073,16 @@ message Function {
   bool _experimental_concurrent_cancellations = 63;
   uint32 max_concurrent_inputs = 64;
 
+  // TODO(irfansharif): Remove, once https://github.com/modal-labs/modal/pull/15645 lands.
+  bool _experimental_task_templates_enabled = 65;  // forces going through the new gpu-fallbacks integration path, even if no fallback options are specified
+  repeated TaskTemplate _experimental_task_templates = 66;  // for fallback options, where the first/most-preferred "template" is derived from fields above
+
   // When the function is a "grouped" one, this records the # of tasks we want
   // to schedule in tandem.
   uint32 _experimental_group_size = 67;
 
-  // TODO(irfansharif): Remove, once https://github.com/modal-labs/modal/pull/15645 lands.
-  bool _experimental_task_templates_enabled = 65;  // forces going through the new gpu-fallbacks integration path, even if no fallback options are specified
-  repeated TaskTemplate _experimental_task_templates = 66;  // for fallback options, where the first/most-preferred "template" is derived from fields above
+  // If set, the function will be run in an untrusted environment.
+  bool untrusted = 68;
 }
 
 message FunctionBindParamsRequest {
