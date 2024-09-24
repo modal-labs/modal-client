@@ -102,7 +102,7 @@ class ImportInterceptor(importlib.abc.MetaPathFinder):
         self.loading[name] = (span_id, t0)
 
     def load_end(self, name):
-        span_id, t0 = self.loading.pop(name, None)
+        span_id, t0 = self.loading.pop(name, (None, None))
         if t0 is None:
             return
         latency = time.monotonic() - t0
