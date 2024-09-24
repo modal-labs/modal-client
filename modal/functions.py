@@ -509,7 +509,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
         cloud: Optional[str] = None,
-        _experimental_boost: None = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
@@ -835,7 +834,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     block_network=block_network,
                     max_inputs=max_inputs or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
-                    _experimental_boost=bool(_experimental_boost),
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
