@@ -14,6 +14,7 @@ class SchedulerPlacement:
         region: Optional[Union[str, Sequence[str]]] = None,
         zone: Optional[str] = None,
         spot: Optional[bool] = None,
+        instance_type: Optional[Union[str, Sequence[str]]] = None,
     ):
         """mdmd:hidden"""
         _lifecycle: Optional[str] = None
@@ -26,8 +27,17 @@ class SchedulerPlacement:
                 regions = [region]
             else:
                 regions = list(region)
+
+        instance_types = []
+        if instance_type:
+            if isinstance(instance_type, str):
+                instance_types = [instance_type]
+            else:
+                instance_types = list(instance_type)
+
         self.proto = api_pb2.SchedulerPlacement(
             regions=regions,
             _zone=zone,
             _lifecycle=_lifecycle,
+            _instance_types=instance_types,
         )
