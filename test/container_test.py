@@ -1644,18 +1644,32 @@ def _run_container_process(
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize(
-    ["function_name", "input_args", "cancelled_input_ids", "expected_container_output", "live_cancellations"],
+    [
+        "function_name",
+        "input_args",
+        "cancelled_input_ids",
+        "terminate_containers",
+        "expected_container_output",
+        "live_cancellations",
+    ],
     [
         # the 10 second inputs here are to be cancelled:
-        ("delay", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02], 1),  # cancel second input
-        ("delay_async", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02], 1),  # async variant
+        ("delay", [0.01, 20, 0.02], ["in-001"], False, [0.01, 0.02], 1),  # cancel second input
+        ("delay_async", [0.01, 20, 0.02], ["in-001"], False, [0.01, 0.02], 1),  # async variant
+        ("delay_async", [0.01, 20, 0.02], ["in-001"], True, [0.01, 0.02], 1),  # async variant
         # cancel first input, but it has already been processed, so all three should come through:
-        ("delay", [0.01, 0.5, 0.03], ["in-000"], [0.01, 0.5, 0.03], 0),
-        ("delay_async", [0.01, 0.5, 0.03], ["in-000"], [0.01, 0.5, 0.03], 0),
+        ("delay", [0.01, 0.5, 0.03], ["in-000"], False, [0.01, 0.5, 0.03], 0),
+        ("delay_async", [0.01, 0.5, 0.03], ["in-000"], False, [0.01, 0.5, 0.03], 0),
     ],
 )
 def test_cancellation_aborts_current_input_on_match(
-    servicer, function_name, input_args, cancelled_input_ids, expected_container_output, live_cancellations
+    servicer,
+    function_name,
+    input_args,
+    cancelled_input_ids,
+    terminate_containers,
+    expected_container_output,
+    live_cancellations,
 ):
     # NOTE: for a cancellation to actually happen in this test, it needs to be
     #    triggered while the relevant input is being processed. A future input
@@ -1680,9 +1694,16 @@ def test_cancellation_aborts_current_input_on_match(
     assert num_prior_outputs == 1  # the second input shouldn't have completed yet
 
     servicer.container_heartbeat_return_now(
-        api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
+        api_pb2.ContainerHeartbeatResponse(
+            cancel_input_event=api_pb2.CancelInputEvent(
+                input_ids=cancelled_input_ids, terminate_containers=terminate_containers
+            )
+        )
     )
     stdout, stderr = container_process.communicate()
+    print("Process output")
+    print(stdout.decode())
+    print(stderr.decode())
     assert stderr.decode().count("Received a cancellation signal") == live_cancellations
     assert "Traceback" not in stderr.decode()
     assert container_process.returncode == 0  # wait for container to exit
