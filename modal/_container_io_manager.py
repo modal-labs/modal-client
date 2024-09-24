@@ -223,8 +223,7 @@ class InputSlots:
 
     def _wake_waiter(self) -> None:
         if self.active < self.value and self.waiter is not None:
-            if not self.waiter.cancelled():  # could have been cancelled during interpreter shutdown
-                self.waiter.set_result(None)
+            self.waiter.set_result(None)
             self.waiter = None
             self.active += 1
 
