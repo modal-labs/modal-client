@@ -1083,6 +1083,8 @@ message Function {
 
   // If set, the function will be run in an untrusted environment.
   bool untrusted = 68;
+
+  uint32 _experimental_buffer_containers = 69;
 }
 
 message FunctionBindParamsRequest {
