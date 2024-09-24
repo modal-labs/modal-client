@@ -2001,8 +2001,10 @@ message SchedulerPlacement {
   //   GPU types.
 
   repeated string regions = 4;
-  optional string _zone = 2;
-  optional string _lifecycle = 3; // "on-demand" or "spot", else ignored
+  // TODO(irfansharif): Make these two repeated.
+  optional string _zone = 2; // admin-only
+  optional string _lifecycle = 3; // admin-only, "on-demand" or "spot", else ignored
+  repeated string _instance_types = 5; // admin-only
 
   reserved 1;
 }
