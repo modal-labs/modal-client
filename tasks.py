@@ -130,6 +130,7 @@ def type_check(ctx):
         "test/supports/type_assertions_negative.py",
     ]
     excludes = " ".join(f"--exclude {path}" for path in mypy_exclude_list)
+    ctx.run("mypy --version", pty=True)
     ctx.run(f"mypy . {excludes}", pty=True)
 
     # use pyright for checking implementation of those files
