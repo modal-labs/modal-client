@@ -12,6 +12,7 @@ app = App()
         region="us-east-1",
         zone="us-east-1a",
         spot=False,
+        instance_type="g4dn.xlarge",
     ),
 )
 def f1():
@@ -40,6 +41,7 @@ def test_fn_scheduler_placement(servicer, client):
             regions=["us-east-1"],
             _zone="us-east-1a",
             _lifecycle="on-demand",
+            _instance_types=["g4dn.xlarge"],
         )
 
         fn2 = servicer.app_functions["fu-2"]  # f2
@@ -55,17 +57,18 @@ def test_fn_scheduler_placement(servicer, client):
 
 @skip_non_linux
 def test_sandbox_scheduler_placement(client, servicer):
-    Sandbox.create(
-        "bash",
-        "-c",
-        "echo bye >&2 && sleep 1 && echo hi && exit 42",
-        timeout=600,
-        region="us-east-1",
-        client=client,
-    )
+    with app.run(client):
+        Sandbox.create(
+            "bash",
+            "-c",
+            "echo bye >&2 && sleep 1 && echo hi && exit 42",
+            timeout=600,
+            region="us-east-1",
+            app=app,
+        )
 
-    assert len(servicer.sandbox_defs) == 1
-    sb_def = servicer.sandbox_defs[0]
-    assert sb_def.scheduler_placement == api_pb2.SchedulerPlacement(
-        regions=["us-east-1"],
-    )
+        assert len(servicer.sandbox_defs) == 1
+        sb_def = servicer.sandbox_defs[0]
+        assert sb_def.scheduler_placement == api_pb2.SchedulerPlacement(
+            regions=["us-east-1"],
+        )
