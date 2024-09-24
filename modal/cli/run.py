@@ -420,7 +420,7 @@ def shell(
             mounts=function_spec.mounts,
             secrets=function_spec.secrets,
             network_file_systems=function_spec.network_file_systems,
-            gpu=function_spec.gpu,
+            gpu=function_spec.gpus,
             cloud=function_spec.cloud,
             cpu=function_spec.cpu,
             memory=function_spec.memory,
