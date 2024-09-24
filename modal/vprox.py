@@ -33,8 +33,8 @@ class _VproxLink(_Object, type_prefix="pr"):
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
             )
-            response = await resolver.client.stub.VproxLinkGetOrCreateRequest(req)
-            self._hydrate(response.proxy_id, resolver.client, None)
+            response = await resolver.client.stub.VproxLinkGetOrCreate(req)
+            self._hydrate(response.vprox_node_id, resolver.client, None)
 
         return _VproxLink._from_loader(_load, "VproxLink()", is_another_app=True)
 
