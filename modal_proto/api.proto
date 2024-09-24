@@ -1699,6 +1699,21 @@ message ProxyInfo {
   int32 remote_port = 4;
 }
 
+message VproxLinkGetOrCreateRequest {
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
+}
+
+message VproxLinkGetOrCreateResponse {
+  string vprox_node_id = 1;
+}
+
+message VproxLinkInfo {
+  string vprox_node_id = 1;
+}
+
 message QueueClearRequest {
   string queue_id = 1;
   bytes partition_key = 2;
@@ -2505,6 +2520,9 @@ service ModalClient {
 
   // Proxies
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
+
+  // Vprox links
+  rpc VproxLinkGetOrCreate(VproxLinkGetOrCreateRequest) returns (VproxLinkGetOrCreateResponse);
 
   // Queues
   rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);

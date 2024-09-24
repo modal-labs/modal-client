@@ -31,6 +31,7 @@ try:
     from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
     from .volume import Volume
+    from .vprox import VproxLink
 except Exception:
     print()
     print("#" * 80)
@@ -54,6 +55,7 @@ __all__ = [
     "NetworkFileSystem",
     "Period",
     "Proxy",
+    "VproxLink",
     "Queue",
     "Retries",
     "CloudBucketMount",
