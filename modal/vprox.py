@@ -9,7 +9,7 @@ from .object import _get_environment_name, _Object
 
 
 class _VproxLink(_Object, type_prefix="pr"):
-    """
+    """mdmd:hidden
     `modal.VproxLink` creates a secure connection mechanism between Modal
     containers and exit nodes with static IPs. This allows for you to allow list
     static IPs in your firewall. This is useful if you need Modal Functions to
